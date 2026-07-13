@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "turbo run build",
+    "build:standalone": "node scripts/build-standalone.mjs",
     "dev": "turbo run dev",
     "start": "node packages/server/dist/main.js",
     "test": "turbo run test",
@@ -17,6 +18,7 @@
   },
   "devDependencies": {
     "@types/express": "^5.0.1",
+    "esbuild": "^0.25.4",
     "@types/node": "^22.13.1",
     "@types/supertest": "^6.0.2",
     "supertest": "^7.0.0",

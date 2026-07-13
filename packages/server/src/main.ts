@@ -14,9 +14,16 @@ const PORT = Number(process.env.PORT ?? 5678);
 
 // npm/Node 直接运行时：默认托管相邻的前端产物（进浏览器即见完整 UI）。
 // 必须在 createApp 之前设置（app 层读取此 env 决定是否托管静态资源）。
+// 依部署布局取第一个存在的：monorepo `pnpm start`（server/dist → ../../frontend/dist）
+// 或独立发布包（dist/ → ../frontend/dist）。
 if (!process.env.NOMOPS_STATIC_DIR) {
-  const bundledUi = fileURLToPath(new URL('../../frontend/dist', import.meta.url));
-  if (existsSync(bundledUi)) process.env.NOMOPS_STATIC_DIR = bundledUi;
+  for (const rel of ['../../frontend/dist', '../frontend/dist']) {
+    const dir = fileURLToPath(new URL(rel, import.meta.url));
+    if (existsSync(dir)) {
+      process.env.NOMOPS_STATIC_DIR = dir;
+      break;
+    }
+  }
 }
 
 const boot = await bootstrap({ role: 'main' });

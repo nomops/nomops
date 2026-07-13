@@ -1,27 +1,30 @@
 name: npm publish
 
-# 可选发布：手动触发，把 nomops CLI 发到 npm registry。
+# 把 nomops 作为「自包含单包」发布到 npm（可 `npm i -g nomops` / `npx nomops`）。
 #
-# ⚠️ 前置条件（发布前需先做好，否则会失败）：
-#   1) 待发布的包不能是 private —— 目前 @nomops/server 是 `"private": true`，需去掉或改用
-#      一个专门的可发布包。
-#   2) workspace 依赖不能进 registry —— 包里的 `@nomops/*: workspace:*` 需在发布前解析成
-#      真实版本号（要么把这些包一并发到 npm，要么把 server 打成自包含的单包）。
-#   3) 在仓库 Secrets 里配置 `NPM_TOKEN`（npm automation token）。
+# 发布物由 scripts/build-standalone.mjs 生成：esbuild 把 server + 所有 @nomops/* 工作区包
+# 内联进一个 bundle，第三方依赖以真实版本声明——不含 `workspace:*`，无需逐个发布内部包。
 #
-# 在这些就绪前，自托管请走 Docker 或从源码 `pnpm start`（见 README）。
+# 唯一前置：在仓库 Secrets 配置 `NPM_TOKEN`（npm automation token，对 `nomops` 有发布权）。
+#
+# 触发：推 v* tag（版本取自 tag）或手动（版本取自 version 输入）。
 on:
+  push:
+    tags: ['v*']
   workflow_dispatch:
     inputs:
-      package:
-        description: '要发布的包（pnpm --filter 目标）'
+      version:
+        description: '发布版本号（如 0.1.0，不带 v 前缀）'
         required: true
-        default: '@nomops/server'
+
+permissions:
+  contents: read
+  id-token: write # npm provenance（OIDC 签名，需公开仓库）
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
@@ -34,9 +37,27 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      # 编译所有工作区包（standalone 打包经各包 dist 解析第一方代码）
       - run: pnpm build
 
-      - name: Publish
-        run: pnpm --filter "${{ github.event.inputs.package }}" publish --no-git-checks --access public
+      # 版本：tag 触发取 ${ref_name} 去掉 v；手动触发取输入
+      - name: Resolve version
+        id: v
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build standalone package
+        run: pnpm build:standalone
+        env:
+          NOMOPS_VERSION: ${{ steps.v.outputs.version }}
+
+      - name: Publish to npm
+        working-directory: dist-standalone
+        run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

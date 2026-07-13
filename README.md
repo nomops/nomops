@@ -70,9 +70,19 @@ pnpm start            # → http://localhost:5678 (serves the UI + API)
 the built frontend automatically and creates a local SQLite database at `./nomops.db`
 on first run — no configuration required.
 
-The server package also exposes a **`nomops` CLI** (`bin/nomops.js`). Once published to
-npm you can `npm install -g nomops && nomops` or `npx nomops`; from a clone, `pnpm start`
-is equivalent.
+### npx / global install
+
+nomops also ships as a **self-contained npm package** (server + UI + migrations bundled,
+no build step needed):
+
+```bash
+npx nomops                       # run without installing
+# or
+npm install -g nomops && nomops  # install the `nomops` CLI globally
+```
+
+Zero configuration — it creates `./nomops.db` (SQLite) on first run and serves the UI +
+API at **http://localhost:5678**. Set `DB_TYPE=postgres` + `DB_POSTGRES_URL` for PostgreSQL.
 
 > **First run**: the encryption key and JWT signing secret are generated automatically
 > and stored in the database — you do **not** need to set any secrets to get started.
