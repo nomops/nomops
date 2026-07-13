@@ -23,6 +23,7 @@ export type UsageCounter = InferSelectModel<typeof sqliteSchema.usageCounters>;
 export type BillingOrder = InferSelectModel<typeof sqliteSchema.billingOrders>;
 export type ApiKey = InferSelectModel<typeof sqliteSchema.apiKeys>;
 export type Folder = InferSelectModel<typeof sqliteSchema.folders>;
+export type WorkflowVersion = InferSelectModel<typeof sqliteSchema.workflowVersions>;
 
 /* ── 创建入参（区别于自动生成的 id/时间戳字段） ── */
 

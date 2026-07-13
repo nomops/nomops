@@ -288,7 +288,7 @@ export function createApiRouter(services: AppServices): Router {
     editor,
     h(async (req, res) => {
       const body = parseBody(workflowBodySchema, req);
-      const created = await services.workflows.create(body, auth(req).projectId);
+      const created = await services.workflows.create(body, auth(req).projectId, auth(req).userId);
       recordAudit(services, req, 'workflow.create', { type: 'workflow', id: created.id }, { name: created.name });
       res.status(201).json(created);
     }),
@@ -306,7 +306,7 @@ export function createApiRouter(services: AppServices): Router {
     editor,
     h(async (req, res) => {
       const body = parseBody(workflowPatchSchema, req);
-      const updated = await services.workflows.update(param(req, 'id'), body, auth(req).projectId);
+      const updated = await services.workflows.update(param(req, 'id'), body, auth(req).projectId, auth(req).userId);
       recordAudit(services, req, 'workflow.update', { type: 'workflow', id: updated.id }, { name: updated.name });
       res.json(updated);
     }),
@@ -319,6 +319,48 @@ export function createApiRouter(services: AppServices): Router {
       await services.workflows.delete(param(req, 'id'), auth(req).projectId);
       recordAudit(services, req, 'workflow.delete', { type: 'workflow', id: param(req, 'id') });
       res.status(204).end();
+    }),
+  );
+
+  /* ── 工作流版本历史（对标 n8n：编辑保存快照、可查看/回滚） ── */
+  router.get(
+    '/workflows/:id/versions',
+    h(async (req, res) => {
+      res.json(await services.workflows.listVersions(param(req, 'id'), auth(req).projectId));
+    }),
+  );
+
+  router.get(
+    '/workflows/:id/versions/:versionId',
+    h(async (req, res) => {
+      res.json(
+        await services.workflows.getVersion(
+          param(req, 'id'),
+          param(req, 'versionId'),
+          auth(req).projectId,
+        ),
+      );
+    }),
+  );
+
+  router.post(
+    '/workflows/:id/versions/:versionId/restore',
+    editor,
+    h(async (req, res) => {
+      const restored = await services.workflows.restoreVersion(
+        param(req, 'id'),
+        param(req, 'versionId'),
+        auth(req).projectId,
+        auth(req).userId,
+      );
+      recordAudit(
+        services,
+        req,
+        'workflow.restore',
+        { type: 'workflow', id: restored.id },
+        { versionId: param(req, 'versionId') },
+      );
+      res.json(restored);
     }),
   );
 

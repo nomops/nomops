@@ -93,6 +93,28 @@ export const workflows = pgTable('workflows', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
+// 工作流版本历史（对标 n8n）：每次编辑保存快照一份，可查看/回滚。projectId 冗余存以便归属过滤。
+export const workflowVersions = pgTable(
+  'workflow_versions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workflowId: uuid('workflow_id')
+      .notNull()
+      .references(() => workflows.id),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id),
+    versionNumber: integer('version_number').notNull(),
+    name: text('name').notNull(),
+    nodes: jsonb('nodes').$type<INode[]>().notNull(),
+    connections: jsonb('connections').$type<IConnections>().notNull(),
+    settings: jsonb('settings').$type<IWorkflowSettings>(),
+    createdBy: uuid('created_by'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('workflow_versions_workflow_idx').on(t.workflowId)],
+);
+
 // 工作流文件夹（对标 n8n）：项目内组织工作流，支持嵌套（parent_folder_id 自引用，app 层校验）。
 export const folders = pgTable(
   'folders',
@@ -291,6 +313,7 @@ export const pgSchema = {
   projects,
   projectRelations,
   workflows,
+  workflowVersions,
   folders,
   sharedWorkflows,
   credentials,

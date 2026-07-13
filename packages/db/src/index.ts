@@ -35,8 +35,13 @@ export {
   UserRepository,
   WebhookRepository,
   WorkflowRepository,
+  WorkflowVersionRepository,
 } from './repositories.js';
-export type { Repositories } from './repositories.js';
+export type {
+  Repositories,
+  WorkflowVersionMeta,
+  CreateWorkflowVersionInput,
+} from './repositories.js';
 
 export type {
   ApiKey,
@@ -62,4 +67,5 @@ export type {
   WebhookEntity,
   WebhookEntityInput,
   Workflow,
+  WorkflowVersion,
 } from './types.js';

@@ -28,6 +28,7 @@ import type {
   WebhookEntity,
   WebhookEntityInput,
   Workflow,
+  WorkflowVersion,
 } from './types.js';
 
 /**
@@ -355,6 +356,115 @@ export class WorkflowRepository extends BaseRepository {
       .where(eq(this.schema.sharedWorkflows.workflowId, workflowId))
       .limit(1);
     return rows[0] ? (rows[0] as { projectId: string }).projectId : null;
+  }
+}
+
+/** 版本元信息（列表用，不含 nodes/connections 大字段）。 */
+export interface WorkflowVersionMeta {
+  id: string;
+  versionNumber: number;
+  name: string;
+  createdBy: string | null;
+  createdAt: Date;
+}
+
+export interface CreateWorkflowVersionInput {
+  workflowId: string;
+  projectId: string;
+  name: string;
+  nodes: Workflow['nodes'];
+  connections: Workflow['connections'];
+  settings: Workflow['settings'];
+  createdBy: string | null;
+}
+
+export class WorkflowVersionRepository extends BaseRepository {
+  /** 下一个版本号（该工作流当前最大 +1，从 1 起）。 */
+  async nextVersionNumber(workflowId: string): Promise<number> {
+    const rows = await this.db
+      .select({ n: this.schema.workflowVersions.versionNumber })
+      .from(this.schema.workflowVersions)
+      .where(eq(this.schema.workflowVersions.workflowId, workflowId))
+      .orderBy(desc(this.schema.workflowVersions.versionNumber))
+      .limit(1);
+    return (rows[0]?.n ?? 0) + 1;
+  }
+
+  async create(input: CreateWorkflowVersionInput): Promise<WorkflowVersion> {
+    const versionNumber = await this.nextVersionNumber(input.workflowId);
+    const [row] = await this.db
+      .insert(this.schema.workflowVersions)
+      .values({
+        workflowId: input.workflowId,
+        projectId: input.projectId,
+        versionNumber,
+        name: input.name,
+        nodes: input.nodes,
+        connections: input.connections,
+        settings: input.settings ?? null,
+        createdBy: input.createdBy,
+      })
+      .returning();
+    return row as WorkflowVersion;
+  }
+
+  /** 某工作流的版本列表（新→旧），只取元信息。 */
+  async listByWorkflow(workflowId: string): Promise<WorkflowVersionMeta[]> {
+    const rows = await this.db
+      .select({
+        id: this.schema.workflowVersions.id,
+        versionNumber: this.schema.workflowVersions.versionNumber,
+        name: this.schema.workflowVersions.name,
+        createdBy: this.schema.workflowVersions.createdBy,
+        createdAt: this.schema.workflowVersions.createdAt,
+      })
+      .from(this.schema.workflowVersions)
+      .where(eq(this.schema.workflowVersions.workflowId, workflowId))
+      .orderBy(desc(this.schema.workflowVersions.versionNumber));
+    return rows as WorkflowVersionMeta[];
+  }
+
+  /** 单个版本全量（含 nodes/connections）。按 workflowId 二次校验，避免跨工作流取版本。 */
+  async findById(id: string, workflowId: string): Promise<WorkflowVersion | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.workflowVersions)
+      .where(
+        and(
+          eq(this.schema.workflowVersions.id, id),
+          eq(this.schema.workflowVersions.workflowId, workflowId),
+        ),
+      )
+      .limit(1);
+    return (rows[0] as WorkflowVersion | undefined) ?? null;
+  }
+
+  /** 只保留最近 keep 个版本，删更旧的（限界增长）。 */
+  async prune(workflowId: string, keep: number): Promise<void> {
+    const rows = await this.db
+      .select({ n: this.schema.workflowVersions.versionNumber })
+      .from(this.schema.workflowVersions)
+      .where(eq(this.schema.workflowVersions.workflowId, workflowId))
+      .orderBy(desc(this.schema.workflowVersions.versionNumber))
+      .limit(1)
+      .offset(keep);
+    const cutoff = rows[0]?.n;
+    if (cutoff === undefined) return;
+    await this.db
+      .delete(this.schema.workflowVersions)
+      .where(
+        and(
+          eq(this.schema.workflowVersions.workflowId, workflowId),
+          lt(this.schema.workflowVersions.versionNumber, cutoff + 1),
+        ),
+      );
+  }
+
+  /** 工作流删除时清掉其版本（无级联 FK）。 */
+  async deleteByWorkflow(workflowId: string): Promise<void> {
+    await this.db
+      .delete(this.schema.workflowVersions)
+      .where(eq(this.schema.workflowVersions.workflowId, workflowId));
   }
 }
 
@@ -888,6 +998,7 @@ export interface Repositories {
   folders: FolderRepository;
   projects: ProjectRepository;
   workflows: WorkflowRepository;
+  workflowVersions: WorkflowVersionRepository;
   credentials: CredentialRepository;
   variables: VariableRepository;
   dataTables: DataTableRepository;
@@ -908,6 +1019,7 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
     folders: new FolderRepository(db, schema),
     projects: new ProjectRepository(db, schema),
     workflows: new WorkflowRepository(db, schema),
+    workflowVersions: new WorkflowVersionRepository(db, schema),
     credentials: new CredentialRepository(db, schema),
     variables: new VariableRepository(db, schema),
     dataTables: new DataTableRepository(db, schema),

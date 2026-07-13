@@ -36,6 +36,24 @@ export interface FolderRow {
   updatedAt: string;
 }
 
+/** 版本历史列表项（元信息，不含 nodes/connections 大字段）。 */
+export interface WorkflowVersionMeta {
+  id: string;
+  versionNumber: number;
+  name: string;
+  createdBy: string | null;
+  createdAt: string;
+}
+
+/** 单个版本全量（含快照的 nodes/connections）。 */
+export interface WorkflowVersion extends WorkflowVersionMeta {
+  workflowId: string;
+  projectId: string;
+  nodes: INode[];
+  connections: IConnections;
+  settings: IWorkflowSettings | null;
+}
+
 export interface ExecutionRow {
   id: string;
   workflowId: string;
@@ -206,6 +224,12 @@ export const api = {
       http<RunSummary>('POST', `/api/workflows/${id}/run`, destinationNode ? { destinationNode } : {}),
     activate: (id: string, active: boolean) =>
       http<{ id: string; active: boolean }>('POST', `/api/workflows/${id}/activate`, { active }),
+    versions: (id: string) =>
+      http<WorkflowVersionMeta[]>('GET', `/api/workflows/${id}/versions`),
+    version: (id: string, versionId: string) =>
+      http<WorkflowVersion>('GET', `/api/workflows/${id}/versions/${versionId}`),
+    restore: (id: string, versionId: string) =>
+      http<WorkflowRow>('POST', `/api/workflows/${id}/versions/${versionId}/restore`),
   },
 
   folders: {

@@ -78,6 +78,13 @@
       "when": 1783923161909,
       "tag": "0010_burly_dreadnoughts",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1783929493713,
+      "tag": "0011_furry_naoko",
+      "breakpoints": true
     }
   ]
 }

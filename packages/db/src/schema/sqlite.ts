@@ -101,6 +101,30 @@ export const workflows = sqliteTable('workflows', {
     .$defaultFn(() => new Date()),
 });
 
+// 工作流版本历史（对标 n8n）：每次编辑保存快照一份，可查看/回滚。projectId 冗余存以便归属过滤。
+export const workflowVersions = sqliteTable(
+  'workflow_versions',
+  {
+    id: uuidPk('id'),
+    workflowId: text('workflow_id')
+      .notNull()
+      .references(() => workflows.id),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    versionNumber: integer('version_number').notNull(),
+    name: text('name').notNull(),
+    nodes: text('nodes', { mode: 'json' }).$type<INode[]>().notNull(),
+    connections: text('connections', { mode: 'json' }).$type<IConnections>().notNull(),
+    settings: text('settings', { mode: 'json' }).$type<IWorkflowSettings>(),
+    createdBy: text('created_by'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('workflow_versions_workflow_idx').on(t.workflowId)],
+);
+
 // 工作流文件夹（对标 n8n）：项目内组织工作流，支持嵌套（parent_folder_id 自引用，app 层校验）。
 export const folders = sqliteTable(
   'folders',
@@ -324,6 +348,7 @@ export const sqliteSchema = {
   projects,
   projectRelations,
   workflows,
+  workflowVersions,
   folders,
   sharedWorkflows,
   credentials,
