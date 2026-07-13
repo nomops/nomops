@@ -1,0 +1,42 @@
+name: npm publish
+
+# 可选发布：手动触发，把 nomops CLI 发到 npm registry。
+#
+# ⚠️ 前置条件（发布前需先做好，否则会失败）：
+#   1) 待发布的包不能是 private —— 目前 @nomops/server 是 `"private": true`，需去掉或改用
+#      一个专门的可发布包。
+#   2) workspace 依赖不能进 registry —— 包里的 `@nomops/*: workspace:*` 需在发布前解析成
+#      真实版本号（要么把这些包一并发到 npm，要么把 server 打成自包含的单包）。
+#   3) 在仓库 Secrets 里配置 `NPM_TOKEN`（npm automation token）。
+#
+# 在这些就绪前，自托管请走 Docker 或从源码 `pnpm start`（见 README）。
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: '要发布的包（pnpm --filter 目标）'
+        required: true
+        default: '@nomops/server'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      - name: Publish
+        run: pnpm --filter "${{ github.event.inputs.package }}" publish --no-git-checks --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

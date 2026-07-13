@@ -1,5 +1,7 @@
 # nomops
 
+[![CI](https://github.com/nomops/nomops/actions/workflows/ci.yml/badge.svg)](https://github.com/nomops/nomops/actions/workflows/ci.yml)
+
 **Node-based workflow automation you can self-host.** Build automations on a visual
 canvas, drop into code when you need it, and run it on your own infrastructure —
 see the input and output of every step.
