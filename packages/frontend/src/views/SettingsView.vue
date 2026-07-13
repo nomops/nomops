@@ -348,6 +348,44 @@ async function changeUserRole(id: string, event: Event) {
   }
 }
 
+/* 邀请用户（无 SMTP：返回可复制的邀请链接） */
+const inviteEmail = ref('');
+const inviteRole = ref<'admin' | 'member'>('member');
+const inviting = ref(false);
+const inviteLink = ref(''); // 最近一次邀请链接，供复制转交
+
+async function inviteNewUser() {
+  usersError.value = '';
+  const email = inviteEmail.value.trim();
+  if (!email) {
+    usersError.value = 'Enter an email to invite';
+    return;
+  }
+  inviting.value = true;
+  try {
+    const res = await api.instanceUsers.invite(email, inviteRole.value);
+    inviteLink.value = res.inviteLink;
+    inviteEmail.value = '';
+    users.value = await api.instanceUsers.list();
+  } catch (e) {
+    usersError.value = (e as Error).message;
+  } finally {
+    inviting.value = false;
+  }
+}
+
+async function removeUser(id: string, email: string, pending: boolean) {
+  const verb = pending ? 'Revoke the invitation for' : 'Remove';
+  if (!confirm(`${verb} ${email}?`)) return;
+  usersError.value = '';
+  try {
+    await api.instanceUsers.remove(id);
+    users.value = await api.instanceUsers.list();
+  } catch (e) {
+    usersError.value = (e as Error).message;
+  }
+}
+
 async function rotateScimToken() {
   securityError.value = '';
   try {
@@ -537,25 +575,61 @@ const sections: Array<{ key: Section; label: string }> = [
       <!-- 用户管理（实例 admin） -->
       <section v-else-if="section === 'users'" data-test="settings-users">
         <h1 class="page-title">Users</h1>
-        <p class="sub">All users in this instance and their instance role (requires owner / admin).</p>
+        <p class="sub">Invite people and manage instance roles (requires owner / admin). Public sign-up is disabled after the first (owner) account — new users join by invitation.</p>
+
+        <!-- 邀请 -->
+        <div class="card" style="max-width: 680px; margin-bottom: 16px">
+          <div style="display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap">
+            <div style="flex: 1; min-width: 220px">
+              <label style="font-size: 12px; color: var(--dim)">Email to invite</label>
+              <input v-model="inviteEmail" data-test="invite-email" type="email" placeholder="teammate@company.com" style="width: 100%" @keyup.enter="inviteNewUser" />
+            </div>
+            <div style="width: 120px">
+              <label style="font-size: 12px; color: var(--dim)">Role</label>
+              <select v-model="inviteRole" data-test="invite-role" style="width: 100%">
+                <option value="member">Member</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <button class="btn primary" data-test="invite-submit" :disabled="inviting" @click="inviteNewUser">
+              {{ inviting ? 'Inviting…' : 'Invite' }}
+            </button>
+          </div>
+          <!-- 无 SMTP：显示邀请链接由 admin 复制转交 -->
+          <div v-if="inviteLink" class="card api-new" data-test="invite-link" style="margin-top: 12px">
+            <div class="dim" style="font-size: 12px">Invitation link — copy and send it to the invitee (valid until accepted)</div>
+            <code class="api-token">{{ inviteLink }}</code>
+            <button class="btn secondary" style="margin-top: 10px" data-test="invite-link-done" @click="inviteLink = ''">Done</button>
+          </div>
+        </div>
+
         <p v-if="usersError" class="error-text" data-test="users-error">{{ usersError }}</p>
-        <div v-else class="card" style="max-width: 680px; padding: 0">
+        <div class="card" style="max-width: 680px; padding: 0">
           <table>
             <thead>
-              <tr><th>Email</th><th>Instance role</th><th>Status</th><th>Joined</th></tr>
+              <tr><th>Email</th><th>Instance role</th><th>Status</th><th>Joined</th><th></th></tr>
             </thead>
             <tbody>
-              <tr v-for="u in users" :key="u.id">
+              <tr v-for="u in users" :key="u.id" data-test="user-row">
                 <td>{{ u.email }}</td>
                 <td style="width: 160px">
-                  <select :value="u.role" :data-test-user-role="u.id" @change="changeUserRole(u.id, $event)">
+                  <select v-if="!u.pending" :value="u.role" :data-test-user-role="u.id" @change="changeUserRole(u.id, $event)">
                     <option value="owner">Owner</option>
                     <option value="admin">Admin</option>
                     <option value="member">Member</option>
                   </select>
+                  <span v-else class="dim" style="text-transform: capitalize">{{ u.role }}</span>
                 </td>
-                <td class="dim">{{ u.disabled ? 'Disabled' : 'Active' }}</td>
-                <td class="dim">{{ new Date(u.createdAt).toLocaleDateString() }}</td>
+                <td>
+                  <span v-if="u.pending" class="badge" data-test="user-pending">Pending</span>
+                  <span v-else class="dim">{{ u.disabled ? 'Disabled' : 'Active' }}</span>
+                </td>
+                <td class="dim">{{ u.pending ? 'Invited ' + new Date(u.createdAt).toLocaleDateString() : new Date(u.createdAt).toLocaleDateString() }}</td>
+                <td style="text-align: right">
+                  <button class="btn secondary btn-sm" data-test="user-remove" @click="removeUser(u.id, u.email, u.pending)">
+                    {{ u.pending ? 'Revoke' : 'Remove' }}
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>

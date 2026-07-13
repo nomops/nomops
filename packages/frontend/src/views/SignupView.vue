@@ -1,22 +1,47 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { api } from '../api/client.js';
 import { useAuthStore } from '../stores/auth.js';
 
-/** Get Started 落地：注册页（营销风格）。注册成功 → Overview。Sign in 走既有 LoginView。 */
+/**
+ * 注册页。两种模式：
+ * - 普通注册（首个用户 = owner）；owner 建成后公开注册关闭，后端回 403。
+ * - 邀请接受（URL 带 ?invite=<token>）：预填邮箱、只设口令；成功即登录 → Overview。
+ */
 const auth = useAuthStore();
 const router = useRouter();
+const route = useRoute();
 
 const email = ref('');
 const password = ref('');
 const error = ref('');
 const busy = ref(false);
 
+const inviteToken = ref(String(route.query['invite'] ?? ''));
+const isInvite = ref(!!inviteToken.value);
+
+onMounted(async () => {
+  if (!inviteToken.value) return;
+  try {
+    const info = await api.lookupInvite(inviteToken.value);
+    email.value = info.email; // 预填、只读
+  } catch {
+    error.value = 'This invitation is invalid or has already been used.';
+    isInvite.value = false;
+    inviteToken.value = '';
+  }
+});
+
 async function submit() {
   error.value = '';
   busy.value = true;
   try {
-    await auth.register(email.value, password.value);
+    if (inviteToken.value) {
+      await auth.acceptInvite(inviteToken.value, password.value);
+    } else {
+      await auth.register(email.value, password.value);
+    }
     void router.push({ name: 'overview' });
   } catch (e) {
     error.value = (e as Error).message;
@@ -48,16 +73,16 @@ async function submit() {
       </div>
 
       <form class="su-card" @submit.prevent="submit">
-        <h2>Create your account</h2>
+        <h2>{{ isInvite ? 'Accept your invitation' : 'Create your account' }}</h2>
         <label>Email</label>
-        <input v-model="email" data-test="signup-email" type="email" required placeholder="you@example.com" />
+        <input v-model="email" data-test="signup-email" type="email" required placeholder="you@example.com" :readonly="isInvite" />
         <label>Password</label>
         <input v-model="password" data-test="signup-password" type="password" required minlength="8" placeholder="At least 8 characters" />
 
         <p v-if="error" class="su-error" data-test="signup-error">{{ error }}</p>
 
         <button class="mkt-btn mkt-btn-accent su-submit" data-test="signup-submit" type="submit" :disabled="busy">
-          {{ busy ? 'Creating account…' : 'Create account' }}
+          {{ busy ? (isInvite ? 'Joining…' : 'Creating account…') : (isInvite ? 'Join instance' : 'Create account') }}
         </button>
 
         <p class="su-fine">By continuing you agree to the <a href="/docs/terms" target="_blank" rel="noopener">Terms of Service</a> and <a href="/docs/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</p>

@@ -18,6 +18,11 @@ export const useAuthStore = defineStore('auth', {
       const result = await api.register(email, password);
       this.setSession(result.token, email);
     },
+    /** 接受邀请：设口令建号并直接建会话。 */
+    async acceptInvite(token: string, password: string) {
+      const result = await api.acceptInvite(token, password);
+      this.setSession(result.token, result.user.email);
+    },
     async ldapLogin(username: string, password: string) {
       const result = await api.ldap.login(username, password);
       this.setSession(result.token, result.user.email);

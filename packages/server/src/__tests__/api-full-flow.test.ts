@@ -4,6 +4,7 @@ import type { Express } from 'express';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
+import { inviteUser, setupOwner } from './helpers.js';
 
 /**
  * Phase 3 验收：curl 级全流程「注册→登录→建工作流→手动运行→查执行历史」。
@@ -22,14 +23,14 @@ afterAll(async () => {
   await boot.dbHandle.close();
 });
 
+// 首个用户 = owner（公开注册仅此一次）；其余经 owner 邀请（对标 n8n 自托管）。
+let ownerToken: string | undefined;
 async function registerAndLogin(email: string): Promise<string> {
-  await request(app).post('/auth/register').send({ email, password: 'password-123' }).expect(201);
-  const login = await request(app)
-    .post('/auth/login')
-    .send({ email, password: 'password-123' })
-    .expect(200);
-  expect(login.body.token).toBeTruthy();
-  return login.body.token as string;
+  if (!ownerToken) {
+    ownerToken = (await setupOwner(app, email)).token;
+    return ownerToken;
+  }
+  return (await inviteUser(app, ownerToken, email)).token;
 }
 
 const authed = (token: string) => ({ Authorization: `Bearer ${token}` });
@@ -65,12 +66,13 @@ describe('鉴权', () => {
     await request(app).get('/api/workflows').set('Authorization', 'Bearer nonsense').expect(401);
   });
 
-  it('注册重复邮箱 → 400；密码错误 → 400 且不暴露邮箱是否存在', async () => {
-    await registerAndLogin('dup@test.dev');
+  it('owner 建成后公开注册关闭 → 403；密码错误 → 400 且不暴露邮箱是否存在', async () => {
+    await registerAndLogin('dup@test.dev'); // 首个用户 = owner
+    // 已有 owner，公开注册关闭（对标 n8n：改用邀请）
     await request(app)
       .post('/auth/register')
-      .send({ email: 'dup@test.dev', password: 'password-123' })
-      .expect(400);
+      .send({ email: 'another@test.dev', password: 'password-123' })
+      .expect(403);
     const bad = await request(app)
       .post('/auth/login')
       .send({ email: 'dup@test.dev', password: 'wrong-password' })

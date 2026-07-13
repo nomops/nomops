@@ -5,6 +5,7 @@ import type { Express } from 'express';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
+import { inviteUser } from './helpers.js';
 import { AlipayProvider, buildSignContent, signRsa2 } from '../billing/alipay-provider.js';
 import { orderAmount } from '../billing/billing-service.js';
 
@@ -175,14 +176,11 @@ describe('全链路：下单 → 通知 → 派发 plan + 有效期（验收项�
   });
 
   it('checkout 是 project owner 专属；非 owner 403', async () => {
-    const other = await request(app)
-      .post('/auth/register')
-      .send({ email: 'pay-other@dev.dev', password: 'password-123' })
-      .expect(201);
+    const other = await inviteUser(app, token, 'pay-other@dev.dev');
     // other 在自己项目里是 owner，可下单；但切到别人项目（非成员）→ 403
     await request(app)
       .post('/api/billing/checkout')
-      .set({ Authorization: `Bearer ${other.body.token}`, 'X-Project-Id': projectId })
+      .set({ Authorization: `Bearer ${other.token}`, 'X-Project-Id': projectId })
       .send({ plan: 'pro', months: 1 })
       .expect(403);
   });
@@ -190,20 +188,17 @@ describe('全链路：下单 → 通知 → 派发 plan + 有效期（验收项�
 
 describe('配额过期回落（订单式购买的收口）', () => {
   it('expiresAt 过期 → resolveLimit 按 free 处理', async () => {
-    const reg = await request(app)
-      .post('/auth/register')
-      .send({ email: 'expired@dev.dev', password: 'password-123' })
-      .expect(201);
+    const reg = await inviteUser(app, token, 'expired@dev.dev');
     // 直接写一条已过期的 pro 配额
     await boot.services.repos.quotas.upsertQuota(
-      reg.body.projectId,
+      reg.projectId,
       'pro',
       null,
       new Date(Date.now() - 86_400_000),
     );
     const usage = await request(app)
-      .get(`/api/projects/${reg.body.projectId}/usage`)
-      .set({ Authorization: `Bearer ${reg.body.token}` })
+      .get(`/api/projects/${reg.projectId}/usage`)
+      .set({ Authorization: `Bearer ${reg.token}` })
       .expect(200);
     expect(usage.body.plan).toBe('free');
     expect(usage.body.limit).toBe(100);

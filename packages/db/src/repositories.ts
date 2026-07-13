@@ -19,6 +19,7 @@ import type {
   Execution,
   ExecutionDataSnapshot,
   Folder,
+  Invitation,
   Project,
   DataTable,
   DataTableRow,
@@ -117,6 +118,22 @@ export class UserRepository extends BaseRepository {
   async setPassword(id: string, passwordHash: string): Promise<void> {
     await this.db.update(this.schema.users).set({ passwordHash }).where(eq(this.schema.users.id, id));
   }
+
+  /**
+   * 删除用户（实例 admin 移除成员）。先清引用 users.id 的子行（FK 强制开启），
+   * 再删用户本身。invitedBy 置空（该用户曾发出的邀请保留、发起人匿名化）。
+   * 其名下 personal project 若因此无成员则成孤儿，暂不 GC。
+   */
+  async delete(id: string): Promise<void> {
+    await this.db.delete(this.schema.apiKeys).where(eq(this.schema.apiKeys.userId, id));
+    await this.db.delete(this.schema.passwordResets).where(eq(this.schema.passwordResets.userId, id));
+    await this.db.delete(this.schema.projectRelations).where(eq(this.schema.projectRelations.userId, id));
+    await this.db
+      .update(this.schema.invitations)
+      .set({ invitedBy: null })
+      .where(eq(this.schema.invitations.invitedBy, id));
+    await this.db.delete(this.schema.users).where(eq(this.schema.users.id, id));
+  }
 }
 
 /** 密码重置票据仓储（存 token 哈希，一次性）。 */
@@ -139,6 +156,63 @@ export class PasswordResetRepository extends BaseRepository {
 
   async delete(tokenHash: string): Promise<void> {
     await this.db.delete(this.schema.passwordResets).where(eq(this.schema.passwordResets.tokenHash, tokenHash));
+  }
+}
+
+/** 用户邀请仓储（存 token 哈希；未接受即 pending 用户，接受时消费）。 */
+export class InvitationRepository extends BaseRepository {
+  async create(input: {
+    email: string;
+    tokenHash: string;
+    role: string;
+    invitedBy: string | null;
+  }): Promise<Invitation> {
+    const [row] = await this.db
+      .insert(this.schema.invitations)
+      .values({
+        email: input.email,
+        tokenHash: input.tokenHash,
+        role: input.role,
+        invitedBy: input.invitedBy,
+      })
+      .returning();
+    return row as Invitation;
+  }
+
+  async findByTokenHash(tokenHash: string): Promise<Invitation | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.invitations)
+      .where(eq(this.schema.invitations.tokenHash, tokenHash))
+      .limit(1);
+    return (rows[0] as Invitation | undefined) ?? null;
+  }
+
+  async findByEmail(email: string): Promise<Invitation | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.invitations)
+      .where(eq(this.schema.invitations.email, email))
+      .limit(1);
+    return (rows[0] as Invitation | undefined) ?? null;
+  }
+
+  async findById(id: string): Promise<Invitation | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.invitations)
+      .where(eq(this.schema.invitations.id, id))
+      .limit(1);
+    return (rows[0] as Invitation | undefined) ?? null;
+  }
+
+  /** 全部未接受邀请（用户列表合并 pending 行用）。 */
+  async findAll(): Promise<Invitation[]> {
+    return (await this.db.select().from(this.schema.invitations)) as Invitation[];
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.db.delete(this.schema.invitations).where(eq(this.schema.invitations.id, id));
   }
 }
 
@@ -1038,6 +1112,7 @@ export interface Repositories {
   users: UserRepository;
   apiKeys: ApiKeyRepository;
   passwordResets: PasswordResetRepository;
+  invitations: InvitationRepository;
   folders: FolderRepository;
   projects: ProjectRepository;
   workflows: WorkflowRepository;
@@ -1060,6 +1135,7 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
     users: new UserRepository(db, schema),
     apiKeys: new ApiKeyRepository(db, schema),
     passwordResets: new PasswordResetRepository(db, schema),
+    invitations: new InvitationRepository(db, schema),
     folders: new FolderRepository(db, schema),
     projects: new ProjectRepository(db, schema),
     workflows: new WorkflowRepository(db, schema),

@@ -15,6 +15,19 @@ export const loginSchema = z.object({
   mfaCode: z.string().optional(), // 两步验证：TOTP 码或备份码
 });
 
+/** 邀请用户（实例 admin）：邮箱 + 实例角色（owner 只能由降级/建初始 owner 产生，不可邀请）。 */
+export const inviteSchema = z.object({
+  email: z.string().email(),
+  role: z.enum(['admin', 'member']).optional(),
+});
+
+/** 接受邀请：设姓名 + 口令。 */
+export const acceptInviteSchema = z.object({
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+  firstName: z.string().max(100).optional(),
+  lastName: z.string().max(100).optional(),
+});
+
 /** INode 结构（docs/02 第二节）。 */
 export const nodeSchema = z.object({
   id: z.string().min(1),

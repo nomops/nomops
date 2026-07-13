@@ -22,6 +22,7 @@ export type ProjectQuota = InferSelectModel<typeof sqliteSchema.projectQuotas>;
 export type UsageCounter = InferSelectModel<typeof sqliteSchema.usageCounters>;
 export type BillingOrder = InferSelectModel<typeof sqliteSchema.billingOrders>;
 export type ApiKey = InferSelectModel<typeof sqliteSchema.apiKeys>;
+export type Invitation = InferSelectModel<typeof sqliteSchema.invitations>;
 export type Folder = InferSelectModel<typeof sqliteSchema.folders>;
 export type WorkflowVersion = InferSelectModel<typeof sqliteSchema.workflowVersions>;
 export type InstalledNode = InferSelectModel<typeof sqliteSchema.installedNodes>;

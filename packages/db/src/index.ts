@@ -25,6 +25,7 @@ export {
   ApiKeyRepository,
   FolderRepository,
   PasswordResetRepository,
+  InvitationRepository,
   AuditLogRepository,
   QuotaRepository,
   createRepositories,
@@ -47,6 +48,7 @@ export type {
 export type {
   ApiKey,
   Folder,
+  Invitation,
   AuditLog,
   BillingOrder,
   CreateAuditLogInput,

@@ -7,6 +7,7 @@ import { exportJWK, generateKeyPair, SignJWT } from 'jose';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
+import { inviteUser, setupOwner } from './helpers.js';
 
 /** Phase 6b（docs/07）验收：OIDC 全流程（mock IdP）、SCIM Users、license/admin 门。 */
 
@@ -89,17 +90,9 @@ describe('企业版 SSO + SCIM', () => {
     boot = await bootstrap({ dbConfig: { type: 'sqlite' }, licenseKey: 'test-ent' });
     app = createApp(boot.services);
 
-    // 第一个注册用户 = 实例 owner
-    const first = await request(app)
-      .post('/auth/register')
-      .send({ email: 'admin@corp.dev', password: 'admin-pass-123' })
-      .expect(201);
-    adminToken = first.body.token;
-    const second = await request(app)
-      .post('/auth/register')
-      .send({ email: 'member@corp.dev', password: 'member-pass-1' })
-      .expect(201);
-    memberToken = second.body.token;
+    // 第一个注册用户 = 实例 owner；member 经邀请（公开注册在 owner 后关闭）
+    adminToken = (await setupOwner(app, 'admin@corp.dev', 'admin-pass-123')).token;
+    memberToken = (await inviteUser(app, adminToken, 'member@corp.dev', { password: 'member-pass-1' })).token;
   });
 
   afterAll(async () => {

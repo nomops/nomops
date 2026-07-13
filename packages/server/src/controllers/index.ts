@@ -11,9 +11,11 @@ import { isProjectRole } from '../auth/rbac.js';
 import { computeInsights } from '../services/insights.js';
 import { getTemplate, templateSummaries } from '../services/template-registry.js';
 import {
+  acceptInviteSchema,
   activateBodySchema,
   addMemberSchema,
   createProjectSchema,
+  inviteSchema,
   credentialBodySchema,
   dataTableBodySchema,
   dataTableColumnSchema,
@@ -145,6 +147,14 @@ export function createInternalRouter(services: AppServices): Router {
 export function createAuthRouter(services: AppServices): Router {
   const router = Router();
 
+  // 实例初始化状态：无任何用户 → 前端首启引导 owner setup（对标 n8n）。公开。
+  router.get(
+    '/state',
+    h(async (_req, res) => {
+      res.json({ needsSetup: await services.auth.needsSetup() });
+    }),
+  );
+
   router.post(
     '/register',
     h(async (req, res) => {
@@ -206,6 +216,33 @@ export function createAuthRouter(services: AppServices): Router {
       const body = (req.body ?? {}) as { token?: string; password?: string };
       await services.auth.resetPassword(String(body.token ?? ''), String(body.password ?? ''), Date.now());
       res.json({ ok: true });
+    }),
+  );
+
+  // 邀请接受页预填：校验 token → 返回邮箱。公开。无效/已用 → 404。
+  router.get(
+    '/invite/:token',
+    h(async (req, res) => {
+      const info = await services.auth.lookupInvite(param(req, 'token'));
+      if (!info) throw new OperationalError('Invitation is invalid or has already been used', { status: 404 });
+      res.json(info);
+    }),
+  );
+
+  // 接受邀请：设姓名 + 口令 → 建用户并直接登录。公开（凭 token 授权）。
+  router.post(
+    '/invite/:token/accept',
+    h(async (req, res) => {
+      const body = parseBody(acceptInviteSchema, req);
+      const result = await services.auth.acceptInvite(param(req, 'token'), body);
+      services.audit.log({
+        userId: result.user.id,
+        action: 'auth.invite.accept',
+        resourceType: 'user',
+        resourceId: result.user.id,
+        ip: req.ip ?? null,
+      });
+      res.status(201).json(result);
     }),
   );
 
@@ -1161,15 +1198,78 @@ export function createApiRouter(services: AppServices): Router {
     h(async (req, res) => {
       await assertInstanceAdmin(req);
       const users = await services.repos.users.findAll();
-      res.json(
-        users.map((u) => ({
+      const invitations = await services.repos.invitations.findAll();
+      // 已激活用户 + 未接受邀请（pending）合并展示（对标 n8n Users 列表）
+      res.json([
+        ...users.map((u) => ({
           id: u.id,
           email: u.email,
           role: u.role,
           disabled: u.disabled,
+          pending: false,
           createdAt: u.createdAt,
         })),
-      );
+        ...invitations.map((inv) => ({
+          id: inv.id,
+          email: inv.email,
+          role: inv.role,
+          disabled: false,
+          pending: true,
+          createdAt: inv.createdAt,
+        })),
+      ]);
+    }),
+  );
+
+  // 邀请用户（实例 admin）：建邀请 → 返回可复制的邀请链接（无 SMTP 时由 admin 转交）。
+  router.post(
+    '/instance/users/invite',
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      const body = parseBody(inviteSchema, req);
+      const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
+      const base = process.env['NOMOPS_BASE_URL'] ?? `${proto}://${req.headers.host ?? 'localhost'}`;
+      const { invitation, link } = await services.auth.invite({
+        email: body.email,
+        role: body.role,
+        invitedBy: auth(req).userId,
+        baseUrl: base,
+      });
+      recordAudit(services, req, 'user.invite', { type: 'invitation', id: invitation.id }, { email: invitation.email });
+      res.status(201).json({ id: invitation.id, email: invitation.email, role: invitation.role, inviteLink: link });
+    }),
+  );
+
+  // 移除用户或撤销待接受邀请（实例 admin）。同一路由按 id 落到 users 或 invitations。
+  router.delete(
+    '/instance/users/:id',
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      const targetId = param(req, 'id');
+      const user = await services.repos.users.findById(targetId);
+      if (user) {
+        if (user.id === auth(req).userId) {
+          throw new OperationalError('You cannot remove your own account', { status: 400 });
+        }
+        if (user.role === 'owner') {
+          const owners = (await services.repos.users.findAll()).filter((u) => u.role === 'owner');
+          if (owners.length === 1) {
+            throw new OperationalError('Cannot remove the last instance owner', { status: 400 });
+          }
+        }
+        await services.repos.users.delete(targetId);
+        recordAudit(services, req, 'user.remove', { type: 'user', id: targetId }, { email: user.email });
+        res.json({ id: targetId, removed: true });
+        return;
+      }
+      const invitation = await services.repos.invitations.findById(targetId);
+      if (invitation) {
+        await services.repos.invitations.delete(targetId);
+        recordAudit(services, req, 'invitation.revoke', { type: 'invitation', id: targetId }, { email: invitation.email });
+        res.json({ id: targetId, removed: true });
+        return;
+      }
+      throw new OperationalError('User or invitation not found', { status: 404 });
     }),
   );
 

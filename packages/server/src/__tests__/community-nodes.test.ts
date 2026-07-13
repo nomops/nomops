@@ -7,6 +7,7 @@ import { Workflow } from '@nomops/workflow';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
+import { inviteUser, setupOwner } from './helpers.js';
 import type { INodeInstaller } from '../services/community-node-service.js';
 
 /**
@@ -59,8 +60,8 @@ const node = (name: string, type: string, extra: Record<string, unknown> = {}) =
 beforeAll(async () => {
   boot = await bootstrap({ dbConfig: { type: 'sqlite' }, nodeInstaller: new FakeInstaller() });
   app = createApp(boot.services);
-  ownerToken = (await request(app).post('/auth/register').send({ email: 'owner@cn.dev', password: 'password-123' }).expect(201)).body.token;
-  memberToken = (await request(app).post('/auth/register').send({ email: 'member@cn.dev', password: 'password-123' }).expect(201)).body.token;
+  ownerToken = (await setupOwner(app, 'owner@cn.dev')).token;
+  memberToken = (await inviteUser(app, ownerToken, 'member@cn.dev')).token;
 });
 
 afterAll(async () => {

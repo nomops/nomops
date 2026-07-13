@@ -4,6 +4,7 @@ import type { Express } from 'express';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
+import { inviteUser, setupOwner } from './helpers.js';
 
 /** Step 4：实例用户管理 + 安全设置（实例 admin owner/admin 可见）。 */
 
@@ -18,11 +19,11 @@ const bearer = (t: string) => ({ Authorization: `Bearer ${t}` });
 beforeAll(async () => {
   boot = await bootstrap({ dbConfig: { type: 'sqlite' } });
   app = createApp(boot.services);
-  const owner = await request(app).post('/auth/register').send({ email: 'owner@inst.dev', password: 'password-123' }).expect(201);
-  ownerToken = owner.body.token;
-  const member = await request(app).post('/auth/register').send({ email: 'member@inst.dev', password: 'password-123' }).expect(201);
-  memberToken = member.body.token;
-  memberId = member.body.user.id;
+  const owner = await setupOwner(app, 'owner@inst.dev');
+  ownerToken = owner.token;
+  const member = await inviteUser(app, ownerToken, 'member@inst.dev');
+  memberToken = member.token;
+  memberId = member.userId;
 });
 
 afterAll(async () => {

@@ -4,6 +4,7 @@ import type { Express } from 'express';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
+import { inviteUser, setupOwner } from './helpers.js';
 import { ENTERPRISE_FEATURES } from '../license/license-service.js';
 
 /** Phase 6a（docs/06）验收：RBAC 权限矩阵、项目切换、License 门、审计日志。 */
@@ -34,13 +35,14 @@ describe('企业版（LICENSE_KEY 注入）', () => {
     boot = await bootstrap({ dbConfig: { type: 'sqlite' }, licenseKey: 'test-enterprise-key' });
     app = createApp(boot.services);
 
-    for (const who of ['owner', 'editor', 'viewer', 'outsider']) {
-      const reg = await request(app)
-        .post('/auth/register')
-        .send({ email: `${who}@ent.dev`, password: 'password-123' })
-        .expect(201);
-      tokens[who] = reg.body.token;
-      userIds[who] = reg.body.user.id;
+    // owner = 首个注册用户；其余经邀请（公开注册在 owner 后即关闭）
+    const owner = await setupOwner(app, 'owner@ent.dev');
+    tokens['owner'] = owner.token;
+    userIds['owner'] = owner.userId;
+    for (const who of ['editor', 'viewer', 'outsider']) {
+      const u = await inviteUser(app, tokens['owner'], `${who}@ent.dev`);
+      tokens[who] = u.token;
+      userIds[who] = u.userId;
     }
 
     // owner 建团队项目并拉人

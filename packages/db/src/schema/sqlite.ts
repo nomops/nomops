@@ -59,6 +59,19 @@ export const passwordResets = sqliteTable('password_resets', {
   expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
 });
 
+// 用户邀请（对标 n8n 自托管：owner/admin 邀请 → 邀请链接 → 接受时才建 users 行）。
+// 存 token 的 sha256 哈希（铁律 3）；未接受的邀请即「pending 用户」，在用户列表里合并展示。
+export const invitations = sqliteTable('invitations', {
+  id: uuidPk('id'),
+  email: text('email').notNull().unique(),
+  tokenHash: text('token_hash').notNull().unique(),
+  role: text('role').notNull().default('member'),
+  invitedBy: text('invited_by').references(() => users.id),
+  createdAt: integer('created_at', { mode: 'timestamp' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 export const projects = sqliteTable('projects', {
   id: uuidPk('id'),
   name: text('name').notNull(),
@@ -356,6 +369,7 @@ export const sqliteSchema = {
   users,
   apiKeys,
   passwordResets,
+  invitations,
   projects,
   projectRelations,
   workflows,

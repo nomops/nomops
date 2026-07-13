@@ -4,6 +4,7 @@ import type { Express } from 'express';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
+import { inviteUser, setupOwner } from './helpers.js';
 
 /** 产品深化验收：子工作流嵌套执行 + 递归深度熔断 + 跨项目不可调。 */
 
@@ -21,11 +22,7 @@ async function createWorkflow(body: Record<string, unknown>): Promise<string> {
 beforeAll(async () => {
   boot = await bootstrap({ dbConfig: { type: 'sqlite' } });
   app = createApp(boot.services);
-  const reg = await request(app)
-    .post('/auth/register')
-    .send({ email: 'sub@dev.dev', password: 'password-123' })
-    .expect(201);
-  token = reg.body.token;
+  token = (await setupOwner(app, 'sub@dev.dev')).token;
 });
 
 afterAll(async () => {
@@ -91,13 +88,10 @@ describe('子工作流（ExecuteWorkflow 节点）', () => {
   }, 20_000);
 
   it('跨项目子流不可调（归属边界，铁律 2）', async () => {
-    const other = await request(app)
-      .post('/auth/register')
-      .send({ email: 'other-sub@dev.dev', password: 'password-123' })
-      .expect(201);
+    const other = await inviteUser(app, token, 'other-sub@dev.dev');
     const foreignChild = await request(app)
       .post('/api/workflows')
-      .set({ Authorization: `Bearer ${other.body.token}` })
+      .set({ Authorization: `Bearer ${other.token}` })
       .send({
         name: 'foreign',
         nodes: [{ id: 'a', name: 'X', type: 'nomops.noOp', typeVersion: 1, position: [0, 0], parameters: {} }],

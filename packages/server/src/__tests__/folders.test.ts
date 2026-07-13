@@ -4,6 +4,7 @@ import type { Express } from 'express';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
+import { inviteUser } from './helpers.js';
 
 /**
  * 工作流文件夹（对标 n8n）：CRUD + 嵌套 + 工作流归属文件夹/移动/过滤 + 非空拒删 + 防环。
@@ -103,8 +104,7 @@ describe('非空拒删 + 归属', () => {
 
   it('别的用户看不到/删不了我的文件夹（归属隔离）', async () => {
     const mine = (await request(app).post('/api/folders').set(auth()).send({ name: 'Private' }).expect(201)).body.id;
-    await request(app).post('/auth/register').send({ email: 'other-f@demo.dev', password: 'password-123' }).expect(201);
-    const otherJwt = (await request(app).post('/auth/login').send({ email: 'other-f@demo.dev', password: 'password-123' }).expect(200)).body.token;
+    const otherJwt = (await inviteUser(app, jwt, 'other-f@demo.dev')).token;
     await request(app).delete(`/api/folders/${mine}`).set({ Authorization: `Bearer ${otherJwt}` }).expect(404);
     const otherList = await request(app).get('/api/folders').set({ Authorization: `Bearer ${otherJwt}` }).expect(200);
     expect(otherList.body.find((f: { id: string }) => f.id === mine)).toBeUndefined();

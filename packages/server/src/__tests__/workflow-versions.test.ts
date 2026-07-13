@@ -4,6 +4,7 @@ import type { Express } from 'express';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
+import { inviteUser, setupOwner } from './helpers.js';
 
 /**
  * 工作流版本历史（对标 n8n）：创建/编辑保存快照、列表、查看、回滚、归属隔离、删除清版本。
@@ -26,8 +27,7 @@ const node = (name: string) => ({
 beforeAll(async () => {
   boot = await bootstrap({ type: 'sqlite' });
   app = createApp(boot.services);
-  await request(app).post('/auth/register').send({ email: 'ver@demo.dev', password: 'password-123' }).expect(201);
-  jwt = (await request(app).post('/auth/login').send({ email: 'ver@demo.dev', password: 'password-123' }).expect(200)).body.token;
+  jwt = (await setupOwner(app, 'ver@demo.dev')).token;
 });
 
 afterAll(async () => {
@@ -104,8 +104,7 @@ describe('归属隔离 + 删除清版本', () => {
 
   it('别的用户看不到我的版本历史（404）', async () => {
     wf = (await request(app).post('/api/workflows').set(auth()).send({ name: 'mine', nodes: [], connections: {} }).expect(201)).body.id;
-    await request(app).post('/auth/register').send({ email: 'other-ver@demo.dev', password: 'password-123' }).expect(201);
-    const otherJwt = (await request(app).post('/auth/login').send({ email: 'other-ver@demo.dev', password: 'password-123' }).expect(200)).body.token;
+    const otherJwt = (await inviteUser(app, jwt, 'other-ver@demo.dev')).token;
     await request(app).get(`/api/workflows/${wf}/versions`).set({ Authorization: `Bearer ${otherJwt}` }).expect(404);
   });
 

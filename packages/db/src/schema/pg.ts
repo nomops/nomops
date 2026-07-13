@@ -57,6 +57,17 @@ export const passwordResets = pgTable('password_resets', {
   expiresAt: timestamp('expires_at').notNull(),
 });
 
+// 用户邀请（对标 n8n 自托管：owner/admin 邀请 → 邀请链接 → 接受时才建 users 行）。
+// 存 token 的 sha256 哈希（铁律 3）；未接受的邀请即「pending 用户」，在用户列表里合并展示。
+export const invitations = pgTable('invitations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  email: text('email').notNull().unique(),
+  tokenHash: text('token_hash').notNull().unique(),
+  role: text('role').notNull().default('member'),
+  invitedBy: uuid('invited_by').references(() => users.id),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
 export const projects = pgTable('projects', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
@@ -319,6 +330,7 @@ export const pgSchema = {
   users,
   apiKeys,
   passwordResets,
+  invitations,
   projects,
   projectRelations,
   workflows,

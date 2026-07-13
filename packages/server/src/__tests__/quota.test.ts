@@ -4,6 +4,7 @@ import type { Express } from 'express';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
+import { inviteUser, setupOwner } from './helpers.js';
 
 /** Phase 6c（docs/08）验收：执行配额网关 + 套餐 + 用量。 */
 
@@ -37,12 +38,9 @@ describe('企业版配额', () => {
     boot = await bootstrap({ dbConfig: { type: 'sqlite' }, licenseKey: 'test-ent' });
     await boot.leader.start();
     app = createApp(boot.services);
-    const reg = await request(app)
-      .post('/auth/register')
-      .send({ email: 'quota-admin@corp.dev', password: 'password-123' })
-      .expect(201);
-    adminToken = reg.body.token;
-    projectId = reg.body.projectId;
+    const owner = await setupOwner(app, 'quota-admin@corp.dev');
+    adminToken = owner.token;
+    projectId = owner.projectId;
     const wf = await request(app).post('/api/workflows').set(admin()).send(simpleWorkflow('q-flow')).expect(201);
     workflowId = wf.body.id;
   });
@@ -148,36 +146,33 @@ describe('企业版配额', () => {
       .expect(200);
     expect(res.body.limit).toBe(100);
 
-    // 另一个用户/项目不受影响
-    const other = await request(app)
-      .post('/auth/register')
-      .send({ email: 'other@corp.dev', password: 'password-123' })
-      .expect(201);
+    // 另一个用户/项目不受影响（经 owner 邀请加入）
+    const other = await inviteUser(app, adminToken, 'other@corp.dev');
     const otherWf = await request(app)
       .post('/api/workflows')
-      .set({ Authorization: `Bearer ${other.body.token}` })
+      .set({ Authorization: `Bearer ${other.token}` })
       .send(simpleWorkflow('other-flow'))
       .expect(201);
     await request(app)
       .post(`/api/workflows/${otherWf.body.id}/run`)
-      .set({ Authorization: `Bearer ${other.body.token}` })
+      .set({ Authorization: `Bearer ${other.token}` })
       .send({})
       .expect(200);
     const otherUsage = await request(app)
-      .get(`/api/projects/${other.body.projectId}/usage`)
-      .set({ Authorization: `Bearer ${other.body.token}` })
+      .get(`/api/projects/${other.projectId}/usage`)
+      .set({ Authorization: `Bearer ${other.token}` })
       .expect(200);
     expect(otherUsage.body).toMatchObject({ used: 1, plan: 'unlimited' });
 
     // usage 是 owner 专属：other 查不了别人项目
     await request(app)
       .get(`/api/projects/${projectId}/usage`)
-      .set({ Authorization: `Bearer ${other.body.token}` })
+      .set({ Authorization: `Bearer ${other.token}` })
       .expect(403);
     // quota 派发是实例 admin 专属：other（member）403
     await request(app)
-      .put(`/api/projects/${other.body.projectId}/quota`)
-      .set({ Authorization: `Bearer ${other.body.token}` })
+      .put(`/api/projects/${other.projectId}/quota`)
+      .set({ Authorization: `Bearer ${other.token}` })
       .send({ plan: 'free' })
       .expect(403);
   });
@@ -200,12 +195,9 @@ describe('社区版：不设限但照常计数', () => {
   beforeAll(async () => {
     boot = await bootstrap({ dbConfig: { type: 'sqlite' }, licenseKey: null });
     app = createApp(boot.services);
-    const reg = await request(app)
-      .post('/auth/register')
-      .send({ email: 'comm@dev.dev', password: 'password-123' })
-      .expect(201);
-    token = reg.body.token;
-    projectId = reg.body.projectId;
+    const owner = await setupOwner(app, 'comm@dev.dev');
+    token = owner.token;
+    projectId = owner.projectId;
   });
 
   afterAll(async () => {

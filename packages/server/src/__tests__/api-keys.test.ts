@@ -4,6 +4,7 @@ import type { Express } from 'express';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
+import { inviteUser } from './helpers.js';
 
 /**
  * 公共 API 令牌（对标 n8n 的 n8n API）：创建/列出/吊销 + 用令牌鉴权调 /api/*。
@@ -93,7 +94,7 @@ describe('公共 API 令牌', () => {
 
   it('归属：吊销别人的令牌 → 404', async () => {
     const created = await request(app).post('/api/api-keys').set(bearer(jwt)).send({ label: 'mine' }).expect(201);
-    const otherJwt = await registerAndLogin('other-keys@demo.dev');
+    const otherJwt = (await inviteUser(app, jwt, 'other-keys@demo.dev')).token;
     await request(app).delete(`/api/api-keys/${created.body.apiKey.id}`).set(bearer(otherJwt)).expect(404);
   });
 });

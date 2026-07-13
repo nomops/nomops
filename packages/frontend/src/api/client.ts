@@ -214,6 +214,11 @@ export const api = {
   forgotPassword: (email: string) => http<{ ok: true }>('POST', '/auth/forgot', { email }),
   resetPassword: (token: string, password: string) =>
     http<{ ok: true }>('POST', '/auth/reset', { token, password }),
+  // 邀请接受：查 token 预填邮箱 + 设口令建号并登录
+  lookupInvite: (token: string) =>
+    http<{ email: string; role: string }>('GET', `/auth/invite/${encodeURIComponent(token)}`),
+  acceptInvite: (token: string, password: string, firstName?: string, lastName?: string) =>
+    http<AuthResult>('POST', `/auth/invite/${encodeURIComponent(token)}/accept`, { password, firstName, lastName }),
 
   nodeTypes: () => http<NodeTypeInfo[]>('GET', '/api/node-types'),
 
@@ -384,12 +389,21 @@ export const api = {
 
   instanceUsers: {
     list: () =>
-      http<Array<{ id: string; email: string; role: string; disabled: boolean; createdAt: string }>>(
+      http<Array<{ id: string; email: string; role: string; disabled: boolean; pending: boolean; createdAt: string }>>(
         'GET',
         '/api/instance/users',
       ),
     setRole: (id: string, role: string) =>
       http<{ id: string; role: string }>('PATCH', `/api/instance/users/${id}/role`, { role }),
+    // 邀请用户（无 SMTP：返回可复制的邀请链接由 admin 转交）
+    invite: (email: string, role: 'admin' | 'member') =>
+      http<{ id: string; email: string; role: string; inviteLink: string }>(
+        'POST',
+        '/api/instance/users/invite',
+        { email, role },
+      ),
+    // 移除用户或撤销待接受邀请（同一路由按 id 落到 users 或 invitations）
+    remove: (id: string) => http<{ id: string; removed: boolean }>('DELETE', `/api/instance/users/${id}`),
   },
 
   security: () =>
