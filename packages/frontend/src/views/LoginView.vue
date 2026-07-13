@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
+import { api } from '../api/client.js';
 import { useAuthStore } from '../stores/auth.js';
 
 const auth = useAuthStore();
 const router = useRouter();
+const route = useRoute();
 
-const mode = ref<'login' | 'register'>('login');
+const mode = ref<'login' | 'register' | 'forgot'>('login');
 const email = ref('');
 const password = ref('');
 const error = ref('');
@@ -16,8 +18,16 @@ const ldapEnabled = ref(false);
 const ldapMode = ref(false); // true = 用 LDAP 用户名/密码登录
 const mfaRequired = ref(false); // 口令通过后进入二因素输入
 const mfaCode = ref('');
+// 忘记密码 / 重置
+const resetToken = ref<string | null>(null); // URL 带 ?reset= 时进入重置落地
+const forgotSent = ref(false);
+const resetDone = ref(false); // 重置成功后在登录页提示
+const resetPass = ref('');
+const resetPass2 = ref('');
 
 onMounted(async () => {
+  const rt = route.query['reset'];
+  if (typeof rt === 'string' && rt) resetToken.value = rt;
   try {
     const status = await (await fetch('/sso/status')).json();
     ssoEnabled.value = Boolean(status.enabled);
@@ -58,6 +68,48 @@ async function submit() {
     busy.value = false;
   }
 }
+
+async function submitForgot() {
+  error.value = '';
+  busy.value = true;
+  try {
+    await api.forgotPassword(email.value.trim());
+    forgotSent.value = true; // 恒成功文案，不暴露邮箱是否存在
+  } catch (e) {
+    error.value = (e as Error).message;
+  } finally {
+    busy.value = false;
+  }
+}
+
+async function submitReset() {
+  error.value = '';
+  if (resetPass.value.length < 8) {
+    error.value = 'Password must be at least 8 characters';
+    return;
+  }
+  if (resetPass.value !== resetPass2.value) {
+    error.value = 'Passwords do not match';
+    return;
+  }
+  busy.value = true;
+  try {
+    await api.resetPassword(resetToken.value ?? '', resetPass.value);
+    // 成功：清掉 URL 里的 token，回登录并提示
+    resetToken.value = null;
+    resetPass.value = '';
+    resetPass2.value = '';
+    void router.replace({ name: 'login' });
+    mode.value = 'login';
+    error.value = '';
+    forgotSent.value = false;
+    resetDone.value = true;
+  } catch (e) {
+    error.value = (e as Error).message;
+  } finally {
+    busy.value = false;
+  }
+}
 </script>
 
 <template>
@@ -73,7 +125,40 @@ async function submit() {
     </div>
 
     <div class="auth-body">
+      <!-- 重置密码落地（?reset=token） -->
+      <template v-if="resetToken">
+        <h1 class="auth-heading">Set a new password</h1>
+        <form class="auth-card" @submit.prevent="submitReset">
+          <label>New password</label>
+          <input v-model="resetPass" data-test="reset-pass" type="password" required minlength="8" placeholder="At least 8 characters" />
+          <label>Confirm new password</label>
+          <input v-model="resetPass2" data-test="reset-pass2" type="password" required placeholder="Re-enter password" />
+          <p v-if="error" class="error-text" data-test="auth-error">{{ error }}</p>
+          <button class="primary auth-submit" data-test="reset-submit" type="submit" :disabled="busy" style="margin-top: 16px">
+            {{ busy ? 'Working…' : 'Set new password' }}
+          </button>
+        </form>
+      </template>
+
+      <!-- 忘记密码请求 -->
+      <template v-else-if="mode === 'forgot'">
+        <h1 class="auth-heading">Reset your password</h1>
+        <form class="auth-card" @submit.prevent="submitForgot">
+          <label>Email</label>
+          <input v-model="email" data-test="forgot-email" type="email" required placeholder="you@example.com" />
+          <p v-if="forgotSent" class="hint-text" data-test="forgot-sent">If that email is registered, a reset link has been sent. (Local dev: check the server logs.)</p>
+          <p v-else-if="error" class="error-text" data-test="auth-error">{{ error }}</p>
+          <button class="primary auth-submit" data-test="forgot-submit" type="submit" :disabled="busy" style="margin-top: 16px">
+            {{ busy ? 'Working…' : 'Send reset link' }}
+          </button>
+          <a href="#" class="sso-btn" data-test="back-to-login" @click.prevent="mode = 'login'; error = ''; forgotSent = false">← Back to log in</a>
+        </form>
+      </template>
+
+      <!-- 登录 / 注册 -->
+      <template v-else>
       <h1 class="auth-heading">{{ heading }}</h1>
+      <p v-if="resetDone" class="hint-text" data-test="reset-done">Password updated — please log in with your new password.</p>
 
       <form class="auth-card" @submit.prevent="submit">
         <template v-if="ldapMode">
@@ -106,6 +191,14 @@ async function submit() {
           />
         </template>
 
+        <a
+          v-if="mode === 'login' && !ldapMode && !mfaRequired"
+          href="#"
+          class="forgot-link"
+          data-test="forgot-link"
+          @click.prevent="mode = 'forgot'; error = ''"
+        >Forgot password?</a>
+
         <p v-if="error" class="error-text" data-test="auth-error">{{ error }}</p>
 
         <button class="primary auth-submit" data-test="submit" type="submit" :disabled="busy" style="margin-top: 16px">
@@ -129,6 +222,7 @@ async function submit() {
           <a href="/docs/privacy" target="_blank" rel="noopener">Privacy Policy</a>.
         </p>
       </form>
+      </template>
 
       <p class="self-host-note">
         Self-hosting? Spin up nomops Community with <code>docker compose up</code>.
@@ -179,6 +273,9 @@ async function submit() {
 .sso-btn:hover { border-color: var(--accent); }
 .fineprint { font-size: 11.5px; color: var(--text-dim); text-align: center; margin: 14px 0 0; }
 .fineprint a { color: var(--text-dim); text-decoration: underline; }
+.forgot-link { align-self: flex-end; margin-top: 8px; font-size: 12.5px; color: var(--text-dim); }
+.forgot-link:hover { color: var(--accent, #ff6900); }
+.hint-text { color: var(--text-dim); font-size: 13px; margin: 8px 0 0; }
 .self-host-note { color: var(--text-dim); font-size: 13px; margin-top: 22px; }
 .self-host-note code { background: var(--bg-input); padding: 2px 6px; border-radius: 4px; }
 </style>

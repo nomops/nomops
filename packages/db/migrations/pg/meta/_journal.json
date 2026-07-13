@@ -64,6 +64,20 @@
       "when": 1783914705587,
       "tag": "0008_chief_selene",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783921474968,
+      "tag": "0009_married_captain_universe",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783923161909,
+      "tag": "0010_burly_dreadnoughts",
+      "breakpoints": true
     }
   ]
 }

@@ -22,6 +22,16 @@ export interface WorkflowRow {
   nodes: INode[];
   connections: IConnections;
   settings: IWorkflowSettings | null;
+  folderId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FolderRow {
+  id: string;
+  projectId: string;
+  name: string;
+  parentFolderId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -171,21 +181,39 @@ export const api = {
     http<AuthResult>('POST', '/auth/register', { email, password }),
   login: (email: string, password: string, mfaCode?: string) =>
     http<AuthResult | { mfaRequired: true }>('POST', '/auth/login', { email, password, mfaCode }),
+  forgotPassword: (email: string) => http<{ ok: true }>('POST', '/auth/forgot', { email }),
+  resetPassword: (token: string, password: string) =>
+    http<{ ok: true }>('POST', '/auth/reset', { token, password }),
 
   nodeTypes: () => http<INodeTypeDescription[]>('GET', '/api/node-types'),
 
   workflows: {
-    list: () => http<WorkflowRow[]>('GET', '/api/workflows'),
+    // folderId：undefined → 全部；null → 项目根；string → 指定文件夹
+    list: (folderId?: string | null) =>
+      http<WorkflowRow[]>(
+        'GET',
+        folderId === undefined ? '/api/workflows' : `/api/workflows?folderId=${folderId === null ? 'root' : folderId}`,
+      ),
     get: (id: string) => http<WorkflowRow>('GET', `/api/workflows/${id}`),
-    create: (body: { name: string; nodes: INode[]; connections: IConnections }) =>
+    create: (body: { name: string; nodes: INode[]; connections: IConnections; folderId?: string | null }) =>
       http<WorkflowRow>('POST', '/api/workflows', body),
     update: (id: string, body: Partial<{ name: string; nodes: INode[]; connections: IConnections }>) =>
       http<WorkflowRow>('PATCH', `/api/workflows/${id}`, body),
+    move: (id: string, folderId: string | null) =>
+      http<WorkflowRow>('PATCH', `/api/workflows/${id}`, { folderId }),
     remove: (id: string) => http<void>('DELETE', `/api/workflows/${id}`),
     run: (id: string, destinationNode?: string) =>
       http<RunSummary>('POST', `/api/workflows/${id}/run`, destinationNode ? { destinationNode } : {}),
     activate: (id: string, active: boolean) =>
       http<{ id: string; active: boolean }>('POST', `/api/workflows/${id}/activate`, { active }),
+  },
+
+  folders: {
+    list: () => http<FolderRow[]>('GET', '/api/folders'),
+    create: (name: string, parentFolderId: string | null = null) =>
+      http<FolderRow>('POST', '/api/folders', { name, parentFolderId }),
+    rename: (id: string, name: string) => http<FolderRow>('PATCH', `/api/folders/${id}`, { name }),
+    remove: (id: string) => http<void>('DELETE', `/api/folders/${id}`),
   },
 
   executions: {

@@ -48,6 +48,15 @@ export const apiKeys = pgTable(
   (t) => [index('api_keys_user_idx').on(t.userId)],
 );
 
+// 密码重置票据（对标 n8n 自托管）：存 token 的 sha256 哈希，一次性、带过期（铁律 3 延伸）。
+export const passwordResets = pgTable('password_resets', {
+  tokenHash: text('token_hash').primaryKey(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id),
+  expiresAt: timestamp('expires_at').notNull(),
+});
+
 export const projects = pgTable('projects', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
@@ -78,9 +87,27 @@ export const workflows = pgTable('workflows', {
   settings: jsonb('settings').$type<IWorkflowSettings>(),
   staticData: jsonb('static_data').$type<JsonObject>(),
   versionId: uuid('version_id'),
+  // 所属文件夹（对标 n8n）；null = 项目根。归属/嵌套由服务层校验，不加 FK。
+  folderId: uuid('folder_id'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
+
+// 工作流文件夹（对标 n8n）：项目内组织工作流，支持嵌套（parent_folder_id 自引用，app 层校验）。
+export const folders = pgTable(
+  'folders',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id),
+    name: text('name').notNull(),
+    parentFolderId: uuid('parent_folder_id'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [index('folders_project_idx').on(t.projectId)],
+);
 
 export const sharedWorkflows = pgTable(
   'shared_workflows',
@@ -260,9 +287,11 @@ export const auditLogs = pgTable(
 export const pgSchema = {
   users,
   apiKeys,
+  passwordResets,
   projects,
   projectRelations,
   workflows,
+  folders,
   sharedWorkflows,
   credentials,
   sharedCredentials,

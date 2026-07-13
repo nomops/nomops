@@ -19,6 +19,8 @@ import {
   dataTableColumnSchema,
   dataTableRenameSchema,
   dataTableRowSchema,
+  folderBodySchema,
+  folderPatchSchema,
   loginSchema,
   patchMemberSchema,
   quotaBodySchema,
@@ -179,6 +181,33 @@ export function createAuthRouter(services: AppServices): Router {
     }),
   );
 
+  // 忘记密码：生成一次性重置 token。无邮件基础设施 → 链接打服务端日志（生产接 SMTP）。
+  // 恒回 { ok:true }，不暴露邮箱是否存在（避免枚举）。
+  router.post(
+    '/forgot',
+    h(async (req, res) => {
+      const email = String((req.body as { email?: string })?.email ?? '').trim();
+      const result = await services.auth.requestReset(email, Date.now());
+      if (result) {
+        const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
+        const base = process.env['NOMOPS_BASE_URL'] ?? `${proto}://${req.headers.host ?? 'localhost'}`;
+        const link = `${base.replace(/\/$/, '')}/login?reset=${encodeURIComponent(result.token)}`;
+        console.log(`[nomops] 密码重置链接（${result.email}）: ${link}`);
+      }
+      res.json({ ok: true });
+    }),
+  );
+
+  // 用重置 token 设新口令
+  router.post(
+    '/reset',
+    h(async (req, res) => {
+      const body = (req.body ?? {}) as { token?: string; password?: string };
+      await services.auth.resetPassword(String(body.token ?? ''), String(body.password ?? ''), Date.now());
+      res.json({ ok: true });
+    }),
+  );
+
   // 门户免密登录落地（docs/11 Phase 2.5）：控制平面签的 handoff 令牌 → 实例会话。公开（自带验签）。
   router.get(
     '/handoff',
@@ -247,7 +276,10 @@ export function createApiRouter(services: AppServices): Router {
   router.get(
     '/workflows',
     h(async (req, res) => {
-      res.json(await services.workflows.list(auth(req).projectId));
+      // ?folderId 缺省 → 全部；'root'/'' → 项目根；其它 → 指定文件夹
+      const fq = req.query['folderId'];
+      const folderId = fq === undefined ? undefined : fq === 'root' || fq === '' ? null : String(fq);
+      res.json(await services.workflows.list(auth(req).projectId, folderId));
     }),
   );
 
@@ -286,6 +318,77 @@ export function createApiRouter(services: AppServices): Router {
     h(async (req, res) => {
       await services.workflows.delete(param(req, 'id'), auth(req).projectId);
       recordAudit(services, req, 'workflow.delete', { type: 'workflow', id: param(req, 'id') });
+      res.status(204).end();
+    }),
+  );
+
+  /* ── 文件夹（对标 n8n：项目内组织工作流，支持嵌套） ── */
+  router.get(
+    '/folders',
+    h(async (req, res) => {
+      // 项目全部文件夹（前端建树/面包屑/按 parentFolderId 过滤）
+      res.json(await services.repos.folders.findAllByProject(auth(req).projectId));
+    }),
+  );
+
+  router.post(
+    '/folders',
+    editor,
+    h(async (req, res) => {
+      const body = parseBody(folderBodySchema, req);
+      const projectId = auth(req).projectId;
+      if (body.parentFolderId && !(await services.repos.folders.findById(body.parentFolderId, projectId))) {
+        throw new OperationalError('Parent folder not found', { status: 404 });
+      }
+      const folder = await services.repos.folders.create({
+        projectId,
+        name: body.name,
+        parentFolderId: body.parentFolderId ?? null,
+      });
+      recordAudit(services, req, 'folder.create', { type: 'folder', id: folder.id }, { name: folder.name });
+      res.status(201).json(folder);
+    }),
+  );
+
+  router.patch(
+    '/folders/:id',
+    editor,
+    h(async (req, res) => {
+      const body = parseBody(folderPatchSchema, req);
+      const projectId = auth(req).projectId;
+      const folder = await services.repos.folders.findById(param(req, 'id'), projectId);
+      if (!folder) throw new OperationalError('Folder not found', { status: 404 });
+      // 移动：新父必须在本项目，且不能是自身/后代（防环）
+      if (body.parentFolderId !== undefined && body.parentFolderId !== null) {
+        const target = await services.repos.folders.findById(body.parentFolderId, projectId);
+        if (!target) throw new OperationalError('Target folder not found', { status: 404 });
+        const all = await services.repos.folders.findAllByProject(projectId);
+        const byId = new Map(all.map((f) => [f.id, f]));
+        for (let cur: (typeof all)[number] | undefined = target; cur; cur = cur.parentFolderId ? byId.get(cur.parentFolderId) : undefined) {
+          if (cur.id === folder.id) throw new OperationalError('Cannot move a folder into itself or its descendant', { status: 400 });
+        }
+      }
+      await services.repos.folders.update(param(req, 'id'), {
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.parentFolderId !== undefined ? { parentFolderId: body.parentFolderId } : {}),
+      });
+      res.json(await services.repos.folders.findById(param(req, 'id'), projectId));
+    }),
+  );
+
+  router.delete(
+    '/folders/:id',
+    editor,
+    h(async (req, res) => {
+      const projectId = auth(req).projectId;
+      if (!(await services.repos.folders.findById(param(req, 'id'), projectId))) {
+        throw new OperationalError('Folder not found', { status: 404 });
+      }
+      if (await services.repos.folders.hasContents(param(req, 'id'))) {
+        throw new OperationalError('Folder is not empty', { status: 400 });
+      }
+      await services.repos.folders.delete(param(req, 'id'));
+      recordAudit(services, req, 'folder.delete', { type: 'folder', id: param(req, 'id') });
       res.status(204).end();
     }),
   );

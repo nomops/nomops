@@ -1,4 +1,4 @@
-import { and, desc, eq, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, lt, sql } from 'drizzle-orm';
 import type { JsonObject } from '@nomops/workflow';
 import type { DatabaseHandle, NomopsSchema } from './client.js';
 import type {
@@ -18,6 +18,7 @@ import type {
   Credential,
   Execution,
   ExecutionDataSnapshot,
+  Folder,
   Project,
   DataTable,
   DataTableRow,
@@ -108,6 +109,34 @@ export class UserRepository extends BaseRepository {
     patch: Partial<Pick<User, 'mfaEnabled' | 'mfaSecret' | 'mfaBackupCodes'>>,
   ): Promise<void> {
     await this.db.update(this.schema.users).set(patch).where(eq(this.schema.users.id, id));
+  }
+
+  /** 改口令（密码重置用）。 */
+  async setPassword(id: string, passwordHash: string): Promise<void> {
+    await this.db.update(this.schema.users).set({ passwordHash }).where(eq(this.schema.users.id, id));
+  }
+}
+
+/** 密码重置票据仓储（存 token 哈希，一次性）。 */
+export class PasswordResetRepository extends BaseRepository {
+  async create(tokenHash: string, userId: string, expiresAt: Date): Promise<void> {
+    await this.db
+      .insert(this.schema.passwordResets)
+      .values({ tokenHash, userId, expiresAt })
+      .onConflictDoUpdate({ target: this.schema.passwordResets.tokenHash, set: { userId, expiresAt } });
+  }
+
+  async find(tokenHash: string): Promise<{ userId: string; expiresAt: Date } | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.passwordResets)
+      .where(eq(this.schema.passwordResets.tokenHash, tokenHash))
+      .limit(1);
+    return rows[0] ? { userId: rows[0].userId, expiresAt: rows[0].expiresAt } : null;
+  }
+
+  async delete(tokenHash: string): Promise<void> {
+    await this.db.delete(this.schema.passwordResets).where(eq(this.schema.passwordResets.tokenHash, tokenHash));
   }
 }
 
@@ -229,12 +258,33 @@ export class WorkflowRepository extends BaseRepository {
         connections: input.connections,
         settings: input.settings ?? null,
         staticData: input.staticData ?? null,
+        folderId: input.folderId ?? null,
       })
       .returning();
     await this.db
       .insert(this.schema.sharedWorkflows)
       .values({ workflowId: row.id, projectId, role: ROLE_WORKFLOW_OWNER });
     return row as Workflow;
+  }
+
+  /** 按文件夹过滤（folderId=null → 项目根）。归属经 shared_workflows。 */
+  async findByProjectAndFolder(projectId: string, folderId: string | null): Promise<Workflow[]> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.workflows)
+      .innerJoin(
+        this.schema.sharedWorkflows,
+        eq(this.schema.sharedWorkflows.workflowId, this.schema.workflows.id),
+      )
+      .where(
+        and(
+          eq(this.schema.sharedWorkflows.projectId, projectId),
+          folderId === null
+            ? isNull(this.schema.workflows.folderId)
+            : eq(this.schema.workflows.folderId, folderId),
+        ),
+      );
+    return rows.map((r: { workflows: Workflow }) => r.workflows);
   }
 
   async findById(id: string, projectId: string): Promise<Workflow | null> {
@@ -763,9 +813,79 @@ export class ApiKeyRepository extends BaseRepository {
   }
 }
 
+/** 工作流文件夹仓储（对标 n8n）。项目级归属；支持嵌套（parentFolderId）。 */
+export class FolderRepository extends BaseRepository {
+  async create(input: { projectId: string; name: string; parentFolderId: string | null }): Promise<Folder> {
+    const [row] = await this.db.insert(this.schema.folders).values(input).returning();
+    return row as Folder;
+  }
+
+  async findById(id: string, projectId: string): Promise<Folder | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.folders)
+      .where(and(eq(this.schema.folders.id, id), eq(this.schema.folders.projectId, projectId)))
+      .limit(1);
+    return (rows[0] as Folder | undefined) ?? null;
+  }
+
+  /** 某父文件夹下的子文件夹（parentFolderId=null → 项目根）。 */
+  async findChildren(projectId: string, parentFolderId: string | null): Promise<Folder[]> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.folders)
+      .where(
+        and(
+          eq(this.schema.folders.projectId, projectId),
+          parentFolderId === null
+            ? isNull(this.schema.folders.parentFolderId)
+            : eq(this.schema.folders.parentFolderId, parentFolderId),
+        ),
+      );
+    return rows as Folder[];
+  }
+
+  /** 项目全部文件夹（面包屑/树解析用）。 */
+  async findAllByProject(projectId: string): Promise<Folder[]> {
+    return (await this.db
+      .select()
+      .from(this.schema.folders)
+      .where(eq(this.schema.folders.projectId, projectId))) as Folder[];
+  }
+
+  async update(id: string, patch: { name?: string; parentFolderId?: string | null }): Promise<void> {
+    await this.db
+      .update(this.schema.folders)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(this.schema.folders.id, id));
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.db.delete(this.schema.folders).where(eq(this.schema.folders.id, id));
+  }
+
+  /** 是否非空（有子文件夹或工作流）——非空拒删。 */
+  async hasContents(id: string): Promise<boolean> {
+    const sub = await this.db
+      .select({ id: this.schema.folders.id })
+      .from(this.schema.folders)
+      .where(eq(this.schema.folders.parentFolderId, id))
+      .limit(1);
+    if (sub.length > 0) return true;
+    const wf = await this.db
+      .select({ id: this.schema.workflows.id })
+      .from(this.schema.workflows)
+      .where(eq(this.schema.workflows.folderId, id))
+      .limit(1);
+    return wf.length > 0;
+  }
+}
+
 export interface Repositories {
   users: UserRepository;
   apiKeys: ApiKeyRepository;
+  passwordResets: PasswordResetRepository;
+  folders: FolderRepository;
   projects: ProjectRepository;
   workflows: WorkflowRepository;
   credentials: CredentialRepository;
@@ -784,6 +904,8 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
   return {
     users: new UserRepository(db, schema),
     apiKeys: new ApiKeyRepository(db, schema),
+    passwordResets: new PasswordResetRepository(db, schema),
+    folders: new FolderRepository(db, schema),
     projects: new ProjectRepository(db, schema),
     workflows: new WorkflowRepository(db, schema),
     credentials: new CredentialRepository(db, schema),

@@ -10,6 +10,7 @@ import {
   type MemberRow,
   type VariableView,
   type WorkflowRow,
+  type FolderRow,
 } from '../api/client.js';
 import { useProjectsStore } from '../stores/projects.js';
 import CredentialModal from '../components/credentials/CredentialModal.vue';
@@ -29,6 +30,8 @@ const search = ref('');
 const error = ref('');
 
 const workflows = ref<WorkflowRow[]>([]);
+const folders = ref<FolderRow[]>([]);
+const currentFolderId = ref<string | null>(null); // null = 项目根
 const credentials = ref<CredentialView[]>([]);
 const executions = ref<ExecutionRow[]>([]);
 const executionDetail = ref<{ id: string; data: IRunExecutionData | null } | null>(null);
@@ -167,14 +170,16 @@ onUnmounted(() => window.removeEventListener('click', closeMenus));
 async function reload() {
   error.value = '';
   try {
-    const [wf, cred, exec] = await Promise.all([
-      api.workflows.list(),
+    const [wf, cred, exec, fld] = await Promise.all([
+      api.workflows.list(currentFolderId.value), // 按当前文件夹过滤
       api.credentials.list(),
       api.executions.list(),
+      api.folders.list(),
     ]);
     workflows.value = wf;
     credentials.value = cred;
     executions.value = exec.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    folders.value = fld;
   } catch (e) {
     error.value = (e as Error).message;
   }
@@ -207,13 +212,68 @@ const pagedWorkflows = computed(() =>
 );
 const totalPages = computed(() => Math.max(1, Math.ceil(sortedWorkflows.value.length / pageSize.value)));
 
+/* ── 文件夹（对标 n8n） ── */
+const subfolders = computed(() =>
+  folders.value
+    .filter((f) => f.parentFolderId === currentFolderId.value)
+    .sort((a, b) => a.name.localeCompare(b.name)),
+);
+/** 当前文件夹的祖先链（面包屑，根→当前）。 */
+const breadcrumb = computed(() => {
+  const byId = new Map(folders.value.map((f) => [f.id, f]));
+  const path: FolderRow[] = [];
+  let id = currentFolderId.value;
+  while (id) {
+    const f = byId.get(id);
+    if (!f) break;
+    path.unshift(f);
+    id = f.parentFolderId;
+  }
+  return path;
+});
+
+async function enterFolder(id: string | null) {
+  closeMenus();
+  currentFolderId.value = id;
+  page.value = 1;
+  await reload();
+}
+async function createFolder() {
+  const name = window.prompt('Folder name');
+  if (!name?.trim()) return;
+  try {
+    await api.folders.create(name.trim(), currentFolderId.value);
+    await reload();
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
+}
+async function deleteFolder(id: string) {
+  if (!window.confirm('Delete this folder? It must be empty.')) return;
+  try {
+    await api.folders.remove(id);
+    await reload();
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
+}
+async function moveWorkflowToFolder(wfId: string, folderId: string | null) {
+  closeMenus();
+  try {
+    await api.workflows.move(wfId, folderId);
+    await reload(); // 移出当前文件夹后列表刷新
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
+}
+
 const filteredCredentials = computed(() =>
   q.value ? credentials.value.filter((c) => c.name.toLowerCase().includes(q.value)) : credentials.value,
 );
 
 async function createWorkflow() {
   closeMenus();
-  const wf = await api.workflows.create({ name: 'My workflow', nodes: [], connections: {} });
+  const wf = await api.workflows.create({ name: 'My workflow', nodes: [], connections: {}, folderId: currentFolderId.value });
   void router.push({ name: 'canvas', params: { id: wf.id } });
 }
 
@@ -489,11 +549,36 @@ const detailRows = computed(() => {
 
     <!-- ── Workflows ── -->
     <template v-if="tab === 'workflows'">
-      <div v-if="sortedWorkflows.length === 0" class="empty-state" data-test="workflow-empty">
+      <!-- 面包屑 + 新建文件夹 -->
+      <div class="folder-bar">
+        <div class="breadcrumb" data-test="breadcrumb">
+          <button class="crumb" :class="{ cur: currentFolderId === null }" data-test="crumb-root" @click="enterFolder(null)">All workflows</button>
+          <template v-for="f in breadcrumb" :key="f.id">
+            <span class="crumb-sep">/</span>
+            <button class="crumb" :class="{ cur: f.id === currentFolderId }" @click="enterFolder(f.id)">{{ f.name }}</button>
+          </template>
+        </div>
+        <button class="btn secondary btn-xs" data-test="new-folder" @click="createFolder">+ New folder</button>
+      </div>
+
+      <!-- 子文件夹 -->
+      <div v-if="subfolders.length" class="folder-grid" data-test="folder-list">
+        <div v-for="f in subfolders" :key="f.id" class="folder-card" :data-test-folder="f.id" @click="enterFolder(f.id)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" class="folder-ico"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" /></svg>
+          <span class="folder-name">{{ f.name }}</span>
+          <button class="folder-del" title="Delete folder" :data-test-folder-del="f.id" @click.stop="deleteFolder(f.id)">×</button>
+        </div>
+      </div>
+
+      <div v-if="sortedWorkflows.length === 0 && subfolders.length === 0" class="empty-state" data-test="workflow-empty">
         <button class="scratch-card" data-test="start-from-scratch" @click="createWorkflow">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="scratch-icon"><path d="M12 5v14M5 12h14" stroke-linecap="round" /></svg>
           <span>Start from scratch</span>
         </button>
+      </div>
+
+      <div v-else-if="sortedWorkflows.length === 0" class="dim" data-test="folder-empty" style="padding: 24px; text-align: center">
+        This folder has no workflows.
       </div>
 
       <div v-else class="wf-list" data-test="workflow-list">
@@ -520,6 +605,16 @@ const detailRows = computed(() => {
               <button class="menu-item" :data-test-activate="row.id" @click="toggleActive(row)">
                 {{ row.active ? 'Deactivate' : 'Activate' }}
               </button>
+              <template v-if="folders.length || row.folderId !== null">
+                <div class="menu-sep" />
+                <div class="menu-label">Move to</div>
+                <button v-if="row.folderId !== null" class="menu-item" :data-test-move-root="row.id" @click="moveWorkflowToFolder(row.id, null)">
+                  All workflows (root)
+                </button>
+                <template v-for="f in folders" :key="f.id">
+                  <button v-if="f.id !== row.folderId" class="menu-item" @click="moveWorkflowToFolder(row.id, f.id)">{{ f.name }}</button>
+                </template>
+              </template>
               <div class="menu-sep" />
               <button class="menu-item danger" :data-test-delete="row.id" @click="removeWorkflow(row.id)">Delete</button>
             </div>
@@ -884,6 +979,29 @@ const detailRows = computed(() => {
 .menu-item:hover { background: var(--bg-hover); }
 .menu-item.danger { color: var(--err); }
 .menu-sep { height: 1px; background: var(--border); margin: 5px 4px; }
+.menu-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-dim, #9a9aa6); padding: 4px 12px 2px; }
+
+/* ── 文件夹 ── */
+.folder-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.breadcrumb { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13.5px; }
+.breadcrumb .crumb { background: none; border: none; color: var(--text-dim, #9a9aa6); cursor: pointer; padding: 2px 4px; border-radius: 6px; }
+.breadcrumb .crumb:hover { color: var(--text, #e8e8ee); }
+.breadcrumb .crumb.cur { color: var(--text, #e8e8ee); font-weight: 600; }
+.breadcrumb .crumb-sep { color: var(--text-dim, #6a6a76); }
+.btn-xs { padding: 5px 11px; font-size: 12.5px; }
+.folder-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.folder-card {
+  display: flex; align-items: center; gap: 10px; padding: 12px 14px; cursor: pointer;
+  background: var(--panel, #16161a); border: 1px solid var(--border); border-radius: 10px; position: relative;
+}
+.folder-card:hover { border-color: var(--accent, #ff6900); }
+.folder-ico { width: 20px; height: 20px; color: var(--accent, #ff6900); flex-shrink: 0; }
+.folder-name { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder-del {
+  margin-left: auto; background: none; border: none; color: var(--text-dim, #9a9aa6); cursor: pointer;
+  font-size: 18px; line-height: 1; width: 22px; height: 22px; border-radius: 5px; flex-shrink: 0;
+}
+.folder-del:hover { color: var(--err, #ef5f5f); background: rgba(239, 95, 95, 0.12); }
 
 /* Workflow cards */
 .wf-list { display: flex; flex-direction: column; gap: 10px; }

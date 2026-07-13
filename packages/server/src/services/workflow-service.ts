@@ -8,6 +8,8 @@ export interface IWorkflowInput {
   nodes: INode[];
   connections: IConnections;
   settings?: IWorkflowSettings;
+  /** 所属文件夹；null = 项目根。移动时在 patch 里传。 */
+  folderId?: string | null;
 }
 
 /**
@@ -34,10 +36,25 @@ export class WorkflowService {
     }
   }
 
+  /** 校验 folderId 归属：null（根）放行；非空必须是本项目的文件夹。 */
+  private async assertFolderInProject(folderId: string | null | undefined, projectId: string): Promise<void> {
+    if (folderId === undefined || folderId === null) return;
+    if (!(await this.repos.folders.findById(folderId, projectId))) {
+      throw new OperationalError('Folder not found', { folderId, status: 404 });
+    }
+  }
+
   async create(input: IWorkflowInput, projectId: string): Promise<WorkflowRow> {
     await this.validateStructure(input);
+    await this.assertFolderInProject(input.folderId, projectId);
     return this.repos.workflows.create(
-      { name: input.name, nodes: input.nodes, connections: input.connections, settings: input.settings ?? null },
+      {
+        name: input.name,
+        nodes: input.nodes,
+        connections: input.connections,
+        settings: input.settings ?? null,
+        folderId: input.folderId ?? null,
+      },
       projectId,
     );
   }
@@ -48,8 +65,10 @@ export class WorkflowService {
     return wf;
   }
 
-  async list(projectId: string): Promise<WorkflowRow[]> {
-    return this.repos.workflows.findAllByProject(projectId);
+  /** folderId: undefined → 全部；null → 项目根；string → 指定文件夹。 */
+  async list(projectId: string, folderId?: string | null): Promise<WorkflowRow[]> {
+    if (folderId === undefined) return this.repos.workflows.findAllByProject(projectId);
+    return this.repos.workflows.findByProjectAndFolder(projectId, folderId);
   }
 
   async update(id: string, patch: Partial<IWorkflowInput>, projectId: string): Promise<WorkflowRow> {
@@ -57,6 +76,7 @@ export class WorkflowService {
     const nodes = patch.nodes ?? existing.nodes;
     const connections = patch.connections ?? existing.connections;
     await this.validateStructure({ nodes, connections });
+    if ('folderId' in patch) await this.assertFolderInProject(patch.folderId, projectId);
     return this.repos.workflows.update(id, { ...patch });
   }
 

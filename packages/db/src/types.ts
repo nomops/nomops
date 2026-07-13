@@ -22,6 +22,7 @@ export type ProjectQuota = InferSelectModel<typeof sqliteSchema.projectQuotas>;
 export type UsageCounter = InferSelectModel<typeof sqliteSchema.usageCounters>;
 export type BillingOrder = InferSelectModel<typeof sqliteSchema.billingOrders>;
 export type ApiKey = InferSelectModel<typeof sqliteSchema.apiKeys>;
+export type Folder = InferSelectModel<typeof sqliteSchema.folders>;
 
 /* ── 创建入参（区别于自动生成的 id/时间戳字段） ── */
 
@@ -45,6 +46,7 @@ export interface CreateWorkflowInput {
   active?: boolean;
   settings?: IWorkflowSettings | null;
   staticData?: JsonObject | null;
+  folderId?: string | null;
 }
 
 export interface CreateCredentialInput {

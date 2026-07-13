@@ -23,6 +23,8 @@ export { runMigrations } from './migrate.js';
 
 export {
   ApiKeyRepository,
+  FolderRepository,
+  PasswordResetRepository,
   AuditLogRepository,
   QuotaRepository,
   createRepositories,
@@ -38,6 +40,7 @@ export type { Repositories } from './repositories.js';
 
 export type {
   ApiKey,
+  Folder,
   AuditLog,
   BillingOrder,
   CreateAuditLogInput,

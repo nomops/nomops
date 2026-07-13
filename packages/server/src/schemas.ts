@@ -44,6 +44,17 @@ export const workflowBodySchema = z.object({
   nodes: z.array(nodeSchema),
   connections: connectionsSchema,
   settings: z.record(z.unknown()).optional(),
+  folderId: z.string().nullable().optional(), // 所属文件夹；null = 项目根
+});
+
+/** 文件夹（对标 n8n）：项目内组织工作流，支持嵌套。 */
+export const folderBodySchema = z.object({
+  name: z.string().min(1).max(200),
+  parentFolderId: z.string().nullable().optional(),
+});
+export const folderPatchSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  parentFolderId: z.string().nullable().optional(),
 });
 
 export const workflowPatchSchema = workflowBodySchema.partial();

@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import argon2 from 'argon2';
 import jwt from 'jsonwebtoken';
 import { OperationalError } from '@nomops/workflow';
@@ -17,6 +17,12 @@ export interface IAuthResult {
 }
 
 const TOKEN_TTL = '7d';
+const RESET_TTL_MS = 60 * 60 * 1000; // 密码重置 token 有效期 1 小时
+
+/** token 的存储哈希（存哈希不存明文，铁律 3 延伸）。 */
+function hashToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
 
 /** 登录需要第二因素时的中间态（凭据已验证，等待 TOTP/备份码）。 */
 export interface IMfaRequired {
@@ -76,6 +82,30 @@ export class AuthService {
     }
     const projectId = await this.ensurePersonalProject(user);
     return this.issueToken(user, projectId);
+  }
+
+  /**
+   * 发起密码重置：邮箱存在 → 生成一次性 token（存哈希 + 1h 过期），返回明文 token 供投递。
+   * 邮箱不存在 → 返回 null；调用方无论如何回统一成功，避免邮箱枚举。
+   */
+  async requestReset(email: string, now: number): Promise<{ token: string; email: string } | null> {
+    const user = await this.repos.users.findByEmail(email);
+    if (!user || user.disabled) return null;
+    const token = randomBytes(32).toString('base64url');
+    await this.repos.passwordResets.create(hashToken(token), user.id, new Date(now + RESET_TTL_MS));
+    return { token, email: user.email };
+  }
+
+  /** 用重置 token 设新口令：校验 token 哈希 + 未过期 → argon2 换 hash + 作废 token（一次性）。 */
+  async resetPassword(token: string, newPassword: string, now: number): Promise<void> {
+    if (newPassword.length < 8) throw new OperationalError('Password must be at least 8 characters', { status: 400 });
+    const tokenHash = hashToken(token);
+    const ticket = await this.repos.passwordResets.find(tokenHash);
+    if (!ticket || ticket.expiresAt.getTime() < now) {
+      throw new OperationalError('Reset link is invalid or has expired', { status: 400 });
+    }
+    await this.repos.users.setPassword(ticket.userId, await argon2.hash(newPassword));
+    await this.repos.passwordResets.delete(tokenHash);
   }
 
   /**

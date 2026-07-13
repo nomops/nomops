@@ -64,6 +64,20 @@
       "when": 1783914704450,
       "tag": "0008_salty_maggott",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1783921473810,
+      "tag": "0009_empty_norrin_radd",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1783923160155,
+      "tag": "0010_curly_cobalt_man",
+      "breakpoints": true
     }
   ]
 }

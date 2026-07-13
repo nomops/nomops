@@ -50,6 +50,15 @@ export const apiKeys = sqliteTable(
   (t) => [index('api_keys_user_idx').on(t.userId)],
 );
 
+// 密码重置票据（对标 n8n 自托管）：存 token 的 sha256 哈希，一次性、带过期（铁律 3 延伸）。
+export const passwordResets = sqliteTable('password_resets', {
+  tokenHash: text('token_hash').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id),
+  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+});
+
 export const projects = sqliteTable('projects', {
   id: uuidPk('id'),
   name: text('name').notNull(),
@@ -82,6 +91,8 @@ export const workflows = sqliteTable('workflows', {
   settings: text('settings', { mode: 'json' }).$type<IWorkflowSettings>(),
   staticData: text('static_data', { mode: 'json' }).$type<JsonObject>(),
   versionId: text('version_id'),
+  // 所属文件夹（对标 n8n）；null = 项目根。归属/嵌套由服务层校验，不加 FK。
+  folderId: text('folder_id'),
   createdAt: integer('created_at', { mode: 'timestamp' })
     .notNull()
     .$defaultFn(() => new Date()),
@@ -89,6 +100,26 @@ export const workflows = sqliteTable('workflows', {
     .notNull()
     .$defaultFn(() => new Date()),
 });
+
+// 工作流文件夹（对标 n8n）：项目内组织工作流，支持嵌套（parent_folder_id 自引用，app 层校验）。
+export const folders = sqliteTable(
+  'folders',
+  {
+    id: uuidPk('id'),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    name: text('name').notNull(),
+    parentFolderId: text('parent_folder_id'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('folders_project_idx').on(t.projectId)],
+);
 
 export const sharedWorkflows = sqliteTable(
   'shared_workflows',
@@ -289,9 +320,11 @@ export const auditLogs = sqliteTable(
 export const sqliteSchema = {
   users,
   apiKeys,
+  passwordResets,
   projects,
   projectRelations,
   workflows,
+  folders,
   sharedWorkflows,
   credentials,
   sharedCredentials,
