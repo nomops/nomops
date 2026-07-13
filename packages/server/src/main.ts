@@ -1,4 +1,6 @@
+import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
+import { fileURLToPath } from 'node:url';
 import { bootstrap } from './bootstrap.js';
 import { createApp } from './app.js';
 import { attachWebSocket } from './ws/attach.js';
@@ -9,6 +11,13 @@ import { attachWebSocket } from './ws/attach.js';
  * 端口默认 5678；可用 PORT 环境变量覆盖。
  */
 const PORT = Number(process.env.PORT ?? 5678);
+
+// npm/Node 直接运行时：默认托管相邻的前端产物（进浏览器即见完整 UI）。
+// 必须在 createApp 之前设置（app 层读取此 env 决定是否托管静态资源）。
+if (!process.env.NOMOPS_STATIC_DIR) {
+  const bundledUi = fileURLToPath(new URL('../../frontend/dist', import.meta.url));
+  if (existsSync(bundledUi)) process.env.NOMOPS_STATIC_DIR = bundledUi;
+}
 
 const boot = await bootstrap({ role: 'main' });
 const { services } = boot;

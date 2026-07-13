@@ -5,6 +5,13 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "nomops": "./bin/nomops.js"
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

@@ -10,6 +10,7 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
+    "start": "node packages/server/dist/main.js",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint"
