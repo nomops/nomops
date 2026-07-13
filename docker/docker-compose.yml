@@ -52,6 +52,9 @@ services:
       PORT: "5678"
     ports:
       - "5678:5678"
+    # 继承 Dockerfile 的 HEALTHCHECK（打 /healthz）；此处仅放宽首启迁移窗口
+    healthcheck:
+      start_period: 40s
 
   # 队列模式 worker（可横向扩多个）：docker compose --profile queue up
   worker:
@@ -61,6 +64,9 @@ services:
       dockerfile: docker/Dockerfile
     command: ["node", "packages/server/dist/worker.js"]
     restart: unless-stopped
+    # worker 无 HTTP 端口，禁用继承来的 /healthz 检查（否则恒 unhealthy）
+    healthcheck:
+      disable: true
     depends_on:
       postgres:
         condition: service_healthy

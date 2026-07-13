@@ -29,4 +29,8 @@ EXPOSE 5678
 ENV DB_SQLITE_FILE=/data/nomops.db
 RUN mkdir -p /data
 VOLUME /data
+# 健康检查：打 /healthz（node22 自带 fetch，无需 curl）。start-period 覆盖首启迁移。
+# 注意：worker 无 HTTP 端口，compose 里已对 worker 显式禁用此继承来的检查。
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD ["node", "-e", "fetch(`http://127.0.0.1:${process.env.PORT||5678}/healthz`).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
 CMD ["node", "packages/server/dist/main.js"]
