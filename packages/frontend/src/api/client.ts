@@ -115,6 +115,14 @@ export interface LicenseInfo {
   features: string[];
 }
 
+export interface ApiKeyRow {
+  id: string;
+  label: string;
+  prefix: string;
+  lastUsedAt: string | null;
+  createdAt: string;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -161,8 +169,8 @@ async function http<T>(method: string, path: string, body?: unknown): Promise<T>
 export const api = {
   register: (email: string, password: string) =>
     http<AuthResult>('POST', '/auth/register', { email, password }),
-  login: (email: string, password: string) =>
-    http<AuthResult>('POST', '/auth/login', { email, password }),
+  login: (email: string, password: string, mfaCode?: string) =>
+    http<AuthResult | { mfaRequired: true }>('POST', '/auth/login', { email, password, mfaCode }),
 
   nodeTypes: () => http<INodeTypeDescription[]>('GET', '/api/node-types'),
 
@@ -273,7 +281,7 @@ export const api = {
     }>('GET', '/api/insights'),
 
   me: () =>
-    http<{ id: string; email: string; firstName: string | null; lastName: string | null; role: string; projectId: string }>(
+    http<{ id: string; email: string; firstName: string | null; lastName: string | null; role: string; mfaEnabled: boolean; projectId: string }>(
       'GET',
       '/api/me',
     ),
@@ -288,6 +296,18 @@ export const api = {
   billing: {
     checkout: (plan: string, months: number) =>
       http<{ orderId: string; payUrl: string }>('POST', '/api/billing/checkout', { plan, months }),
+  },
+
+  apiKeys: {
+    list: () => http<ApiKeyRow[]>('GET', '/api/api-keys'),
+    create: (label: string) => http<{ token: string; apiKey: ApiKeyRow }>('POST', '/api/api-keys', { label }),
+    revoke: (id: string) => http<void>('DELETE', `/api/api-keys/${id}`),
+  },
+
+  mfa: {
+    setup: () => http<{ secret: string; otpauthUri: string; backupCodes: string[] }>('POST', '/api/mfa/setup'),
+    enable: (code: string) => http<{ ok: true }>('POST', '/api/mfa/enable', { code }),
+    disable: (code: string) => http<{ ok: true }>('POST', '/api/mfa/disable', { code }),
   },
 
   instanceUsers: {

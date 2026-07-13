@@ -22,6 +22,7 @@ export type {
 export { runMigrations } from './migrate.js';
 
 export {
+  ApiKeyRepository,
   AuditLogRepository,
   QuotaRepository,
   createRepositories,
@@ -36,6 +37,7 @@ export {
 export type { Repositories } from './repositories.js';
 
 export type {
+  ApiKey,
   AuditLog,
   BillingOrder,
   CreateAuditLogInput,

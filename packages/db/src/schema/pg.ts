@@ -24,8 +24,29 @@ export const users = pgTable('users', {
   lastName: text('last_name'),
   role: text('role').notNull().default('member'),
   disabled: boolean('disabled').notNull().default(false), // SCIM deactivate（docs/07）
+  // 两步验证（TOTP）：secret 待确认时存在但 enabled=false；备份码存 sha256 哈希数组。
+  mfaEnabled: boolean('mfa_enabled').notNull().default(false),
+  mfaSecret: text('mfa_secret'),
+  mfaBackupCodes: jsonb('mfa_backup_codes').$type<string[]>(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
+
+// 公共 REST API 令牌（对标 n8n 的 n8n API）：存 token 的 sha256 哈希，明文仅创建时返回一次（铁律 3）。
+export const apiKeys = pgTable(
+  'api_keys',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    label: text('label').notNull(),
+    tokenHash: text('token_hash').notNull().unique(),
+    prefix: text('prefix').notNull(),
+    lastUsedAt: timestamp('last_used_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('api_keys_user_idx').on(t.userId)],
+);
 
 export const projects = pgTable('projects', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -238,6 +259,7 @@ export const auditLogs = pgTable(
 
 export const pgSchema = {
   users,
+  apiKeys,
   projects,
   projectRelations,
   workflows,

@@ -21,12 +21,16 @@ import type { LdapService } from './ldap/ldap-service.js';
 import type { OAuth2Service } from './services/oauth2-service.js';
 import type { VariableService } from './services/variable-service.js';
 import type { DataTableService } from './services/data-table-service.js';
+import type { ApiKeyService } from './services/api-key-service.js';
+import type { MfaService } from './services/mfa-service.js';
 
 /** 服务容器：构造函数注入（docs/05），app 层只见接口不见组装细节。 */
 export interface AppServices {
   repos: Repositories;
   nodeLoader: INodeLoader;
   auth: AuthService;
+  apiKeys: ApiKeyService;
+  mfa: MfaService;
   workflows: WorkflowService;
   credentials: CredentialService;
   executions: ExecutionService;

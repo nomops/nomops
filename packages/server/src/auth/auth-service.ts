@@ -3,6 +3,7 @@ import argon2 from 'argon2';
 import jwt from 'jsonwebtoken';
 import { OperationalError } from '@nomops/workflow';
 import type { Repositories, User } from '@nomops/db';
+import type { MfaService } from '../services/mfa-service.js';
 
 export interface IAuthTokenPayload {
   sub: string; // userId
@@ -17,10 +18,16 @@ export interface IAuthResult {
 
 const TOKEN_TTL = '7d';
 
+/** 登录需要第二因素时的中间态（凭据已验证，等待 TOTP/备份码）。 */
+export interface IMfaRequired {
+  mfaRequired: true;
+}
+
 export class AuthService {
   constructor(
     private readonly repos: Repositories,
     private readonly jwtSecret: string,
+    private readonly mfa: MfaService,
   ) {}
 
   async register(input: {
@@ -47,7 +54,7 @@ export class AuthService {
     return this.issueToken(user, projectId);
   }
 
-  async login(email: string, password: string): Promise<IAuthResult> {
+  async login(email: string, password: string, mfaCode?: string): Promise<IAuthResult | IMfaRequired> {
     const user = await this.repos.users.findByEmail(email);
     // 统一报错文案，不暴露「邮箱是否存在」；hash 非法（SSO 预配用户）同样落到这里
     let verified = false;
@@ -59,6 +66,13 @@ export class AuthService {
     }
     if (user.disabled) {
       throw new OperationalError('This account has been disabled', { status: 401 });
+    }
+    // 两步验证：口令通过后要求第二因素（缺码 → 中间态；错码 → 401）
+    if (user.mfaEnabled) {
+      if (!mfaCode) return { mfaRequired: true };
+      if (!(await this.mfa.verifyCode(user, mfaCode))) {
+        throw new OperationalError('Invalid two-factor code', { status: 401 });
+      }
     }
     const projectId = await this.ensurePersonalProject(user);
     return this.issueToken(user, projectId);

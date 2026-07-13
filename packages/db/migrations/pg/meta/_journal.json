@@ -50,6 +50,20 @@
       "when": 1783832978017,
       "tag": "0006_quiet_starjammers",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783913098349,
+      "tag": "0007_cute_the_fury",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783914705587,
+      "tag": "0008_chief_selene",
+      "breakpoints": true
     }
   ]
 }

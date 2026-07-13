@@ -2,6 +2,7 @@ import { and, desc, eq, lt, sql } from 'drizzle-orm';
 import type { JsonObject } from '@nomops/workflow';
 import type { DatabaseHandle, NomopsSchema } from './client.js';
 import type {
+  ApiKey,
   AuditLog,
   BillingOrder,
   CreateAuditLogInput,
@@ -99,6 +100,14 @@ export class UserRepository extends BaseRepository {
       .where(eq(this.schema.users.id, id))
       .returning();
     return row as User;
+  }
+
+  /** 更新两步验证状态（enable/disable/备份码消费）。 */
+  async setMfaState(
+    id: string,
+    patch: Partial<Pick<User, 'mfaEnabled' | 'mfaSecret' | 'mfaBackupCodes'>>,
+  ): Promise<void> {
+    await this.db.update(this.schema.users).set(patch).where(eq(this.schema.users.id, id));
   }
 }
 
@@ -711,8 +720,52 @@ export class DataTableRepository extends BaseRepository {
   }
 }
 
+/** 公共 REST API 令牌仓储（对标 n8n 的 n8n API）。归属为**用户级**（非项目级）。 */
+export class ApiKeyRepository extends BaseRepository {
+  async create(input: { userId: string; label: string; tokenHash: string; prefix: string }): Promise<ApiKey> {
+    const [row] = await this.db.insert(this.schema.apiKeys).values(input).returning();
+    return row as ApiKey;
+  }
+
+  /** 鉴权热路径：按 token 哈希查（token_hash 唯一 + 索引）。 */
+  async findByTokenHash(tokenHash: string): Promise<ApiKey | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.apiKeys)
+      .where(eq(this.schema.apiKeys.tokenHash, tokenHash))
+      .limit(1);
+    return (rows[0] as ApiKey | undefined) ?? null;
+  }
+
+  async findAllByUser(userId: string): Promise<ApiKey[]> {
+    return (await this.db
+      .select()
+      .from(this.schema.apiKeys)
+      .where(eq(this.schema.apiKeys.userId, userId))
+      .orderBy(desc(this.schema.apiKeys.createdAt))) as ApiKey[];
+  }
+
+  /** 记录最近使用时间（fire-and-forget，鉴权后调）。 */
+  async touchLastUsed(id: string): Promise<void> {
+    await this.db
+      .update(this.schema.apiKeys)
+      .set({ lastUsedAt: new Date() })
+      .where(eq(this.schema.apiKeys.id, id));
+  }
+
+  /** 吊销：带用户归属校验，删到行返回 true。 */
+  async deleteOwned(id: string, userId: string): Promise<boolean> {
+    const rows = await this.db
+      .delete(this.schema.apiKeys)
+      .where(and(eq(this.schema.apiKeys.id, id), eq(this.schema.apiKeys.userId, userId)))
+      .returning();
+    return rows.length > 0;
+  }
+}
+
 export interface Repositories {
   users: UserRepository;
+  apiKeys: ApiKeyRepository;
   projects: ProjectRepository;
   workflows: WorkflowRepository;
   credentials: CredentialRepository;
@@ -730,6 +783,7 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
   const { db, schema } = handle;
   return {
     users: new UserRepository(db, schema),
+    apiKeys: new ApiKeyRepository(db, schema),
     projects: new ProjectRepository(db, schema),
     workflows: new WorkflowRepository(db, schema),
     credentials: new CredentialRepository(db, schema),

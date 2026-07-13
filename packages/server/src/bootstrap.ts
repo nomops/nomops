@@ -8,6 +8,8 @@ import { AuthService } from './auth/auth-service.js';
 import { CredentialService } from './services/credential-service.js';
 import { ExecutionService } from './services/execution-service.js';
 import { WorkflowService } from './services/workflow-service.js';
+import { ApiKeyService } from './services/api-key-service.js';
+import { MfaService } from './services/mfa-service.js';
 import { PushHub } from './ws/push-hub.js';
 import { ActiveWorkflowManager } from './triggers/active-workflow-manager.js';
 import { LicenseService } from './license/license-service.js';
@@ -154,7 +156,9 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   }
 
   const license = new LicenseService(opts.licenseKey ?? process.env['LICENSE_KEY'] ?? null);
-  const auth = new AuthService(repos, jwtSecret);
+  const mfa = new MfaService(repos);
+  const auth = new AuthService(repos, jwtSecret, mfa);
+  const apiKeys = new ApiKeyService(repos);
   const workflows = new WorkflowService(repos, nodeLoader);
   // 外部密钥（docs/10 B4）：凭证解密后物化 {{ $secrets.KEY }} 引用
   const secrets = new SecretsService(opts.secretsProvider ?? new EnvSecretsProvider(), license);
@@ -213,6 +217,8 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     repos,
     nodeLoader,
     auth,
+    apiKeys,
+    mfa,
     workflows,
     credentials: credentialService,
     executions,

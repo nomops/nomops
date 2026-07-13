@@ -7,9 +7,12 @@ export const useAuthStore = defineStore('auth', {
     email: localStorage.getItem('nomops.email'),
   }),
   actions: {
-    async login(email: string, password: string) {
-      const result = await api.login(email, password);
+    /** 登录：需二因素时返回 { mfaRequired: true } 且不建会话；成功建会话返回 {}。 */
+    async login(email: string, password: string, mfaCode?: string): Promise<{ mfaRequired?: boolean }> {
+      const result = await api.login(email, password, mfaCode);
+      if ('mfaRequired' in result) return { mfaRequired: true };
       this.setSession(result.token, email);
+      return {};
     },
     async register(email: string, password: string) {
       const result = await api.register(email, password);

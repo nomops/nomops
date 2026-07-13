@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { api } from '../api/client.js';
+import { api, type ApiKeyRow } from '../api/client.js';
 import { useProjectsStore } from '../stores/projects.js';
 
 /** n8n 式 Settings：左二级导航（← Settings + 图标项 + 版本号）+ 右内容。 */
-type Section = 'personal' | 'users' | 'sso' | 'ldap' | 'security' | 'logstream' | 'secrets' | 'billing';
+type Section = 'personal' | 'users' | 'api' | 'sso' | 'ldap' | 'security' | 'logstream' | 'secrets' | 'billing';
 
 const route = useRoute();
 const router = useRouter();
@@ -16,6 +16,50 @@ const about = ref<Awaited<ReturnType<typeof api.about>> | null>(null);
 
 /* 个人 */
 const me = ref<Awaited<ReturnType<typeof api.me>> | null>(null);
+
+/* 两步验证（TOTP） */
+const mfaSetup = ref<{ secret: string; otpauthUri: string; backupCodes: string[] } | null>(null);
+const mfaCode = ref('');
+const mfaError = ref('');
+
+async function refreshMe() {
+  me.value = await api.me().catch(() => me.value);
+}
+async function startMfaSetup() {
+  mfaError.value = '';
+  mfaCode.value = '';
+  try {
+    mfaSetup.value = await api.mfa.setup();
+  } catch (e) {
+    mfaError.value = (e as Error).message;
+  }
+}
+async function confirmMfaEnable() {
+  mfaError.value = '';
+  try {
+    await api.mfa.enable(mfaCode.value.trim());
+    mfaSetup.value = null;
+    mfaCode.value = '';
+    await refreshMe();
+  } catch (e) {
+    mfaError.value = (e as Error).message;
+  }
+}
+async function disableMfa() {
+  mfaError.value = '';
+  try {
+    await api.mfa.disable(mfaCode.value.trim());
+    mfaCode.value = '';
+    await refreshMe();
+  } catch (e) {
+    mfaError.value = (e as Error).message;
+  }
+}
+function cancelMfaSetup() {
+  mfaSetup.value = null;
+  mfaCode.value = '';
+  mfaError.value = '';
+}
 
 /* SSO 配置 */
 const sso = ref({ enabled: false, issuer: '', clientId: '', clientSecret: '' });
@@ -61,6 +105,49 @@ const ldap = ref({
 const ldapError = ref('');
 const ldapSaved = ref(false);
 const ldapLoading = ref(true);
+
+/* 公共 API 令牌 */
+const apiKeysList = ref<ApiKeyRow[]>([]);
+const newKeyLabel = ref('');
+const createdToken = ref(''); // 新建令牌明文（仅本次会话显示一次）
+const apiError = ref('');
+const apiBusy = ref(false);
+
+async function loadApiKeys() {
+  apiError.value = '';
+  try {
+    apiKeysList.value = await api.apiKeys.list();
+  } catch (e) {
+    apiError.value = (e as Error).message;
+  }
+}
+async function createApiKey() {
+  apiError.value = '';
+  if (!newKeyLabel.value.trim()) {
+    apiError.value = 'Please enter a label';
+    return;
+  }
+  apiBusy.value = true;
+  try {
+    const res = await api.apiKeys.create(newKeyLabel.value.trim());
+    createdToken.value = res.token; // 明文只此一次
+    newKeyLabel.value = '';
+    await loadApiKeys();
+  } catch (e) {
+    apiError.value = (e as Error).message;
+  } finally {
+    apiBusy.value = false;
+  }
+}
+async function revokeApiKey(id: string) {
+  if (!confirm('Revoke this API key? Any script using it will stop working immediately.')) return;
+  try {
+    await api.apiKeys.revoke(id);
+    await loadApiKeys();
+  } catch (e) {
+    apiError.value = (e as Error).message;
+  }
+}
 
 /* 计费 */
 const usage = ref<{ used: number; limit: number | null; plan: string } | null>(null);
@@ -157,6 +244,9 @@ async function loadSection() {
     } catch (e) {
       secretsError.value = (e as Error).message; // 社区版 403
     }
+  } else if (section.value === 'api') {
+    createdToken.value = ''; // 切到该页清掉上次明文
+    await loadApiKeys();
   } else if (section.value === 'billing') {
     const current = projects.current;
     if (current) usage.value = await api.projects.usage(current.id).catch(() => null);
@@ -277,6 +367,7 @@ const planLabel = computed(() => (projects.license?.plan === 'enterprise' ? 'Ent
 const icons: Record<Section, string> = {
   personal: '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.4 3-5.2 6.5-5.2s6.5 1.8 6.5 5.2"/>',
   users: '<circle cx="9" cy="8" r="3"/><path d="M2 20c0-3.2 2.6-5 5.5-5 1 0 1.9.2 2.7.6"/><circle cx="17" cy="10" r="2.6"/><path d="M12.5 20c0-2.8 2.2-4.4 4.7-4.4S22 17.2 22 20"/>',
+  api: '<circle cx="7" cy="12" r="3.2"/><path d="M10.2 12H21M17 12v3.5M20.5 12v2.5"/>',
   sso: '<circle cx="8" cy="12" r="4"/><path d="M12 12h9M18 12v3.5M21.5 12v2.5"/>',
   ldap: '<rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v3M6 16v-2.5h12V16"/>',
   security: '<path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6l7-3z"/>',
@@ -288,6 +379,7 @@ const icons: Record<Section, string> = {
 const sections: Array<{ key: Section; label: string }> = [
   { key: 'personal', label: 'Personal' },
   { key: 'users', label: 'Users' },
+  { key: 'api', label: 'API' },
   { key: 'sso', label: 'SSO' },
   { key: 'ldap', label: 'LDAP' },
   { key: 'security', label: 'Security & policies' },
@@ -337,6 +429,59 @@ const sections: Array<{ key: Section; label: string }> = [
         <h3 class="sec-title">Plan</h3>
         <div class="ro-field" style="max-width: 560px; display: inline-block">
           <span class="plan-badge" :class="projects.license?.plan">{{ planLabel }}</span>
+        </div>
+
+        <!-- 两步验证 -->
+        <h3 class="sec-title">Two-factor authentication</h3>
+        <div class="card" style="max-width: 560px" data-test="settings-mfa">
+          <div style="display: flex; align-items: center; gap: 10px">
+            <span class="mfa-badge" :class="{ on: me?.mfaEnabled }" data-test="mfa-status">
+              {{ me?.mfaEnabled ? '已开启' : '未开启' }}
+            </span>
+            <span class="dim" style="font-size: 12.5px">用验证器 App（Google Authenticator / Authy…）的一次性码保护登录。</span>
+          </div>
+
+          <!-- 未开启 & 未开始设置 -->
+          <button
+            v-if="!me?.mfaEnabled && !mfaSetup"
+            class="btn primary"
+            style="margin-top: 14px"
+            data-test="mfa-enable-start"
+            @click="startMfaSetup"
+          >
+            开启两步验证
+          </button>
+
+          <!-- 设置中：展示 secret / 备份码 + 输码确认 -->
+          <div v-else-if="mfaSetup" style="margin-top: 14px">
+            <p class="dim" style="font-size: 12.5px; margin: 0 0 6px">
+              在验证器里手动录入下面的密钥（或用 otpauth 链接），再输入生成的 6 位码确认：
+            </p>
+            <code class="api-token" data-test="mfa-secret">{{ mfaSetup.secret }}</code>
+            <details style="margin-top: 8px">
+              <summary class="dim" style="font-size: 12px; cursor: pointer">otpauth 链接</summary>
+              <code class="api-token" style="margin-top: 6px">{{ mfaSetup.otpauthUri }}</code>
+            </details>
+            <div style="margin-top: 12px">
+              <div class="dim" style="font-size: 12px; margin-bottom: 4px">备份码（每个仅一次，妥善保存）：</div>
+              <div class="mfa-backup" data-test="mfa-backup">
+                <code v-for="c in mfaSetup.backupCodes" :key="c">{{ c }}</code>
+              </div>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center; margin-top: 14px; flex-wrap: wrap">
+              <input v-model="mfaCode" data-test="mfa-code" placeholder="6 位验证码" style="width: 130px" @keyup.enter="confirmMfaEnable" />
+              <button class="btn primary" data-test="mfa-confirm" @click="confirmMfaEnable">确认开启</button>
+              <button class="btn secondary" @click="cancelMfaSetup">取消</button>
+            </div>
+          </div>
+
+          <!-- 已开启：输码停用 -->
+          <div v-else style="margin-top: 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
+            <input v-model="mfaCode" data-test="mfa-code" placeholder="验证码或备份码" style="width: 160px" @keyup.enter="disableMfa" />
+            <button class="btn secondary btn-sm" data-test="mfa-disable" @click="disableMfa">停用两步验证</button>
+          </div>
+
+          <p v-if="mfaError" class="error-text" data-test="mfa-error">{{ mfaError }}</p>
         </div>
       </section>
 
@@ -537,6 +682,55 @@ const sections: Array<{ key: Section; label: string }> = [
         </div>
       </section>
 
+      <!-- 公共 API 令牌 -->
+      <section v-else-if="section === 'api'" data-test="settings-api">
+        <h1 class="page-title">API</h1>
+        <p class="dim" style="margin-top: -4px; max-width: 560px; font-size: 13px">
+          用 API 令牌（请求头 <code>X-Nomops-Api-Key</code>）调用本实例 REST API——脚本、CI、第三方集成用。
+        </p>
+
+        <!-- 新令牌明文：仅显示一次 -->
+        <div v-if="createdToken" class="card api-new" style="max-width: 560px; margin-top: 16px">
+          <div class="dim" style="font-size: 12px">新令牌 — 现在复制，之后不再显示</div>
+          <code class="api-token" data-test="api-new-token">{{ createdToken }}</code>
+          <button class="btn secondary" style="margin-top: 10px" data-test="api-token-done" @click="createdToken = ''">
+            我已复制
+          </button>
+        </div>
+
+        <!-- 创建 -->
+        <div class="card" style="max-width: 560px; margin-top: 16px">
+          <div style="display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap">
+            <div style="flex: 1; min-width: 200px">
+              <label style="font-size: 12px; color: var(--dim)">名称</label>
+              <input v-model="newKeyLabel" data-test="api-label" placeholder="如 CI 部署" style="width: 100%" @keyup.enter="createApiKey" />
+            </div>
+            <button class="btn primary" data-test="api-create" :disabled="apiBusy" @click="createApiKey">
+              {{ apiBusy ? '创建中…' : '创建令牌' }}
+            </button>
+          </div>
+          <p v-if="apiError" class="error-text" data-test="api-error">{{ apiError }}</p>
+        </div>
+
+        <!-- 列表 -->
+        <div class="card" style="max-width: 560px; margin-top: 16px; padding: 0">
+          <div v-if="!apiKeysList.length" class="dim" style="padding: 20px; text-align: center">还没有 API 令牌。</div>
+          <table v-else class="api-table">
+            <thead><tr><th>名称</th><th>令牌</th><th>最近使用</th><th></th></tr></thead>
+            <tbody>
+              <tr v-for="k in apiKeysList" :key="k.id" data-test="api-key-row">
+                <td>{{ k.label }}</td>
+                <td class="mono dim">{{ k.prefix }}…</td>
+                <td class="dim">{{ k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleDateString() : '从未' }}</td>
+                <td style="text-align: right">
+                  <button class="btn secondary btn-sm" data-test="api-revoke" @click="revokeApiKey(k.id)">吊销</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <!-- 计费与套餐 -->
       <section v-else data-test="settings-billing">
         <h1 class="page-title">Usage and plan</h1>
@@ -607,6 +801,33 @@ const sections: Array<{ key: Section; label: string }> = [
 </template>
 
 <style scoped>
+/* ── API 令牌 ── */
+.api-new { border-color: var(--accent); }
+.api-token {
+  display: block; margin-top: 8px; padding: 10px 12px; border-radius: 8px;
+  background: var(--bg); border: 1px solid var(--border);
+  font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 13px;
+  word-break: break-all; user-select: all; color: var(--text-hi);
+}
+.api-table { width: 100%; border-collapse: collapse; }
+.api-table th {
+  text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.4px;
+  color: var(--dim); font-weight: 500; padding: 10px 14px; border-bottom: 1px solid var(--border);
+}
+.api-table td { padding: 11px 14px; border-bottom: 1px solid var(--border); font-size: 13px; }
+.api-table tr:last-child td { border-bottom: none; }
+.api-table .mono { font-family: 'SF Mono', ui-monospace, Menlo, monospace; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+
+/* ── 两步验证 ── */
+.mfa-badge { font-size: 12px; padding: 2px 10px; border-radius: 10px; border: 1px solid var(--border); color: var(--dim); }
+.mfa-badge.on { color: var(--ok, #3ecf8e); border-color: var(--ok, #3ecf8e); }
+.mfa-backup { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.mfa-backup code {
+  font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 12.5px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; user-select: all;
+}
+
 /* 根元素被 App.vue 的 RouterView 内联样式强制为 flex column + overflow-y auto，
    故在内部再包一层 flex row 承载「左导航 + 右内容」。 */
 .settings-body { flex: 1; display: flex; min-height: 0; }

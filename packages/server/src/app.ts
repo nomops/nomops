@@ -37,7 +37,11 @@ export function createApp(services?: AppServices): Express {
     app.use(createOAuth2Router(services)); // /oauth2/*（公开：凭证 OAuth 回调 + demo 提供方）
     app.use('/scim/v2', createScimRouter(services)); // SCIM 专用 token 鉴权
     app.use(createInternalRouter(services)); // /internal/*（控制平面指标，共享密钥鉴权；自托管无密钥即 404）
-    app.use('/api', createAuthMiddleware(services.auth, services.repos), createApiRouter(services));
+    app.use(
+      '/api',
+      createAuthMiddleware(services.auth, services.repos, services.apiKeys),
+      createApiRouter(services),
+    );
 
     // 生产：托管前端产物（Docker 镜像里指向 frontend/dist）
     const staticDir = process.env['NOMOPS_STATIC_DIR'];

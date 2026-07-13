@@ -14,6 +14,8 @@ const busy = ref(false);
 const ssoEnabled = ref(false);
 const ldapEnabled = ref(false);
 const ldapMode = ref(false); // true = 用 LDAP 用户名/密码登录
+const mfaRequired = ref(false); // 口令通过后进入二因素输入
+const mfaCode = ref('');
 
 onMounted(async () => {
   try {
@@ -39,7 +41,13 @@ async function submit() {
     if (ldapMode.value) {
       await auth.ldapLogin(email.value, password.value);
     } else if (mode.value === 'login') {
-      await auth.login(email.value, password.value);
+      const res = await auth.login(email.value, password.value, mfaRequired.value ? mfaCode.value : undefined);
+      if (res.mfaRequired) {
+        // 口令通过，进入二因素输入（不跳转）
+        mfaRequired.value = true;
+        busy.value = false;
+        return;
+      }
     } else {
       await auth.register(email.value, password.value);
     }
@@ -86,10 +94,22 @@ async function submit() {
           :placeholder="ldapMode ? 'LDAP password' : 'At least 8 characters'"
         />
 
+        <template v-if="mfaRequired">
+          <label>Two-factor code</label>
+          <input
+            v-model="mfaCode"
+            data-test="mfa-code"
+            type="text"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            placeholder="6-digit code or a backup code"
+          />
+        </template>
+
         <p v-if="error" class="error-text" data-test="auth-error">{{ error }}</p>
 
         <button class="primary auth-submit" data-test="submit" type="submit" :disabled="busy" style="margin-top: 16px">
-          {{ busy ? 'Working…' : ldapMode ? 'Log in with LDAP' : mode === 'login' ? 'Log in' : 'Create account' }}
+          {{ busy ? 'Working…' : ldapMode ? 'Log in with LDAP' : mfaRequired ? 'Verify' : mode === 'login' ? 'Log in' : 'Create account' }}
         </button>
 
         <a v-if="ssoEnabled && !ldapMode" class="sso-btn" href="/sso/login" data-test="sso-login">Sign in with SSO</a>

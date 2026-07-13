@@ -12,6 +12,7 @@ export const registerSchema = z.object({
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
+  mfaCode: z.string().optional(), // 两步验证：TOTP 码或备份码
 });
 
 /** INode 结构（docs/02 第二节）。 */

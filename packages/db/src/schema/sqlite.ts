@@ -22,10 +22,33 @@ export const users = sqliteTable('users', {
   lastName: text('last_name'),
   role: text('role').notNull().default('member'),
   disabled: integer('disabled', { mode: 'boolean' }).notNull().default(false), // SCIM deactivate（docs/07）
+  // 两步验证（TOTP）：secret 待确认时存在但 enabled=false；备份码存 sha256 哈希数组。
+  mfaEnabled: integer('mfa_enabled', { mode: 'boolean' }).notNull().default(false),
+  mfaSecret: text('mfa_secret'),
+  mfaBackupCodes: text('mfa_backup_codes', { mode: 'json' }).$type<string[]>(),
   createdAt: integer('created_at', { mode: 'timestamp' })
     .notNull()
     .$defaultFn(() => new Date()),
 });
+
+// 公共 REST API 令牌（对标 n8n 的 n8n API）：存 token 的 sha256 哈希，明文仅创建时返回一次（铁律 3）。
+export const apiKeys = sqliteTable(
+  'api_keys',
+  {
+    id: uuidPk('id'),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    label: text('label').notNull(),
+    tokenHash: text('token_hash').notNull().unique(),
+    prefix: text('prefix').notNull(),
+    lastUsedAt: integer('last_used_at', { mode: 'timestamp' }),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('api_keys_user_idx').on(t.userId)],
+);
 
 export const projects = sqliteTable('projects', {
   id: uuidPk('id'),
@@ -265,6 +288,7 @@ export const auditLogs = sqliteTable(
 
 export const sqliteSchema = {
   users,
+  apiKeys,
   projects,
   projectRelations,
   workflows,

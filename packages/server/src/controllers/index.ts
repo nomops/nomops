@@ -162,7 +162,12 @@ export function createAuthRouter(services: AppServices): Router {
     '/login',
     h(async (req, res) => {
       const body = parseBody(loginSchema, req);
-      const result = await services.auth.login(body.email, body.password);
+      const result = await services.auth.login(body.email, body.password, body.mfaCode);
+      // 口令通过但需第二因素：回中间态，客户端补 mfaCode 再提交
+      if ('mfaRequired' in result) {
+        res.json({ mfaRequired: true });
+        return;
+      }
       services.audit.log({
         userId: result.user.id,
         action: 'auth.login',
@@ -808,8 +813,68 @@ export function createApiRouter(services: AppServices): Router {
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
+        mfaEnabled: user.mfaEnabled,
         projectId: auth(req).projectId,
       });
+    }),
+  );
+
+  /* ── 公共 API 令牌（对标 n8n 的 n8n API；用户级归属） ── */
+  router.get(
+    '/api-keys',
+    h(async (req, res) => {
+      res.json(await services.apiKeys.list(auth(req).userId));
+    }),
+  );
+
+  router.post(
+    '/api-keys',
+    h(async (req, res) => {
+      const label = String((req.body as { label?: string })?.label ?? '').trim();
+      if (!label) throw new OperationalError('label is required', { status: 400 });
+      const created = await services.apiKeys.create(auth(req).userId, label);
+      recordAudit(services, req, 'apiKey.create', { type: 'apiKey', id: created.apiKey.id }, { label });
+      // token 明文只在此返回一次
+      res.status(201).json(created);
+    }),
+  );
+
+  router.delete(
+    '/api-keys/:id',
+    h(async (req, res) => {
+      const ok = await services.apiKeys.revoke(param(req, 'id'), auth(req).userId);
+      if (!ok) throw new OperationalError('API key not found', { status: 404 });
+      recordAudit(services, req, 'apiKey.revoke', { type: 'apiKey', id: param(req, 'id') });
+      res.status(204).end();
+    }),
+  );
+
+  /* ── 两步验证（TOTP，用户级） ── */
+  router.post(
+    '/mfa/setup',
+    h(async (req, res) => {
+      // 返回 secret/otpauth/备份码明文（仅此一次）；此时尚未启用，待 enable 确认
+      res.json(await services.mfa.setup(auth(req).userId));
+    }),
+  );
+
+  router.post(
+    '/mfa/enable',
+    h(async (req, res) => {
+      const code = String((req.body as { code?: string })?.code ?? '');
+      await services.mfa.enable(auth(req).userId, code);
+      recordAudit(services, req, 'mfa.enable', { type: 'user', id: auth(req).userId });
+      res.json({ ok: true });
+    }),
+  );
+
+  router.post(
+    '/mfa/disable',
+    h(async (req, res) => {
+      const code = String((req.body as { code?: string })?.code ?? '');
+      await services.mfa.disable(auth(req).userId, code);
+      recordAudit(services, req, 'mfa.disable', { type: 'user', id: auth(req).userId });
+      res.json({ ok: true });
     }),
   );
 
