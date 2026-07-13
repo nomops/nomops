@@ -29,6 +29,7 @@ import type {
   WebhookEntityInput,
   Workflow,
   WorkflowVersion,
+  InstalledNode,
 } from './types.js';
 
 /**
@@ -465,6 +466,48 @@ export class WorkflowVersionRepository extends BaseRepository {
     await this.db
       .delete(this.schema.workflowVersions)
       .where(eq(this.schema.workflowVersions.workflowId, workflowId));
+  }
+}
+
+export interface InstalledNodeInput {
+  packageName: string;
+  version: string;
+  nodeTypes: string[];
+  installedBy: string | null;
+}
+
+/** 已安装社区节点包（实例级）。 */
+export class InstalledNodeRepository extends BaseRepository {
+  async list(): Promise<InstalledNode[]> {
+    return (await this.db.select().from(this.schema.installedNodes)) as InstalledNode[];
+  }
+
+  async findByName(packageName: string): Promise<InstalledNode | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.installedNodes)
+      .where(eq(this.schema.installedNodes.packageName, packageName))
+      .limit(1);
+    return (rows[0] as InstalledNode | undefined) ?? null;
+  }
+
+  /** upsert：重复安装同名包时更新版本/类型/安装人。 */
+  async upsert(input: InstalledNodeInput): Promise<InstalledNode> {
+    const [row] = await this.db
+      .insert(this.schema.installedNodes)
+      .values(input)
+      .onConflictDoUpdate({
+        target: this.schema.installedNodes.packageName,
+        set: { version: input.version, nodeTypes: input.nodeTypes, installedBy: input.installedBy },
+      })
+      .returning();
+    return row as InstalledNode;
+  }
+
+  async delete(packageName: string): Promise<void> {
+    await this.db
+      .delete(this.schema.installedNodes)
+      .where(eq(this.schema.installedNodes.packageName, packageName));
   }
 }
 
@@ -999,6 +1042,7 @@ export interface Repositories {
   projects: ProjectRepository;
   workflows: WorkflowRepository;
   workflowVersions: WorkflowVersionRepository;
+  installedNodes: InstalledNodeRepository;
   credentials: CredentialRepository;
   variables: VariableRepository;
   dataTables: DataTableRepository;
@@ -1020,6 +1064,7 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
     projects: new ProjectRepository(db, schema),
     workflows: new WorkflowRepository(db, schema),
     workflowVersions: new WorkflowVersionRepository(db, schema),
+    installedNodes: new InstalledNodeRepository(db, schema),
     credentials: new CredentialRepository(db, schema),
     variables: new VariableRepository(db, schema),
     dataTables: new DataTableRepository(db, schema),

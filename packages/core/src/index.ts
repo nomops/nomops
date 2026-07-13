@@ -10,7 +10,7 @@
 export const CORE_PACKAGE = '@nomops/core';
 
 export { NodeLoader, NodeTypeNotFoundError } from './nodes-loader/node-loader.js';
-export type { INodeLoader } from './nodes-loader/node-loader.js';
+export type { INodeLoader, INodeTypeInfo } from './nodes-loader/node-loader.js';
 
 export { WorkflowExecute, seedTriggerOutput, routeNodeOutput } from './execution-engine/workflow-execute.js';
 export type { IExecutionHooks, IWorkflowExecuteOptions } from './execution-engine/workflow-execute.js';

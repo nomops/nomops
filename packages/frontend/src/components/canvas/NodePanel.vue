@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import type { INodeTypeDescription } from '@nomops/workflow';
+import type { NodeTypeInfo } from '../../api/client.js';
 import { useNodeTypesStore } from '../../stores/node-types.js';
 import { useEditorStore } from '../../stores/editor.js';
 
@@ -27,7 +27,7 @@ const ICONS: Record<string, string> = {
 
 const groups = computed(() => {
   const q = search.value.trim().toLowerCase();
-  const filterItems = (items: INodeTypeDescription[]) =>
+  const filterItems = (items: NodeTypeInfo[]) =>
     q
       ? items.filter(
           (d) => d.displayName.toLowerCase().includes(q) || d.name.toLowerCase().includes(q),
@@ -46,14 +46,14 @@ const groupLabel: Record<string, string> = {
   output: 'Output',
 };
 
-function pick(desc: INodeTypeDescription) {
+function pick(desc: NodeTypeInfo) {
   editor.addNode(desc);
   editor.nodePickerOpen = false;
   search.value = '';
 }
 
-function onDragStart(event: DragEvent, desc: INodeTypeDescription) {
-  event.dataTransfer?.setData('application/nomops-node', desc.name);
+function onDragStart(event: DragEvent, desc: NodeTypeInfo) {
+  event.dataTransfer?.setData('application/nomops-node', desc.type);
   event.dataTransfer!.effectAllowed = 'move';
 }
 

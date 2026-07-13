@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { join } from 'node:path';
 import { Cipher, Credentials, NodeLoader } from '@nomops/core';
 import type { IEncryptionKeyProvider } from '@nomops/core';
 import { createDatabase, createRepositories, runMigrations } from '@nomops/db';
@@ -10,6 +11,8 @@ import { ExecutionService } from './services/execution-service.js';
 import { WorkflowService } from './services/workflow-service.js';
 import { ApiKeyService } from './services/api-key-service.js';
 import { MfaService } from './services/mfa-service.js';
+import { CommunityNodeService, NpmNodeInstaller } from './services/community-node-service.js';
+import type { INodeInstaller } from './services/community-node-service.js';
 import { PushHub } from './ws/push-hub.js';
 import { ActiveWorkflowManager } from './triggers/active-workflow-manager.js';
 import { LicenseService } from './license/license-service.js';
@@ -91,6 +94,8 @@ export interface BootstrapOptions {
   secretsProvider?: ISecretsProvider;
   /** LDAP 认证器（缺省 ldapts 真实实现；测试注入假实现）。 */
   ldapAuthenticator?: ILdapAuthenticator;
+  /** 社区节点安装器（缺省 npm 真实实现；测试注入假实现映射到本地 fixture）。 */
+  nodeInstaller?: INodeInstaller;
 }
 
 export interface BootstrapResult {
@@ -160,6 +165,13 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   const auth = new AuthService(repos, jwtSecret, mfa);
   const apiKeys = new ApiKeyService(repos);
   const workflows = new WorkflowService(repos, nodeLoader);
+  // 社区节点（对标 n8n）：安装器缺省走 npm，装到 NOMOPS_COMMUNITY_NODES_DIR（默认 .nomops/nodes）
+  const communityNodes = new CommunityNodeService(
+    repos,
+    nodeLoader,
+    opts.nodeInstaller ??
+      new NpmNodeInstaller(process.env['NOMOPS_COMMUNITY_NODES_DIR'] ?? join(process.cwd(), '.nomops', 'nodes')),
+  );
   // 外部密钥（docs/10 B4）：凭证解密后物化 {{ $secrets.KEY }} 引用
   const secrets = new SecretsService(opts.secretsProvider ?? new EnvSecretsProvider(), license);
   const credentialService = new CredentialService(repos, credentials, secrets);
@@ -220,6 +232,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     apiKeys,
     mfa,
     workflows,
+    communityNodes,
     credentials: credentialService,
     executions,
     pushHub,
@@ -240,6 +253,9 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     variables,
     dataTables,
   };
+
+  // 重载已安装社区节点（main/worker 都需要，执行时才能解析到）。尽力而为，失败不崩启动。
+  await communityNodes.loadInstalled();
 
   // Cloud：控制平面注入 NOMOPS_OWNER_EMAIL → 首启预置 owner（docs/11 Phase 2）
   const ownerEmail = process.env['NOMOPS_OWNER_EMAIL'];

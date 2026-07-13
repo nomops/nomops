@@ -11,11 +11,22 @@ import { OperationalError } from '@nomops/workflow';
  * 说明：`getByNameAndVersion` 返回 Promise —— 因为 ESM 的动态 import 是异步的，
  * 懒加载必然异步。描述（getAllDescriptions）保持同步，供前端节点面板即时读取。
  */
+/** 描述 + 全名类型（前端节点面板 / 校验用；全名规则 nomops.<name> 或 <pkg>.<name>）。 */
+export interface INodeTypeInfo extends INodeTypeDescription {
+  type: string;
+}
+
 export interface INodeLoader {
   loadAll(): Promise<void>;
   getAllDescriptions(): INodeTypeDescription[];
+  /** 全部已注册节点的全名类型（去重）；校验节点类型是否已知用。 */
+  getAllTypes(): string[];
+  /** 描述 + 全名类型（前端节点面板用，社区节点也走这条）。 */
+  describeAll(): INodeTypeInfo[];
   getByNameAndVersion(type: string, version?: number): Promise<INodeType>;
   register(nodes: ILoadableNodeType[]): void;
+  /** 卸载某个包的全部节点（社区节点用）：移除 registry/版本/实例缓存。 */
+  unregister(packageName: string): void;
 }
 
 export class NodeTypeNotFoundError extends OperationalError {}
@@ -58,14 +69,40 @@ export class NodeLoader implements INodeLoader {
   }
 
   getAllDescriptions(): INodeTypeDescription[] {
+    return this.uniqueNodes().map((node) => node.description);
+  }
+
+  getAllTypes(): string[] {
+    return this.uniqueNodes().map((node) => node.type);
+  }
+
+  describeAll(): INodeTypeInfo[] {
+    return this.uniqueNodes().map((node) => ({ ...node.description, type: node.type }));
+  }
+
+  /** registry 里按 type 去重（同一 type 多版本只取一次）。 */
+  private uniqueNodes(): ILoadableNodeType[] {
     const seen = new Set<string>();
-    const descriptions: INodeTypeDescription[] = [];
+    const out: ILoadableNodeType[] = [];
     for (const node of this.registry.values()) {
       if (seen.has(node.type)) continue;
       seen.add(node.type);
-      descriptions.push(node.description);
+      out.push(node);
     }
-    return descriptions;
+    return out;
+  }
+
+  unregister(packageName: string): void {
+    const prefix = `${packageName}.`;
+    for (const [key, node] of this.registry) {
+      if (node.type.startsWith(prefix)) this.registry.delete(key);
+    }
+    for (const type of this.latestVersion.keys()) {
+      if (type.startsWith(prefix)) this.latestVersion.delete(type);
+    }
+    for (const key of this.instances.keys()) {
+      if (key.startsWith(prefix)) this.instances.delete(key);
+    }
   }
 
   async getByNameAndVersion(type: string, version?: number): Promise<INodeType> {

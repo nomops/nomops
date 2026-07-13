@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { api, type ApiKeyRow } from '../api/client.js';
+import { api, type ApiKeyRow, type CommunityNode } from '../api/client.js';
 import { useProjectsStore } from '../stores/projects.js';
 
 /** n8n 式 Settings：左二级导航（← Settings + 图标项 + 版本号）+ 右内容。 */
-type Section = 'personal' | 'users' | 'api' | 'sso' | 'ldap' | 'security' | 'logstream' | 'secrets' | 'billing';
+type Section = 'personal' | 'users' | 'api' | 'community' | 'sso' | 'ldap' | 'security' | 'logstream' | 'secrets' | 'billing';
 
 const route = useRoute();
 const router = useRouter();
@@ -149,6 +149,51 @@ async function revokeApiKey(id: string) {
   }
 }
 
+/* 社区节点（对标 n8n：owner 安装 npm 节点包） */
+const communityNodes = ref<CommunityNode[]>([]);
+const communityError = ref('');
+const installName = ref('');
+const installVersion = ref('');
+const installing = ref(false);
+
+async function loadCommunityNodes() {
+  communityError.value = '';
+  try {
+    communityNodes.value = await api.communityNodes.list();
+  } catch (e) {
+    communityError.value = (e as Error).message; // 非 admin → 403
+  }
+}
+async function installCommunityNode() {
+  communityError.value = '';
+  const name = installName.value.trim();
+  if (!name) {
+    communityError.value = 'Enter an npm package name';
+    return;
+  }
+  installing.value = true;
+  try {
+    await api.communityNodes.install(name, installVersion.value.trim() || undefined);
+    installName.value = '';
+    installVersion.value = '';
+    await loadCommunityNodes();
+  } catch (e) {
+    communityError.value = (e as Error).message;
+  } finally {
+    installing.value = false;
+  }
+}
+async function uninstallCommunityNode(name: string) {
+  if (!confirm(`Uninstall ${name}? Workflows using its nodes will stop working.`)) return;
+  communityError.value = '';
+  try {
+    await api.communityNodes.uninstall(name);
+    await loadCommunityNodes();
+  } catch (e) {
+    communityError.value = (e as Error).message;
+  }
+}
+
 /* 计费 */
 const usage = ref<{ used: number; limit: number | null; plan: string } | null>(null);
 const months = ref(1);
@@ -247,6 +292,8 @@ async function loadSection() {
   } else if (section.value === 'api') {
     createdToken.value = ''; // 切到该页清掉上次明文
     await loadApiKeys();
+  } else if (section.value === 'community') {
+    await loadCommunityNodes();
   } else if (section.value === 'billing') {
     const current = projects.current;
     if (current) usage.value = await api.projects.usage(current.id).catch(() => null);
@@ -368,6 +415,7 @@ const icons: Record<Section, string> = {
   personal: '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.4 3-5.2 6.5-5.2s6.5 1.8 6.5 5.2"/>',
   users: '<circle cx="9" cy="8" r="3"/><path d="M2 20c0-3.2 2.6-5 5.5-5 1 0 1.9.2 2.7.6"/><circle cx="17" cy="10" r="2.6"/><path d="M12.5 20c0-2.8 2.2-4.4 4.7-4.4S22 17.2 22 20"/>',
   api: '<circle cx="7" cy="12" r="3.2"/><path d="M10.2 12H21M17 12v3.5M20.5 12v2.5"/>',
+  community: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M17.5 14v7M14 17.5h7"/>',
   sso: '<circle cx="8" cy="12" r="4"/><path d="M12 12h9M18 12v3.5M21.5 12v2.5"/>',
   ldap: '<rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v3M6 16v-2.5h12V16"/>',
   security: '<path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6l7-3z"/>',
@@ -380,6 +428,7 @@ const sections: Array<{ key: Section; label: string }> = [
   { key: 'personal', label: 'Personal' },
   { key: 'users', label: 'Users' },
   { key: 'api', label: 'API' },
+  { key: 'community', label: 'Community nodes' },
   { key: 'sso', label: 'SSO' },
   { key: 'ldap', label: 'LDAP' },
   { key: 'security', label: 'Security & policies' },
@@ -724,6 +773,52 @@ const sections: Array<{ key: Section; label: string }> = [
                 <td class="dim">{{ k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleDateString() : '从未' }}</td>
                 <td style="text-align: right">
                   <button class="btn secondary btn-sm" data-test="api-revoke" @click="revokeApiKey(k.id)">吊销</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 社区节点 -->
+      <section v-else-if="section === 'community'" data-test="settings-community">
+        <h1 class="page-title">Community nodes</h1>
+        <p class="dim" style="margin-top: -4px; max-width: 620px; font-size: 13px">
+          Install extra nodes from npm. Packages must export a <code>nomopsNodes</code> array. Installed nodes
+          run with full server privileges (like the Code node) — only install packages you trust. Requires
+          instance owner / admin.
+        </p>
+
+        <!-- 安装 -->
+        <div class="card" style="max-width: 620px; margin-top: 16px">
+          <div style="display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap">
+            <div style="flex: 1; min-width: 200px">
+              <label style="font-size: 12px; color: var(--dim)">npm package</label>
+              <input v-model="installName" data-test="community-name" placeholder="e.g. n8n-nodes-weather" style="width: 100%" @keyup.enter="installCommunityNode" />
+            </div>
+            <div style="width: 120px">
+              <label style="font-size: 12px; color: var(--dim)">Version</label>
+              <input v-model="installVersion" data-test="community-version" placeholder="latest" style="width: 100%" @keyup.enter="installCommunityNode" />
+            </div>
+            <button class="btn primary" data-test="community-install" :disabled="installing" @click="installCommunityNode">
+              {{ installing ? 'Installing…' : 'Install' }}
+            </button>
+          </div>
+          <p v-if="communityError" class="error-text" data-test="community-error">{{ communityError }}</p>
+        </div>
+
+        <!-- 列表 -->
+        <div class="card" style="max-width: 620px; margin-top: 16px; padding: 0">
+          <div v-if="!communityNodes.length" class="dim" style="padding: 20px; text-align: center">No community nodes installed.</div>
+          <table v-else class="api-table">
+            <thead><tr><th>Package</th><th>Version</th><th>Nodes</th><th></th></tr></thead>
+            <tbody>
+              <tr v-for="p in communityNodes" :key="p.packageName" data-test="community-row">
+                <td>{{ p.packageName }}</td>
+                <td class="mono dim">{{ p.version }}</td>
+                <td class="dim">{{ p.nodeTypes.length }}</td>
+                <td style="text-align: right">
+                  <button class="btn secondary btn-sm" data-test="community-uninstall" @click="uninstallCommunityNode(p.packageName)">Uninstall</button>
                 </td>
               </tr>
             </tbody>

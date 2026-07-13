@@ -1,20 +1,19 @@
 import { defineStore } from 'pinia';
-import type { INodeTypeDescription } from '@nomops/workflow';
-import { api } from '../api/client.js';
+import { api, type NodeTypeInfo } from '../api/client.js';
 
 export const useNodeTypesStore = defineStore('nodeTypes', {
   state: () => ({
-    descriptions: [] as INodeTypeDescription[],
+    descriptions: [] as NodeTypeInfo[],
     loaded: false,
   }),
   getters: {
-    /** 全名（nomops.<name>）→ description。 */
-    byType(): Map<string, INodeTypeDescription> {
-      return new Map(this.descriptions.map((d) => [`nomops.${d.name}`, d]));
+    /** 全名 type（nomops.* 或 <pkg>.*）→ 节点信息。 */
+    byType(): Map<string, NodeTypeInfo> {
+      return new Map(this.descriptions.map((d) => [d.type, d]));
     },
     /** 按 group 分组（trigger / transform / output…），供节点面板分类。 */
-    grouped(): Array<{ group: string; items: INodeTypeDescription[] }> {
-      const map = new Map<string, INodeTypeDescription[]>();
+    grouped(): Array<{ group: string; items: NodeTypeInfo[] }> {
+      const map = new Map<string, NodeTypeInfo[]>();
       for (const d of this.descriptions) {
         const g = d.group[0] ?? 'other';
         if (!map.has(g)) map.set(g, []);

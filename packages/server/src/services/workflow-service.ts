@@ -34,10 +34,8 @@ export class WorkflowService {
   async validateStructure(input: Pick<IWorkflowInput, 'nodes' | 'connections'>): Promise<void> {
     // Workflow 构造函数校验：节点名唯一、连接引用存在
     new Workflow({ nodes: input.nodes, connections: input.connections });
-    // 节点类型必须已注册
-    const known = new Set(
-      this.nodeLoader.getAllDescriptions().map((d) => `nomops.${d.name}`),
-    );
+    // 节点类型必须已注册（全名，内置 nomops.* 与社区 <pkg>.* 一视同仁）
+    const known = new Set(this.nodeLoader.getAllTypes());
     for (const node of input.nodes) {
       if (!known.has(node.type)) {
         throw new OperationalError(`Unknown node type: ${node.type}`, { node: node.name });

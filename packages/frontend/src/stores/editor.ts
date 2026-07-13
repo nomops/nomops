@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
-import type { IConnections, INode, INodeTypeDescription } from '@nomops/workflow';
-import { api } from '../api/client.js';
+import type { IConnections, INode } from '@nomops/workflow';
+import { api, type NodeTypeInfo } from '../api/client.js';
 import {
   addConnection,
   removeConnection,
@@ -67,12 +67,12 @@ export const useEditorStore = defineStore('editor', {
     },
 
     /** 从节点面板加节点。position 缺省时错落排布，避免重叠。 */
-    addNode(desc: INodeTypeDescription, position?: [number, number]) {
+    addNode(desc: NodeTypeInfo, position?: [number, number]) {
       const name = uniqueNodeName(desc.defaults.name, this.nodes.map((n) => n.name));
       const node: INode = {
         id: crypto.randomUUID(),
         name,
-        type: `nomops.${desc.name}`,
+        type: desc.type,
         typeVersion: Array.isArray(desc.version) ? desc.version[desc.version.length - 1]! : desc.version,
         position: position ?? [80 + this.nodes.length * 220, 120 + (this.nodes.length % 3) * 40],
         parameters: {},

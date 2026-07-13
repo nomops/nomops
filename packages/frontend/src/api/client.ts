@@ -36,6 +36,18 @@ export interface FolderRow {
   updatedAt: string;
 }
 
+/** 节点类型信息：描述 + 全名 type（内置 nomops.* 与社区 <pkg>.* 一致）。 */
+export type NodeTypeInfo = INodeTypeDescription & { type: string };
+
+/** 已安装社区节点包。 */
+export interface CommunityNode {
+  packageName: string;
+  version: string;
+  nodeTypes: string[];
+  installedBy: string | null;
+  installedAt: string;
+}
+
 /** 版本历史列表项（元信息，不含 nodes/connections 大字段）。 */
 export interface WorkflowVersionMeta {
   id: string;
@@ -203,7 +215,15 @@ export const api = {
   resetPassword: (token: string, password: string) =>
     http<{ ok: true }>('POST', '/auth/reset', { token, password }),
 
-  nodeTypes: () => http<INodeTypeDescription[]>('GET', '/api/node-types'),
+  nodeTypes: () => http<NodeTypeInfo[]>('GET', '/api/node-types'),
+
+  communityNodes: {
+    list: () => http<CommunityNode[]>('GET', '/api/community-nodes'),
+    install: (name: string, version?: string) =>
+      http<CommunityNode>('POST', '/api/community-nodes', version ? { name, version } : { name }),
+    uninstall: (name: string) =>
+      http<void>('DELETE', `/api/community-nodes?name=${encodeURIComponent(name)}`),
+  },
 
   workflows: {
     // folderId：undefined → 全部；null → 项目根；string → 指定文件夹

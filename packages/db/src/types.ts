@@ -24,6 +24,7 @@ export type BillingOrder = InferSelectModel<typeof sqliteSchema.billingOrders>;
 export type ApiKey = InferSelectModel<typeof sqliteSchema.apiKeys>;
 export type Folder = InferSelectModel<typeof sqliteSchema.folders>;
 export type WorkflowVersion = InferSelectModel<typeof sqliteSchema.workflowVersions>;
+export type InstalledNode = InferSelectModel<typeof sqliteSchema.installedNodes>;
 
 /* ── 创建入参（区别于自动生成的 id/时间戳字段） ── */
 

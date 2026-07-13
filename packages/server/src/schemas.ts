@@ -59,6 +59,11 @@ export const folderPatchSchema = z.object({
 
 export const workflowPatchSchema = workflowBodySchema.partial();
 
+export const communityNodeInstallSchema = z.object({
+  name: z.string().min(1).max(214), // npm 包名（可 scoped），上限同 npm
+  version: z.string().min(1).max(100).optional(),
+});
+
 export const runBodySchema = z.object({
   destinationNode: z.string().optional(),
 });

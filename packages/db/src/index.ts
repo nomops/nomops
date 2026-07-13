@@ -36,6 +36,7 @@ export {
   WebhookRepository,
   WorkflowRepository,
   WorkflowVersionRepository,
+  InstalledNodeRepository,
 } from './repositories.js';
 export type {
   Repositories,
@@ -68,4 +69,5 @@ export type {
   WebhookEntityInput,
   Workflow,
   WorkflowVersion,
+  InstalledNode,
 } from './types.js';

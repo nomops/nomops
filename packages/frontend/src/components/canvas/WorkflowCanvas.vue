@@ -52,9 +52,9 @@ function onEdgesDelete(edges: Edge[]) {
 
 /** 面板拖入画布：按落点坐标建节点。 */
 function onDrop(event: DragEvent) {
-  const name = event.dataTransfer?.getData('application/nomops-node');
-  if (!name) return;
-  const desc = nodeTypesStore.descriptions.find((d) => d.name === name);
+  const type = event.dataTransfer?.getData('application/nomops-node');
+  if (!type) return;
+  const desc = nodeTypesStore.byType.get(type);
   if (!desc) return;
   const pos = screenToFlowCoordinate({ x: event.clientX, y: event.clientY });
   editor.addNode(desc, [pos.x, pos.y]);

@@ -131,6 +131,15 @@ export const folders = pgTable(
   (t) => [index('folders_project_idx').on(t.projectId)],
 );
 
+// 已安装社区节点包（对标 n8n community nodes）：实例级（非项目归属），bootstrap 时据此重载。
+export const installedNodes = pgTable('installed_nodes', {
+  packageName: text('package_name').primaryKey(),
+  version: text('version').notNull(),
+  nodeTypes: jsonb('node_types').$type<string[]>().notNull(),
+  installedBy: uuid('installed_by'),
+  installedAt: timestamp('installed_at').notNull().defaultNow(),
+});
+
 export const sharedWorkflows = pgTable(
   'shared_workflows',
   {
@@ -314,6 +323,7 @@ export const pgSchema = {
   projectRelations,
   workflows,
   workflowVersions,
+  installedNodes,
   folders,
   sharedWorkflows,
   credentials,

@@ -23,6 +23,7 @@ import type { VariableService } from './services/variable-service.js';
 import type { DataTableService } from './services/data-table-service.js';
 import type { ApiKeyService } from './services/api-key-service.js';
 import type { MfaService } from './services/mfa-service.js';
+import type { CommunityNodeService } from './services/community-node-service.js';
 
 /** 服务容器：构造函数注入（docs/05），app 层只见接口不见组装细节。 */
 export interface AppServices {
@@ -32,6 +33,7 @@ export interface AppServices {
   apiKeys: ApiKeyService;
   mfa: MfaService;
   workflows: WorkflowService;
+  communityNodes: CommunityNodeService;
   credentials: CredentialService;
   executions: ExecutionService;
   pushHub: PushHub;

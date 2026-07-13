@@ -30,6 +30,7 @@ import {
   variableBodySchema,
   workflowBodySchema,
   workflowPatchSchema,
+  communityNodeInstallSchema,
 } from '../schemas.js';
 
 /** Zod 校验失败 → 400（含字段级错误）。 */
@@ -916,7 +917,41 @@ export function createApiRouter(services: AppServices): Router {
   router.get(
     '/node-types',
     h(async (_req, res) => {
-      res.json(services.nodeLoader.getAllDescriptions());
+      // 带全名 type（内置 nomops.* 与社区 <pkg>.* 一致），前端据此建 type，不再拼前缀
+      res.json(services.nodeLoader.describeAll());
+    }),
+  );
+
+  /* ── 社区节点（对标 n8n：owner 安装 npm 节点包，实例级） ── */
+  router.get(
+    '/community-nodes',
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      res.json(await services.communityNodes.list());
+    }),
+  );
+
+  router.post(
+    '/community-nodes',
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      const { name, version } = parseBody(communityNodeInstallSchema, req);
+      const installed = await services.communityNodes.install(name, version, auth(req).userId);
+      recordAudit(services, req, 'community-node.install', { type: 'community-node', id: name }, { version: installed.version });
+      res.status(201).json(installed);
+    }),
+  );
+
+  // 名字用 query 传（scoped 包名含 '/'，放路径段会被 Express 拆断）
+  router.delete(
+    '/community-nodes',
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      const name = String(req.query['name'] ?? '');
+      if (!name) throw new OperationalError('Missing package name', { status: 400 });
+      await services.communityNodes.uninstall(name);
+      recordAudit(services, req, 'community-node.uninstall', { type: 'community-node', id: name });
+      res.status(204).end();
     }),
   );
 
