@@ -1,0 +1,55 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1783672159269,
+      "tag": "0000_strong_doctor_faustus",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1783683961188,
+      "tag": "0001_uneven_dazzler",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1783685462103,
+      "tag": "0002_talented_wolfsbane",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1783686609762,
+      "tag": "0003_amusing_machine_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1783741429381,
+      "tag": "0004_noisy_black_cat",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1783830388728,
+      "tag": "0005_omniscient_network",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1783832977049,
+      "tag": "0006_kind_living_mummy",
+      "breakpoints": true
+    }
+  ]
+}

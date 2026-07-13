@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@nomops/frontend", "dev"],
+      "port": 5173
+    },
+    {
+      "name": "server",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@nomops/server", "dev"],
+      "port": 5678
+    },
+    {
+      "name": "server-enterprise",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@nomops/server", "dev"],
+      "port": 5678,
+      "env": {
+        "LICENSE_KEY": "dev-enterprise",
+        "DB_SQLITE_FILE": "nomops-ent.db",
+        "NOMOPS_SECRET_OPENAI_KEY": "sk-demo-do-not-log",
+        "NOMOPS_SECRET_SLACK_TOKEN": "xoxb-demo"
+      }
+    }
+  ]
+}

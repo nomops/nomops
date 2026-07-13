@@ -1,0 +1,50 @@
+import type { INodeLoader } from '@nomops/core';
+import type { Repositories } from '@nomops/db';
+import type { AuthService } from './auth/auth-service.js';
+import type { CredentialService } from './services/credential-service.js';
+import type { ExecutionService } from './services/execution-service.js';
+import type { WorkflowService } from './services/workflow-service.js';
+import type { PushHub } from './ws/push-hub.js';
+import type { ActiveWorkflowManager } from './triggers/active-workflow-manager.js';
+import type { LicenseService } from './license/license-service.js';
+import type { AuditService } from './services/audit-service.js';
+import type { OidcService } from './sso/oidc-service.js';
+import type { ScimService } from './scim/scim-service.js';
+import type { QuotaService } from './services/quota-service.js';
+import type { IPaymentProvider } from './billing/payment-provider.js';
+import type { BillingService } from './billing/billing-service.js';
+import type { AlipayProvider } from './billing/alipay-provider.js';
+import type { AssistantService } from './services/assistant-service.js';
+import type { LogStreamingService } from './services/log-streaming-service.js';
+import type { SecretsService } from './services/secrets-service.js';
+import type { LdapService } from './ldap/ldap-service.js';
+import type { OAuth2Service } from './services/oauth2-service.js';
+import type { VariableService } from './services/variable-service.js';
+import type { DataTableService } from './services/data-table-service.js';
+
+/** 服务容器：构造函数注入（docs/05），app 层只见接口不见组装细节。 */
+export interface AppServices {
+  repos: Repositories;
+  nodeLoader: INodeLoader;
+  auth: AuthService;
+  workflows: WorkflowService;
+  credentials: CredentialService;
+  executions: ExecutionService;
+  pushHub: PushHub;
+  activeWorkflows: ActiveWorkflowManager;
+  license: LicenseService;
+  audit: AuditService;
+  sso: OidcService;
+  scim: ScimService;
+  quota: QuotaService;
+  payments: IPaymentProvider;
+  billing: BillingService;
+  alipay: AlipayProvider | null;
+  assistant: AssistantService;
+  logStreaming: LogStreamingService;
+  secrets: SecretsService;
+  ldap: LdapService;
+  oauth2: OAuth2Service;
+  variables: VariableService;
+  dataTables: DataTableService;
+}

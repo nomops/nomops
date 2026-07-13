@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.turbo/
+coverage/
+*.log
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.DS_Store
+*.db
+*.db-journal
+cp-data/
+control-plane.db
+.env.cloud.local

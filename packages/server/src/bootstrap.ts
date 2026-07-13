@@ -1,0 +1,270 @@
+import { randomBytes } from 'node:crypto';
+import { Cipher, Credentials, NodeLoader } from '@nomops/core';
+import type { IEncryptionKeyProvider } from '@nomops/core';
+import { createDatabase, createRepositories, runMigrations } from '@nomops/db';
+import type { DatabaseConfig, DatabaseHandle, Repositories, SettingsRepository } from '@nomops/db';
+import { builtinNodeManifest } from '@nomops/nodes';
+import { AuthService } from './auth/auth-service.js';
+import { CredentialService } from './services/credential-service.js';
+import { ExecutionService } from './services/execution-service.js';
+import { WorkflowService } from './services/workflow-service.js';
+import { PushHub } from './ws/push-hub.js';
+import { ActiveWorkflowManager } from './triggers/active-workflow-manager.js';
+import { LicenseService } from './license/license-service.js';
+import { AuditService } from './services/audit-service.js';
+import { OidcService } from './sso/oidc-service.js';
+import { OAuth2Service } from './services/oauth2-service.js';
+import { VariableService } from './services/variable-service.js';
+import { DataTableService } from './services/data-table-service.js';
+import { ScimService } from './scim/scim-service.js';
+import { QuotaService } from './services/quota-service.js';
+import { ManualPaymentProvider } from './billing/payment-provider.js';
+import { BillingService } from './billing/billing-service.js';
+import { AssistantService } from './services/assistant-service.js';
+import { LogStreamingService } from './services/log-streaming-service.js';
+import { EnvSecretsProvider, SecretsService } from './services/secrets-service.js';
+import type { ISecretsProvider } from './services/secrets-service.js';
+import { LdapService } from './ldap/ldap-service.js';
+import type { ILdapAuthenticator } from './ldap/ldap-service.js';
+import { alipayFromEnv, type AlipayProvider } from './billing/alipay-provider.js';
+import { InMemoryLockStore, LeaderElection } from './queue/leader.js';
+import type { ILockStore } from './queue/leader.js';
+import { createBullQueue, createRedisLockStore } from './queue/execution-queue.js';
+import type { IExecutionQueue, RedisOptions } from './queue/execution-queue.js';
+import type { AppServices } from './app-services.js';
+
+/**
+ * ★安装版的 IEncryptionKeyProvider（docs/01「第二个必须早做的抽象」）：
+ * 从 settings 表读实例密钥，首次启动自动生成。Cloud 换 KMS 实现，业务零改动。
+ */
+class SettingsKeyProvider implements IEncryptionKeyProvider {
+  private cached?: Buffer;
+
+  constructor(private readonly settings: SettingsRepository) {}
+
+  async getKey(): Promise<Buffer> {
+    if (this.cached) return this.cached;
+    const hex = await this.settings.get('encryptionKey');
+    if (!hex) throw new Error('实例加密密钥未初始化（bootstrap 未运行？）');
+    this.cached = Buffer.from(hex, 'hex');
+    return this.cached;
+  }
+}
+
+/** 确保实例级密钥存在（加密密钥 + JWT secret），幂等。 */
+async function ensureInstanceSecrets(repos: Repositories): Promise<{ jwtSecret: string }> {
+  let encryptionKey = await repos.settings.get('encryptionKey');
+  if (!encryptionKey) {
+    encryptionKey = randomBytes(32).toString('hex');
+    await repos.settings.set('encryptionKey', encryptionKey, true);
+  }
+  let jwtSecret = await repos.settings.get('jwtSecret');
+  if (!jwtSecret) {
+    jwtSecret = randomBytes(32).toString('hex');
+    await repos.settings.set('jwtSecret', jwtSecret, true);
+  }
+  return { jwtSecret };
+}
+
+export type ExecutionsMode = 'regular' | 'queue';
+export type ProcessRole = 'main' | 'worker';
+
+export interface BootstrapOptions {
+  dbConfig?: DatabaseConfig;
+  /** regular（单进程，默认）| queue（BullMQ + Redis）。 */
+  mode?: ExecutionsMode;
+  /** main（HTTP + 触发器调度）| worker（只消费队列）。 */
+  role?: ProcessRole;
+  /** License key（缺省读 LICENSE_KEY 环境变量）。测试显式注入。 */
+  licenseKey?: string | null;
+  /** billing webhook 共享密钥（缺省读 BILLING_SECRET；测试显式注入）。 */
+  billingSecret?: string;
+  /** 支付宝 provider（缺省从 ALIPAY_* 环境变量构造；测试注入假密钥实例）。 */
+  alipay?: AlipayProvider | null;
+  /** AI 助手的 Claude 调用（缺省真实 HTTP；测试注入假实现）。 */
+  callClaude?: import('./services/assistant-service.js').CallClaude;
+  /** 日志流的 webhook 推送函数（缺省真实 fetch；测试注入进程内接收器）。 */
+  logStreamPost?: import('./services/log-streaming-service.js').PostFn;
+  /** 外部密钥 provider（缺省 env 变量 provider；测试注入假 provider）。 */
+  secretsProvider?: ISecretsProvider;
+  /** LDAP 认证器（缺省 ldapts 真实实现；测试注入假实现）。 */
+  ldapAuthenticator?: ILdapAuthenticator;
+}
+
+export interface BootstrapResult {
+  services: AppServices;
+  dbHandle: DatabaseHandle;
+  mode: ExecutionsMode;
+  leader: LeaderElection;
+  redis: RedisOptions | null;
+  shutdown(): Promise<void>;
+}
+
+function redisFromEnv(): RedisOptions {
+  return {
+    host: process.env['REDIS_HOST'] ?? 'localhost',
+    port: Number(process.env['REDIS_PORT'] ?? 6379),
+  };
+}
+
+/** 组装全部依赖：DB → 迁移 → 密钥 → services → 触发器/队列。测试与 main/worker 共用。 */
+export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {}): Promise<BootstrapResult> {
+  // 兼容旧签名 bootstrap(dbConfig)
+  const opts: BootstrapOptions =
+    'type' in options ? { dbConfig: options as DatabaseConfig } : (options as BootstrapOptions);
+
+  const dbConfig: DatabaseConfig =
+    opts.dbConfig ??
+    (process.env['DB_TYPE'] === 'postgres'
+      ? {
+          type: 'postgres',
+          url: process.env['DB_POSTGRES_URL'],
+          dataDir: process.env['DB_DATA_DIR'],
+        }
+      : { type: 'sqlite', filename: process.env['DB_SQLITE_FILE'] ?? 'nomops.db' });
+
+  const mode: ExecutionsMode =
+    opts.mode ?? (process.env['EXECUTIONS_MODE'] === 'queue' ? 'queue' : 'regular');
+  const role: ProcessRole = opts.role ?? 'main';
+
+  const dbHandle = await createDatabase(dbConfig);
+  await runMigrations(dbHandle);
+  const repos = createRepositories(dbHandle);
+  const { jwtSecret } = await ensureInstanceSecrets(repos);
+
+  const nodeLoader = new NodeLoader(builtinNodeManifest);
+  await nodeLoader.loadAll();
+
+  const credentials = new Credentials(new Cipher(new SettingsKeyProvider(repos.settings)));
+  const pushHub = new PushHub();
+
+  // 队列与 leader：regular 用内存锁（单进程恒为 leader）；queue 用 Redis
+  let queue: IExecutionQueue | null = null;
+  let redis: RedisOptions | null = null;
+  let lockStore: ILockStore;
+  let redisLockClose: (() => Promise<unknown>) | null = null;
+  if (mode === 'queue') {
+    redis = redisFromEnv();
+    if (role === 'main') queue = await createBullQueue(redis);
+    const redisLock = await createRedisLockStore(redis);
+    lockStore = redisLock;
+    redisLockClose = redisLock.close;
+  } else {
+    lockStore = new InMemoryLockStore();
+  }
+
+  const license = new LicenseService(opts.licenseKey ?? process.env['LICENSE_KEY'] ?? null);
+  const auth = new AuthService(repos, jwtSecret);
+  const workflows = new WorkflowService(repos, nodeLoader);
+  // 外部密钥（docs/10 B4）：凭证解密后物化 {{ $secrets.KEY }} 引用
+  const secrets = new SecretsService(opts.secretsProvider ?? new EnvSecretsProvider(), license);
+  const credentialService = new CredentialService(repos, credentials, secrets);
+  const quota = new QuotaService(repos, license);
+  // 日志流（docs/10 B3）：先于 executions/audit 建好，两者把事件旁路到它
+  const logStreaming = new LogStreamingService(repos, opts.logStreamPost);
+  const executions = new ExecutionService(
+    repos,
+    workflows,
+    credentialService,
+    nodeLoader,
+    pushHub,
+    quota,
+    queue,
+    (evt) => logStreaming.dispatch({ type: 'execution', at: new Date().toISOString(), ...evt }),
+  );
+
+  const leader = new LeaderElection(lockStore);
+  const audit = new AuditService(repos, (entry) =>
+    logStreaming.dispatch({
+      type: 'audit',
+      at: new Date().toISOString(),
+      projectId: entry.projectId ?? null,
+      action: entry.action,
+      userId: entry.userId ?? null,
+      resourceType: entry.resourceType ?? null,
+      resourceId: entry.resourceId ?? null,
+    }),
+  );
+  const activeWorkflows = new ActiveWorkflowManager(
+    repos,
+    nodeLoader,
+    executions,
+    () => leader.isLeader(),
+    audit,
+  );
+  const baseUrl = process.env['NOMOPS_BASE_URL'] ?? 'http://localhost:5678';
+  const sso = new OidcService(repos, credentials, auth, baseUrl);
+  const oauth2 = new OAuth2Service(credentialService, baseUrl);
+  const variables = new VariableService(repos);
+  const dataTables = new DataTableService(repos);
+  // LDAP 登录（docs/10 B5）：opts.ldapAuthenticator 供测试注入假实现；生产用 ldapts
+  const ldap = new LdapService(repos, credentials, auth, license, opts.ldapAuthenticator);
+  const scim = new ScimService(repos);
+  // 支付适配层：当前 manual provider（共享密钥）；真实服务商实现 IPaymentProvider 后在此替换
+  const payments = new ManualPaymentProvider(
+    opts.billingSecret ?? process.env['BILLING_SECRET'] ?? randomBytes(24).toString('hex'),
+  );
+  const alipay = opts.alipay !== undefined ? opts.alipay : alipayFromEnv();
+  const billing = new BillingService(repos, audit, alipay);
+  // AI 助手：opts.callClaude 供测试注入假实现；生产用默认真实 HTTP
+  const assistant = new AssistantService(repos, credentialService, nodeLoader, opts.callClaude);
+
+  const services: AppServices = {
+    repos,
+    nodeLoader,
+    auth,
+    workflows,
+    credentials: credentialService,
+    executions,
+    pushHub,
+    activeWorkflows,
+    license,
+    audit,
+    sso,
+    scim,
+    quota,
+    payments,
+    billing,
+    alipay,
+    assistant,
+    logStreaming,
+    secrets,
+    ldap,
+    oauth2,
+    variables,
+    dataTables,
+  };
+
+  // Cloud：控制平面注入 NOMOPS_OWNER_EMAIL → 首启预置 owner（docs/11 Phase 2）
+  const ownerEmail = process.env['NOMOPS_OWNER_EMAIL'];
+  if (ownerEmail) {
+    await auth.ensureOwner(ownerEmail);
+    // 订阅 plan 下发（docs/11 Phase 3）：把控制平面下发的配额落到 owner 项目（每次启动幂等应用，升级即生效）
+    const planQuota = process.env['NOMOPS_PLAN_QUOTA'];
+    if (planQuota) {
+      const owner = await repos.users.findByEmail(ownerEmail);
+      if (owner) {
+        const limit = planQuota === 'unlimited' ? null : Number(planQuota);
+        const planName = process.env['NOMOPS_PLAN'] ?? 'free';
+        for (const project of await repos.projects.findAllByUser(owner.id)) {
+          await repos.quotas.upsertQuota(project.id, planName, Number.isFinite(limit as number) ? limit : null);
+        }
+      }
+    }
+  }
+
+  return {
+    services,
+    dbHandle,
+    mode,
+    leader,
+    redis,
+    shutdown: async () => {
+      await activeWorkflows.shutdown();
+      await leader.stop();
+      await queue?.close();
+      await redisLockClose?.();
+      await dbHandle.close();
+    },
+  };
+}

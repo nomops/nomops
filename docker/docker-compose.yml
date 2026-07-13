@@ -1,0 +1,78 @@
+# nomops — 一键起全套：docker compose -f docker/docker-compose.yml up --build
+# app（单进程模式，PostgreSQL 存储）+ postgres + redis。
+# 队列模式：--profile queue 追加 worker，并给 app 设 EXECUTIONS_MODE=queue。
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nomops
+      POSTGRES_PASSWORD: nomops
+      POSTGRES_DB: nomops
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nomops"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      EXECUTIONS_MODE: ${EXECUTIONS_MODE:-regular}
+      DB_TYPE: postgres
+      DB_POSTGRES_URL: postgres://nomops:nomops@postgres:5432/nomops
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      PORT: "5678"
+    ports:
+      - "5678:5678"
+
+  # 队列模式 worker（可横向扩多个）：docker compose --profile queue up
+  worker:
+    profiles: ["queue"]
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command: ["node", "packages/server/dist/worker.js"]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      EXECUTIONS_MODE: queue
+      DB_TYPE: postgres
+      DB_POSTGRES_URL: postgres://nomops:nomops@postgres:5432/nomops
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+
+volumes:
+  postgres_data:
+  redis_data:
