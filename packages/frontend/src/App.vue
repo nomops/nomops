@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onMounted, watch } from 'vue';
-import { useRoute } from 'vue-router';
 import { useAuthStore } from './stores/auth.js';
 import { useProjectsStore } from './stores/projects.js';
 import SideBar from './components/shell/SideBar.vue';
@@ -8,10 +7,9 @@ import CommandPalette from './components/shell/CommandPalette.vue';
 
 const auth = useAuthStore();
 const projects = useProjectsStore();
-const route = useRoute();
 
-// app 外壳（侧栏）：仅登录态且非营销全幅页。营销页/登录/落地页走裸 RouterView。
-const showShell = computed(() => Boolean(auth.token) && !route.meta['marketing']);
+// app 外壳（侧栏）：仅登录态。登录/注册等公开页走裸 RouterView。
+const showShell = computed(() => Boolean(auth.token));
 
 onMounted(() => {
   if (auth.token) void projects.fetch();

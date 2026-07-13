@@ -1,29 +1,14 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from './stores/auth.js';
 
-/** meta.public: 未登录可访问；meta.marketing: 全幅营销页（登录态也不套 app 外壳）。 */
-const FeatureView = () => import('./views/marketing/FeatureView.vue');
-const HubView = () => import('./views/marketing/HubView.vue');
-
+/** meta.public: 未登录可访问。自托管实例无营销站，根路由即 app 首页（对标 n8n 自托管）。 */
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/login', name: 'login', component: () => import('./views/LoginView.vue'), meta: { public: true } },
     { path: '/signup', name: 'signup', component: () => import('./views/SignupView.vue'), meta: { public: true } },
-    // 根路由：未登录渲染公开落地页，登录后渲染 Overview（RootView 分流）
-    { path: '/', name: 'overview', component: () => import('./views/RootView.vue'), meta: { public: true } },
-
-    // ── 营销站（对标 n8n.io 导航），全部公开 + marketing ──
-    { path: '/product', name: 'm-product', component: FeatureView, meta: { public: true, marketing: true } },
-    { path: '/product/:slug', name: 'm-product-item', component: FeatureView, meta: { public: true, marketing: true } },
-    { path: '/use-cases', name: 'm-use-cases', component: HubView, meta: { public: true, marketing: true } },
-    { path: '/use-cases/:slug', name: 'm-use-case', component: FeatureView, meta: { public: true, marketing: true } },
-    { path: '/pricing', name: 'm-pricing', component: () => import('./views/marketing/PricingView.vue'), meta: { public: true, marketing: true } },
-    { path: '/enterprise', name: 'm-enterprise', component: () => import('./views/marketing/EnterpriseView.vue'), meta: { public: true, marketing: true } },
-    { path: '/docs', name: 'm-docs', component: HubView, meta: { public: true, marketing: true } },
-    { path: '/docs/:slug', name: 'm-doc', component: FeatureView, meta: { public: true, marketing: true } },
-    { path: '/community', name: 'm-community', component: HubView, meta: { public: true, marketing: true } },
-    { path: '/community/:slug', name: 'm-community-item', component: FeatureView, meta: { public: true, marketing: true } },
+    // 根路由 = app 首页（Overview），需登录；未登录经守卫跳 /login
+    { path: '/', name: 'overview', component: () => import('./views/OverviewView.vue') },
 
     // 旧路径兼容：并入 Overview 的 tab
     { path: '/credentials', redirect: { path: '/', query: { tab: 'credentials' } } },
@@ -38,6 +23,9 @@ export const router = createRouter({
     { path: '/templates', name: 'templates', component: () => import('./views/TemplatesView.vue') },
     { path: '/settings', name: 'settings', component: () => import('./views/SettingsView.vue') },
     { path: '/sso/done', name: 'ssoDone', component: () => import('./views/SsoDoneView.vue'), meta: { public: true } },
+
+    // 兜底：未知路径（含已摘除的营销页 / 旧书签）回首页
+    { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 });
 
