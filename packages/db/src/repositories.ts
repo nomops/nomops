@@ -343,6 +343,27 @@ export class WorkflowRepository extends BaseRepository {
     return row as Workflow;
   }
 
+  /** 用指定 id 建工作流（源码同步导入：跨环境保持同一 workflow id）。 */
+  async createWithId(input: CreateWorkflowInput, projectId: string, id: string): Promise<Workflow> {
+    const [row] = await this.db
+      .insert(this.schema.workflows)
+      .values({
+        id,
+        name: input.name,
+        active: input.active ?? false,
+        nodes: input.nodes,
+        connections: input.connections,
+        settings: input.settings ?? null,
+        staticData: input.staticData ?? null,
+        folderId: input.folderId ?? null,
+      })
+      .returning();
+    await this.db
+      .insert(this.schema.sharedWorkflows)
+      .values({ workflowId: row.id, projectId, role: ROLE_WORKFLOW_OWNER });
+    return row as Workflow;
+  }
+
   /** 按文件夹过滤（folderId=null → 项目根）。归属经 shared_workflows。 */
   async findByProjectAndFolder(projectId: string, folderId: string | null): Promise<Workflow[]> {
     const rows = await this.db

@@ -18,6 +18,7 @@ export const ENTERPRISE_FEATURES = [
   'logStreaming',
   'externalSecrets',
   'ldap',
+  'sourceControl',
 ] as const;
 export type EnterpriseFeature = (typeof ENTERPRISE_FEATURES)[number];
 

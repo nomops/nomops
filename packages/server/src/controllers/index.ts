@@ -33,6 +33,8 @@ import {
   workflowBodySchema,
   workflowPatchSchema,
   communityNodeInstallSchema,
+  sourceControlConnectSchema,
+  sourceControlPushSchema,
 } from '../schemas.js';
 
 /** Zod 校验失败 → 400（含字段级错误）。 */
@@ -989,6 +991,79 @@ export function createApiRouter(services: AppServices): Router {
       await services.communityNodes.uninstall(name);
       recordAudit(services, req, 'community-node.uninstall', { type: 'community-node', id: name });
       res.status(204).end();
+    }),
+  );
+
+  /* ── 源码同步（对标 n8n Source Control：工作流 push/pull 到 git；企业版 + 实例 admin） ── */
+  const sourceControlFeature = requireFeature(services.license, 'sourceControl');
+  router.get(
+    '/source-control',
+    sourceControlFeature,
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      res.json(await services.git.getConfig());
+    }),
+  );
+
+  router.put(
+    '/source-control',
+    sourceControlFeature,
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      const body = parseBody(sourceControlConnectSchema, req);
+      const config = await services.git.connect(body);
+      recordAudit(services, req, 'source-control.connect', undefined, { branch: config.branch });
+      res.json(config);
+    }),
+  );
+
+  router.delete(
+    '/source-control',
+    sourceControlFeature,
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      await services.git.disconnect();
+      recordAudit(services, req, 'source-control.disconnect');
+      res.status(204).end();
+    }),
+  );
+
+  router.get(
+    '/source-control/status',
+    sourceControlFeature,
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      res.json(await services.git.status(auth(req).projectId));
+    }),
+  );
+
+  router.post(
+    '/source-control/push',
+    sourceControlFeature,
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      const { message } = parseBody(sourceControlPushSchema, req);
+      const user = await services.repos.users.findById(auth(req).userId);
+      const authorName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || 'nomops';
+      const result = await services.git.push({
+        projectId: auth(req).projectId,
+        message: message ?? 'Update workflows',
+        authorName,
+        authorEmail: user?.email ?? 'nomops@localhost',
+      });
+      recordAudit(services, req, 'source-control.push', undefined, { committed: result.committed });
+      res.json(result);
+    }),
+  );
+
+  router.post(
+    '/source-control/pull',
+    sourceControlFeature,
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      const result = await services.git.pull(auth(req).projectId);
+      recordAudit(services, req, 'source-control.pull', undefined, { created: result.created, updated: result.updated });
+      res.json(result);
     }),
   );
 

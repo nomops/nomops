@@ -24,6 +24,7 @@ import type { DataTableService } from './services/data-table-service.js';
 import type { ApiKeyService } from './services/api-key-service.js';
 import type { MfaService } from './services/mfa-service.js';
 import type { CommunityNodeService } from './services/community-node-service.js';
+import type { GitService } from './services/git-service.js';
 
 /** 服务容器：构造函数注入（docs/05），app 层只见接口不见组装细节。 */
 export interface AppServices {
@@ -34,6 +35,7 @@ export interface AppServices {
   mfa: MfaService;
   workflows: WorkflowService;
   communityNodes: CommunityNodeService;
+  git: GitService;
   credentials: CredentialService;
   executions: ExecutionService;
   pushHub: PushHub;

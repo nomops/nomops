@@ -94,6 +94,41 @@ export class WorkflowService {
     return this.repos.workflows.findByProjectAndFolder(projectId, folderId);
   }
 
+  /**
+   * 源码同步导入：按 id upsert 到项目（跨环境保持同一 workflow id）。
+   * 校验结构（含节点类型已注册）；未知节点类型的工作流跳过而非整体失败。
+   * 返回 'created' | 'updated'（校验失败抛出，由调用方按文件收集为 skipped）。
+   */
+  async importFromSync(
+    id: string,
+    input: IWorkflowInput & { active?: boolean },
+    projectId: string,
+  ): Promise<'created' | 'updated'> {
+    await this.validateStructure(input);
+    const existing = await this.repos.workflows.findById(id, projectId);
+    if (existing) {
+      await this.repos.workflows.update(id, {
+        name: input.name,
+        nodes: input.nodes,
+        connections: input.connections,
+        settings: input.settings ?? null,
+      });
+      return 'updated';
+    }
+    await this.repos.workflows.createWithId(
+      {
+        name: input.name,
+        nodes: input.nodes,
+        connections: input.connections,
+        settings: input.settings ?? null,
+        active: false, // 导入不自动激活触发器（安全默认）
+      },
+      projectId,
+      id,
+    );
+    return 'created';
+  }
+
   async update(
     id: string,
     patch: Partial<IWorkflowInput>,

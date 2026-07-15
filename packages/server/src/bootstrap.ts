@@ -13,6 +13,7 @@ import { ApiKeyService } from './services/api-key-service.js';
 import { MfaService } from './services/mfa-service.js';
 import { CommunityNodeService, NpmNodeInstaller } from './services/community-node-service.js';
 import type { INodeInstaller } from './services/community-node-service.js';
+import { GitService } from './services/git-service.js';
 import { PushHub } from './ws/push-hub.js';
 import { ActiveWorkflowManager } from './triggers/active-workflow-manager.js';
 import { LicenseService } from './license/license-service.js';
@@ -96,6 +97,8 @@ export interface BootstrapOptions {
   ldapAuthenticator?: ILdapAuthenticator;
   /** 社区节点安装器（缺省 npm 真实实现；测试注入假实现映射到本地 fixture）。 */
   nodeInstaller?: INodeInstaller;
+  /** 源码同步的 git 工作目录（缺省 NOMOPS_SOURCE_CONTROL_DIR 或 .nomops/source-control；测试传临时目录隔离）。 */
+  sourceControlDir?: string;
 }
 
 export interface BootstrapResult {
@@ -172,6 +175,14 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     opts.nodeInstaller ??
       new NpmNodeInstaller(process.env['NOMOPS_COMMUNITY_NODES_DIR'] ?? join(process.cwd(), '.nomops', 'nodes')),
   );
+  // 源码同步（对标 n8n Source Control）：把项目工作流 push/pull 到 git 仓库
+  const git = new GitService(
+    repos,
+    workflows,
+    opts.sourceControlDir ??
+      process.env['NOMOPS_SOURCE_CONTROL_DIR'] ??
+      join(process.cwd(), '.nomops', 'source-control'),
+  );
   // 外部密钥（docs/10 B4）：凭证解密后物化 {{ $secrets.KEY }} 引用
   const secrets = new SecretsService(opts.secretsProvider ?? new EnvSecretsProvider(), license);
   const credentialService = new CredentialService(repos, credentials, secrets);
@@ -233,6 +244,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     mfa,
     workflows,
     communityNodes,
+    git,
     credentials: credentialService,
     executions,
     pushHub,

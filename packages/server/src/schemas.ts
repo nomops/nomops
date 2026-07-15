@@ -77,6 +77,17 @@ export const communityNodeInstallSchema = z.object({
   version: z.string().min(1).max(100).optional(),
 });
 
+/** 连接源码仓库（实例 admin）。 */
+export const sourceControlConnectSchema = z.object({
+  repoUrl: z.string().min(1).max(500),
+  branch: z.string().min(1).max(200).optional(),
+});
+
+/** push 提交信息。 */
+export const sourceControlPushSchema = z.object({
+  message: z.string().max(500).optional(),
+});
+
 export const runBodySchema = z.object({
   destinationNode: z.string().optional(),
 });
