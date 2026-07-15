@@ -88,6 +88,31 @@ const str = (d: JsonObject, k: string): string => (typeof d[k] === 'string' ? (d
 /** 有 token 才建请求，否则 null（缺字段 → 无法测）。 */
 const need = (token: string, build: () => CredentialTestRequest): CredentialTestRequest | null =>
   token ? build() : null;
+
+/** Basic-auth 头：base64(user:pass)。 */
+const basic = (user: string, pass: string): string =>
+  `Basic ${Buffer.from(`${user}:${pass}`).toString('base64')}`;
+
+/**
+ * 归一化域名字段为 https origin：容忍用户贴全 URL / 裸主机名，剥协议与尾斜杠，
+ * 校验只含主机合法字符（防把奇怪输入拼进请求 URL）。非法 → ''（按缺字段处理）。
+ */
+function httpsOrigin(input: string): string {
+  const host = input.trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+  // 标准 hostname：点分标签，每段字母数字开头结尾（拒绝连点/空格/@ 等）；可带端口
+  const label = '[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?';
+  return new RegExp(`^${label}(\\.${label})*(:\\d+)?$`).test(host) ? `https://${host}` : '';
+}
+
+/**
+ * 归一化子域字段：容忍贴了完整域名（acme.zendesk.com）或 URL 的情况，
+ * 取第一段并校验字符。非法 → ''。
+ */
+function subdomainOf(input: string, suffix: string): string {
+  let s = input.trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+  if (s.toLowerCase().endsWith(`.${suffix}`)) s = s.slice(0, -(suffix.length + 1));
+  return /^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(s) ? s : '';
+}
 const bearerGet = (d: JsonObject, key: string, url: string): CredentialTestRequest | null =>
   need(str(d, key), () => ({ method: 'GET', url, headers: { authorization: `Bearer ${str(d, key)}` } }));
 
@@ -156,6 +181,62 @@ const TESTS: Record<string, Builder> = {
       method: 'GET',
       url: `https://api.telegram.org/bot${str(d, 'accessToken')}/getMe`,
     })),
+  /* ── Basic-auth 拼接型：多字段组合成 Basic 头 + 域名归一化 ── */
+  jiraApi: (d) => {
+    const origin = httpsOrigin(str(d, 'domain'));
+    const email = str(d, 'email');
+    const token = str(d, 'apiToken');
+    if (!origin || !email || !token) return null;
+    return {
+      method: 'GET',
+      url: `${origin}/rest/api/2/myself`,
+      headers: { authorization: basic(email, token), accept: 'application/json' },
+    };
+  },
+  zendeskApi: (d) => {
+    const sub = subdomainOf(str(d, 'subdomain'), 'zendesk.com');
+    const email = str(d, 'email');
+    const token = str(d, 'apiToken');
+    if (!sub || !email || !token) return null;
+    // Zendesk 约定：user = {email}/token
+    return {
+      method: 'GET',
+      url: `https://${sub}.zendesk.com/api/v2/users/me.json`,
+      headers: { authorization: basic(`${email}/token`, token) },
+    };
+  },
+  freshdeskApi: (d) => {
+    const sub = subdomainOf(str(d, 'domain'), 'freshdesk.com');
+    const key = str(d, 'apiKey');
+    if (!sub || !key) return null;
+    // Freshdesk 约定：user = apiKey，pass 任意（惯用 X）
+    return {
+      method: 'GET',
+      url: `https://${sub}.freshdesk.com/api/v2/agents/me`,
+      headers: { authorization: basic(key, 'X') },
+    };
+  },
+  twilioApi: (d) => {
+    const sid = str(d, 'accountSid').trim();
+    const token = str(d, 'authToken');
+    if (!/^AC[a-zA-Z0-9]+$/.test(sid) || !token) return null; // SID 也进 URL，先校验字符
+    return {
+      method: 'GET',
+      url: `https://api.twilio.com/2010-04-01/Accounts/${sid}.json`,
+      headers: { authorization: basic(sid, token) },
+    };
+  },
+  mailchimpApi: (d) => {
+    const key = str(d, 'apiKey').trim();
+    // dc 在 key 后缀（xxxx-us21）；无法提取 → 按缺字段处理
+    const dc = /-([a-z]{2,4}\d+)$/.exec(key)?.[1];
+    if (!key || !dc) return null;
+    return {
+      method: 'GET',
+      url: `https://${dc}.api.mailchimp.com/3.0/`,
+      headers: { authorization: basic('anystring', key) },
+    };
+  },
 };
 
 /** 该类型是否可测。 */

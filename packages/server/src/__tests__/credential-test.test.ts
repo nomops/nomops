@@ -132,6 +132,89 @@ describe('body 级判定：GraphQL（Linear，200 + errors）', () => {
   });
 });
 
+describe('Basic-auth 拼接型：Jira / Zendesk / Freshdesk / Twilio / Mailchimp', () => {
+  const b64 = (s: string) => Buffer.from(s).toString('base64');
+
+  it('jira：email:apiToken → Basic；domain 容忍全 URL/尾斜杠', async () => {
+    const jira = await createCred(owner, 'jiraApi', {
+      domain: 'https://acme.atlassian.net/',
+      email: 'me@acme.dev',
+      apiToken: 'jira-tok',
+    });
+    tester.next = { status: 200, ok: true };
+    const res = await testCred(owner, jira.body.id).expect(200);
+    expect(res.body).toMatchObject({ ok: true, tested: true });
+    expect(tester.lastReq?.url).toBe('https://acme.atlassian.net/rest/api/2/myself');
+    expect(tester.lastReq?.headers?.authorization).toBe(`Basic ${b64('me@acme.dev:jira-tok')}`);
+  });
+
+  it('jira：裸主机名（无协议）同样归一化；401 → 失败', async () => {
+    const jira = await createCred(owner, 'jiraApi', { domain: 'acme.atlassian.net', email: 'me@acme.dev', apiToken: 'bad' });
+    tester.next = { status: 401, ok: false };
+    const res = await testCred(owner, jira.body.id).expect(200);
+    expect(res.body).toMatchObject({ ok: false, tested: true });
+    expect(res.body.message).toContain('401');
+    expect(tester.lastReq?.url).toBe('https://acme.atlassian.net/rest/api/2/myself');
+  });
+
+  it('zendesk：user 拼 {email}/token；subdomain 容忍贴全域名', async () => {
+    const zd = await createCred(owner, 'zendeskApi', {
+      subdomain: 'acme.zendesk.com',
+      email: 'me@acme.dev',
+      apiToken: 'zd-tok',
+    });
+    tester.next = { status: 200, ok: true };
+    const res = await testCred(owner, zd.body.id).expect(200);
+    expect(res.body).toMatchObject({ ok: true, tested: true });
+    expect(tester.lastReq?.url).toBe('https://acme.zendesk.com/api/v2/users/me.json');
+    expect(tester.lastReq?.headers?.authorization).toBe(`Basic ${b64('me@acme.dev/token:zd-tok')}`);
+  });
+
+  it('freshdesk：apiKey:X → Basic', async () => {
+    const fd = await createCred(owner, 'freshdeskApi', { domain: 'acme', apiKey: 'fd-key' });
+    tester.next = { status: 200, ok: true };
+    await testCred(owner, fd.body.id).expect(200);
+    expect(tester.lastReq?.url).toBe('https://acme.freshdesk.com/api/v2/agents/me');
+    expect(tester.lastReq?.headers?.authorization).toBe(`Basic ${b64('fd-key:X')}`);
+  });
+
+  it('twilio：sid:authToken → Basic，sid 进 URL；非法 SID → 缺字段不发请求', async () => {
+    const tw = await createCred(owner, 'twilioApi', { accountSid: 'AC12345abc', authToken: 'tw-tok' });
+    tester.next = { status: 200, ok: true };
+    await testCred(owner, tw.body.id).expect(200);
+    expect(tester.lastReq?.url).toBe('https://api.twilio.com/2010-04-01/Accounts/AC12345abc.json');
+    expect(tester.lastReq?.headers?.authorization).toBe(`Basic ${b64('AC12345abc:tw-tok')}`);
+
+    tester.lastReq = undefined;
+    const bad = await createCred(owner, 'twilioApi', { accountSid: 'AC../evil', authToken: 't' });
+    const res = await testCred(owner, bad.body.id).expect(200);
+    expect(res.body).toMatchObject({ ok: false, tested: false });
+    expect(tester.lastReq).toBeUndefined(); // 非法输入未拼进 URL
+  });
+
+  it('mailchimp：从 key 后缀取 dc 拼域名；无 dc 后缀 → 缺字段', async () => {
+    const mc = await createCred(owner, 'mailchimpApi', { apiKey: 'abc123-us21' });
+    tester.next = { status: 200, ok: true };
+    await testCred(owner, mc.body.id).expect(200);
+    expect(tester.lastReq?.url).toBe('https://us21.api.mailchimp.com/3.0/');
+    expect(tester.lastReq?.headers?.authorization).toBe(`Basic ${b64('anystring:abc123-us21')}`);
+
+    tester.lastReq = undefined;
+    const noDc = await createCred(owner, 'mailchimpApi', { apiKey: 'no-suffix-here' });
+    const res = await testCred(owner, noDc.body.id).expect(200);
+    expect(res.body).toMatchObject({ ok: false, tested: false });
+    expect(tester.lastReq).toBeUndefined();
+  });
+
+  it('jira 域名含非法字符 → 缺字段不发请求（不拼进 URL）', async () => {
+    const jira = await createCred(owner, 'jiraApi', { domain: 'acme..net/../x y', email: 'a@b.c', apiToken: 't' });
+    tester.lastReq = undefined;
+    const res = await testCred(owner, jira.body.id).expect(200);
+    expect(res.body).toMatchObject({ ok: false, tested: false });
+    expect(tester.lastReq).toBeUndefined();
+  });
+});
+
 describe('不可测 / 缺字段', () => {
   it('无连接测试的类型 → tested:false，ok:true', async () => {
     const hh = await createCred(owner, 'httpHeaderAuth', { name: 'X-API-Key', value: 'v' });
