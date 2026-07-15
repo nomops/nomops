@@ -6,7 +6,7 @@ import { useProjectsStore } from '../stores/projects.js';
 import LicenseModal from '../components/LicenseModal.vue';
 
 /** n8n 式 Settings：左二级导航（← Settings + 图标项 + 版本号）+ 右内容。 */
-type Section = 'personal' | 'users' | 'api' | 'community' | 'sso' | 'ldap' | 'security' | 'logstream' | 'secrets' | 'billing';
+type Section = 'personal' | 'users' | 'api' | 'community' | 'sourcecontrol' | 'sso' | 'ldap' | 'security' | 'logstream' | 'secrets' | 'billing';
 
 const route = useRoute();
 const router = useRouter();
@@ -295,6 +295,8 @@ async function loadSection() {
     await loadApiKeys();
   } else if (section.value === 'community') {
     await loadCommunityNodes();
+  } else if (section.value === 'sourcecontrol') {
+    await loadSourceControl();
   } else if (section.value === 'billing') {
     const current = projects.current;
     if (current) usage.value = await api.projects.usage(current.id).catch(() => null);
@@ -471,12 +473,108 @@ async function removeLicense() {
   }
 }
 
+/* 源码同步（对标 n8n Source Control） */
+const scConfig = ref<import('../api/client.js').SourceControlConfig | null>(null);
+const scStatus = ref<import('../api/client.js').SourceControlStatus | null>(null);
+const scRepoUrl = ref('');
+const scBranch = ref('main');
+const scMessage = ref('');
+const scError = ref('');
+const scBusy = ref(''); // 当前进行中的操作名，用于按钮 loading
+const scResult = ref('');
+
+async function loadSourceControl() {
+  scError.value = '';
+  scResult.value = '';
+  scStatus.value = null;
+  try {
+    scConfig.value = await api.sourceControl.config();
+    if (scConfig.value.connected) {
+      scBranch.value = scConfig.value.branch;
+      await refreshScStatus();
+    }
+  } catch (e) {
+    scError.value = (e as Error).message; // 社区版 / 非 admin → 403
+    scConfig.value = null;
+  }
+}
+async function refreshScStatus() {
+  try {
+    scStatus.value = await api.sourceControl.status();
+  } catch (e) {
+    scError.value = (e as Error).message;
+  }
+}
+async function scConnect() {
+  scError.value = '';
+  if (!scRepoUrl.value.trim()) {
+    scError.value = 'Enter a repository URL';
+    return;
+  }
+  scBusy.value = 'connect';
+  try {
+    scConfig.value = await api.sourceControl.connect(scRepoUrl.value.trim(), scBranch.value.trim() || 'main');
+    scRepoUrl.value = '';
+    await refreshScStatus();
+  } catch (e) {
+    scError.value = (e as Error).message;
+  } finally {
+    scBusy.value = '';
+  }
+}
+async function scDisconnect() {
+  if (!confirm('Disconnect the source control repository?')) return;
+  scBusy.value = 'disconnect';
+  scError.value = '';
+  try {
+    await api.sourceControl.disconnect();
+    scConfig.value = await api.sourceControl.config();
+    scStatus.value = null;
+  } catch (e) {
+    scError.value = (e as Error).message;
+  } finally {
+    scBusy.value = '';
+  }
+}
+async function scPush() {
+  scBusy.value = 'push';
+  scError.value = '';
+  scResult.value = '';
+  try {
+    const r = await api.sourceControl.push(scMessage.value.trim() || 'Update workflows');
+    scResult.value = r.committed ? `Pushed ${r.files.length} workflow file(s).` : 'Nothing to push — already up to date.';
+    scMessage.value = '';
+    await refreshScStatus();
+  } catch (e) {
+    scError.value = (e as Error).message;
+  } finally {
+    scBusy.value = '';
+  }
+}
+async function scPull() {
+  scBusy.value = 'pull';
+  scError.value = '';
+  scResult.value = '';
+  try {
+    const r = await api.sourceControl.pull();
+    const parts = [`${r.created} created`, `${r.updated} updated`];
+    if (r.skipped.length) parts.push(`${r.skipped.length} skipped`);
+    scResult.value = `Pulled: ${parts.join(', ')}.`;
+    await refreshScStatus();
+  } catch (e) {
+    scError.value = (e as Error).message;
+  } finally {
+    scBusy.value = '';
+  }
+}
+
 /** 单路径/多路径图标（内联 SVG 内容，stroke 由父 svg 提供）。 */
 const icons: Record<Section, string> = {
   personal: '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.4 3-5.2 6.5-5.2s6.5 1.8 6.5 5.2"/>',
   users: '<circle cx="9" cy="8" r="3"/><path d="M2 20c0-3.2 2.6-5 5.5-5 1 0 1.9.2 2.7.6"/><circle cx="17" cy="10" r="2.6"/><path d="M12.5 20c0-2.8 2.2-4.4 4.7-4.4S22 17.2 22 20"/>',
   api: '<circle cx="7" cy="12" r="3.2"/><path d="M10.2 12H21M17 12v3.5M20.5 12v2.5"/>',
   community: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M17.5 14v7M14 17.5h7"/>',
+  sourcecontrol: '<circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7M8.4 6.5c6 0 7.6 1.5 7.6 4.5M18 10.5c0 3.5-3 5-8 5"/>',
   sso: '<circle cx="8" cy="12" r="4"/><path d="M12 12h9M18 12v3.5M21.5 12v2.5"/>',
   ldap: '<rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v3M6 16v-2.5h12V16"/>',
   security: '<path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6l7-3z"/>',
@@ -490,6 +588,7 @@ const sections: Array<{ key: Section; label: string }> = [
   { key: 'users', label: 'Users' },
   { key: 'api', label: 'API' },
   { key: 'community', label: 'Community nodes' },
+  { key: 'sourcecontrol', label: 'Source control' },
   { key: 'sso', label: 'SSO' },
   { key: 'ldap', label: 'LDAP' },
   { key: 'security', label: 'Security & policies' },
@@ -923,6 +1022,80 @@ const sections: Array<{ key: Section; label: string }> = [
         </div>
       </section>
 
+      <!-- 源码同步 -->
+      <section v-else-if="section === 'sourcecontrol'" data-test="settings-sourcecontrol">
+        <h1 class="page-title">Source control</h1>
+        <p class="dim" style="margin-top: -4px; max-width: 620px; font-size: 13px">
+          Version-control this project's workflows in a Git repository — push local changes and pull
+          updates between environments. Only workflows are synced (no credentials). Requires Enterprise +
+          instance admin. Authentication uses the host's Git configuration (SSH deploy key or credential helper).
+        </p>
+
+        <p v-if="scError" class="error-text" data-test="sc-error">{{ scError }}</p>
+
+        <!-- 未连接：连接表单 -->
+        <div v-if="scConfig && !scConfig.connected" class="card" style="max-width: 620px; margin-top: 16px">
+          <label style="font-size: 12px; color: var(--dim)">Repository URL</label>
+          <input v-model="scRepoUrl" data-test="sc-repo" placeholder="git@github.com:org/workflows.git" style="width: 100%; margin-bottom: 12px" />
+          <div style="display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap">
+            <div style="width: 180px">
+              <label style="font-size: 12px; color: var(--dim)">Branch</label>
+              <input v-model="scBranch" data-test="sc-branch" placeholder="main" style="width: 100%" />
+            </div>
+            <button class="btn primary" data-test="sc-connect" :disabled="scBusy === 'connect'" @click="scConnect">
+              {{ scBusy === 'connect' ? 'Connecting…' : 'Connect' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- 已连接：状态 + push/pull -->
+        <template v-else-if="scConfig && scConfig.connected">
+          <div class="card" style="max-width: 620px; margin-top: 16px">
+            <div style="display: flex; align-items: center; gap: 12px">
+              <div style="min-width: 0">
+                <div class="dim" style="font-size: 12px">Connected repository</div>
+                <div class="mono" style="font-size: 13px; margin-top: 3px; word-break: break-all">{{ scConfig.repoUrl }}</div>
+                <div class="dim" style="font-size: 12px; margin-top: 3px">Branch: <code>{{ scConfig.branch }}</code></div>
+              </div>
+              <span style="flex: 1" />
+              <button class="btn secondary btn-sm" data-test="sc-disconnect" :disabled="scBusy === 'disconnect'" @click="scDisconnect">
+                Disconnect
+              </button>
+            </div>
+          </div>
+
+          <div class="card" style="max-width: 620px; margin-top: 16px">
+            <div style="display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap">
+              <div style="flex: 1; min-width: 220px">
+                <label style="font-size: 12px; color: var(--dim)">Commit message</label>
+                <input v-model="scMessage" data-test="sc-message" placeholder="Update workflows" style="width: 100%" @keyup.enter="scPush" />
+              </div>
+              <button class="btn primary" data-test="sc-push" :disabled="!!scBusy" @click="scPush">
+                {{ scBusy === 'push' ? 'Pushing…' : '↑ Push' }}
+              </button>
+              <button class="btn secondary" data-test="sc-pull" :disabled="!!scBusy" @click="scPull">
+                {{ scBusy === 'pull' ? 'Pulling…' : '↓ Pull' }}
+              </button>
+            </div>
+            <p v-if="scResult" class="dim" data-test="sc-result" style="font-size: 12.5px; margin-top: 12px; color: var(--ok)">{{ scResult }}</p>
+
+            <!-- 待提交改动 -->
+            <div v-if="scStatus" style="margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px">
+              <div class="dim" style="font-size: 12px; margin-bottom: 8px">
+                {{ scStatus.files.length ? `${scStatus.files.length} local change(s) to push` : 'No local changes — up to date.' }}
+              </div>
+              <ul v-if="scStatus.files.length" class="sc-changes" data-test="sc-changes">
+                <li v-for="f in scStatus.files" :key="f.path">
+                  <span class="sc-stat">{{ f.status || '·' }}</span>
+                  <span class="mono">{{ f.path }}</span>
+                </li>
+              </ul>
+              <button class="btn secondary btn-sm" data-test="sc-refresh" style="margin-top: 6px" @click="refreshScStatus">Refresh status</button>
+            </div>
+          </div>
+        </template>
+      </section>
+
       <!-- 计费与套餐 -->
       <section v-else data-test="settings-billing">
         <h1 class="page-title">Usage and plan</h1>
@@ -1101,4 +1274,10 @@ const sections: Array<{ key: Section; label: string }> = [
 .token-box { background: var(--bg-input); border-radius: 8px; padding: 12px; margin: 4px 0 12px; }
 .token-box code { font-size: 12px; word-break: break-all; color: var(--accent); }
 .danger { color: var(--err); }
+
+/* 源码同步 */
+.mono { font-family: 'SF Mono', ui-monospace, Menlo, monospace; }
+.sc-changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
+.sc-changes li { display: flex; align-items: center; gap: 10px; font-size: 12.5px; }
+.sc-stat { width: 20px; text-align: center; color: var(--accent); font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 11px; }
 </style>

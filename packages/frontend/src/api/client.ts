@@ -156,6 +156,15 @@ export interface LicenseInfo {
   activated?: boolean;
 }
 
+export interface SourceControlConfig {
+  connected: boolean;
+  repoUrl: string; // 已掩码
+  branch: string;
+}
+export interface SourceControlStatus extends SourceControlConfig {
+  files: Array<{ path: string; status: string }>;
+}
+
 export interface ApiKeyRow {
   id: string;
   label: string;
@@ -348,6 +357,17 @@ export const api = {
   activateLicense: (activationKey: string) =>
     http<LicenseInfo>('POST', '/api/license/activate', { activationKey }),
   deactivateLicense: () => http<LicenseInfo>('DELETE', '/api/license'),
+
+  sourceControl: {
+    config: () => http<SourceControlConfig>('GET', '/api/source-control'),
+    connect: (repoUrl: string, branch: string) =>
+      http<SourceControlConfig>('PUT', '/api/source-control', { repoUrl, branch }),
+    disconnect: () => http<void>('DELETE', '/api/source-control'),
+    status: () => http<SourceControlStatus>('GET', '/api/source-control/status'),
+    push: (message: string) =>
+      http<{ committed: boolean; pushed: boolean; files: string[] }>('POST', '/api/source-control/push', { message }),
+    pull: () => http<{ created: number; updated: number; skipped: string[] }>('POST', '/api/source-control/pull'),
+  },
 
   insights: () =>
     http<{
