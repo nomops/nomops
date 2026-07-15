@@ -5,16 +5,21 @@ import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
 import { setupOwner, inviteUser } from './helpers.js';
-import type { CredentialTestRequest, ICredentialTester } from '../services/credential-test.js';
+import type {
+  CredentialTestRequest,
+  CredentialTestResponse,
+  ICredentialTester,
+} from '../services/credential-test.js';
 
 /**
- * 凭证连接测试（对标 n8n Test connection）：按类型打服务端点看状态。
- * 假 HTTP 客户端不打真网，并记录请求以断言「密钥进了请求、但绝不回 API」（铁律 3）。
+ * 凭证连接测试（对标 n8n Test connection）：按类型打服务端点，默认看 HTTP 状态；
+ * slack/graphql 走 body 级判定。假 HTTP 客户端不打真网，并记录请求以断言
+ * 「密钥进了请求、但绝不回 API」（铁律 3）。
  */
 
 class FakeTester implements ICredentialTester {
   lastReq?: CredentialTestRequest;
-  next: { status: number; ok: boolean } = { status: 200, ok: true };
+  next: CredentialTestResponse = { status: 200, ok: true };
   async request(req: CredentialTestRequest) {
     this.lastReq = req;
     return this.next;
@@ -72,6 +77,58 @@ describe('可测类型', () => {
     expect(res.body).toMatchObject({ ok: false, tested: true });
     expect(res.body.message).toContain('ENOTFOUND');
     tester.request = orig;
+  });
+});
+
+describe('body 级判定：Slack（auth.test 恒 200）', () => {
+  it('body.ok=true → ok；请求打 auth.test 带 Bearer', async () => {
+    const slack = await createCred(owner, 'slackApi', { accessToken: 'xoxb-good' });
+    tester.next = { status: 200, ok: true, json: { ok: true, team: 'acme' } };
+    const res = await testCred(owner, slack.body.id).expect(200);
+    expect(res.body).toMatchObject({ ok: true, tested: true });
+    expect(tester.lastReq?.url).toBe('https://slack.com/api/auth.test');
+    expect(tester.lastReq?.headers?.authorization).toBe('Bearer xoxb-good');
+    expect(tester.lastReq?.bodyCheck).toBe('slack');
+  });
+
+  it('HTTP 200 但 body.ok=false → 失败，消息含错误码、不透传其余 body', async () => {
+    const slack = await createCred(owner, 'slackApi', { accessToken: 'xoxb-bad' });
+    tester.next = { status: 200, ok: true, json: { ok: false, error: 'invalid_auth', team: 'leak-me-not' } };
+    const res = await testCred(owner, slack.body.id).expect(200);
+    expect(res.body).toMatchObject({ ok: false, tested: true });
+    expect(res.body.message).toContain('invalid_auth');
+    // 只透出错误码，不整体回传响应 body
+    expect(JSON.stringify(res.body)).not.toContain('leak-me-not');
+    expect(JSON.stringify(res.body)).not.toContain('xoxb-bad');
+  });
+});
+
+describe('body 级判定：GraphQL（Linear，200 + errors）', () => {
+  it('data 且无 errors → ok；请求是 POST + query body', async () => {
+    const linear = await createCred(owner, 'linearApi', { apiKey: 'lin_good' });
+    tester.next = { status: 200, ok: true, json: { data: { viewer: { id: 'u1' } } } };
+    const res = await testCred(owner, linear.body.id).expect(200);
+    expect(res.body).toMatchObject({ ok: true, tested: true });
+    expect(tester.lastReq?.method).toBe('POST');
+    expect(tester.lastReq?.url).toBe('https://api.linear.app/graphql');
+    expect(tester.lastReq?.body).toContain('viewer');
+    expect(tester.lastReq?.bodyCheck).toBe('graphql');
+  });
+
+  it('HTTP 200 但 errors 数组 → 失败，消息含首条错误', async () => {
+    const linear = await createCred(owner, 'linearApi', { apiKey: 'lin_bad' });
+    tester.next = { status: 200, ok: true, json: { errors: [{ message: 'Authentication required' }] } };
+    const res = await testCred(owner, linear.body.id).expect(200);
+    expect(res.body).toMatchObject({ ok: false, tested: true });
+    expect(res.body.message).toContain('Authentication required');
+  });
+
+  it('GraphQL 非 200（如 400）→ 失败，消息含状态码', async () => {
+    const linear = await createCred(owner, 'linearApi', { apiKey: 'lin_x' });
+    tester.next = { status: 400, ok: false };
+    const res = await testCred(owner, linear.body.id).expect(200);
+    expect(res.body).toMatchObject({ ok: false, tested: true });
+    expect(res.body.message).toContain('400');
   });
 });
 

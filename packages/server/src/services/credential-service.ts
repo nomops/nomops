@@ -3,7 +3,12 @@ import type { Credentials } from '@nomops/core';
 import type { JsonObject } from '@nomops/workflow';
 import { OperationalError } from '@nomops/workflow';
 import type { SecretsService } from './secrets-service.js';
-import { buildCredentialTest, FetchCredentialTester, type ICredentialTester } from './credential-test.js';
+import {
+  buildCredentialTest,
+  judgeTestResponse,
+  FetchCredentialTester,
+  type ICredentialTester,
+} from './credential-test.js';
 
 /** API 返回形态：永不含 data（密文也不给，明文更不给——铁律 3）。 */
 export interface ICredentialView {
@@ -84,9 +89,7 @@ export class CredentialService {
     }
     try {
       const res = await this.tester.request(req);
-      return res.ok
-        ? { ok: true, tested: true, message: 'Connection successful.' }
-        : { ok: false, tested: true, message: `Connection failed — the service returned HTTP ${res.status}.` };
+      return { tested: true, ...judgeTestResponse(req, res) };
     } catch (error) {
       return { ok: false, tested: true, message: `Could not reach the service: ${(error as Error).message}` };
     }
