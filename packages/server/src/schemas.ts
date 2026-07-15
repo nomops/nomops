@@ -88,6 +88,11 @@ export const sourceControlPushSchema = z.object({
   message: z.string().max(500).optional(),
 });
 
+/** 激活许可证（实例 admin）。 */
+export const licenseActivateSchema = z.object({
+  activationKey: z.string().min(1, 'Activation key is required').max(5000),
+});
+
 export const runBodySchema = z.object({
   destinationNode: z.string().optional(),
 });

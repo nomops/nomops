@@ -70,7 +70,7 @@ describe('企业版（LICENSE_KEY 注入）', () => {
 
   it('license 端点返回 enterprise + features', async () => {
     const res = await request(app).get('/api/license').set(as('owner')).expect(200);
-    expect(res.body).toEqual({ plan: 'enterprise', features: [...ENTERPRISE_FEATURES] });
+    expect(res.body).toEqual({ plan: 'enterprise', features: [...ENTERPRISE_FEATURES], activated: true });
   });
 
   describe('权限矩阵（验收项：逐格生效）', () => {
@@ -250,7 +250,7 @@ describe('社区版（无 LICENSE_KEY，零回归）', () => {
 
   it('license = community，features 空', async () => {
     const res = await request(app).get('/api/license').set({ Authorization: `Bearer ${token}` }).expect(200);
-    expect(res.body).toEqual({ plan: 'community', features: [] });
+    expect(res.body).toEqual({ plan: 'community', features: [], activated: false });
   });
 
   it('企业端点 403 且带 feature 标识（验收项）', async () => {

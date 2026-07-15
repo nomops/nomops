@@ -23,7 +23,11 @@ export const ENTERPRISE_FEATURES = [
 export type EnterpriseFeature = (typeof ENTERPRISE_FEATURES)[number];
 
 export class LicenseService {
-  constructor(private readonly licenseKey: string | null) {}
+  private licenseKey: string | null;
+
+  constructor(licenseKey: string | null) {
+    this.licenseKey = licenseKey;
+  }
 
   plan(): LicensePlan {
     // 骨架：key 非空即企业版。真实实现需验签 + 过期时间 + 功能位。
@@ -34,10 +38,21 @@ export class LicenseService {
     return this.plan() === 'enterprise' && ENTERPRISE_FEATURES.includes(feature);
   }
 
-  info(): { plan: LicensePlan; features: EnterpriseFeature[] } {
+  /** 是否已激活（有非空 key）。 */
+  isActivated(): boolean {
+    return !!this.licenseKey && this.licenseKey.trim().length > 0;
+  }
+
+  /** 运行时设置/清除激活码（激活弹窗用）。持久化由调用方（settings）负责。 */
+  setKey(key: string | null): void {
+    this.licenseKey = key && key.trim().length > 0 ? key.trim() : null;
+  }
+
+  info(): { plan: LicensePlan; features: EnterpriseFeature[]; activated: boolean } {
     return {
       plan: this.plan(),
       features: this.plan() === 'enterprise' ? [...ENTERPRISE_FEATURES] : [],
+      activated: this.isActivated(),
     };
   }
 }

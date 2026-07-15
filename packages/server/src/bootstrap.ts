@@ -163,7 +163,11 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     lockStore = new InMemoryLockStore();
   }
 
-  const license = new LicenseService(opts.licenseKey ?? process.env['LICENSE_KEY'] ?? null);
+  // 激活码优先级：显式注入(测试) > DB 里 UI 激活的 > 环境变量 LICENSE_KEY
+  const storedLicenseKey = (await repos.settings.get('license.activationKey')) || null;
+  const license = new LicenseService(
+    opts.licenseKey ?? storedLicenseKey ?? process.env['LICENSE_KEY'] ?? null,
+  );
   const mfa = new MfaService(repos);
   const auth = new AuthService(repos, jwtSecret, mfa);
   const apiKeys = new ApiKeyService(repos);

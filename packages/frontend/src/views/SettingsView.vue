@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { api, type ApiKeyRow, type CommunityNode } from '../api/client.js';
+import { api, type ApiKeyRow, type CommunityNode, type LicenseInfo } from '../api/client.js';
 import { useProjectsStore } from '../stores/projects.js';
+import LicenseModal from '../components/LicenseModal.vue';
 
 /** n8n 式 Settings：左二级导航（← Settings + 图标项 + 版本号）+ 右内容。 */
 type Section = 'personal' | 'users' | 'api' | 'community' | 'sso' | 'ldap' | 'security' | 'logstream' | 'secrets' | 'billing';
@@ -447,6 +448,28 @@ async function upgrade() {
 }
 
 const planLabel = computed(() => (projects.license?.plan === 'enterprise' ? 'Enterprise' : 'Community'));
+
+/* 许可证激活弹窗（对标 n8n Enter activation key） */
+const licenseModalOpen = ref(false);
+const licenseBusy = ref(false);
+const licenseError = ref('');
+const isActivated = computed(() => projects.license?.activated ?? projects.license?.plan === 'enterprise');
+
+function onLicenseActivated(info: LicenseInfo) {
+  projects.license = info; // 立即反映解锁的功能
+}
+async function removeLicense() {
+  if (!confirm('Remove the activation key? Enterprise features will be disabled.')) return;
+  licenseError.value = '';
+  licenseBusy.value = true;
+  try {
+    projects.license = await api.deactivateLicense();
+  } catch (e) {
+    licenseError.value = (e as Error).message;
+  } finally {
+    licenseBusy.value = false;
+  }
+}
 
 /** 单路径/多路径图标（内联 SVG 内容，stroke 由父 svg 提供）。 */
 const icons: Record<Section, string> = {
@@ -903,6 +926,32 @@ const sections: Array<{ key: Section; label: string }> = [
       <!-- 计费与套餐 -->
       <section v-else data-test="settings-billing">
         <h1 class="page-title">Usage and plan</h1>
+
+        <!-- 许可证 / 激活码（对标 n8n） -->
+        <div class="card" style="max-width: 560px; margin-bottom: 16px" data-test="license-card">
+          <div style="display: flex; align-items: center; gap: 12px">
+            <div>
+              <div class="dim" style="font-size: 12px">Edition</div>
+              <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px">
+                <span style="font-size: 18px; font-weight: 600">{{ planLabel }}</span>
+                <span class="plan-badge" :class="projects.license?.plan">{{ isActivated ? 'Activated' : 'Free' }}</span>
+              </div>
+            </div>
+            <span style="flex: 1" />
+            <button v-if="!isActivated" class="btn primary" data-test="license-open" @click="licenseModalOpen = true">
+              Enter activation key
+            </button>
+            <button v-else class="btn secondary" data-test="license-remove" :disabled="licenseBusy" @click="removeLicense">
+              {{ licenseBusy ? 'Removing…' : 'Remove license' }}
+            </button>
+          </div>
+          <p v-if="licenseError" class="error-text" data-test="license-remove-error">{{ licenseError }}</p>
+          <p class="dim" style="font-size: 11.5px; margin-top: 12px">
+            An activation key unlocks Enterprise features (SSO, SCIM, LDAP, audit logs, source control,
+            external secrets). Takes effect immediately — no restart.
+          </p>
+        </div>
+
         <div class="card" style="max-width: 560px">
           <div style="display: flex; align-items: center; gap: 12px">
             <div>
@@ -966,6 +1015,8 @@ const sections: Array<{ key: Section; label: string }> = [
       </section>
     </div>
     </div>
+
+    <LicenseModal :open="licenseModalOpen" @close="licenseModalOpen = false" @activated="onLicenseActivated" />
   </div>
 </template>
 

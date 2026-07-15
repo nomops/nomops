@@ -153,6 +153,7 @@ export interface AuditLogRow {
 export interface LicenseInfo {
   plan: 'community' | 'enterprise';
   features: string[];
+  activated?: boolean;
 }
 
 export interface ApiKeyRow {
@@ -344,6 +345,9 @@ export const api = {
   },
 
   license: () => http<LicenseInfo>('GET', '/api/license'),
+  activateLicense: (activationKey: string) =>
+    http<LicenseInfo>('POST', '/api/license/activate', { activationKey }),
+  deactivateLicense: () => http<LicenseInfo>('DELETE', '/api/license'),
 
   insights: () =>
     http<{

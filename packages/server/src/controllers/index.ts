@@ -35,6 +35,7 @@ import {
   communityNodeInstallSchema,
   sourceControlConnectSchema,
   sourceControlPushSchema,
+  licenseActivateSchema,
 } from '../schemas.js';
 
 /** Zod 校验失败 → 400（含字段级错误）。 */
@@ -1071,6 +1072,31 @@ export function createApiRouter(services: AppServices): Router {
   router.get(
     '/license',
     h(async (_req, res) => {
+      res.json(services.license.info());
+    }),
+  );
+
+  // 激活许可证（对标 n8n「Enter activation key」）：落库 + 运行时生效，无需重启。实例 admin。
+  router.post(
+    '/license/activate',
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      const { activationKey } = parseBody(licenseActivateSchema, req);
+      services.license.setKey(activationKey);
+      await services.repos.settings.set('license.activationKey', activationKey.trim());
+      recordAudit(services, req, 'license.activate', undefined, { plan: services.license.plan() });
+      res.json(services.license.info());
+    }),
+  );
+
+  // 移除许可证（回落社区版）。实例 admin。
+  router.delete(
+    '/license',
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      services.license.setKey(null);
+      await services.repos.settings.set('license.activationKey', '');
+      recordAudit(services, req, 'license.deactivate');
       res.json(services.license.info());
     }),
   );
