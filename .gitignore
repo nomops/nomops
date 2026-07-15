@@ -12,6 +12,7 @@ coverage/
 .DS_Store
 *.db
 *.db-journal
+.nomops/
 cp-data/
 control-plane.db
 .env.cloud.local
