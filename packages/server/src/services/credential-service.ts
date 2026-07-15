@@ -3,6 +3,7 @@ import type { Credentials } from '@nomops/core';
 import type { JsonObject } from '@nomops/workflow';
 import { OperationalError } from '@nomops/workflow';
 import type { SecretsService } from './secrets-service.js';
+import { buildCredentialTest, FetchCredentialTester, type ICredentialTester } from './credential-test.js';
 
 /** API 返回形态：永不含 data（密文也不给，明文更不给——铁律 3）。 */
 export interface ICredentialView {
@@ -18,6 +19,8 @@ export class CredentialService {
     private readonly credentials: Credentials,
     /** 外部密钥解析（docs/10 B4）。注入后 `{{ $secrets.KEY }}` 引用在注入瞬间物化。 */
     private readonly secrets?: SecretsService,
+    /** 连接测试的 HTTP 客户端（缺省真实 fetch；测试注入假实现，不打真网）。 */
+    private readonly tester: ICredentialTester = new FetchCredentialTester(),
   ) {}
 
   async create(input: { name: string; type: string; data: JsonObject }, projectId: string): Promise<ICredentialView> {
@@ -63,13 +66,29 @@ export class CredentialService {
     return { connected: Boolean(token) };
   }
 
-  /** 测试连接（MVP：能解密即 ok；真实连接测试随具体凭证类型在后续补）。 */
-  async test(id: string, projectId: string): Promise<{ ok: boolean; message?: string }> {
+  /**
+   * 测试连接（对标 n8n）：解密凭证 → 按类型打对应服务的只读端点看 HTTP 状态。
+   * 可测类型不存在 → tested:false（凭证已存但无连接测试）；缺字段 → tested:false。
+   * 密钥只进请求发给目标服务，绝不回 API/落日志（铁律 3）。
+   */
+  async test(id: string, projectId: string): Promise<{ ok: boolean; tested: boolean; message?: string }> {
+    const row = await this.repos.credentials.findById(id, projectId); // 归属检查
+    if (!row) throw new OperationalError('Credential not found', { credentialId: id, status: 404 });
+    const data = await this.credentials.decrypt(row.data, { projectId });
+    const req = buildCredentialTest(row.type, this.secrets ? this.secrets.resolve(data) : data);
+    if (req === undefined) {
+      return { ok: true, tested: false, message: 'No connection test available for this credential type.' };
+    }
+    if (req === null) {
+      return { ok: false, tested: false, message: 'Missing fields required to test this credential.' };
+    }
     try {
-      await this.getDecryptedData(id, projectId);
-      return { ok: true };
+      const res = await this.tester.request(req);
+      return res.ok
+        ? { ok: true, tested: true, message: 'Connection successful.' }
+        : { ok: false, tested: true, message: `Connection failed — the service returned HTTP ${res.status}.` };
     } catch (error) {
-      return { ok: false, message: (error as Error).message };
+      return { ok: false, tested: true, message: `Could not reach the service: ${(error as Error).message}` };
     }
   }
 

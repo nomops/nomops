@@ -285,7 +285,8 @@ export const api = {
     list: () => http<CredentialView[]>('GET', '/api/credentials'),
     create: (body: { name: string; type: string; data: JsonObject }) =>
       http<CredentialView>('POST', '/api/credentials', body),
-    test: (id: string) => http<{ ok: boolean; message?: string }>('POST', `/api/credentials/${id}/test`),
+    test: (id: string) =>
+      http<{ ok: boolean; tested: boolean; message?: string }>('POST', `/api/credentials/${id}/test`),
     remove: (id: string) => http<void>('DELETE', `/api/credentials/${id}`),
     oauthStatus: (id: string) => http<{ connected: boolean }>('GET', `/api/credentials/${id}/oauth-status`),
   },

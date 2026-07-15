@@ -97,6 +97,8 @@ export interface BootstrapOptions {
   ldapAuthenticator?: ILdapAuthenticator;
   /** 社区节点安装器（缺省 npm 真实实现；测试注入假实现映射到本地 fixture）。 */
   nodeInstaller?: INodeInstaller;
+  /** 凭证连接测试的 HTTP 客户端（缺省真实 fetch；测试注入假实现，不打真网）。 */
+  credentialTester?: import('./services/credential-test.js').ICredentialTester;
   /** 源码同步的 git 工作目录（缺省 NOMOPS_SOURCE_CONTROL_DIR 或 .nomops/source-control；测试传临时目录隔离）。 */
   sourceControlDir?: string;
 }
@@ -189,7 +191,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   );
   // 外部密钥（docs/10 B4）：凭证解密后物化 {{ $secrets.KEY }} 引用
   const secrets = new SecretsService(opts.secretsProvider ?? new EnvSecretsProvider(), license);
-  const credentialService = new CredentialService(repos, credentials, secrets);
+  const credentialService = new CredentialService(repos, credentials, secrets, opts.credentialTester);
   const quota = new QuotaService(repos, license);
   // 日志流（docs/10 B3）：先于 executions/audit 建好，两者把事件旁路到它
   const logStreaming = new LogStreamingService(repos, opts.logStreamPost);

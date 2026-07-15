@@ -1,0 +1,99 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import request from 'supertest';
+import type { Express } from 'express';
+import type { BootstrapResult } from '../bootstrap.js';
+import { bootstrap } from '../bootstrap.js';
+import { createApp } from '../app.js';
+import { setupOwner, inviteUser } from './helpers.js';
+import type { CredentialTestRequest, ICredentialTester } from '../services/credential-test.js';
+
+/**
+ * 凭证连接测试（对标 n8n Test connection）：按类型打服务端点看状态。
+ * 假 HTTP 客户端不打真网，并记录请求以断言「密钥进了请求、但绝不回 API」（铁律 3）。
+ */
+
+class FakeTester implements ICredentialTester {
+  lastReq?: CredentialTestRequest;
+  next: { status: number; ok: boolean } = { status: 200, ok: true };
+  async request(req: CredentialTestRequest) {
+    this.lastReq = req;
+    return this.next;
+  }
+}
+
+let boot: BootstrapResult;
+let app: Express;
+let owner: string;
+const tester = new FakeTester();
+const bearer = (t: string) => ({ Authorization: `Bearer ${t}` });
+
+const createCred = (token: string, type: string, data: Record<string, unknown>) =>
+  request(app).post('/api/credentials').set(bearer(token)).send({ name: `${type} cred`, type, data }).expect(201);
+const testCred = (token: string, id: string) => request(app).post(`/api/credentials/${id}/test`).set(bearer(token));
+
+beforeAll(async () => {
+  boot = await bootstrap({ dbConfig: { type: 'sqlite' }, credentialTester: tester });
+  app = createApp(boot.services);
+  owner = (await setupOwner(app, 'owner@cred.dev')).token;
+});
+
+afterAll(async () => {
+  await boot.shutdown();
+});
+
+describe('可测类型', () => {
+  it('成功：打对端点、带上密钥，返回 ok；密钥不回 API', async () => {
+    const gh = await createCred(owner, 'githubApi', { accessToken: 'ghp_secret123' });
+    tester.next = { status: 200, ok: true };
+    const res = await testCred(owner, gh.body.id).expect(200);
+    expect(res.body).toMatchObject({ ok: true, tested: true });
+    // 请求确实带了解密后的密钥打向 GitHub
+    expect(tester.lastReq?.url).toBe('https://api.github.com/user');
+    expect(tester.lastReq?.headers?.authorization).toBe('Bearer ghp_secret123');
+    // 但响应绝不含密钥（铁律 3）
+    expect(JSON.stringify(res.body)).not.toContain('ghp_secret123');
+  });
+
+  it('失败：服务返回 401 → ok:false，消息含状态码', async () => {
+    const gh = await createCred(owner, 'githubApi', { accessToken: 'bad-token' });
+    tester.next = { status: 401, ok: false };
+    const res = await testCred(owner, gh.body.id).expect(200);
+    expect(res.body).toMatchObject({ ok: false, tested: true });
+    expect(res.body.message).toContain('401');
+  });
+
+  it('网络错误 → ok:false，tested:true', async () => {
+    const gh = await createCred(owner, 'openAiApi', { apiKey: 'sk-x' });
+    const orig = tester.request.bind(tester);
+    tester.request = async () => {
+      throw new Error('ENOTFOUND');
+    };
+    const res = await testCred(owner, gh.body.id).expect(200);
+    expect(res.body).toMatchObject({ ok: false, tested: true });
+    expect(res.body.message).toContain('ENOTFOUND');
+    tester.request = orig;
+  });
+});
+
+describe('不可测 / 缺字段', () => {
+  it('无连接测试的类型 → tested:false，ok:true', async () => {
+    const hh = await createCred(owner, 'httpHeaderAuth', { name: 'X-API-Key', value: 'v' });
+    const res = await testCred(owner, hh.body.id).expect(200);
+    expect(res.body).toEqual({ ok: true, tested: false, message: expect.stringContaining('No connection test') });
+  });
+
+  it('可测类型但缺必填字段 → tested:false，ok:false', async () => {
+    const gh = await createCred(owner, 'githubApi', { accessToken: '' });
+    const res = await testCred(owner, gh.body.id).expect(200);
+    expect(res.body).toMatchObject({ ok: false, tested: false });
+    expect(res.body.message).toContain('Missing fields');
+  });
+});
+
+describe('归属', () => {
+  it('别的用户测不了我的凭证 → 404', async () => {
+    const gh = await createCred(owner, 'githubApi', { accessToken: 'ghp_x' });
+    const other = (await inviteUser(app, owner, 'other@cred.dev')).token;
+    await testCred(other, gh.body.id).expect(404);
+  });
+});
