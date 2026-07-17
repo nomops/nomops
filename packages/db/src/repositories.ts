@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, lt, lte, ne, sql } from 'drizzle-orm';
 import type { JsonObject } from '@nomops/workflow';
 import type { DatabaseHandle, NomopsSchema } from './client.js';
 import type {
@@ -24,6 +24,7 @@ import type {
   DataTable,
   DataTableRow,
   Setting,
+  Tag,
   User,
   Variable,
   WebhookEntity,
@@ -334,6 +335,7 @@ export class WorkflowRepository extends BaseRepository {
         connections: input.connections,
         settings: input.settings ?? null,
         staticData: input.staticData ?? null,
+        pinData: input.pinData ?? null,
         folderId: input.folderId ?? null,
       })
       .returning();
@@ -355,6 +357,7 @@ export class WorkflowRepository extends BaseRepository {
         connections: input.connections,
         settings: input.settings ?? null,
         staticData: input.staticData ?? null,
+        pinData: input.pinData ?? null,
         folderId: input.folderId ?? null,
       })
       .returning();
@@ -365,7 +368,7 @@ export class WorkflowRepository extends BaseRepository {
   }
 
   /** 按文件夹过滤（folderId=null → 项目根）。归属经 shared_workflows。 */
-  async findByProjectAndFolder(projectId: string, folderId: string | null): Promise<Workflow[]> {
+  async findByProjectAndFolder(projectId: string, folderId: string | null, archived = false): Promise<Workflow[]> {
     const rows = await this.db
       .select()
       .from(this.schema.workflows)
@@ -376,6 +379,7 @@ export class WorkflowRepository extends BaseRepository {
       .where(
         and(
           eq(this.schema.sharedWorkflows.projectId, projectId),
+          eq(this.schema.workflows.archived, archived),
           folderId === null
             ? isNull(this.schema.workflows.folderId)
             : eq(this.schema.workflows.folderId, folderId),
@@ -399,7 +403,20 @@ export class WorkflowRepository extends BaseRepository {
     return rows[0] ? (rows[0].workflows as Workflow) : null;
   }
 
-  async findAllByProject(projectId: string): Promise<Workflow[]> {
+  /**
+   * 不带归属过滤的按 id 查询 —— ★仅限系统内部路径（触发器/轮询调度读最新 staticData）。
+   * 一切用户请求路径必须走带 projectId 的 findById（铁律 2）。
+   */
+  async findByIdUnscoped(id: string): Promise<Workflow | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.workflows)
+      .where(eq(this.schema.workflows.id, id))
+      .limit(1);
+    return (rows[0] as Workflow | undefined) ?? null;
+  }
+
+  async findAllByProject(projectId: string, archived = false): Promise<Workflow[]> {
     const rows = await this.db
       .select()
       .from(this.schema.workflows)
@@ -407,14 +424,56 @@ export class WorkflowRepository extends BaseRepository {
         this.schema.sharedWorkflows,
         eq(this.schema.sharedWorkflows.workflowId, this.schema.workflows.id),
       )
-      .where(eq(this.schema.sharedWorkflows.projectId, projectId));
+      .where(
+        and(
+          eq(this.schema.sharedWorkflows.projectId, projectId),
+          eq(this.schema.workflows.archived, archived),
+        ),
+      );
     return rows.map((r: { workflows: Workflow }) => r.workflows);
+  }
+
+  /** 收藏/归档标志位（B2 卡片菜单）。归档时上层负责先下线触发器。 */
+  async setFlags(id: string, patch: { favorite?: boolean; archived?: boolean }): Promise<Workflow> {
+    const [row] = await this.db
+      .update(this.schema.workflows)
+      .set(patch)
+      .where(eq(this.schema.workflows.id, id))
+      .returning();
+    return row as Workflow;
   }
 
   async update(id: string, patch: Partial<CreateWorkflowInput>): Promise<Workflow> {
     const [row] = await this.db
       .update(this.schema.workflows)
       .set({ ...patch, updatedAt: new Date() })
+      .where(eq(this.schema.workflows.id, id))
+      .returning();
+    return row as Workflow;
+  }
+
+  /** 实例级列表（仅 MCP 管理页等系统路径；admin 已由路由把关）：id/name/项目名/是否已发布。 */
+  async listAllUnscoped(): Promise<Array<{ id: string; name: string; projectName: string; published: boolean }>> {
+    const rows = await this.db
+      .select({
+        id: this.schema.workflows.id,
+        name: this.schema.workflows.name,
+        projectName: this.schema.projects.name,
+        publishedVersionId: this.schema.workflows.publishedVersionId,
+      })
+      .from(this.schema.workflows)
+      .innerJoin(this.schema.sharedWorkflows, eq(this.schema.sharedWorkflows.workflowId, this.schema.workflows.id))
+      .innerJoin(this.schema.projects, eq(this.schema.projects.id, this.schema.sharedWorkflows.projectId));
+    return (rows as Array<{ id: string; name: string; projectName: string; publishedVersionId: string | null }>).map(
+      ({ publishedVersionId, ...rest }) => ({ ...rest, published: Boolean(publishedVersionId) }),
+    );
+  }
+
+  /** 发布：把生产指针指向某个版本快照（不 bump updatedAt——发布不是编辑）。 */
+  async markPublished(id: string, versionId: string): Promise<Workflow> {
+    const [row] = await this.db
+      .update(this.schema.workflows)
+      .set({ publishedVersionId: versionId, publishedAt: new Date() })
       .where(eq(this.schema.workflows.id, id))
       .returning();
     return row as Workflow;
@@ -433,6 +492,20 @@ export class WorkflowRepository extends BaseRepository {
   }
 
   /** 全部已激活的工作流（启动时恢复触发器用）。 */
+  /** 实例级计数（metrics 用，无归属过滤——只出聚合数字）。 */
+  async countAll(): Promise<number> {
+    const rows = await this.db.select({ n: sql`count(*)` }).from(this.schema.workflows);
+    return Number(rows[0]?.n ?? 0);
+  }
+
+  async countActive(): Promise<number> {
+    const rows = await this.db
+      .select({ n: sql`count(*)` })
+      .from(this.schema.workflows)
+      .where(eq(this.schema.workflows.active, true));
+    return Number(rows[0]?.n ?? 0);
+  }
+
   async findAllActive(): Promise<Workflow[]> {
     const rows = await this.db
       .select()
@@ -535,8 +608,8 @@ export class WorkflowVersionRepository extends BaseRepository {
     return (rows[0] as WorkflowVersion | undefined) ?? null;
   }
 
-  /** 只保留最近 keep 个版本，删更旧的（限界增长）。 */
-  async prune(workflowId: string, keep: number): Promise<void> {
+  /** 只保留最近 keep 个版本，删更旧的（限界增长）。keepId：额外保留的版本（已发布指针，不能被裁）。 */
+  async prune(workflowId: string, keep: number, keepId?: string | null): Promise<void> {
     const rows = await this.db
       .select({ n: this.schema.workflowVersions.versionNumber })
       .from(this.schema.workflowVersions)
@@ -552,6 +625,7 @@ export class WorkflowVersionRepository extends BaseRepository {
         and(
           eq(this.schema.workflowVersions.workflowId, workflowId),
           lt(this.schema.workflowVersions.versionNumber, cutoff + 1),
+          ...(keepId ? [ne(this.schema.workflowVersions.id, keepId)] : []),
         ),
       );
   }
@@ -649,7 +723,10 @@ export class CredentialRepository extends BaseRepository {
   }
 
   async update(id: string, patch: { name?: string; data?: string }): Promise<void> {
-    await this.db.update(this.schema.credentials).set(patch).where(eq(this.schema.credentials.id, id));
+    await this.db
+      .update(this.schema.credentials)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(this.schema.credentials.id, id));
   }
 
   async delete(id: string): Promise<void> {
@@ -706,14 +783,97 @@ export class ExecutionRepository extends BaseRepository {
     return rows.map((r: { executions: Execution }) => r.executions);
   }
 
+  /** 某工作流最近一次已结束的执行（部分执行复用旧数据用）。 */
+  async findLatestFinishedByWorkflow(workflowId: string): Promise<Execution | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.executions)
+      .where(
+        and(
+          eq(this.schema.executions.workflowId, workflowId),
+          sql`${this.schema.executions.status} IN ('success', 'error')`,
+        ),
+      )
+      .orderBy(desc(this.schema.executions.createdAt))
+      .limit(1);
+    return (rows[0] as Execution | undefined) ?? null;
+  }
+
   async updateStatus(id: string, status: string, stoppedAt?: Date | null): Promise<void> {
     await this.db
       .update(this.schema.executions)
-      .set({ status, stoppedAt: stoppedAt ?? null })
+      .set({ status, stoppedAt: stoppedAt ?? null, waitTill: null })
       .where(eq(this.schema.executions.id, id));
   }
 
+  /** 挂起为 waiting：记录唤醒时刻（null = 等外部信号），stoppedAt 保持空。 */
+  async setWaiting(id: string, waitTill: Date | null): Promise<void> {
+    await this.db
+      .update(this.schema.executions)
+      .set({ status: 'waiting', stoppedAt: null, waitTill })
+      .where(eq(this.schema.executions.id, id));
+  }
+
+  /* ── processed data（轮询去重） ── */
+
+  /**
+   * 去重原语：传入候选键，返回其中「首次出现」的键并原子记录。
+   * 已见过的键被过滤掉。键按 (workflowId, contextKey) 命名空间隔离。
+   */
+  async filterNewKeys(workflowId: string, contextKey: string, keys: string[]): Promise<string[]> {
+    if (keys.length === 0) return [];
+    const fresh: string[] = [];
+    for (const value of keys) {
+      const inserted = await this.db
+        .insert(this.schema.processedData)
+        .values({ workflowId, contextKey, value })
+        .onConflictDoNothing()
+        .returning();
+      if (inserted.length > 0) fresh.push(value);
+    }
+    return fresh;
+  }
+
+  /** 清理某工作流的去重记录（删除工作流时调用）。 */
+  async clearProcessedData(workflowId: string): Promise<void> {
+    await this.db
+      .delete(this.schema.processedData)
+      .where(eq(this.schema.processedData.workflowId, workflowId));
+  }
+
+  /** 按状态聚合执行数（metrics 用）。 */
+  async countByStatus(): Promise<Record<string, number>> {
+    const rows = await this.db
+      .select({ status: this.schema.executions.status, n: sql`count(*)` })
+      .from(this.schema.executions)
+      .groupBy(this.schema.executions.status);
+    const out: Record<string, number> = {};
+    for (const r of rows as Array<{ status: string; n: unknown }>) out[r.status] = Number(r.n);
+    return out;
+  }
+
+  /** 到点该唤醒的 waiting 执行（wait-tracker 轮询用；等外部信号的不含在内）。 */
+  async findDueWaiting(now: Date): Promise<Execution[]> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.executions)
+      .where(
+        and(
+          eq(this.schema.executions.status, 'waiting'),
+          sql`${this.schema.executions.waitTill} IS NOT NULL`,
+          lte(this.schema.executions.waitTill, now),
+        ),
+      );
+    return rows as Execution[];
+  }
+
   /** 更新执行数据大字段（RunExecutionData）。 */
+  /** 删除执行（含数据行）。工作流 settings 的「不保存某类执行」策略在收尾时调用。 */
+  async delete(id: string): Promise<void> {
+    await this.db.delete(this.schema.executionData).where(eq(this.schema.executionData.executionId, id));
+    await this.db.delete(this.schema.executions).where(eq(this.schema.executions.id, id));
+  }
+
   async updateData(id: string, data: JsonObject): Promise<void> {
     await this.db
       .update(this.schema.executionData)
@@ -1018,9 +1178,16 @@ export class DataTableRepository extends BaseRepository {
   }
 }
 
-/** 公共 REST API 令牌仓储（对标 n8n 的 n8n API）。归属为**用户级**（非项目级）。 */
+/** 公共 REST API 令牌仓储。归属为**用户级**（非项目级）。 */
 export class ApiKeyRepository extends BaseRepository {
-  async create(input: { userId: string; label: string; tokenHash: string; prefix: string }): Promise<ApiKey> {
+  async create(input: {
+    userId: string;
+    label: string;
+    tokenHash: string;
+    prefix: string;
+    expiresAt?: Date | null;
+    scope?: string;
+  }): Promise<ApiKey> {
     const [row] = await this.db.insert(this.schema.apiKeys).values(input).returning();
     return row as ApiKey;
   }
@@ -1061,7 +1228,7 @@ export class ApiKeyRepository extends BaseRepository {
   }
 }
 
-/** 工作流文件夹仓储（对标 n8n）。项目级归属；支持嵌套（parentFolderId）。 */
+/** 工作流文件夹仓储。项目级归属；支持嵌套（parentFolderId）。 */
 export class FolderRepository extends BaseRepository {
   async create(input: { projectId: string; name: string; parentFolderId: string | null }): Promise<Folder> {
     const [row] = await this.db.insert(this.schema.folders).values(input).returning();
@@ -1129,6 +1296,104 @@ export class FolderRepository extends BaseRepository {
   }
 }
 
+export class TagRepository extends BaseRepository {
+  async findAllByProject(projectId: string): Promise<Tag[]> {
+    return (await this.db
+      .select()
+      .from(this.schema.tags)
+      .where(eq(this.schema.tags.projectId, projectId))) as Tag[];
+  }
+
+  async findById(id: string, projectId: string): Promise<Tag | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.tags)
+      .where(and(eq(this.schema.tags.id, id), eq(this.schema.tags.projectId, projectId)))
+      .limit(1);
+    return (rows[0] as Tag | undefined) ?? null;
+  }
+
+  async create(projectId: string, name: string): Promise<Tag> {
+    const [row] = await this.db.insert(this.schema.tags).values({ projectId, name }).returning();
+    return row as Tag;
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.db.delete(this.schema.workflowTagMappings).where(eq(this.schema.workflowTagMappings.tagId, id));
+    await this.db.delete(this.schema.tags).where(eq(this.schema.tags.id, id));
+  }
+
+  /** 覆盖式设置某工作流的标签集合。 */
+  async setWorkflowTags(workflowId: string, tagIds: string[]): Promise<void> {
+    await this.db
+      .delete(this.schema.workflowTagMappings)
+      .where(eq(this.schema.workflowTagMappings.workflowId, workflowId));
+    for (const tagId of tagIds) {
+      await this.db.insert(this.schema.workflowTagMappings).values({ workflowId, tagId }).onConflictDoNothing();
+    }
+  }
+
+  /** 一批工作流的标签映射（列表页一次取全）。 */
+  async tagsForWorkflows(workflowIds: string[]): Promise<Map<string, Tag[]>> {
+    const out = new Map<string, Tag[]>();
+    if (workflowIds.length === 0) return out;
+    const rows = await this.db
+      .select()
+      .from(this.schema.workflowTagMappings)
+      .innerJoin(this.schema.tags, eq(this.schema.tags.id, this.schema.workflowTagMappings.tagId))
+      .where(sql`${this.schema.workflowTagMappings.workflowId} IN (${sql.join(workflowIds.map((id) => sql`${id}`), sql`, `)})`);
+    for (const r of rows as Array<{ workflow_tag_mappings: { workflowId: string }; tags: Tag }>) {
+      const list = out.get(r.workflow_tag_mappings.workflowId) ?? [];
+      list.push(r.tags);
+      out.set(r.workflow_tag_mappings.workflowId, list);
+    }
+    return out;
+  }
+
+  /** 清掉某工作流的全部标签映射（删工作流时用）。 */
+  async clearWorkflow(workflowId: string): Promise<void> {
+    await this.db
+      .delete(this.schema.workflowTagMappings)
+      .where(eq(this.schema.workflowTagMappings.workflowId, workflowId));
+  }
+
+  /* ── 工作流运行统计 ── */
+
+  /** 执行收尾累加：production（非 manual）分成功/失败，manual 单独计。 */
+  async bumpStatistics(workflowId: string, mode: string, success: boolean): Promise<void> {
+    const isManual = mode === 'manual';
+    await this.db
+      .insert(this.schema.workflowStatistics)
+      .values({
+        workflowId,
+        productionSuccess: !isManual && success ? 1 : 0,
+        productionError: !isManual && !success ? 1 : 0,
+        manualRuns: isManual ? 1 : 0,
+        lastRunAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: this.schema.workflowStatistics.workflowId,
+        set: {
+          productionSuccess: sql`${this.schema.workflowStatistics.productionSuccess} + ${!isManual && success ? 1 : 0}`,
+          productionError: sql`${this.schema.workflowStatistics.productionError} + ${!isManual && !success ? 1 : 0}`,
+          manualRuns: sql`${this.schema.workflowStatistics.manualRuns} + ${isManual ? 1 : 0}`,
+          lastRunAt: new Date(),
+        },
+      });
+  }
+
+  async statisticsFor(workflowIds: string[]): Promise<Map<string, { productionSuccess: number; productionError: number; manualRuns: number; lastRunAt: Date | null }>> {
+    const out = new Map();
+    if (workflowIds.length === 0) return out;
+    const rows = await this.db
+      .select()
+      .from(this.schema.workflowStatistics)
+      .where(sql`${this.schema.workflowStatistics.workflowId} IN (${sql.join(workflowIds.map((id) => sql`${id}`), sql`, `)})`);
+    for (const r of rows) out.set(r.workflowId, r);
+    return out;
+  }
+}
+
 export interface Repositories {
   users: UserRepository;
   apiKeys: ApiKeyRepository;
@@ -1142,6 +1407,7 @@ export interface Repositories {
   credentials: CredentialRepository;
   variables: VariableRepository;
   dataTables: DataTableRepository;
+  tags: TagRepository;
   executions: ExecutionRepository;
   settings: SettingsRepository;
   webhooks: WebhookRepository;
@@ -1165,6 +1431,7 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
     credentials: new CredentialRepository(db, schema),
     variables: new VariableRepository(db, schema),
     dataTables: new DataTableRepository(db, schema),
+    tags: new TagRepository(db, schema),
     executions: new ExecutionRepository(db, schema),
     settings: new SettingsRepository(db, schema),
     webhooks: new WebhookRepository(db, schema),

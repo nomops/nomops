@@ -1,7 +1,7 @@
 import type { JsonObject } from '@nomops/workflow';
 
 /**
- * 凭证连接测试（对标 n8n「Test connection」）。
+ * 凭证连接测试。
  * 每个可测类型声明一个校验请求：解密后的凭证 → 打对应服务的一个只读端点。
  * 判定两档：默认看 HTTP 状态（坏 key → 401/403）；bodyCheck 用于状态不反映鉴权
  * 有效性的服务——slack(auth.test 恒 200，看 body.ok)、graphql(恒 200，看 errors)。
@@ -15,7 +15,7 @@ export interface CredentialTestRequest {
   /** POST 请求体（如 GraphQL query）。 */
   body?: string;
   /** body 级判定（不设 = 只看 HTTP 状态；设了 tester 才读响应 body）。 */
-  bodyCheck?: 'slack' | 'graphql';
+  bodyCheck?: 'slack' | 'graphql' | 'auth-only';
 }
 
 export interface CredentialTestResponse {
@@ -78,6 +78,14 @@ export function judgeTestResponse(
       message: first ? `Connection failed — ${first}` : 'Connection failed — the GraphQL query returned errors.',
     };
   }
+  if (req.bodyCheck === 'auth-only') {
+    // 只判鉴权：401/403 = 坏 key；其余（含 400 参数错）说明 key 已通过鉴权。
+    // 用于没有零成本探测端点的服务（豆包/GLM）：发一个故意无效的最小请求。
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, message: `Connection failed — the service returned HTTP ${res.status} (invalid key).` };
+    }
+    return { ok: true, message: 'Connection successful.' };
+  }
   // 默认：HTTP 状态即判定
   return res.ok
     ? { ok: true, message: 'Connection successful.' }
@@ -126,6 +134,27 @@ const TESTS: Record<string, Builder> = {
       headers: { 'x-api-key': str(d, 'apiKey'), 'anthropic-version': '2023-06-01' },
     })),
   openAiApi: (d) => bearerGet(d, 'apiKey', 'https://api.openai.com/v1/models'),
+  /* Chat providers（Settings → Chat）：DeepSeek/Kimi/千问有标准 models 列表端点 */
+  deepseekApi: (d) => bearerGet(d, 'apiKey', 'https://api.deepseek.com/models'),
+  kimiApi: (d) => bearerGet(d, 'apiKey', 'https://api.moonshot.cn/v1/models'),
+  qwenApi: (d) => bearerGet(d, 'apiKey', 'https://dashscope.aliyuncs.com/compatible-mode/v1/models'),
+  /* 豆包/GLM 无零成本列表端点：发故意无效的最小请求，只判鉴权（401/403 = 坏 key） */
+  doubaoApi: (d) =>
+    need(str(d, 'apiKey'), () => ({
+      method: 'POST',
+      url: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
+      headers: { authorization: `Bearer ${str(d, 'apiKey')}`, 'content-type': 'application/json' },
+      body: '{}',
+      bodyCheck: 'auth-only',
+    })),
+  glmApi: (d) =>
+    need(str(d, 'apiKey'), () => ({
+      method: 'POST',
+      url: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+      headers: { authorization: `Bearer ${str(d, 'apiKey')}`, 'content-type': 'application/json' },
+      body: '{}',
+      bodyCheck: 'auth-only',
+    })),
   githubApi: (d) =>
     need(str(d, 'accessToken'), () => ({
       method: 'GET',

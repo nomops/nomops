@@ -16,6 +16,8 @@ export interface IExpressionContext {
   workflow: { id?: string; name?: string };
   /** 项目维度变量（$vars.KEY）。 */
   vars?: Record<string, string>;
+  /** 当前节点参数（$parameter.xxx——声明式 routing 的 url/body 里引用参数）。 */
+  parameters?: JsonObject;
 }
 
 const EXPRESSION_MARKER = '=';
@@ -55,6 +57,7 @@ function buildScope(ctx: IExpressionContext): Record<string, unknown> {
     $now: new Date().toISOString(),
     $workflow: { id: ctx.workflow.id, name: ctx.workflow.name },
     $vars: ctx.vars ?? {},
+    $parameter: ctx.parameters ?? {},
     items: ctx.items,
   };
 }

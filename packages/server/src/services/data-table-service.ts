@@ -33,7 +33,7 @@ const COLUMN_TYPES: DataTableColumnType[] = ['string', 'number', 'boolean', 'dat
 const RESERVED = new Set(['id', 'createdAt', 'updatedAt']);
 
 /**
- * Data tables（对标 n8n）：项目维度的结构化表，跨工作流持久化执行结果。
+ * Data tables：项目维度的结构化表，跨工作流持久化执行结果。
  * 归属经带 projectId 的 repository（铁律 2）。
  */
 export class DataTableService {

@@ -1,5 +1,5 @@
 import type { InferSelectModel } from 'drizzle-orm';
-import type { IConnections, INode, IWorkflowSettings, JsonObject } from '@nomops/workflow';
+import type { IConnections, INode, IPinData, IWorkflowSettings, JsonObject } from '@nomops/workflow';
 import { sqliteSchema } from './schema/sqlite.js';
 
 /**
@@ -26,6 +26,8 @@ export type Invitation = InferSelectModel<typeof sqliteSchema.invitations>;
 export type Folder = InferSelectModel<typeof sqliteSchema.folders>;
 export type WorkflowVersion = InferSelectModel<typeof sqliteSchema.workflowVersions>;
 export type InstalledNode = InferSelectModel<typeof sqliteSchema.installedNodes>;
+export type Tag = InferSelectModel<typeof sqliteSchema.tags>;
+export type WorkflowStatistics = InferSelectModel<typeof sqliteSchema.workflowStatistics>;
 
 /* ── 创建入参（区别于自动生成的 id/时间戳字段） ── */
 
@@ -44,11 +46,13 @@ export interface CreateProjectInput {
 
 export interface CreateWorkflowInput {
   name: string;
+  description?: string | null;
   nodes: INode[];
   connections: IConnections;
   active?: boolean;
   settings?: IWorkflowSettings | null;
   staticData?: JsonObject | null;
+  pinData?: IPinData | null;
   folderId?: string | null;
 }
 

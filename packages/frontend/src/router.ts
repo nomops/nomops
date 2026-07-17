@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from './stores/auth.js';
 
-/** meta.public: 未登录可访问。自托管实例无营销站，根路由即 app 首页（对标 n8n 自托管）。 */
+/** meta.public: 未登录可访问。自托管实例无营销站，根路由即 app 首页（自托管）。 */
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
@@ -13,7 +13,8 @@ export const router = createRouter({
     // 旧路径兼容：并入 Overview 的 tab
     { path: '/credentials', redirect: { path: '/', query: { tab: 'credentials' } } },
     { path: '/executions', redirect: { path: '/', query: { tab: 'executions' } } },
-    { path: '/assistant', name: 'assistant', component: () => import('./views/AssistantView.vue') },
+    { path: '/chat', name: 'chat', component: () => import('./views/ChatView.vue') },
+    { path: '/assistant', redirect: '/chat' },
     { path: '/workflow/:id', name: 'canvas', component: () => import('./views/CanvasView.vue') },
     { path: '/datatables/:id', name: 'datatable', component: () => import('./views/DataTableView.vue') },
     { path: '/admin', name: 'admin', component: () => import('./views/AdminView.vue') },

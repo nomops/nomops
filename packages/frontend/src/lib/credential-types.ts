@@ -2,11 +2,21 @@
  * 凭证类型元数据（前端渲染字段用；不含任何密文/明文）。
  * nomops 自有类型集合，与节点 description.credentials 引用的 name 对应。
  */
+export type CredentialFieldType = 'text' | 'password' | 'select' | 'toggle';
+
+export interface CredentialFieldOption {
+  label: string;
+  value: string;
+}
+
 export interface CredentialField {
   name: string; // 存进 credential data 的 key
   label: string;
-  type: 'text' | 'password';
+  type: CredentialFieldType;
   placeholder?: string;
+  hint?: string; // 字段下方灰色说明
+  options?: CredentialFieldOption[]; // type=select 用
+  default?: string | boolean; // 初始值（select 字符串 / toggle 布尔）
 }
 
 export interface CredentialTypeMeta {
@@ -46,8 +56,43 @@ export const CREDENTIAL_TYPES: CredentialTypeMeta[] = [
     type: 'anthropicApi',
     displayName: 'Anthropic API',
     icon: '✦',
-    description: 'Claude API key (used by the AI Agent node)',
+    description: 'Claude API key (used by the AI Agent node and Chat)',
     fields: [{ name: 'apiKey', label: 'API Key', type: 'password', placeholder: 'sk-ant-…' }],
+  },
+  {
+    type: 'deepseekApi',
+    displayName: 'DeepSeek API',
+    icon: '🐋',
+    description: 'DeepSeek API key (deepseek-chat / deepseek-reasoner, used by Chat)',
+    fields: [{ name: 'apiKey', label: 'API Key', type: 'password', placeholder: 'sk-…' }],
+  },
+  {
+    type: 'doubaoApi',
+    displayName: 'Doubao 豆包 API',
+    icon: '🫘',
+    description: 'Volcengine Ark API key for Doubao models (used by Chat)',
+    fields: [{ name: 'apiKey', label: 'API Key', type: 'password' }],
+  },
+  {
+    type: 'qwenApi',
+    displayName: 'Qwen 千问 API',
+    icon: '🌀',
+    description: 'Alibaba DashScope API key for Qwen models (used by Chat)',
+    fields: [{ name: 'apiKey', label: 'API Key', type: 'password', placeholder: 'sk-…' }],
+  },
+  {
+    type: 'kimiApi',
+    displayName: 'Kimi (Moonshot) API',
+    icon: '🌙',
+    description: 'Moonshot API key for Kimi models (used by Chat)',
+    fields: [{ name: 'apiKey', label: 'API Key', type: 'password', placeholder: 'sk-…' }],
+  },
+  {
+    type: 'glmApi',
+    displayName: 'GLM 智谱 API',
+    icon: '💠',
+    description: 'Zhipu BigModel API key for GLM models (used by Chat)',
+    fields: [{ name: 'apiKey', label: 'API Key', type: 'password' }],
   },
   {
     type: 'oauth2Api',
@@ -56,11 +101,34 @@ export const CREDENTIAL_TYPES: CredentialTypeMeta[] = [
     description: 'Generic OAuth2 (authorization code) — connect any provider by its authorization & token URLs',
     oauth: true,
     fields: [
+      {
+        name: 'grantType',
+        label: 'Grant Type',
+        type: 'select',
+        default: 'authorizationCode',
+        options: [
+          { label: 'Authorization Code', value: 'authorizationCode' },
+          { label: 'Client Credentials', value: 'clientCredentials' },
+          { label: 'PKCE', value: 'pkce' },
+        ],
+      },
       { name: 'clientId', label: 'Client ID', type: 'text' },
       { name: 'clientSecret', label: 'Client Secret', type: 'password' },
       { name: 'authUrl', label: 'Authorization URL', type: 'text', placeholder: 'https://provider.com/oauth/authorize' },
       { name: 'accessTokenUrl', label: 'Access Token URL', type: 'text', placeholder: 'https://provider.com/oauth/token' },
       { name: 'scope', label: 'Scope', type: 'text', placeholder: 'read write' },
+      {
+        name: 'authentication',
+        label: 'Authentication',
+        type: 'select',
+        default: 'header',
+        hint: 'How to pass the client credentials to the token endpoint.',
+        options: [
+          { label: 'Send as Basic Auth header', value: 'header' },
+          { label: 'Send client credentials in body', value: 'body' },
+        ],
+      },
+      { name: 'ignoreSSL', label: 'Ignore SSL Issues (Insecure)', type: 'toggle', default: false },
     ],
   },
   {

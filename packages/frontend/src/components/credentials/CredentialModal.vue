@@ -2,28 +2,34 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { api, type CredentialView } from '../../api/client.js';
 import { CREDENTIAL_TYPES, credentialTypeMeta } from '../../lib/credential-types.js';
+import { credentialIcon } from '../../lib/icons.js';
+import IconSvg from '../IconSvg.vue';
 
 /**
- * n8n 式「Add new credential」弹窗：
- *  ① pick：单个「Select an app or service」下拉搜索框 + Continue（对齐 n8n，不是一整列卡片）
- *  ② config：更宽的详情框——可编辑标题名 + 顶部 Save + Connection/Details 分页 + OAuth 回调 URL + 帮助提示。
- * OAuth2 类型走 Connect my account 授权流程。
+ * 「Add new credential」弹窗：
+ *  ① pick：单个「Select an app or service」下拉搜索框（纯文字应用列表）+ Continue。
+ *  ② config：宽弹窗 + 左侧竖排标签（Connection / Sharing / Details）+ 头部可编辑名 + 右上 Save，
+ *     字段支持 文本 / 密码 / 下拉 / 开关；OAuth2 走 Connect my account；非 OAuth 支持 Test connection。
  */
-const emit = defineEmits<{ close: []; created: [cred: CredentialView] }>();
+const emit = defineEmits<{ close: []; created: [cred: CredentialView]; updated: [cred: CredentialView] }>();
+
+/** edit：编辑已有凭证（对标 n8n 卡片 Open）——跳过选类型，字段留空 = 保持不变。
+ *  createType：直达新建某类型（如 Chat provider 弹窗的 Create new credential）。 */
+const props = defineProps<{ edit?: CredentialView; createType?: string }>();
 
 const step = ref<'pick' | 'config'>('pick');
-const tab = ref<'connection' | 'details'>('connection');
+const tab = ref<'connection' | 'sharing' | 'details'>('connection');
 
 /* pick 步：combobox */
 const search = ref('');
 const pickerOpen = ref(false);
-const pendingType = ref(''); // 选中但尚未 Continue
+const pendingType = ref('');
 const comboRef = ref<HTMLElement | null>(null);
 
 /* config 步 */
 const selectedType = ref('');
 const name = ref('');
-const values = ref<Record<string, string>>({});
+const values = ref<Record<string, unknown>>({});
 const error = ref('');
 const busy = ref(false);
 const copied = ref(false);
@@ -38,7 +44,6 @@ let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 const filteredTypes = computed(() => {
   const q = search.value.trim().toLowerCase();
-  // 已选定（输入框显示的是 displayName）时不再过滤，展示全部便于换选
   if (pendingType.value && search.value === (credentialTypeMeta(pendingType.value)?.displayName ?? '')) {
     return CREDENTIAL_TYPES;
   }
@@ -64,10 +69,18 @@ function pickType(type: string) {
   selectedType.value = type;
   const m = credentialTypeMeta(type);
   name.value = m ? `${m.displayName} account` : '';
-  values.value = {};
+  // 按字段 default 初始化（toggle=false / select=首项）
+  const init: Record<string, unknown> = {};
+  for (const f of m?.fields ?? []) {
+    if (f.default !== undefined) init[f.name] = f.default;
+    else if (f.type === 'toggle') init[f.name] = false;
+    else if (f.type === 'select') init[f.name] = f.options?.[0]?.value ?? '';
+  }
+  values.value = init;
   credId.value = null;
   createdView.value = null;
   connected.value = false;
+  testResult.value = null;
   error.value = '';
   tab.value = 'connection';
   step.value = 'config';
@@ -91,7 +104,7 @@ async function copyRedirect() {
 }
 
 /** 组装写入的 data：presetData（如 demo 标记）+ 用户字段。 */
-function buildData(): Record<string, string> {
+function buildData(): Record<string, unknown> {
   return { ...(meta.value?.presetData ?? {}), ...values.value };
 }
 
@@ -152,8 +165,13 @@ async function save() {
   error.value = '';
   busy.value = true;
   try {
-    await ensureSaved();
-    if (createdView.value) emit('created', createdView.value);
+    if (props.edit) {
+      const updated = await api.credentials.update(props.edit.id, { name: name.value, data: values.value });
+      emit('updated', updated);
+    } else {
+      await ensureSaved();
+      if (createdView.value) emit('created', createdView.value);
+    }
     emit('close');
   } catch (e) {
     error.value = (e as Error).message;
@@ -162,7 +180,7 @@ async function save() {
   }
 }
 
-/* 连接测试（对标 n8n Test connection）：先保存 → 打服务端点看状态 */
+/* 连接测试：先保存 → 打服务端点看状态 */
 const testing = ref(false);
 const testResult = ref<{ ok: boolean; tested: boolean; message?: string } | null>(null);
 
@@ -172,7 +190,7 @@ async function testConnection() {
   testing.value = true;
   try {
     await ensureSaved();
-    if (createdView.value) emit('created', createdView.value); // 列表即时出现
+    if (createdView.value) emit('created', createdView.value);
     testResult.value = await api.credentials.test(credId.value!);
   } catch (e) {
     error.value = (e as Error).message;
@@ -186,7 +204,21 @@ function onDocClick(e: MouseEvent) {
     pickerOpen.value = false;
   }
 }
-onMounted(() => window.addEventListener('mousedown', onDocClick));
+onMounted(() => {
+  window.addEventListener('mousedown', onDocClick);
+  if (props.edit) {
+    // 编辑模式：类型锁定、字段全空（占位提示保持不变）；旧值绝不回显（铁律 3）
+    selectedType.value = props.edit.type;
+    name.value = props.edit.name;
+    credId.value = props.edit.id;
+    createdView.value = props.edit;
+    values.value = {};
+    tab.value = 'connection';
+    step.value = 'config';
+  } else if (props.createType) {
+    pickType(props.createType); // 直达该类型的 config 步
+  }
+});
 onUnmounted(() => {
   window.removeEventListener('mousedown', onDocClick);
   cleanupConnect();
@@ -207,12 +239,12 @@ onUnmounted(() => {
           <label class="fld-label">Select an app or service to connect to</label>
           <div ref="comboRef" class="combo" :class="{ open: pickerOpen }">
             <div class="combo-control" @click="pickerOpen = true">
-              <span v-if="pendingType" class="combo-ico">{{ pendingMeta?.icon }}</span>
+              <svg class="combo-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
               <input
                 v-model="search"
                 class="combo-input"
                 data-test="cred-search"
-                placeholder="Search for an app…"
+                placeholder="Search for app..."
                 autocomplete="off"
                 @focus="pickerOpen = true"
                 @input="pickerOpen = true; pendingType = ''"
@@ -228,106 +260,154 @@ onUnmounted(() => {
                 :data-test-cred-type="t.type"
                 @click="choose(t.type)"
               >
-                <span class="type-icon">{{ t.icon }}</span>
-                <span class="combo-item-body">
-                  <span class="type-name">{{ t.displayName }}<span v-if="t.oauth" class="oauth-tag">OAuth2</span></span>
-                  <span class="type-desc">{{ t.description }}</span>
-                </span>
+                {{ t.displayName }}
               </button>
               <p v-if="filteredTypes.length === 0" class="combo-empty">No matching apps</p>
             </div>
           </div>
-        </div>
 
-        <footer class="cred-foot">
-          <button class="btn ghost" @click="emit('close')">Cancel</button>
-          <button class="btn primary" data-test="cred-continue" :disabled="!pendingType" @click="pickType(pendingType)">Continue</button>
-        </footer>
+          <div class="pick-actions">
+            <button class="btn primary" data-test="cred-continue" :disabled="!pendingType" @click="pickType(pendingType)">Continue</button>
+          </div>
+        </div>
       </template>
 
-      <!-- ── Step 2: configure (name header + tabs + fields) ── -->
+      <!-- ── Step 2: configure (wide, left rail tabs) ── -->
       <template v-else>
         <header class="cred-head config">
-          <span class="head-icon">{{ meta?.icon }}</span>
+          <span class="head-icon"><IconSvg v-bind="credentialIcon(selectedType)" :size="22" /></span>
           <div class="head-name">
             <input v-model="name" class="name-input" data-test="cred-name" placeholder="Name this credential" />
-            <div class="head-type">{{ meta?.displayName }} · <a href="#" @click.prevent="backToPick">change</a></div>
+            <div class="head-type">{{ meta?.displayName }}</div>
           </div>
-          <button class="btn primary head-save" data-test="cred-save" :disabled="busy" @click="save">
+          <button class="btn neutral head-save" data-test="cred-save" :disabled="busy" @click="save">
             {{ busy ? 'Saving…' : 'Save' }}
           </button>
           <button class="icon-x" data-test="cred-close" @click="emit('close')">✕</button>
         </header>
 
-        <nav class="cred-tabs">
-          <button :class="{ active: tab === 'connection' }" @click="tab = 'connection'">Connection</button>
-          <button :class="{ active: tab === 'details' }" @click="tab = 'details'">Details</button>
-        </nav>
+        <div class="config-body">
+          <!-- 左侧竖排标签 -->
+          <nav class="side-tabs">
+            <button :class="{ active: tab === 'connection' }" @click="tab = 'connection'">Connection</button>
+            <button :class="{ active: tab === 'sharing' }" @click="tab = 'sharing'">Sharing</button>
+            <button :class="{ active: tab === 'details' }" @click="tab = 'details'">Details</button>
+          </nav>
 
-        <div class="cred-body">
-          <!-- Connection tab -->
-          <template v-if="tab === 'connection'">
-            <template v-if="meta?.oauth">
-              <label>OAuth Redirect URL</label>
-              <div class="copy-field">
-                <input :value="redirectUrl" readonly />
-                <button type="button" class="copy-btn" @click="copyRedirect">{{ copied ? 'Copied' : 'Copy' }}</button>
+          <!-- 右侧内容 -->
+          <div class="tab-content">
+            <!-- Connection -->
+            <template v-if="tab === 'connection'">
+              <p class="setup-help">
+                Need help filling out these fields? Read the
+                <a href="#docs" @click.prevent>docs</a>.
+              </p>
+
+              <template v-if="meta?.oauth">
+                <div class="field">
+                  <label>OAuth Redirect URL</label>
+                  <div class="copy-field">
+                    <input :value="redirectUrl" readonly />
+                    <button type="button" class="copy-btn" @click="copyRedirect">{{ copied ? 'Copied' : 'Copy' }}</button>
+                  </div>
+                  <p class="fld-hint">In your provider’s app settings, add this as an allowed redirect / callback URL.</p>
+                </div>
+              </template>
+
+              <!-- 字段：文本 / 密码 / 下拉 / 开关 -->
+              <div v-for="f in meta?.fields ?? []" :key="f.name" class="field">
+                <label :for="`fld-${f.name}`">{{ f.label }}</label>
+
+                <button
+                  v-if="f.type === 'toggle'"
+                  type="button"
+                  class="switch"
+                  :class="{ on: values[f.name] }"
+                  role="switch"
+                  :aria-checked="!!values[f.name]"
+                  :data-test-cred-field="f.name"
+                  @click="values[f.name] = !values[f.name]"
+                >
+                  <span class="knob" />
+                </button>
+
+                <div v-else-if="f.type === 'select'" class="select-wrap">
+                  <select :id="`fld-${f.name}`" v-model="values[f.name]" :data-test-cred-field="f.name">
+                    <option v-for="o in f.options ?? []" :key="o.value" :value="o.value">{{ o.label }}</option>
+                  </select>
+                  <svg class="select-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6" /></svg>
+                </div>
+
+                <input
+                  v-else
+                  :id="`fld-${f.name}`"
+                  v-model="values[f.name]"
+                  :type="f.type"
+                  :placeholder="props.edit ? '••••••  (leave blank to keep current value)' : f.placeholder"
+                  :data-test-cred-field="f.name"
+                />
+
+                <p v-if="f.hint" class="fld-hint">{{ f.hint }}</p>
               </div>
-              <p class="fld-hint">In your provider’s app settings, add this as an allowed redirect / callback URL.</p>
+
+              <!-- 非 OAuth：Test connection -->
+              <div v-if="!meta?.oauth" class="test-row">
+                <button class="btn neutral" data-test="cred-test" :disabled="testing" @click="testConnection">
+                  {{ testing ? 'Testing…' : 'Test connection' }}
+                </button>
+                <span
+                  v-if="testResult"
+                  class="test-result"
+                  :class="{ ok: testResult.ok, bad: !testResult.ok, neutral: !testResult.tested }"
+                  data-test="cred-test-result"
+                >
+                  <span class="tr-icon">{{ testResult.tested ? (testResult.ok ? '✓' : '✕') : 'ⓘ' }}</span>
+                  <span>{{ testResult.message }}</span>
+                </span>
+              </div>
+
+              <!-- OAuth2: Connect my account（整块琥珀横幅） -->
+              <div v-if="meta?.oauth" class="oauth-banner" :class="connected ? 'ok' : 'warn'" data-test="oauth-banner">
+                <span class="oauth-icon">{{ connected ? '✓' : '⚠' }}</span>
+                <span>{{ connected ? 'Account connected' : 'Connect your account to use this credential' }}</span>
+                <span class="grow" />
+                <button
+                  class="btn"
+                  :class="connected ? 'neutral' : 'primary'"
+                  :disabled="connecting"
+                  data-test="cred-connect"
+                  @click="connect"
+                >
+                  {{ connecting ? 'Connecting…' : connected ? 'Reconnect' : 'Connect' }}
+                </button>
+              </div>
+
+              <p v-if="error" class="error-text" data-test="cred-error">{{ error }}</p>
+
+              <p class="vault-note">
+                <span class="vault-i">ⓘ</span> Enterprise plan users can pull in credentials from external vaults.
+                <a href="#docs" @click.prevent>More info</a>
+              </p>
             </template>
 
-            <template v-for="f in meta?.fields ?? []" :key="f.name">
-              <label>{{ f.label }}</label>
-              <input v-model="values[f.name]" :type="f.type" :placeholder="f.placeholder" :data-test-cred-field="f.name" />
+            <!-- Sharing -->
+            <template v-else-if="tab === 'sharing'">
+              <div class="sharing-empty">
+                <div class="sharing-ic">👥</div>
+                <h4>Share this credential</h4>
+                <p>Give other users permission to use this credential in their workflows — without ever exposing its secret values.</p>
+                <p class="sharing-plan">Credential sharing is available on the Enterprise plan.</p>
+              </div>
             </template>
 
-            <!-- 非 OAuth：Test connection（对标 n8n） -->
-            <div v-if="!meta?.oauth" class="test-row">
-              <button class="btn secondary" data-test="cred-test" :disabled="testing" @click="testConnection">
-                {{ testing ? 'Testing…' : 'Test connection' }}
-              </button>
-              <span
-                v-if="testResult"
-                class="test-result"
-                :class="{ ok: testResult.ok, bad: !testResult.ok, neutral: !testResult.tested }"
-                data-test="cred-test-result"
-              >
-                <span class="tr-icon">{{ testResult.tested ? (testResult.ok ? '✓' : '✕') : 'ⓘ' }}</span>
-                <span>{{ testResult.message }}</span>
-              </span>
-            </div>
-
-            <!-- OAuth2: Connect my account -->
-            <div v-if="meta?.oauth" class="oauth-banner" :class="connected ? 'ok' : 'warn'" data-test="oauth-banner">
-              <span class="oauth-icon">{{ connected ? '✓' : '⚠' }}</span>
-              <span>{{ connected ? 'Account connected' : 'Connect your account to use this credential' }}</span>
-              <span class="grow" />
-              <button
-                class="btn"
-                :class="connected ? 'secondary' : 'primary'"
-                :disabled="connecting"
-                data-test="cred-connect"
-                @click="connect"
-              >
-                {{ connecting ? 'Connecting…' : connected ? 'Reconnect' : 'Connect' }}
-              </button>
-            </div>
-
-            <div class="help-callout">
-              <span class="help-ico">?</span>
-              <span>Need help filling out these fields? Check the documentation for {{ meta?.displayName }}.</span>
-            </div>
-
-            <p v-if="error" class="error-text" data-test="cred-error">{{ error }}</p>
-          </template>
-
-          <!-- Details tab -->
-          <template v-else>
-            <div class="detail-row"><span class="k">Type</span><span class="v">{{ meta?.displayName }}</span></div>
-            <div v-if="credId" class="detail-row"><span class="k">Credential ID</span><span class="v mono">{{ credId }}</span></div>
-            <div class="detail-row"><span class="k">Encryption</span><span class="v">AES-256-GCM at rest</span></div>
-            <p class="detail-note">The decrypted secret is never returned by the API or written to logs.</p>
-          </template>
+            <!-- Details -->
+            <template v-else>
+              <div class="detail-row"><span class="k">Type</span><span class="v">{{ meta?.displayName }}</span></div>
+              <div v-if="credId" class="detail-row"><span class="k">Credential ID</span><span class="v mono">{{ credId }}</span></div>
+              <div class="detail-row"><span class="k">Encryption</span><span class="v">AES-256-GCM at rest</span></div>
+              <p class="detail-note">The decrypted secret is never returned by the API or written to logs.</p>
+            </template>
+          </div>
         </div>
       </template>
     </div>
@@ -344,56 +424,86 @@ onUnmounted(() => {
   display: flex; flex-direction: column; max-height: 86vh;
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
 }
-/* pick 步 overflow 可见，让 combobox 下拉溢出模态；config 步裁剪并让 body 内部滚动 */
-.cred-modal.pick { width: 500px; max-width: 94vw; overflow: visible; }
-.cred-modal.config { width: 580px; max-width: 94vw; overflow: hidden; }
+/* pick 步窄、overflow 可见（下拉溢出）；config 步宽、左右两栏 */
+.cred-modal.pick { width: 460px; max-width: 94vw; overflow: visible; }
+.cred-modal.config { width: 900px; max-width: 94vw; overflow: hidden; }
 
 /* Header */
-.cred-head { display: flex; align-items: center; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--border); }
-.cred-title { font-size: 16px; font-weight: 600; color: var(--text-hi); flex: 1; }
+.cred-head { display: flex; align-items: center; gap: 14px; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.cred-title { font-size: 17px; font-weight: 600; color: var(--text-hi); flex: 1; }
 .icon-x {
   width: 30px; height: 30px; border-radius: 7px; border: none; background: none; color: var(--text-dim);
   cursor: pointer; font-size: 14px; flex-shrink: 0;
 }
 .icon-x:hover { background: var(--bg-hover); color: var(--text); }
 
-.cred-head.config { align-items: flex-start; }
+.cred-head.config { align-items: center; }
 .head-icon {
-  width: 38px; height: 38px; flex-shrink: 0; border-radius: 9px; background: var(--bg-input);
-  display: flex; align-items: center; justify-content: center; font-size: 18px;
+  width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%; background: var(--bg-input);
+  border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 19px;
 }
 .head-name { flex: 1; min-width: 0; }
 .name-input {
-  width: 100%; background: none; border: 1px solid transparent; border-radius: 6px; padding: 4px 6px;
-  color: var(--text-hi); font-size: 16px; font-weight: 600; font-family: inherit;
+  width: 100%; max-width: 420px; background: none; border: 1px solid transparent; border-radius: 6px; padding: 3px 6px;
+  color: var(--text-hi); font-size: 17px; font-weight: 600; font-family: inherit;
 }
 .name-input:hover { border-color: var(--border); }
 .name-input:focus { outline: none; border-color: var(--accent); background: var(--bg-input); }
-.head-type { font-size: 12px; color: var(--text-dim); padding: 0 6px; margin-top: 2px; }
-.head-type a { color: var(--accent); text-decoration: none; }
-.head-type a:hover { text-decoration: underline; }
-.head-save { flex-shrink: 0; height: 34px; padding: 0 18px; }
+.head-type { font-size: 12.5px; color: var(--text-dim); padding: 0 6px; margin-top: 1px; }
+.head-save { flex-shrink: 0; height: 34px; padding: 0 20px; }
 
-/* Tabs */
-.cred-tabs { display: flex; gap: 4px; padding: 0 18px; border-bottom: 1px solid var(--border); }
-.cred-tabs button {
-  padding: 11px 6px; margin-bottom: -1px; background: none; border: none; border-bottom: 2px solid transparent;
+/* Config: two-column body */
+.config-body { flex: 1 1 auto; min-height: 0; display: flex; }
+.side-tabs {
+  width: 176px; flex-shrink: 0; border-right: 1px solid var(--border); padding: 14px 12px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.side-tabs button {
+  text-align: left; padding: 9px 12px; border: none; background: none; border-radius: 7px;
   color: var(--text-dim); font-size: 13.5px; cursor: pointer; font-family: inherit;
 }
-.cred-tabs button:hover { color: var(--text); }
-.cred-tabs button.active { color: var(--text-hi); border-bottom-color: var(--accent); }
+.side-tabs button:hover { background: var(--bg-hover); color: var(--text); }
+.side-tabs button.active { background: var(--bg-hover); color: var(--text-hi); font-weight: 500; }
 
-/* Body */
-.cred-body { padding: 16px 18px 20px; }
-.cred-modal.config .cred-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
-.fld-label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 8px; }
-.cred-body label { display: block; margin: 14px 0 6px; color: var(--text-dim); font-size: 12px; }
-.cred-body label:first-child { margin-top: 0; }
-.cred-body input {
-  width: 100%; height: 38px; padding: 0 12px; background: var(--bg-input); border: 1px solid var(--border);
+.tab-content { flex: 1; min-width: 0; overflow-y: auto; padding: 22px 26px 26px; }
+
+/* Body (pick step) */
+.cred-body { padding: 18px 20px 20px; }
+.fld-label { display: block; font-size: 12.5px; color: var(--text-dim); margin-bottom: 8px; }
+.pick-actions { margin-top: 16px; }
+
+/* Fields */
+.field { margin-bottom: 18px; }
+.field:last-child { margin-bottom: 0; }
+.field label { display: block; margin: 0 0 7px; color: var(--text); font-size: 13px; }
+.field input,
+.select-wrap select {
+  width: 100%; height: 40px; padding: 0 12px; background: var(--bg-input); border: 1px solid var(--border);
   border-radius: var(--radius); color: var(--text); font-size: 13.5px; font-family: inherit;
 }
-.cred-body input:focus { outline: none; border-color: var(--accent); }
+.field input:focus, .select-wrap select:focus { outline: none; border-color: var(--accent); }
+.fld-hint { font-size: 11.5px; color: var(--text-faint); margin: 6px 0 0; }
+
+.setup-help { font-size: 12.5px; color: var(--text-dim); margin: 0 0 20px; }
+.setup-help a { color: var(--accent); text-decoration: none; }
+.setup-help a:hover { text-decoration: underline; }
+
+/* Select (下拉) */
+.select-wrap { position: relative; }
+.select-wrap select { appearance: none; -webkit-appearance: none; padding-right: 34px; cursor: pointer; }
+.select-caret { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; color: var(--text-faint); pointer-events: none; }
+
+/* Switch (开关) */
+.switch {
+  position: relative; width: 40px; height: 22px; border-radius: 11px; border: none; cursor: pointer;
+  background: var(--bg-hover); border: 1px solid var(--border); transition: background 0.16s, border-color 0.16s; padding: 0;
+}
+.switch .knob {
+  position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; transition: transform 0.16s;
+}
+.switch.on { background: var(--accent); border-color: var(--accent); }
+.switch.on .knob { transform: translateX(18px); }
 
 /* Combobox (pick step) */
 .combo { position: relative; }
@@ -402,7 +512,7 @@ onUnmounted(() => {
   background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); cursor: text;
 }
 .combo.open .combo-control { border-color: var(--accent); }
-.combo-ico { flex-shrink: 0; font-size: 15px; }
+.combo-search { width: 15px; height: 15px; flex-shrink: 0; color: var(--text-faint); }
 .combo-input { flex: 1; height: 100%; background: none !important; border: none !important; padding: 0 !important; color: var(--text); font-size: 14px; }
 .combo-input:focus { outline: none; }
 .combo-caret { width: 15px; height: 15px; flex-shrink: 0; color: var(--text-faint); transition: transform 0.15s; }
@@ -413,79 +523,67 @@ onUnmounted(() => {
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
 }
 .combo-item {
-  display: flex; align-items: center; gap: 11px; width: 100%; text-align: left;
-  padding: 9px 10px; border: none; background: none; border-radius: 8px; cursor: pointer;
+  display: block; width: 100%; text-align: left; padding: 9px 12px; border: none; background: none;
+  border-radius: 7px; cursor: pointer; color: var(--text); font-size: 13.5px; font-family: inherit;
 }
 .combo-item:hover, .combo-item.sel { background: var(--bg-hover); }
-.combo-item-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .combo-empty { padding: 16px; text-align: center; color: var(--text-dim); font-size: 13px; }
-
-.type-icon {
-  width: 32px; height: 32px; flex-shrink: 0; border-radius: 8px; background: var(--bg-input);
-  display: flex; align-items: center; justify-content: center; font-size: 15px;
-}
-.type-name { font-size: 13.5px; color: var(--text); display: flex; align-items: center; gap: 8px; }
-.type-desc { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.oauth-tag {
-  font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 8px;
-  background: var(--bg-input); color: var(--text-dim); border: 1px solid var(--border); flex-shrink: 0;
-}
 
 /* OAuth redirect copy field */
 .copy-field { display: flex; gap: 8px; }
 .copy-field input { flex: 1; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--text-dim); }
 .copy-btn {
-  flex-shrink: 0; height: 38px; padding: 0 14px; border-radius: var(--radius); border: 1px solid var(--border);
+  flex-shrink: 0; height: 40px; padding: 0 14px; border-radius: var(--radius); border: 1px solid var(--border);
   background: var(--bg-hover); color: var(--text); font-size: 13px; cursor: pointer; font-family: inherit;
 }
 .copy-btn:hover { border-color: var(--border-strong); }
-.fld-hint { font-size: 11.5px; color: var(--text-faint); margin: 6px 0 0; }
 
-/* OAuth connect banner */
+/* OAuth connect banner (整块琥珀) */
 .oauth-banner {
-  display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 12px 14px;
-  border-radius: 8px; font-size: 13px; border: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px; margin-top: 4px; padding: 14px 16px;
+  border-radius: 8px; font-size: 13px; border: 1px solid transparent;
 }
 .oauth-banner .oauth-icon { flex-shrink: 0; font-size: 14px; }
 .oauth-banner .grow { flex: 1; }
-.oauth-banner.warn { background: rgba(245, 166, 35, 0.1); border-color: rgba(245, 166, 35, 0.35); color: var(--running); }
-.oauth-banner.ok { background: rgba(76, 195, 138, 0.1); border-color: rgba(76, 195, 138, 0.35); color: var(--ok); }
+.oauth-banner.warn { background: rgba(245, 166, 35, 0.13); border-color: rgba(245, 166, 35, 0.4); color: var(--running); }
+.oauth-banner.ok { background: rgba(76, 195, 138, 0.12); border-color: rgba(76, 195, 138, 0.4); color: var(--ok); }
 
-/* Help callout (n8n 式琥珀提示) */
-.help-callout {
-  display: flex; align-items: flex-start; gap: 10px; margin-top: 18px; padding: 12px 14px;
-  background: rgba(245, 166, 35, 0.08); border: 1px solid rgba(245, 166, 35, 0.28); border-radius: 8px;
-  font-size: 12.5px; color: var(--text-dim); line-height: 1.5;
-}
-.help-ico {
-  flex-shrink: 0; width: 18px; height: 18px; border-radius: 50%; background: rgba(245, 166, 35, 0.25);
-  color: var(--running); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700;
-}
-.test-row { display: flex; align-items: center; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+/* Test connection */
+.test-row { display: flex; align-items: center; gap: 12px; margin-top: 4px; flex-wrap: wrap; }
 .test-result { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; }
 .test-result.ok { color: var(--ok); }
 .test-result.bad { color: var(--err); }
 .test-result.neutral { color: var(--text-dim); }
 .test-result .tr-icon { font-weight: 700; }
 
+/* Enterprise vault 提示 */
+.vault-note { display: flex; align-items: baseline; gap: 7px; margin-top: 20px; font-size: 12px; color: var(--text-faint); }
+.vault-note .vault-i { flex-shrink: 0; }
+.vault-note a { color: var(--accent); text-decoration: none; }
+.vault-note a:hover { text-decoration: underline; }
+
+/* Sharing tab */
+.sharing-empty { text-align: center; padding: 34px 20px; }
+.sharing-ic { font-size: 34px; }
+.sharing-empty h4 { margin: 12px 0 8px; font-size: 16px; font-weight: 600; color: var(--text-hi); }
+.sharing-empty p { margin: 0 auto; max-width: 34em; font-size: 13.5px; color: var(--text-dim); line-height: 1.55; }
+.sharing-plan { margin-top: 14px !important; color: var(--text-faint) !important; font-size: 12.5px !important; }
+
 /* Details tab */
-.detail-row { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.detail-row { display: flex; justify-content: space-between; gap: 16px; padding: 13px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
 .detail-row .k { color: var(--text-dim); }
 .detail-row .v { color: var(--text); }
 .detail-row .v.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 .detail-note { font-size: 11.5px; color: var(--text-faint); margin-top: 14px; }
-
-/* Footer (pick step) */
-.cred-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 18px; border-top: 1px solid var(--border); }
 
 /* Buttons */
 .btn { height: 34px; padding: 0 16px; border-radius: var(--radius); border: none; font-size: 13.5px; font-weight: 500; cursor: pointer; font-family: inherit; color: #fff; }
 .btn.primary { background: var(--accent); }
 .btn.primary:hover { background: var(--accent-dim); }
 .btn.primary:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn.secondary { background: var(--bg-hover); color: var(--text); }
-.btn.ghost { background: none; border: 1px solid var(--border); color: var(--text); }
-.btn.ghost:hover { background: var(--bg-hover); }
+.btn.neutral { background: var(--bg-hover); color: var(--text); border: 1px solid var(--border); }
+.btn.neutral:hover { border-color: var(--border-strong); }
+.btn.neutral:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.error-text { color: var(--err); font-size: 13px; margin: 12px 0 0; }
+.error-text { color: var(--err); font-size: 13px; margin: 14px 0 0; }
 </style>

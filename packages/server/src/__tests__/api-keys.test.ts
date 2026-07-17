@@ -7,7 +7,7 @@ import { createApp } from '../app.js';
 import { inviteUser } from './helpers.js';
 
 /**
- * 公共 API 令牌（对标 n8n 的 n8n API）：创建/列出/吊销 + 用令牌鉴权调 /api/*。
+ * 公共 API 令牌：创建/列出/吊销 + 用令牌鉴权调 /api/*。
  * in-memory SQLite。
  */
 
@@ -96,5 +96,38 @@ describe('公共 API 令牌', () => {
     const created = await request(app).post('/api/api-keys').set(bearer(jwt)).send({ label: 'mine' }).expect(201);
     const otherJwt = (await inviteUser(app, jwt, 'other-keys@demo.dev')).token;
     await request(app).delete(`/api/api-keys/${created.body.apiKey.id}`).set(bearer(otherJwt)).expect(404);
+  });
+
+  it('readonly 作用域：GET 放行，写请求 403', async () => {
+    const created = await request(app)
+      .post('/api/api-keys')
+      .set(bearer(jwt))
+      .send({ label: 'ro', scope: 'readonly', expiresInDays: 30 })
+      .expect(201);
+    expect(created.body.apiKey.scope).toBe('readonly');
+    expect(created.body.apiKey.expiresAt).toBeTruthy();
+    const key = created.body.token as string;
+
+    await request(app).get('/api/workflows').set(withKey(key)).expect(200);
+    await request(app)
+      .post('/api/workflows')
+      .set(withKey(key))
+      .send({ name: 'x', nodes: [], connections: {} })
+      .expect(403);
+  });
+
+  it('过期令牌 → 401', async () => {
+    const created = await request(app).post('/api/api-keys').set(bearer(jwt)).send({ label: 'exp' }).expect(201);
+    const key = created.body.token as string;
+    await request(app).get('/api/workflows').set(withKey(key)).expect(200);
+    // 直接把过期时间拨到过去（服务层不允许造过去时间，测试走原生连接改库；sqlite timestamp 存秒）
+    const { createHash } = await import('node:crypto');
+    const row = await boot.services.repos.apiKeys.findByTokenHash(
+      createHash('sha256').update(key).digest('hex'),
+    );
+    (boot.dbHandle.db as { $client: { prepare(sql: string): { run(...args: unknown[]): unknown } } }).$client
+      .prepare('UPDATE api_keys SET expires_at = ? WHERE id = ?')
+      .run(Math.floor((Date.now() - 60_000) / 1000), row!.id);
+    await request(app).get('/api/workflows').set(withKey(key)).expect(401);
   });
 });

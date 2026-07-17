@@ -36,7 +36,7 @@ interface WorkflowFile {
 }
 
 /**
- * 源码同步（对标 n8n Source Control）：把项目的工作流导出为 git 仓库里的 JSON 文件，
+ * 源码同步：把项目的工作流导出为 git 仓库里的 JSON 文件，
  * push 到远端 / 从远端 pull 导入。只同步工作流——工作流文件本就不含凭证明文（铁律 3 天然满足）。
  * 认证走宿主机 git 配置（SSH 部署密钥 / credential helper）；实例 admin + 企业版门控。
  */

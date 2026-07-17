@@ -23,7 +23,7 @@ afterAll(async () => {
   await boot.dbHandle.close();
 });
 
-// 首个用户 = owner（公开注册仅此一次）；其余经 owner 邀请（对标 n8n 自托管）。
+// 首个用户 = owner（公开注册仅此一次）；其余经 owner 邀请（自托管）。
 let ownerToken: string | undefined;
 async function registerAndLogin(email: string): Promise<string> {
   if (!ownerToken) {
@@ -68,7 +68,7 @@ describe('鉴权', () => {
 
   it('owner 建成后公开注册关闭 → 403；密码错误 → 400 且不暴露邮箱是否存在', async () => {
     await registerAndLogin('dup@test.dev'); // 首个用户 = owner
-    // 已有 owner，公开注册关闭（对标 n8n：改用邀请）
+    // 已有 owner，公开注册关闭（改用邀请）
     await request(app)
       .post('/auth/register')
       .send({ email: 'another@test.dev', password: 'password-123' })
@@ -233,16 +233,29 @@ describe('node-types', () => {
     const names = res.body.map((d: { name: string }) => d.name).sort();
     expect(names).toEqual([
       'aiAgent',
+      'anthropicChatModel',
+      'chatTrigger',
       'code',
       'executeWorkflow',
+      'github',
+      'hackerNews',
       'httpRequest',
+      'httpTool',
       'if',
       'manualTrigger',
       'merge',
       'noOp',
+      'notion',
+      'pollingTrigger',
       'schedule',
+      'sendGrid',
       'set',
+      'slack',
+      'stickyNote',
+      'stripe',
+      'wait',
       'webhook',
+      'windowMemory',
     ]);
   });
 });

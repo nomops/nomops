@@ -3,16 +3,22 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { api } from '../../api/client.js';
 import { useProjectsStore } from '../../stores/projects.js';
 import { useExecutionStore } from '../../stores/execution.js';
+import { t } from '../../lib/i18n.js';
 
-/** Overview 顶部统计卡行（n8n 版）：生产执行 / 失败 / 失败率 / 节省工时 / 平均耗时。 */
+/** Overview 顶部统计卡行：生产执行 / 失败 / 失败率 / 节省工时 / 平均耗时。 */
 const projects = useProjectsStore();
 const execution = useExecutionStore();
 
 type Insights = Awaited<ReturnType<typeof api.insights>>;
-const data = ref<Insights | null>(null);
+
+/** override：调用方注入范围过滤后的数据（Insights 页随日期范围联动）；缺省自拉全局近 7 日。 */
+const props = defineProps<{ override?: Insights | null }>();
+const fetched = ref<Insights | null>(null);
+const data = computed(() => props.override ?? fetched.value);
 
 async function load() {
-  data.value = await api.insights().catch(() => null);
+  if (props.override !== undefined) return; // 注入模式不自拉
+  fetched.value = await api.insights().catch(() => null);
 }
 
 onMounted(load);
@@ -20,14 +26,14 @@ watch(() => projects.current?.id, load);
 // 执行完刷新
 watch(() => execution.lastExecutionId, load);
 
-/** ms → 人类可读平均耗时（对齐 n8n "0s" 展示）。 */
+/** ms → 人类可读平均耗时（"0s" 展示）。 */
 function fmtRuntime(ms: number): { value: string; unit: string } {
   if (!ms) return { value: '0', unit: 's' };
   if (ms < 1000) return { value: String(ms), unit: 'ms' };
   return { value: (ms / 1000).toFixed(1).replace(/\.0$/, ''), unit: 's' };
 }
 
-/** 分钟 → 节省工时；无数据显示 "--"（n8n 空态）。 */
+/** 分钟 → 节省工时；无数据显示 "--"。 */
 function fmtSaved(min: number): { value: string; unit: string; dim: boolean } {
   if (!min) return { value: '--', unit: '', dim: true };
   if (min < 60) return { value: String(min), unit: 'm', dim: false };
@@ -52,7 +58,7 @@ const cards = computed(() => {
   <div class="stats-bar" data-test="stats-bar">
     <div v-for="c in cards" :key="c.label" class="stat-card" :class="{ saved: c.saved }">
       <div class="stat-label">
-        {{ c.label }}
+        {{ t(c.label) }}
         <svg v-if="c.saved" class="info-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" stroke-linecap="round" />
         </svg>
@@ -78,7 +84,7 @@ const cards = computed(() => {
   padding: 16px 18px 18px;
   min-width: 0;
 }
-/* "Time saved" 卡：n8n 式左上细微高亮 */
+/* "Time saved" 卡：左上细微高亮 */
 .stat-card.saved {
   background:
     radial-gradient(120% 140% at 0% 0%, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 55%),

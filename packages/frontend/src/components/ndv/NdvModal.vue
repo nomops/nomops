@@ -8,7 +8,7 @@ import { inputItemsFor, lastRunOf, outputPorts } from '../../lib/run-data.js';
 import ParamInput from '../node-view/ParamInput.vue';
 import DataPane from './DataPane.vue';
 
-/** n8n 式 NDV 模态：输入数据 | 参数（Parameters/Settings tab）| 输出数据 三栏。双击节点打开。 */
+/** NDV 模态：输入数据 | 参数（Parameters/Settings tab）| 输出数据 三栏。双击节点打开。 */
 const editor = useEditorStore();
 const execution = useExecutionStore();
 const nodeTypes = useNodeTypesStore();
@@ -55,7 +55,7 @@ function setContinueOnError(event: Event) {
 async function executeStep() {
   if (!editor.id || !node.value) return;
   await editor.save();
-  await execution.run(editor.id, node.value.name);
+  await execution.run(editor.id, { destinationNode: node.value.name });
 }
 </script>
 
@@ -104,13 +104,24 @@ async function executeStep() {
 
           <div v-show="tab === 'parameters'" class="params-body" data-test="ndv-params">
             <p v-if="visibleProps.length === 0" class="dim">This node has no parameters to configure.</p>
-            <ParamInput
-              v-for="prop in visibleProps"
-              :key="prop.name"
-              :prop="prop"
-              :value="node.parameters[prop.name]"
-              @change="editor.setParam(node.name, prop.name, $event)"
-            />
+            <div v-for="prop in visibleProps" :key="prop.name" class="param-pin-row">
+              <button
+                class="param-pin"
+                :class="{ pinned: editor.isParamPinned(node.name, prop.name) }"
+                :title="editor.isParamPinned(node.name, prop.name) ? 'Unpin from focus panel' : 'Pin to focus panel'"
+                :data-test-pin="prop.name"
+                @click="editor.togglePinParam(node.name, prop.name)"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width: 13px; height: 13px"><path d="M12 17v5M9 3h6l1 7 3 2H5l3-2 1-7z" /></svg>
+              </button>
+              <ParamInput
+                :prop="prop"
+                :value="node.parameters[prop.name]"
+                :preview-items="inputItems"
+                :node-parameters="node.parameters"
+                @change="editor.setParam(node.name, prop.name, $event)"
+              />
+            </div>
           </div>
 
           <div v-show="tab === 'settings'" class="params-body" data-test="ndv-settings">
@@ -174,4 +185,15 @@ async function executeStep() {
 .execute-step:hover { background: var(--accent-dim); }
 .params-body { flex: 1; overflow-y: auto; padding: 12px 14px; }
 .setting-row { display: flex; align-items: center; gap: 6px; margin: 0; }
+
+/* Focus panel 钉按钮：悬浮参数行右上，hover 显现 */
+.param-pin-row { position: relative; }
+.param-pin {
+  position: absolute; top: 0; right: 0; z-index: 2;
+  background: none; border: none; padding: 2px 4px; cursor: pointer;
+  color: var(--text-faint); opacity: 0;
+}
+.param-pin-row:hover .param-pin { opacity: 1; }
+.param-pin.pinned { opacity: 1; color: var(--accent); }
+.param-pin:hover { color: var(--accent); }
 </style>

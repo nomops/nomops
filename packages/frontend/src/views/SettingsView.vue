@@ -1,22 +1,104 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api, type ApiKeyRow, type CommunityNode, type LicenseInfo } from '../api/client.js';
 import { useProjectsStore } from '../stores/projects.js';
+import { useUiStore } from '../stores/ui.js';
+import CredentialModal from '../components/credentials/CredentialModal.vue';
+import { credentialTypeMeta } from '../lib/credential-types.js';
 import LicenseModal from '../components/LicenseModal.vue';
+import { LOCALES, locale, setLocale, t, type Locale } from '../lib/i18n.js';
 
-/** n8n 式 Settings：左二级导航（← Settings + 图标项 + 版本号）+ 右内容。 */
-type Section = 'personal' | 'users' | 'api' | 'community' | 'sourcecontrol' | 'sso' | 'ldap' | 'security' | 'logstream' | 'secrets' | 'billing';
+/** Settings：左二级导航（← Settings + 图标项 + 版本号）+ 右内容。结构对标 n8n Settings。 */
+type Section =
+  | 'billing'
+  | 'personal'
+  | 'languages'
+  | 'users'
+  | 'roles'
+  | 'api'
+  | 'secrets'
+  | 'sourcecontrol'
+  | 'sso'
+  | 'security'
+  | 'ldap'
+  | 'logstream'
+  | 'observability'
+  | 'community'
+  | 'mcp'
+  | 'chat';
 
 const route = useRoute();
 const router = useRouter();
 const projects = useProjectsStore();
+const ui = useUiStore();
 
-const section = ref<Section>((route.query['s'] as Section) ?? 'personal');
+const section = ref<Section>((route.query['s'] as Section) ?? 'billing'); // 对标 n8n：默认落在 Usage and plan
 const about = ref<Awaited<ReturnType<typeof api.about>> | null>(null);
 
 /* 个人 */
 const me = ref<Awaited<ReturnType<typeof api.me>> | null>(null);
+
+/* 个人资料编辑（Basic Information） */
+const profileFirst = ref('');
+const profileLast = ref('');
+const profileSaving = ref(false);
+const profileSaved = ref(false);
+const profileError = ref('');
+
+async function saveProfile() {
+  profileError.value = '';
+  profileSaving.value = true;
+  profileSaved.value = false;
+  try {
+    await api.updateMe({ firstName: profileFirst.value.trim(), lastName: profileLast.value.trim() });
+    await refreshMe();
+    profileSaved.value = true;
+    setTimeout(() => (profileSaved.value = false), 2000);
+  } catch (e) {
+    profileError.value = (e as Error).message;
+  } finally {
+    profileSaving.value = false;
+  }
+}
+
+/* 改口令（先验当前口令） */
+const showPassForm = ref(false);
+const passCurrent = ref('');
+const passNew = ref('');
+const passNew2 = ref('');
+const passError = ref('');
+const passSaved = ref(false);
+
+async function submitChangePassword() {
+  passError.value = '';
+  if (passNew.value.length < 8) {
+    passError.value = t('New password must be at least 8 characters');
+    return;
+  }
+  if (passNew.value !== passNew2.value) {
+    passError.value = t('Passwords do not match');
+    return;
+  }
+  try {
+    await api.changePassword(passCurrent.value, passNew.value);
+    passCurrent.value = passNew.value = passNew2.value = '';
+    showPassForm.value = false;
+    passSaved.value = true;
+    setTimeout(() => (passSaved.value = false), 2500);
+  } catch (e) {
+    passError.value = (e as Error).message;
+  }
+}
+
+/** 头像缩写（n8n 风格圆形色块）。 */
+const initialsOf = (first: string | null, last: string | null, email: string): string => {
+  const a = (first ?? '').trim().charAt(0);
+  const b = (last ?? '').trim().charAt(0);
+  return (a + b || email.slice(0, 2)).toUpperCase();
+};
+const displayName = (first: string | null, last: string | null, email: string): string =>
+  `${first ?? ''} ${last ?? ''}`.trim() || email;
 
 /* 两步验证（TOTP） */
 const mfaSetup = ref<{ secret: string; otpauthUri: string; backupCodes: string[] } | null>(null);
@@ -25,6 +107,8 @@ const mfaError = ref('');
 
 async function refreshMe() {
   me.value = await api.me().catch(() => me.value);
+  profileFirst.value = me.value?.firstName ?? '';
+  profileLast.value = me.value?.lastName ?? '';
 }
 async function startMfaSetup() {
   mfaError.value = '';
@@ -107,12 +191,37 @@ const ldapError = ref('');
 const ldapSaved = ref(false);
 const ldapLoading = ref(true);
 
-/* 公共 API 令牌 */
+/* 公共 API 令牌（对标 n8n "Create API Key" 弹窗） */
 const apiKeysList = ref<ApiKeyRow[]>([]);
 const newKeyLabel = ref('');
-const createdToken = ref(''); // 新建令牌明文（仅本次会话显示一次）
+const createdToken = ref(''); // 新建令牌明文（仅弹窗内显示一次）
 const apiError = ref('');
 const apiBusy = ref(false);
+const apiModalOpen = ref(false);
+/* 对标 n8n Create API Key：Expiration 下拉 + Scopes 单选（真实生效：过期拒绝、readonly 拦写） */
+const apiExpireDays = ref<number | null>(30);
+const apiScope = ref<'all' | 'readonly'>('all');
+const API_EXPIRATIONS: Array<{ label: string; value: number | null }> = [
+  { label: '7 days', value: 7 },
+  { label: '30 days', value: 30 },
+  { label: '60 days', value: 60 },
+  { label: '90 days', value: 90 },
+  { label: 'No expiration', value: null },
+];
+const apiExpireText = computed(() => {
+  if (apiExpireDays.value == null) return 'The API key will never expire';
+  const d = new Date(Date.now() + apiExpireDays.value * 24 * 60 * 60 * 1000);
+  return `The API key will expire on ${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}`;
+});
+
+function openApiModal() {
+  newKeyLabel.value = '';
+  createdToken.value = '';
+  apiError.value = '';
+  apiExpireDays.value = 30;
+  apiScope.value = 'all';
+  apiModalOpen.value = true;
+}
 
 async function loadApiKeys() {
   apiError.value = '';
@@ -130,7 +239,10 @@ async function createApiKey() {
   }
   apiBusy.value = true;
   try {
-    const res = await api.apiKeys.create(newKeyLabel.value.trim());
+    const res = await api.apiKeys.create(newKeyLabel.value.trim(), {
+      expiresInDays: apiExpireDays.value,
+      scope: apiScope.value,
+    });
     createdToken.value = res.token; // 明文只此一次
     newKeyLabel.value = '';
     await loadApiKeys();
@@ -150,12 +262,23 @@ async function revokeApiKey(id: string) {
   }
 }
 
-/* 社区节点（对标 n8n：owner 安装 npm 节点包） */
+/* 社区节点（owner 安装 npm 节点包） */
 const communityNodes = ref<CommunityNode[]>([]);
 const communityError = ref('');
 const installName = ref('');
 const installVersion = ref('');
 const installing = ref(false);
+/* 安装弹窗（对标 n8n "Install community nodes"：说明卡 + 包名 + 风险确认） */
+const communityModalOpen = ref(false);
+const riskAccepted = ref(false);
+
+function openCommunityModal() {
+  installName.value = '';
+  installVersion.value = '';
+  riskAccepted.value = false;
+  communityError.value = '';
+  communityModalOpen.value = true;
+}
 
 async function loadCommunityNodes() {
   communityError.value = '';
@@ -177,6 +300,7 @@ async function installCommunityNode() {
     await api.communityNodes.install(name, installVersion.value.trim() || undefined);
     installName.value = '';
     installVersion.value = '';
+    communityModalOpen.value = false;
     await loadCommunityNodes();
   } catch (e) {
     communityError.value = (e as Error).message;
@@ -226,12 +350,228 @@ async function saveQuota() {
   }
 }
 
+const userMenuOpen = ref<string | null>(null);
+
+function closePopovers() {
+  providerMenuFor.value = null;
+  mcpShowDetails.value = false;
+  userMenuOpen.value = null;
+}
+
 onMounted(async () => {
+  window.addEventListener('click', closePopovers);
   await projects.fetch().catch(() => undefined);
-  me.value = await api.me().catch(() => null);
+  await refreshMe();
   about.value = await api.about().catch(() => null);
   await loadSection();
 });
+onUnmounted(() => window.removeEventListener('click', closePopovers));
+
+/* 用户列表搜索（n8n Users 页顶部搜索框） */
+const userSearch = ref('');
+const filteredUsers = computed(() => {
+  const q = userSearch.value.trim().toLowerCase();
+  if (!q) return users.value;
+  return users.value.filter(
+    (u) => u.email.toLowerCase().includes(q) || `${u.firstName ?? ''} ${u.lastName ?? ''}`.toLowerCase().includes(q),
+  );
+});
+
+/* Roles 页（固定内置角色，对标 n8n 的 Instance/Project roles 两个 tab） */
+const rolesTab = ref<'instance' | 'project'>('instance');
+const instanceRoles = [
+  { name: 'Owner', desc: 'Full control of the instance. Created with the first account; cannot be invited or removed.' },
+  { name: 'Admin', desc: 'Manage users, community nodes and instance settings. Cannot remove the owner.' },
+  { name: 'Member', desc: 'Use their own projects and resources. No access to instance settings.' },
+];
+const projectRoles = [
+  { name: 'Project owner', desc: 'Full control of the project, including members and deletion.' },
+  { name: 'Project editor', desc: 'Create and edit workflows, credentials and data tables in the project.' },
+  { name: 'Project viewer', desc: 'Read-only access to the project’s workflows and executions.' },
+];
+
+/** 企业功能是否已解锁（决定显示真实表单还是 n8n 式锁定卡）。 */
+const licensed = (feature: string): boolean => projects.hasFeature(feature);
+
+/* Observability：Prometheus 抓取配置示例（模板会合并空白，用常量保换行） */
+const promScrape = `- job_name: nomops\n  static_configs:\n    - targets: ['your-host:5678']`;
+
+/* ── 实例级 MCP（Preview） ── */
+const mcpStatus = ref<import('../api/client.js').McpStatus | null>(null);
+const mcpError = ref('');
+const mcpToken = ref(''); // 明文仅签发时显示一次
+const mcpTab = ref<'workflows' | 'clients'>('workflows');
+const mcpShowDetails = ref(false);
+const mcpBusy = ref(false);
+/* Enable workflows 弹窗（对标 n8n：搜索 + 多选，仅限已发布的工作流） */
+const mcpModalOpen = ref(false);
+const mcpSearch = ref('');
+const mcpPick = ref<Set<string>>(new Set());
+const mcpEnabledWorkflows = computed(() => mcpStatus.value?.workflows.filter((w) => w.enabled) ?? []);
+const mcpCandidates = computed(() => {
+  const q = mcpSearch.value.trim().toLowerCase();
+  return (mcpStatus.value?.workflows ?? []).filter(
+    (w) => w.published && !w.enabled && (!q || w.name.toLowerCase().includes(q) || w.projectName.toLowerCase().includes(q)),
+  );
+});
+function openMcpModal() {
+  mcpPick.value = new Set();
+  mcpSearch.value = '';
+  mcpModalOpen.value = true;
+  void loadMcp(); // 候选来自最新状态（刚发布的工作流立刻可见）
+}
+function togglePick(id: string) {
+  const next = new Set(mcpPick.value);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  mcpPick.value = next;
+}
+async function confirmEnableWorkflows() {
+  mcpError.value = '';
+  try {
+    const ids = [...new Set([...(mcpStatus.value?.workflowIds ?? []), ...mcpPick.value])];
+    mcpStatus.value = await api.mcp.setWorkflows(ids);
+    mcpModalOpen.value = false;
+  } catch (e) {
+    mcpError.value = (e as Error).message;
+  }
+}
+async function removeMcpWorkflow(id: string) {
+  mcpError.value = '';
+  try {
+    mcpStatus.value = await api.mcp.setWorkflows((mcpStatus.value?.workflowIds ?? []).filter((x) => x !== id));
+  } catch (e) {
+    mcpError.value = (e as Error).message;
+  }
+}
+const mcpServerUrl = computed(() => `${location.origin.replace(':5173', ':5678').replace(':5180', ':5678')}${mcpStatus.value?.serverPath ?? '/mcp-server/http'}`);
+
+async function loadMcp() {
+  mcpError.value = '';
+  try {
+    mcpStatus.value = await api.mcp.status();
+  } catch (e) {
+    mcpError.value = (e as Error).message; // 非 admin → 403
+  }
+}
+async function mcpEnable() {
+  mcpError.value = '';
+  mcpBusy.value = true;
+  try {
+    const res = await api.mcp.enable();
+    mcpToken.value = res.token;
+    mcpStatus.value = res;
+  } catch (e) {
+    mcpError.value = (e as Error).message;
+  } finally {
+    mcpBusy.value = false;
+  }
+}
+async function mcpToggleEnabled() {
+  if (!mcpStatus.value) return;
+  if (mcpStatus.value.enabled) {
+    mcpToken.value = '';
+    mcpStatus.value = await api.mcp.disable().catch((e) => ((mcpError.value = (e as Error).message), mcpStatus.value));
+  } else {
+    await mcpEnable();
+  }
+}
+
+/* ── Chat 设置（Preview） ── */
+const chatSettings = ref<{ enabled: boolean; model: string } | null>(null);
+const chatError = ref('');
+const chatSaving = ref(false);
+/* Chat providers（服务端注册表 + 各家配置：Anthropic / DeepSeek / 豆包 / 千问 / Kimi / GLM） */
+type ProviderRow = Awaited<ReturnType<typeof api.assistant.providers>>[number];
+const chatProviders = ref<ProviderRow[]>([]);
+const credentials = ref<Awaited<ReturnType<typeof api.credentials.list>>>([]);
+async function loadChatProviders() {
+  chatProviders.value = await api.assistant.providers().catch(() => []);
+  credentials.value = await api.credentials.list().catch(() => []);
+}
+onMounted(loadChatProviders);
+
+/* Configure provider 弹窗（对标 n8n：Enable {Provider} / Default credential / Context window） */
+const providerMenuFor = ref<string | null>(null);
+const providerModalOpen = ref(false);
+const providerModal = ref<ProviderRow | null>(null);
+const provEnabled = ref(true);
+const provCredentialId = ref<string>('');
+const provContextWindow = ref(20);
+const provSaving = ref(false);
+const provError = ref('');
+/** 该 provider 类型下项目内可选的凭证列表。 */
+const provCredOptions = computed(() =>
+  credentials.value.filter((c) => c.type === providerModal.value?.credentialType),
+);
+const provCredOpen = ref(false);
+const provCreateOpen = ref(false);
+const meInfo = ref<{ name: string; email: string } | null>(null);
+onMounted(async () => {
+  const m = await api.me().catch(() => null);
+  if (m) meInfo.value = { name: [m.firstName, m.lastName].filter(Boolean).join(' ') || m.email, email: m.email };
+});
+const credLabel2 = (type: string) => credentialTypeMeta(type)?.displayName ?? type;
+const provSelectedCredName = computed(
+  () => provCredOptions.value.find((c) => c.id === provCredentialId.value)?.name ?? '',
+);
+function openProviderModal(p: ProviderRow) {
+  providerMenuFor.value = null;
+  providerModal.value = p;
+  provEnabled.value = p.enabled;
+  provCredentialId.value = p.credentialId ?? '';
+  provContextWindow.value = p.contextWindow;
+  provError.value = '';
+  provCredOpen.value = false;
+  providerModalOpen.value = true;
+}
+/** Create new credential（下拉底部）：预选类型直达 config；创建完自动选中。 */
+async function onProvCredCreated(created: { id: string }) {
+  credentials.value = await api.credentials.list().catch(() => credentials.value);
+  provCredentialId.value = created.id;
+}
+async function confirmProvider() {
+  if (!providerModal.value) return;
+  provSaving.value = true;
+  provError.value = '';
+  try {
+    await api.assistant.updateProvider(providerModal.value.id, {
+      enabled: provEnabled.value,
+      credentialId: provCredentialId.value || null,
+      contextWindow: provContextWindow.value,
+    });
+    providerModalOpen.value = false;
+    await loadChatProviders();
+  } catch (e) {
+    provError.value = (e as Error).message;
+  } finally {
+    provSaving.value = false;
+  }
+}
+
+
+async function loadChat() {
+  chatError.value = '';
+  try {
+    chatSettings.value = await api.chatSettings.get();
+    ui.setChatEnabled(chatSettings.value.enabled);
+  } catch (e) {
+    chatError.value = (e as Error).message;
+  }
+}
+async function saveChat(patch: { enabled?: boolean; model?: string }) {
+  chatError.value = '';
+  chatSaving.value = true;
+  try {
+    chatSettings.value = await api.chatSettings.update(patch);
+    ui.setChatEnabled(chatSettings.value.enabled); // 侧栏 Chat 入口实时显隐
+  } catch (e) {
+    chatError.value = (e as Error).message; // 非 admin → 403
+    await loadChat();
+  } finally {
+    chatSaving.value = false;
+  }
+}
 
 function go(s: Section) {
   section.value = s;
@@ -297,6 +637,12 @@ async function loadSection() {
     await loadCommunityNodes();
   } else if (section.value === 'sourcecontrol') {
     await loadSourceControl();
+  } else if (section.value === 'mcp') {
+    mcpToken.value = ''; // 切页清掉上次明文
+    mcpShowDetails.value = false;
+    await loadMcp();
+  } else if (section.value === 'chat') {
+    await loadChat();
   } else if (section.value === 'billing') {
     const current = projects.current;
     if (current) usage.value = await api.projects.usage(current.id).catch(() => null);
@@ -351,27 +697,41 @@ async function changeUserRole(id: string, event: Event) {
   }
 }
 
-/* 邀请用户（无 SMTP：返回可复制的邀请链接） */
-const inviteEmail = ref('');
+/* 邀请用户（对标 n8n "Invite new users" 弹窗；无 SMTP：生成可转交的邀请链接） */
+const inviteModalOpen = ref(false);
+const inviteEmail = ref(''); // 逗号分隔支持多个（对标 n8n）
 const inviteRole = ref<'admin' | 'member'>('member');
 const inviting = ref(false);
-const inviteLink = ref(''); // 最近一次邀请链接，供复制转交
+const inviteLinks = ref<Array<{ email: string; link: string }>>([]);
+const inviteError = ref('');
+
+function openInviteModal() {
+  inviteEmail.value = '';
+  inviteRole.value = 'member';
+  inviteLinks.value = [];
+  inviteError.value = '';
+  inviteModalOpen.value = true;
+}
 
 async function inviteNewUser() {
-  usersError.value = '';
-  const email = inviteEmail.value.trim();
-  if (!email) {
-    usersError.value = 'Enter an email to invite';
+  inviteError.value = '';
+  const emails = inviteEmail.value.split(',').map((s) => s.trim()).filter(Boolean);
+  if (!emails.length) {
+    inviteError.value = 'Enter at least one email address';
     return;
   }
   inviting.value = true;
   try {
-    const res = await api.instanceUsers.invite(email, inviteRole.value);
-    inviteLink.value = res.inviteLink;
+    const links: Array<{ email: string; link: string }> = [];
+    for (const email of emails) {
+      const res = await api.instanceUsers.invite(email, inviteRole.value);
+      links.push({ email, link: res.inviteLink });
+    }
+    inviteLinks.value = links;
     inviteEmail.value = '';
     users.value = await api.instanceUsers.list();
   } catch (e) {
-    usersError.value = (e as Error).message;
+    inviteError.value = (e as Error).message;
   } finally {
     inviting.value = false;
   }
@@ -451,7 +811,7 @@ async function upgrade() {
 
 const planLabel = computed(() => (projects.license?.plan === 'enterprise' ? 'Enterprise' : 'Community'));
 
-/* 许可证激活弹窗（对标 n8n Enter activation key） */
+/* 许可证激活弹窗 */
 const licenseModalOpen = ref(false);
 const licenseBusy = ref(false);
 const licenseError = ref('');
@@ -473,7 +833,7 @@ async function removeLicense() {
   }
 }
 
-/* 源码同步（对标 n8n Source Control） */
+/* 源码同步 */
 const scConfig = ref<import('../api/client.js').SourceControlConfig | null>(null);
 const scStatus = ref<import('../api/client.js').SourceControlStatus | null>(null);
 const scRepoUrl = ref('');
@@ -570,31 +930,42 @@ async function scPull() {
 
 /** 单路径/多路径图标（内联 SVG 内容，stroke 由父 svg 提供）。 */
 const icons: Record<Section, string> = {
+  billing: '<path d="M4 19V9.5L8 5l4 4.5L16 5l4 4.5V19H4z" fill="none"/><path d="M4 19h16M8 15v1.5M12 13v3.5M16 15v1.5"/>',
   personal: '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.4 3-5.2 6.5-5.2s6.5 1.8 6.5 5.2"/>',
+  languages: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.6 3.8 9s-1.3 6.5-3.8 9c-2.5-2.5-3.8-5.6-3.8-9S9.5 5.5 12 3z"/>',
   users: '<circle cx="9" cy="8" r="3"/><path d="M2 20c0-3.2 2.6-5 5.5-5 1 0 1.9.2 2.7.6"/><circle cx="17" cy="10" r="2.6"/><path d="M12.5 20c0-2.8 2.2-4.4 4.7-4.4S22 17.2 22 20"/>',
+  roles: '<circle cx="12" cy="7.5" r="3"/><path d="M6 20c0-3.2 2.6-5.2 6-5.2s6 2 6 5.2"/><path d="M18.5 4.5l1.2 1.2M4.3 5.7l1.2-1.2"/>',
   api: '<circle cx="7" cy="12" r="3.2"/><path d="M10.2 12H21M17 12v3.5M20.5 12v2.5"/>',
-  community: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M17.5 14v7M14 17.5h7"/>',
+  secrets: '<rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
   sourcecontrol: '<circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7M8.4 6.5c6 0 7.6 1.5 7.6 4.5M18 10.5c0 3.5-3 5-8 5"/>',
   sso: '<circle cx="8" cy="12" r="4"/><path d="M12 12h9M18 12v3.5M21.5 12v2.5"/>',
-  ldap: '<rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v3M6 16v-2.5h12V16"/>',
   security: '<path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6l7-3z"/>',
+  ldap: '<rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v3M6 16v-2.5h12V16"/>',
   logstream: '<path d="M4 12h11M11 8l4 4-4 4M20 5v14"/>',
-  secrets: '<rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
-  billing: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10.5h18"/>',
+  observability: '<path d="M4 4l4 5 4-2.5 4 5.5 4-3.5"/><path d="M4 20h16M6 20v-4M11 20v-6.5M16 20v-3.5M21 20v-6"/>',
+  community: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M17.5 14v7M14 17.5h7"/>',
+  mcp: '<path d="M5 15c-1.7 0-3-1.3-3-3s1.3-3 3-3M5 9c0-3 2.5-5 5.5-5 2 0 3.7 1 4.6 2.6M19 9c1.7 0 3 1.3 3 3s-1.3 3-3 3M19 15c0 3-2.5 5-5.5 5-2 0-3.7-1-4.6-2.6"/>',
+  chat: '<path d="M21 12a8 8 0 0 1-8 8H4l2.2-2.6A8 8 0 1 1 21 12z"/>',
 };
 
-const sections: Array<{ key: Section; label: string }> = [
-  { key: 'personal', label: 'Personal' },
-  { key: 'users', label: 'Users' },
-  { key: 'api', label: 'API' },
-  { key: 'community', label: 'Community nodes' },
-  { key: 'sourcecontrol', label: 'Source control' },
-  { key: 'sso', label: 'SSO' },
-  { key: 'ldap', label: 'LDAP' },
-  { key: 'security', label: 'Security & policies' },
-  { key: 'logstream', label: 'Log Streaming' },
-  { key: 'secrets', label: 'External Secrets' },
+/* 侧栏结构对标 n8n Settings（顺序 / 命名 / New 徽标 / 底部橙色版本号） */
+const sections: Array<{ key: Section; label: string; badge?: string }> = [
   { key: 'billing', label: 'Usage and plan' },
+  { key: 'personal', label: 'Personal' },
+  { key: 'languages', label: 'Languages' },
+  { key: 'users', label: 'Users' },
+  { key: 'roles', label: 'Roles', badge: 'New' },
+  { key: 'api', label: 'nomops API' },
+  { key: 'secrets', label: 'External Secrets' },
+  { key: 'sourcecontrol', label: 'Environments' },
+  { key: 'sso', label: 'SSO' },
+  { key: 'security', label: 'Security & policies' },
+  { key: 'ldap', label: 'LDAP' },
+  { key: 'logstream', label: 'Log Streaming' },
+  { key: 'observability', label: 'Observability' },
+  { key: 'community', label: 'Community nodes' },
+  { key: 'mcp', label: 'Instance-level MCP', badge: 'Preview' },
+  { key: 'chat', label: 'Chat', badge: 'Preview' },
 ];
 </script>
 
@@ -604,7 +975,7 @@ const sections: Array<{ key: Section; label: string }> = [
     <nav class="settings-nav">
       <button class="settings-back" data-test="settings-back" @click="router.push({ name: 'overview' })">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 6l-6 6 6 6" /></svg>
-        Settings
+        {{ t('Settings') }}
       </button>
       <button
         v-for="s in sections"
@@ -615,126 +986,255 @@ const sections: Array<{ key: Section; label: string }> = [
         @click="go(s.key)"
       >
         <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" v-html="icons[s.key]" />
-        <span>{{ s.label }}</span>
+        <span>{{ t(s.label) }}</span>
+        <span v-if="s.badge" class="nav-badge">{{ t(s.badge) }}</span>
       </button>
-      <div class="settings-version">nomops v{{ about?.version ?? '…' }}</div>
+      <div class="settings-version">{{ t('Version {v}', { v: about?.version ?? '…' }) }}</div>
     </nav>
 
     <div class="settings-content">
-      <!-- 个人设置 -->
+      <!-- 个人设置（对标 n8n Personal：右上头像 chip + Basic Information + Security） -->
       <section v-if="section === 'personal'" data-test="settings-personal">
-        <h1 class="page-title">Personal Settings</h1>
-        <h3 class="sec-title">Basic Information</h3>
-        <div class="form-grid" style="max-width: 560px">
+        <div class="page-head">
+          <h1 class="page-title">{{ t('Personal Settings') }}</h1>
+          <div v-if="me" class="me-chip">
+            <div class="me-chip-text">
+              <b>{{ displayName(me.firstName, me.lastName, me.email) }}</b>
+              <span class="dim" style="text-transform: capitalize">{{ me.role }}</span>
+            </div>
+            <span class="avatar">{{ initialsOf(me.firstName, me.lastName, me.email) }}</span>
+          </div>
+        </div>
+
+        <h3 class="sec-title">{{ t('Basic Information') }}</h3>
+        <div class="form-grid" style="max-width: 760px">
           <div class="field">
-            <label>Email</label>
+            <label>{{ t('First Name') }} <span class="req">*</span></label>
+            <input v-model="profileFirst" data-test="profile-first" />
+          </div>
+          <div class="field">
+            <label>{{ t('Last Name') }} <span class="req">*</span></label>
+            <input v-model="profileLast" data-test="profile-last" />
+          </div>
+          <div class="field">
+            <label>{{ t('Email') }} <span class="req">*</span></label>
             <div class="ro-field">{{ me?.email ?? '—' }}</div>
           </div>
-          <div class="field">
-            <label>Instance role</label>
-            <div class="ro-field">{{ me?.role ?? '—' }}</div>
-          </div>
         </div>
-        <h3 class="sec-title">Plan</h3>
-        <div class="ro-field" style="max-width: 560px; display: inline-block">
-          <span class="plan-badge" :class="projects.license?.plan">{{ planLabel }}</span>
-        </div>
-
-        <!-- 两步验证 -->
-        <h3 class="sec-title">Two-factor authentication</h3>
-        <div class="card" style="max-width: 560px" data-test="settings-mfa">
-          <div style="display: flex; align-items: center; gap: 10px">
-            <span class="mfa-badge" :class="{ on: me?.mfaEnabled }" data-test="mfa-status">
-              {{ me?.mfaEnabled ? '已开启' : '未开启' }}
-            </span>
-            <span class="dim" style="font-size: 12.5px">用验证器 App（Google Authenticator / Authy…）的一次性码保护登录。</span>
+        <h3 class="sec-title">{{ t('Security') }}</h3>
+        <div style="max-width: 760px">
+          <b style="font-size: 14px">{{ t('Password') }}</b>
+          <div v-if="!showPassForm" style="margin-top: 6px">
+            <a href="#" class="accent-link" data-test="change-password" @click.prevent="showPassForm = true">{{ t('Change password') }}</a>
+            <span v-if="passSaved" class="saved-hint" style="margin-left: 10px">{{ t('Password updated ✓') }}</span>
+          </div>
+          <div v-else class="card" style="margin-top: 10px; max-width: 480px">
+            <label>{{ t('Current password') }}</label>
+            <input v-model="passCurrent" data-test="pass-current" type="password" autocomplete="current-password" />
+            <label>{{ t('New password') }}</label>
+            <input v-model="passNew" data-test="pass-new" type="password" autocomplete="new-password" />
+            <p class="dim" style="font-size: 12px; margin: 4px 0 0">{{ t('8+ characters') }}</p>
+            <label>{{ t('Confirm new password') }}</label>
+            <input v-model="passNew2" data-test="pass-new2" type="password" autocomplete="new-password" @keyup.enter="submitChangePassword" />
+            <p v-if="passError" class="error-text">{{ passError }}</p>
+            <div style="display: flex; gap: 10px; margin-top: 14px">
+              <button class="btn primary" data-test="pass-save" @click="submitChangePassword">{{ t('Save password') }}</button>
+              <button class="btn secondary" @click="showPassForm = false; passError = ''">{{ t('Cancel') }}</button>
+            </div>
           </div>
 
-          <!-- 未开启 & 未开始设置 -->
-          <button
-            v-if="!me?.mfaEnabled && !mfaSetup"
-            class="btn primary"
-            style="margin-top: 14px"
-            data-test="mfa-enable-start"
-            @click="startMfaSetup"
-          >
-            开启两步验证
-          </button>
-
-          <!-- 设置中：展示 secret / 备份码 + 输码确认 -->
-          <div v-else-if="mfaSetup" style="margin-top: 14px">
-            <p class="dim" style="font-size: 12.5px; margin: 0 0 6px">
-              在验证器里手动录入下面的密钥（或用 otpauth 链接），再输入生成的 6 位码确认：
+          <div style="margin-top: 22px" data-test="settings-mfa">
+            <b style="font-size: 14px">{{ t('Two-factor authentication (2FA)') }}</b>
+            <p class="dim" style="font-size: 13px; margin: 6px 0 0">
+              {{ t(me?.mfaEnabled ? 'Two-factor authentication is currently enabled.' : 'Two-factor authentication is currently disabled.') }}
+              {{ t('Use an authenticator app (Google Authenticator / Authy…) to protect sign-in.') }}
             </p>
-            <code class="api-token" data-test="mfa-secret">{{ mfaSetup.secret }}</code>
-            <details style="margin-top: 8px">
-              <summary class="dim" style="font-size: 12px; cursor: pointer">otpauth 链接</summary>
-              <code class="api-token" style="margin-top: 6px">{{ mfaSetup.otpauthUri }}</code>
-            </details>
-            <div style="margin-top: 12px">
-              <div class="dim" style="font-size: 12px; margin-bottom: 4px">备份码（每个仅一次，妥善保存）：</div>
-              <div class="mfa-backup" data-test="mfa-backup">
-                <code v-for="c in mfaSetup.backupCodes" :key="c">{{ c }}</code>
+
+            <!-- 未开启 & 未开始设置 -->
+            <button
+              v-if="!me?.mfaEnabled && !mfaSetup"
+              class="btn secondary"
+              style="margin-top: 12px"
+              data-test="mfa-enable-start"
+              @click="startMfaSetup"
+            >
+              {{ t('Enable 2FA') }}
+            </button>
+
+            <!-- 设置中：展示 secret / 备份码 + 输码确认 -->
+            <div v-else-if="mfaSetup" style="margin-top: 12px">
+              <p class="dim" style="font-size: 12.5px; margin: 0 0 6px">
+                {{ t('Add the secret below to your authenticator app (or use the otpauth link), then enter the 6-digit code to confirm:') }}
+              </p>
+              <code class="api-token" data-test="mfa-secret">{{ mfaSetup.secret }}</code>
+              <details style="margin-top: 8px">
+                <summary class="dim" style="font-size: 12px; cursor: pointer">{{ t('otpauth link') }}</summary>
+                <code class="api-token" style="margin-top: 6px">{{ mfaSetup.otpauthUri }}</code>
+              </details>
+              <div style="margin-top: 12px">
+                <div class="dim" style="font-size: 12px; margin-bottom: 4px">{{ t('Backup codes (single-use — store them safely):') }}</div>
+                <div class="mfa-backup" data-test="mfa-backup">
+                  <code v-for="c in mfaSetup.backupCodes" :key="c">{{ c }}</code>
+                </div>
+              </div>
+              <div style="display: flex; gap: 10px; align-items: center; margin-top: 14px; flex-wrap: wrap">
+                <input v-model="mfaCode" data-test="mfa-code" :placeholder="t('6-digit code')" style="width: 130px" @keyup.enter="confirmMfaEnable" />
+                <button class="btn primary" data-test="mfa-confirm" @click="confirmMfaEnable">{{ t('Confirm') }}</button>
+                <button class="btn secondary" @click="cancelMfaSetup">{{ t('Cancel') }}</button>
               </div>
             </div>
-            <div style="display: flex; gap: 10px; align-items: center; margin-top: 14px; flex-wrap: wrap">
-              <input v-model="mfaCode" data-test="mfa-code" placeholder="6 位验证码" style="width: 130px" @keyup.enter="confirmMfaEnable" />
-              <button class="btn primary" data-test="mfa-confirm" @click="confirmMfaEnable">确认开启</button>
-              <button class="btn secondary" @click="cancelMfaSetup">取消</button>
+
+            <!-- 已开启：输码停用 -->
+            <div v-else style="margin-top: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
+              <input v-model="mfaCode" data-test="mfa-code" :placeholder="t('Code or backup code')" style="width: 170px" @keyup.enter="disableMfa" />
+              <button class="btn secondary btn-sm" data-test="mfa-disable" @click="disableMfa">{{ t('Disable 2FA') }}</button>
             </div>
-          </div>
 
-          <!-- 已开启：输码停用 -->
-          <div v-else style="margin-top: 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
-            <input v-model="mfaCode" data-test="mfa-code" placeholder="验证码或备份码" style="width: 160px" @keyup.enter="disableMfa" />
-            <button class="btn secondary btn-sm" data-test="mfa-disable" @click="disableMfa">停用两步验证</button>
+            <p v-if="mfaError" class="error-text" data-test="mfa-error">{{ mfaError }}</p>
           </div>
+        </div>
 
-          <p v-if="mfaError" class="error-text" data-test="mfa-error">{{ mfaError }}</p>
+        <div style="margin-top: 30px; display: flex; align-items: center; gap: 12px">
+          <button class="btn primary" data-test="profile-save" :disabled="profileSaving" @click="saveProfile">
+            {{ profileSaving ? t('Saving…') : t('Save') }}
+          </button>
+          <span v-if="profileSaved" class="saved-hint" style="margin: 0">{{ t('Saved ✓') }}</span>
+          <span v-if="profileError" class="error-text" style="margin: 0">{{ profileError }}</span>
         </div>
       </section>
 
-      <!-- 用户管理（实例 admin） -->
-      <section v-else-if="section === 'users'" data-test="settings-users">
-        <h1 class="page-title">Users</h1>
-        <p class="sub">Invite people and manage instance roles (requires owner / admin). Public sign-up is disabled after the first (owner) account — new users join by invitation.</p>
+      <!-- 语言设置（全局，存 localStorage，切换即时生效） -->
+      <section v-else-if="section === 'languages'" data-test="settings-languages">
+        <h1 class="page-title">{{ t('Languages') }}</h1>
+        <p class="sub">
+          {{ t('Choose the language of the nomops interface.') }}
+          {{ t('The setting is saved in this browser and applies to the whole app immediately.') }}
+        </p>
+        <div class="card" style="max-width: 480px">
+          <label>{{ t('Language') }}</label>
+          <select
+            :value="locale"
+            data-test="language-select"
+            style="width: 100%"
+            @change="setLocale(($event.target as HTMLSelectElement).value as Locale)"
+          >
+            <option v-for="l in LOCALES" :key="l.value" :value="l.value">{{ l.label }}</option>
+          </select>
+          <p class="dim" style="font-size: 12.5px; margin: 10px 0 0">{{ t('Untranslated text falls back to English.') }}</p>
+        </div>
+      </section>
 
-        <!-- 邀请 -->
-        <div class="card" style="max-width: 680px; margin-bottom: 16px">
-          <div style="display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap">
-            <div style="flex: 1; min-width: 220px">
-              <label style="font-size: 12px; color: var(--dim)">Email to invite</label>
-              <input v-model="inviteEmail" data-test="invite-email" type="email" placeholder="teammate@company.com" style="width: 100%" @keyup.enter="inviteNewUser" />
+      <!-- Roles（内置角色说明，对标 n8n Roles 页的 Instance/Project 两个 tab） -->
+      <section v-else-if="section === 'roles'" data-test="settings-roles">
+        <div style="display: flex; align-items: center; gap: 10px">
+          <h1 class="page-title" style="margin-bottom: 0">Roles</h1>
+          <span class="nav-badge">New</span>
+        </div>
+        <p class="sub" style="margin-top: 10px">
+          Roles define what members can do. nomops ships fixed instance and project roles — assign instance roles in
+          Users, and project roles per member in each project’s settings.
+        </p>
+        <div class="tabs">
+          <button class="tab" :class="{ active: rolesTab === 'instance' }" data-test="roles-tab-instance" @click="rolesTab = 'instance'">Instance roles</button>
+          <button class="tab" :class="{ active: rolesTab === 'project' }" data-test="roles-tab-project" @click="rolesTab = 'project'">Project roles</button>
+        </div>
+        <div class="card" style="max-width: 720px; padding: 0">
+          <table class="api-table">
+            <thead><tr><th style="width: 180px">Role</th><th>What it can do</th></tr></thead>
+            <tbody>
+              <tr v-for="r in rolesTab === 'instance' ? instanceRoles : projectRoles" :key="r.name" data-test="role-row">
+                <td><b>{{ r.name }}</b></td>
+                <td class="dim">{{ r.desc }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="dim" style="font-size: 12.5px; margin-top: 14px; max-width: 720px">
+          Custom roles are not supported — the fixed roles above cover the ownership rules enforced by the server
+          (project-scoped repositories and instance-admin gates).
+        </p>
+      </section>
+
+      <!-- 用户管理（实例 admin，对标 n8n Users：计数副标题 + 搜索 + 右侧 Invite + 头像表格） -->
+      <section v-else-if="section === 'users'" data-test="settings-users">
+        <h1 class="page-title" style="margin-bottom: 4px">Users</h1>
+        <p class="dim" style="margin: 0 0 18px; font-size: 13.5px">{{ users.length }} user{{ users.length === 1 ? '' : 's' }}</p>
+
+        <div class="users-toolbar" style="max-width: 880px">
+          <div class="search-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="i15"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
+            <input v-model="userSearch" data-test="users-search" placeholder="Search by name or email" />
+          </div>
+          <span style="flex: 1" />
+          <button class="btn primary" data-test="invite-open" @click="openInviteModal">Invite</button>
+        </div>
+
+        <p v-if="usersError" class="error-text" data-test="users-error">{{ usersError }}</p>
+
+        <!-- 弹窗：Invite new users（对标 n8n） -->
+        <div v-if="inviteModalOpen" class="modal-mask" data-test="invite-modal" @click.self="inviteModalOpen = false">
+          <div class="modal-card" style="width: 560px">
+            <div style="display: flex; align-items: flex-start; justify-content: space-between">
+              <h2 class="modal-title">Invite new users</h2>
+              <button class="modal-x" @click="inviteModalOpen = false">×</button>
             </div>
-            <div style="width: 120px">
-              <label style="font-size: 12px; color: var(--dim)">Role</label>
+            <template v-if="!inviteLinks.length">
+              <label class="modal-label">New User Email Addresses <span class="req">*</span></label>
+              <input
+                v-model="inviteEmail"
+                data-test="invite-email"
+                type="text"
+                placeholder="name1@email.com, name2@email.com, ..."
+                style="width: 100%"
+                @keyup.enter="inviteNewUser"
+              />
+              <label class="modal-label">Role <span class="req">*</span></label>
               <select v-model="inviteRole" data-test="invite-role" style="width: 100%">
                 <option value="member">Member</option>
                 <option value="admin">Admin</option>
               </select>
-            </div>
-            <button class="btn primary" data-test="invite-submit" :disabled="inviting" @click="inviteNewUser">
-              {{ inviting ? 'Inviting…' : 'Invite' }}
-            </button>
-          </div>
-          <!-- 无 SMTP：显示邀请链接由 admin 复制转交 -->
-          <div v-if="inviteLink" class="card api-new" data-test="invite-link" style="margin-top: 12px">
-            <div class="dim" style="font-size: 12px">Invitation link — copy and send it to the invitee (valid until accepted)</div>
-            <code class="api-token">{{ inviteLink }}</code>
-            <button class="btn secondary" style="margin-top: 10px" data-test="invite-link-done" @click="inviteLink = ''">Done</button>
+              <p v-if="inviteError" class="error-text" data-test="invite-error">{{ inviteError }}</p>
+              <div style="margin-top: 20px">
+                <button class="btn primary" data-test="invite-submit" :disabled="inviting || !inviteEmail.trim()" @click="inviteNewUser">
+                  {{ inviting ? 'Creating…' : 'Create invite link' }}
+                </button>
+              </div>
+            </template>
+            <template v-else>
+              <p class="dim" style="font-size: 13px; margin: 0 0 10px">
+                Copy each link and send it to the invitee — valid until accepted (no SMTP on this instance).
+              </p>
+              <div v-for="l in inviteLinks" :key="l.email" data-test="invite-link" style="margin-bottom: 10px">
+                <div class="dim" style="font-size: 12px">{{ l.email }}</div>
+                <code class="api-token" style="margin-top: 4px">{{ l.link }}</code>
+              </div>
+              <div class="modal-actions">
+                <button class="btn primary" data-test="invite-link-done" @click="inviteModalOpen = false">Done</button>
+              </div>
+            </template>
           </div>
         </div>
-
-        <p v-if="usersError" class="error-text" data-test="users-error">{{ usersError }}</p>
-        <div class="card" style="max-width: 680px; padding: 0">
-          <table>
+        <div class="card" style="max-width: 1000px; padding: 0">
+          <table class="api-table">
             <thead>
-              <tr><th>Email</th><th>Instance role</th><th>Status</th><th>Joined</th><th></th></tr>
+              <tr><th>User</th><th>Account Type</th><th>Last Active</th><th>2FA</th><th>Projects</th><th style="width: 44px"></th></tr>
             </thead>
             <tbody>
-              <tr v-for="u in users" :key="u.id" data-test="user-row">
-                <td>{{ u.email }}</td>
-                <td style="width: 160px">
+              <tr v-for="u in filteredUsers" :key="u.id" data-test="user-row">
+                <td>
+                  <div class="user-cell">
+                    <span class="avatar">{{ initialsOf(u.firstName ?? null, u.lastName ?? null, u.email) }}</span>
+                    <div class="user-cell-text">
+                      <b>
+                        {{ displayName(u.firstName ?? null, u.lastName ?? null, u.email) }}
+                        <span v-if="u.pending" class="badge" data-test="user-pending" style="margin-left: 6px">Pending</span>
+                        <span v-else-if="u.disabled" class="badge" style="margin-left: 6px">Disabled</span>
+                      </b>
+                      <span class="dim">{{ u.email }}</span>
+                    </div>
+                  </div>
+                </td>
+                <td style="width: 140px">
                   <select v-if="!u.pending" :value="u.role" :data-test-user-role="u.id" @change="changeUserRole(u.id, $event)">
                     <option value="owner">Owner</option>
                     <option value="admin">Admin</option>
@@ -742,15 +1242,20 @@ const sections: Array<{ key: Section; label: string }> = [
                   </select>
                   <span v-else class="dim" style="text-transform: capitalize">{{ u.role }}</span>
                 </td>
-                <td>
-                  <span v-if="u.pending" class="badge" data-test="user-pending">Pending</span>
-                  <span v-else class="dim">{{ u.disabled ? 'Disabled' : 'Active' }}</span>
+                <td class="dim">—</td>
+                <td class="dim">{{ u.pending ? '—' : u.mfaEnabled ? 'Enabled' : 'Disabled' }}</td>
+                <td class="dim">
+                  {{ u.pending ? '—' : u.role === 'owner' || u.role === 'admin' ? 'All projects' : (u.projectCount ?? 0) }}
                 </td>
-                <td class="dim">{{ u.pending ? 'Invited ' + new Date(u.createdAt).toLocaleDateString() : new Date(u.createdAt).toLocaleDateString() }}</td>
-                <td style="text-align: right">
-                  <button class="btn secondary btn-sm" data-test="user-remove" @click="removeUser(u.id, u.email, u.pending)">
-                    {{ u.pending ? 'Revoke' : 'Remove' }}
+                <td style="text-align: right; position: relative" @click.stop>
+                  <button class="row-dots" :data-test-user-menu="u.id" @click="userMenuOpen = userMenuOpen === u.id ? null : u.id">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" class="i16"><circle cx="12" cy="5" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="12" cy="19" r="1.6" /></svg>
                   </button>
+                  <div v-if="userMenuOpen === u.id" class="row-menu-pop">
+                    <button class="menu-item" data-test="user-remove" @click="userMenuOpen = null; removeUser(u.id, u.email, u.pending)">
+                      {{ u.pending ? 'Revoke invitation' : 'Delete user' }}
+                    </button>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -758,40 +1263,69 @@ const sections: Array<{ key: Section; label: string }> = [
         </div>
       </section>
 
-      <!-- 安全（实例 admin） -->
+      <!-- 安全（实例 admin，对标 n8n Security & policies 的设置行卡片） -->
       <section v-else-if="section === 'security'" data-test="settings-security">
         <h1 class="page-title">Security &amp; policies</h1>
+        <p class="sub">
+          Manage instance security requirements — single sign-on status, IdP user provisioning and account overview.
+        </p>
         <p v-if="securityError" class="error-text" data-test="security-error">{{ securityError }}</p>
-        <div v-else-if="security" class="card" style="max-width: 580px">
-          <div class="sec-row">
-            <div><b>SSO login</b><div class="dim" style="font-size: 12px">OIDC single sign-on</div></div>
-            <span class="badge" :class="{ on: security.sso.enabled }">{{ security.sso.enabled ? 'Enabled' : 'Disabled' }}</span>
+        <template v-else-if="security">
+          <h3 class="sec-title" style="margin-top: 6px">Authentication</h3>
+          <div class="setting-card" style="max-width: 880px">
+            <div class="setting-row">
+              <div class="setting-text">
+                <b>SSO login <span v-if="!security.sso.enabled" class="chip-upgrade">{{ licensed('sso') ? 'Off' : 'Upgrade' }}</span></b>
+                <p>OpenID Connect single sign-on for everyone on this instance.</p>
+              </div>
+              <span class="switch" title="Configure under SSO" style="cursor: default">
+                <input type="checkbox" :checked="security.sso.enabled" disabled />
+                <span class="slider" />
+              </span>
+            </div>
           </div>
-          <div class="sec-row">
-            <div><b>SCIM provisioning</b><div class="dim" style="font-size: 12px">IdP user sync ({{ security.scim.tokenConfigured ? 'token configured' : 'not configured' }})</div></div>
-            <button v-if="security.scim.enabled" data-test="rotate-scim" @click="rotateScimToken">
-              {{ security.scim.tokenConfigured ? 'Rotate token' : 'Generate token' }}
-            </button>
-            <span v-else class="badge">Enterprise</span>
+
+          <h3 class="sec-title">User provisioning</h3>
+          <div class="setting-card" style="max-width: 880px">
+            <div class="setting-row">
+              <div class="setting-text">
+                <b>SCIM provisioning <span v-if="!security.scim.enabled" class="chip-upgrade">Upgrade</span></b>
+                <p>Let your identity provider create, update and deactivate users automatically ({{ security.scim.tokenConfigured ? 'token configured' : 'not configured' }}).</p>
+              </div>
+              <button v-if="security.scim.enabled" class="btn secondary btn-sm" data-test="rotate-scim" @click="rotateScimToken">
+                {{ security.scim.tokenConfigured ? 'Rotate token' : 'Generate token' }}
+              </button>
+              <span v-else class="badge">Enterprise</span>
+            </div>
+            <div v-if="newScimToken" class="token-box" data-test="scim-token" style="margin: 0 16px 14px">
+              <div class="dim" style="font-size: 12px; margin-bottom: 4px">New SCIM token (shown once — save it now)</div>
+              <code>{{ newScimToken }}</code>
+            </div>
           </div>
-          <div v-if="newScimToken" class="token-box" data-test="scim-token">
-            <div class="dim" style="font-size: 12px; margin-bottom: 4px">New SCIM token (shown once — save it now)</div>
-            <code>{{ newScimToken }}</code>
+
+          <h3 class="sec-title">Accounts</h3>
+          <div class="setting-card" style="max-width: 880px">
+            <div class="setting-row">
+              <div class="setting-text"><b>Instance users</b><p>Total accounts on this instance, including pending invitations.</p></div>
+              <span class="dim">{{ security.userCount }}</span>
+            </div>
           </div>
-          <div class="sec-row">
-            <div><b>Instance users</b></div>
-            <span class="dim">{{ security.userCount }}</span>
-          </div>
-        </div>
+        </template>
       </section>
 
       <!-- SSO 配置 -->
       <section v-else-if="section === 'sso'" data-test="settings-sso">
-        <h1 class="page-title">SSO</h1>
+        <h1 class="page-title">Single Sign-On</h1>
         <p class="sub">
-          Configure an OIDC identity provider to show “Sign in with SSO” on the login page. Requires Enterprise + instance admin.
+          Configure SSO to let your team sign in using your identity provider. Supports the OpenID Connect protocol —
+          “Sign in with SSO” appears on the login page once enabled.
         </p>
-        <p v-if="ssoError" class="error-text" data-test="sso-error">{{ ssoError }}</p>
+        <div v-if="!licensed('sso')" class="locked-card" data-test="sso-locked">
+          <h2>Available on the Enterprise plan</h2>
+          <p>Use Single Sign-On to consolidate authentication into a single platform to improve security and agility.</p>
+          <button class="btn primary" @click="licenseModalOpen = true">Enter activation key</button>
+        </div>
+        <p v-else-if="ssoError" class="error-text" data-test="sso-error">{{ ssoError }}</p>
         <div v-else-if="!ssoLoading" class="card" style="max-width: 580px">
           <label class="inline-check"><input type="checkbox" v-model="sso.enabled" /> Enable SSO login</label>
           <label>Issuer (discovery URL)</label>
@@ -811,10 +1345,15 @@ const sections: Array<{ key: Section; label: string }> = [
       <section v-else-if="section === 'ldap'" data-test="settings-ldap">
         <h1 class="page-title">LDAP</h1>
         <p class="sub">
-          Connect a corporate directory (AD / OpenLDAP) so employees sign in with their domain account; first login provisions
-          automatically. Requires Enterprise + instance admin.
+          LDAP allows users to authenticate with their centralized account. It’s compatible with services that provide
+          an LDAP interface like Active Directory and OpenLDAP; first login provisions the account automatically.
         </p>
-        <p v-if="ldapError" class="error-text" data-test="ldap-error">{{ ldapError }}</p>
+        <div v-if="!licensed('ldap')" class="locked-card" data-test="ldap-locked">
+          <h2>Available on the Enterprise plan</h2>
+          <p>LDAP is available as a paid feature — sign your team in with the corporate directory.</p>
+          <button class="btn primary" @click="licenseModalOpen = true">Enter activation key</button>
+        </div>
+        <p v-else-if="ldapError" class="error-text" data-test="ldap-error">{{ ldapError }}</p>
         <div v-else-if="!ldapLoading" class="card" style="max-width: 580px">
           <label class="inline-check"><input type="checkbox" v-model="ldap.enabled" data-test="ldap-enabled" /> Enable LDAP login</label>
           <label>Server URL</label>
@@ -846,10 +1385,15 @@ const sections: Array<{ key: Section; label: string }> = [
       <section v-else-if="section === 'logstream'" data-test="settings-logstream">
         <h1 class="page-title">Log Streaming</h1>
         <p class="sub">
-          Push execution-finished and audit events to an external webhook (SIEM / data lake / alerting) in real time. Each event is
-          signed with the destination secret via HMAC-SHA256 in the <code>x-nomops-signature</code> header. Requires Enterprise.
+          Send logs to external endpoints of your choice (SIEM / data lake / alerting) in real time. Each event is
+          signed with the destination secret via HMAC-SHA256 in the <code>x-nomops-signature</code> header.
         </p>
-        <p v-if="lsError" class="error-text" data-test="ls-error">{{ lsError }}</p>
+        <div v-if="!licensed('logStreaming')" class="locked-card" data-test="ls-locked">
+          <h2>Available on the Enterprise plan</h2>
+          <p>Log Streaming is available as a paid feature — push execution and audit events to your SIEM.</p>
+          <button class="btn primary" @click="licenseModalOpen = true">Enter activation key</button>
+        </div>
+        <p v-else-if="lsError" class="error-text" data-test="ls-error">{{ lsError }}</p>
         <template v-else>
           <div v-if="destinations.length" class="card" style="max-width: 680px; margin-bottom: 16px">
             <div
@@ -866,8 +1410,8 @@ const sections: Array<{ key: Section; label: string }> = [
                 </div>
               </div>
               <span v-if="lsTestResult[d.id]" style="font-size: 12px">{{ lsTestResult[d.id] }}</span>
-              <button data-test="ls-test" @click="testDestination(d.id)">Test</button>
-              <button class="danger" data-test="ls-remove" @click="removeDestination(d.id)">Delete</button>
+              <button class="btn secondary btn-sm" data-test="ls-test" @click="testDestination(d.id)">Test</button>
+              <button class="btn secondary btn-sm danger" data-test="ls-remove" @click="removeDestination(d.id)">Delete</button>
             </div>
           </div>
 
@@ -897,9 +1441,14 @@ const sections: Array<{ key: Section; label: string }> = [
         <p class="sub">
           Keep third-party secrets in an external backend; credentials only store a reference
           <code>{{ secretRefExample }}</code> that resolves at run time — rotate a secret without touching credentials, and no real
-          secrets land in the DB. The current provider reads from <code>NOMOPS_SECRET_&lt;KEY&gt;</code> env vars. Requires Enterprise.
+          secrets land in the DB. The current provider reads from <code>NOMOPS_SECRET_&lt;KEY&gt;</code> env vars.
         </p>
-        <p v-if="secretsError" class="error-text" data-test="secrets-error">{{ secretsError }}</p>
+        <div v-if="!licensed('externalSecrets')" class="locked-card" data-test="secrets-locked">
+          <h2>Available on the Enterprise plan</h2>
+          <p>Use External Secrets to keep credentials in an external vault and reference them at run time.</p>
+          <button class="btn primary" @click="licenseModalOpen = true">Enter activation key</button>
+        </div>
+        <p v-else-if="secretsError" class="error-text" data-test="secrets-error">{{ secretsError }}</p>
         <div v-else-if="secretsStatus" class="card" style="max-width: 580px">
           <div style="display: flex; justify-content: space-between; padding: 8px 0">
             <span class="dim">Provider</span><b>{{ secretsStatus.provider }}</b>
@@ -927,111 +1476,171 @@ const sections: Array<{ key: Section; label: string }> = [
         </div>
       </section>
 
-      <!-- 公共 API 令牌 -->
+      <!-- 公共 API 令牌（对标 n8n API 页：空态虚线卡 + Create API Key 弹窗） -->
       <section v-else-if="section === 'api'" data-test="settings-api">
         <h1 class="page-title">API</h1>
-        <p class="dim" style="margin-top: -4px; max-width: 560px; font-size: 13px">
-          用 API 令牌（请求头 <code>X-Nomops-Api-Key</code>）调用本实例 REST API——脚本、CI、第三方集成用。
-        </p>
 
-        <!-- 新令牌明文：仅显示一次 -->
-        <div v-if="createdToken" class="card api-new" style="max-width: 560px; margin-top: 16px">
-          <div class="dim" style="font-size: 12px">新令牌 — 现在复制，之后不再显示</div>
-          <code class="api-token" data-test="api-new-token">{{ createdToken }}</code>
-          <button class="btn secondary" style="margin-top: 10px" data-test="api-token-done" @click="createdToken = ''">
-            我已复制
-          </button>
+        <!-- 空态：n8n 式虚线卡 -->
+        <div v-if="!apiKeysList.length" class="locked-card" data-test="api-empty">
+          <p style="margin-top: 0">Control nomops programmatically using the REST API (header <code>X-Nomops-Api-Key</code>).</p>
+          <button class="btn primary" data-test="api-create-open" @click="openApiModal">Create API key</button>
         </div>
 
-        <!-- 创建 -->
-        <div class="card" style="max-width: 560px; margin-top: 16px">
-          <div style="display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap">
-            <div style="flex: 1; min-width: 200px">
-              <label style="font-size: 12px; color: var(--dim)">名称</label>
-              <input v-model="newKeyLabel" data-test="api-label" placeholder="如 CI 部署" style="width: 100%" @keyup.enter="createApiKey" />
-            </div>
-            <button class="btn primary" data-test="api-create" :disabled="apiBusy" @click="createApiKey">
-              {{ apiBusy ? '创建中…' : '创建令牌' }}
-            </button>
+        <!-- 已有令牌：列表 + 右下创建按钮 -->
+        <template v-else>
+          <div class="card" style="max-width: 720px; margin-top: 4px; padding: 0">
+            <table class="api-table">
+              <thead><tr><th>Label</th><th>API key</th><th>Scope</th><th>Expires</th><th>Last used</th><th></th></tr></thead>
+              <tbody>
+                <tr v-for="k in apiKeysList" :key="k.id" data-test="api-key-row">
+                  <td>{{ k.label }}</td>
+                  <td class="mono dim">{{ k.prefix }}…</td>
+                  <td class="dim">{{ k.scope === 'readonly' ? 'Read only' : 'All' }}</td>
+                  <td class="dim">{{ k.expiresAt ? new Date(k.expiresAt).toLocaleDateString() : 'Never' }}</td>
+                  <td class="dim">{{ k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleDateString() : 'Never' }}</td>
+                  <td style="text-align: right">
+                    <button class="btn secondary btn-sm" data-test="api-revoke" @click="revokeApiKey(k.id)">Revoke</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-          <p v-if="apiError" class="error-text" data-test="api-error">{{ apiError }}</p>
-        </div>
+          <div style="max-width: 720px; margin-top: 12px; display: flex; justify-content: flex-end">
+            <button class="btn primary" data-test="api-create-open" @click="openApiModal">Create API key</button>
+          </div>
+        </template>
 
-        <!-- 列表 -->
-        <div class="card" style="max-width: 560px; margin-top: 16px; padding: 0">
-          <div v-if="!apiKeysList.length" class="dim" style="padding: 20px; text-align: center">还没有 API 令牌。</div>
-          <table v-else class="api-table">
-            <thead><tr><th>名称</th><th>令牌</th><th>最近使用</th><th></th></tr></thead>
-            <tbody>
-              <tr v-for="k in apiKeysList" :key="k.id" data-test="api-key-row">
-                <td>{{ k.label }}</td>
-                <td class="mono dim">{{ k.prefix }}…</td>
-                <td class="dim">{{ k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleDateString() : '从未' }}</td>
-                <td style="text-align: right">
-                  <button class="btn secondary btn-sm" data-test="api-revoke" @click="revokeApiKey(k.id)">吊销</button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <!-- 弹窗：Create API Key（对标 n8n） -->
+        <div v-if="apiModalOpen" class="modal-mask" data-test="api-modal" @click.self="apiModalOpen = false">
+          <div class="modal-card" style="width: 560px">
+            <div style="display: flex; align-items: flex-start; justify-content: space-between">
+              <h2 class="modal-title">Create API Key</h2>
+              <button class="modal-x" @click="apiModalOpen = false">×</button>
+            </div>
+            <template v-if="!createdToken">
+              <label class="modal-label">Label</label>
+              <input v-model="newKeyLabel" data-test="api-label" placeholder="e.g. Internal Project" style="width: 100%" @keyup.enter="createApiKey" />
+
+              <label class="modal-label">Expiration</label>
+              <div style="display: flex; align-items: center; gap: 14px">
+                <select v-model="apiExpireDays" data-test="api-expiration" style="width: 160px">
+                  <option v-for="o in API_EXPIRATIONS" :key="o.label" :value="o.value">{{ o.label }}</option>
+                </select>
+                <span class="dim" style="font-size: 13.5px" data-test="api-expire-text">{{ apiExpireText }}</span>
+              </div>
+
+              <label class="modal-label">Scopes</label>
+              <label class="radio-row">
+                <input v-model="apiScope" type="radio" value="all" data-test="api-scope-all" />
+                <span>All</span>
+              </label>
+              <label class="radio-row">
+                <input v-model="apiScope" type="radio" value="readonly" data-test="api-scope-readonly" />
+                <span>Read only</span>
+              </label>
+              <p class="dim" style="font-size: 12px; margin: 6px 0 0">
+                Read-only keys can call GET endpoints only — write requests are rejected with 403.
+              </p>
+              <p v-if="apiError" class="error-text" data-test="api-error">{{ apiError }}</p>
+              <div class="modal-actions">
+                <button class="btn primary" data-test="api-create" :disabled="apiBusy || !newKeyLabel.trim()" @click="createApiKey">
+                  {{ apiBusy ? 'Saving…' : 'Save' }}
+                </button>
+              </div>
+            </template>
+            <template v-else>
+              <p class="dim" style="font-size: 13px; margin: 0 0 8px">
+                Make sure to copy your API key now — you won't be able to see it again.
+              </p>
+              <code class="api-token" data-test="api-new-token">{{ createdToken }}</code>
+              <div class="modal-actions">
+                <button class="btn primary" data-test="api-token-done" @click="apiModalOpen = false; createdToken = ''">Done</button>
+              </div>
+            </template>
+          </div>
         </div>
       </section>
 
-      <!-- 社区节点 -->
+      <!-- 社区节点（对标 n8n：空态虚线卡） -->
       <section v-else-if="section === 'community'" data-test="settings-community">
         <h1 class="page-title">Community nodes</h1>
-        <p class="dim" style="margin-top: -4px; max-width: 620px; font-size: 13px">
-          Install extra nodes from npm. Packages must export a <code>nomopsNodes</code> array. Installed nodes
-          run with full server privileges (like the Code node) — only install packages you trust. Requires
-          instance owner / admin.
-        </p>
 
-        <!-- 安装 -->
-        <div class="card" style="max-width: 620px; margin-top: 16px">
-          <div style="display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap">
-            <div style="flex: 1; min-width: 200px">
-              <label style="font-size: 12px; color: var(--dim)">npm package</label>
-              <input v-model="installName" data-test="community-name" placeholder="e.g. n8n-nodes-weather" style="width: 100%" @keyup.enter="installCommunityNode" />
-            </div>
-            <div style="width: 120px">
-              <label style="font-size: 12px; color: var(--dim)">Version</label>
-              <input v-model="installVersion" data-test="community-version" placeholder="latest" style="width: 100%" @keyup.enter="installCommunityNode" />
-            </div>
-            <button class="btn primary" data-test="community-install" :disabled="installing" @click="installCommunityNode">
-              {{ installing ? 'Installing…' : 'Install' }}
-            </button>
-          </div>
-          <p v-if="communityError" class="error-text" data-test="community-error">{{ communityError }}</p>
+        <!-- 空态：n8n 式虚线卡 -->
+        <div v-if="!communityNodes.length" class="locked-card" data-test="community-empty">
+          <h2 style="font-weight: 400">Supercharge your workflows with community nodes</h2>
+          <p>Install node packages contributed by the community (npm packages exporting a <code>nomopsNodes</code> array).</p>
+          <button class="btn primary" data-test="community-empty-install" @click="openCommunityModal">Install a community node</button>
         </div>
 
-        <!-- 列表 -->
-        <div class="card" style="max-width: 620px; margin-top: 16px; padding: 0">
-          <div v-if="!communityNodes.length" class="dim" style="padding: 20px; text-align: center">No community nodes installed.</div>
-          <table v-else class="api-table">
-            <thead><tr><th>Package</th><th>Version</th><th>Nodes</th><th></th></tr></thead>
-            <tbody>
-              <tr v-for="p in communityNodes" :key="p.packageName" data-test="community-row">
-                <td>{{ p.packageName }}</td>
-                <td class="mono dim">{{ p.version }}</td>
-                <td class="dim">{{ p.nodeTypes.length }}</td>
-                <td style="text-align: right">
-                  <button class="btn secondary btn-sm" data-test="community-uninstall" @click="uninstallCommunityNode(p.packageName)">Uninstall</button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <!-- 列表 + 右下安装按钮 -->
+        <template v-else>
+          <div class="card" style="max-width: 720px; margin-top: 4px; padding: 0">
+            <table class="api-table">
+              <thead><tr><th>Package</th><th>Version</th><th>Nodes</th><th></th></tr></thead>
+              <tbody>
+                <tr v-for="p in communityNodes" :key="p.packageName" data-test="community-row">
+                  <td>{{ p.packageName }}</td>
+                  <td class="mono dim">{{ p.version }}</td>
+                  <td class="dim">{{ p.nodeTypes.length }}</td>
+                  <td style="text-align: right">
+                    <button class="btn secondary btn-sm" data-test="community-uninstall" @click="uninstallCommunityNode(p.packageName)">Uninstall</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="max-width: 720px; margin-top: 12px; display: flex; justify-content: flex-end">
+            <button class="btn primary" data-test="community-install-open" @click="openCommunityModal">Install a community node</button>
+          </div>
+        </template>
+
+        <!-- 弹窗：Install community nodes（对标 n8n：说明卡 + 包名 + 风险确认） -->
+        <div v-if="communityModalOpen" class="modal-mask" data-test="community-modal" @click.self="communityModalOpen = false">
+          <div class="modal-card" style="width: 620px">
+            <div style="display: flex; align-items: flex-start; justify-content: space-between">
+              <h2 class="modal-title">Install community nodes</h2>
+              <button class="modal-x" @click="communityModalOpen = false">×</button>
+            </div>
+            <div class="info-callout" style="display: flex; align-items: center; gap: 14px">
+              <span style="flex: 1">Find community nodes to add on the npm public registry.</span>
+              <a class="btn primary btn-sm" style="text-decoration: none; display: inline-flex; align-items: center" href="https://www.npmjs.com/search?q=nomops-nodes" target="_blank" rel="noopener">Browse</a>
+            </div>
+            <label class="modal-label">npm Package Name</label>
+            <input v-model="installName" data-test="community-name" placeholder="e.g. nomops-nodes-weather" style="width: 100%" @keyup.enter="installCommunityNode" />
+            <label class="check-row" style="margin-top: 16px; font-size: 13.5px">
+              <input v-model="riskAccepted" type="checkbox" data-test="community-risk" />
+              <span>I understand the risks of installing unverified code from a public source — installed nodes run with full server privileges.</span>
+            </label>
+            <p v-if="communityError" class="error-text" data-test="community-error">{{ communityError }}</p>
+            <div style="margin-top: 20px">
+              <button
+                class="btn primary"
+                data-test="community-install"
+                :disabled="installing || !riskAccepted || !installName.trim()"
+                @click="installCommunityNode"
+              >
+                {{ installing ? 'Installing…' : 'Install' }}
+              </button>
+            </div>
+          </div>
         </div>
       </section>
 
-      <!-- 源码同步 -->
+      <!-- Environments（Git 源码同步，对标 n8n Environments） -->
       <section v-else-if="section === 'sourcecontrol'" data-test="settings-sourcecontrol">
-        <h1 class="page-title">Source control</h1>
-        <p class="dim" style="margin-top: -4px; max-width: 620px; font-size: 13px">
-          Version-control this project's workflows in a Git repository — push local changes and pull
-          updates between environments. Only workflows are synced (no credentials). Requires Enterprise +
-          instance admin. Authentication uses the host's Git configuration (SSH deploy key or credential helper).
+        <h1 class="page-title">Environments</h1>
+        <p class="sub">
+          Use multiple instances for different environments (dev, prod, etc.), deploying between them via a Git
+          repository — push local changes and pull updates. Only workflows are synced (no credentials).
+          Authentication uses the host's Git configuration (SSH deploy key or credential helper).
         </p>
 
-        <p v-if="scError" class="error-text" data-test="sc-error">{{ scError }}</p>
+        <div v-if="!licensed('sourceControl')" class="locked-card" data-test="sc-locked">
+          <h2>Available on the Enterprise plan</h2>
+          <p>Use multiple instances for different environments, deploying between them via a Git repository.</p>
+          <button class="btn primary" @click="licenseModalOpen = true">Enter activation key</button>
+        </div>
+        <p v-else-if="scError" class="error-text" data-test="sc-error">{{ scError }}</p>
 
         <!-- 未连接：连接表单 -->
         <div v-if="scConfig && !scConfig.connected" class="card" style="max-width: 620px; margin-top: 16px">
@@ -1096,56 +1705,377 @@ const sections: Array<{ key: Section; label: string }> = [
         </template>
       </section>
 
-      <!-- 计费与套餐 -->
-      <section v-else data-test="settings-billing">
-        <h1 class="page-title">Usage and plan</h1>
+      <!-- Observability（Prometheus /metrics，对应 n8n 的 OpenTelemetry 观测位） -->
+      <section v-else-if="section === 'observability'" data-test="settings-observability">
+        <h1 class="page-title">Observability</h1>
+        <p class="sub">
+          Export instance metrics in Prometheus text format. Only instance-level aggregates are exposed — never
+          project data or credentials.
+        </p>
+        <div class="setting-card" style="max-width: 880px">
+          <div class="setting-row">
+            <div class="setting-text">
+              <b>Metrics endpoint</b>
+              <p>Scrape <code>GET /metrics</code> — executions by status, workflow and user counts, uptime and memory.</p>
+            </div>
+            <a class="btn secondary btn-sm" href="/metrics" target="_blank" rel="noopener" data-test="metrics-open">Open /metrics</a>
+          </div>
+          <div class="setting-row">
+            <div class="setting-text">
+              <b>Disable</b>
+              <p>Set the environment variable <code>NOMOPS_METRICS=false</code> and restart to turn the endpoint off (returns 404).</p>
+            </div>
+          </div>
+          <div class="setting-row">
+            <div class="setting-text">
+              <b>Prometheus scrape config</b>
+              <p style="margin-bottom: 8px">Add this job to your <code>prometheus.yml</code>:</p>
+              <code class="api-token pre" style="margin-top: 0">{{ promScrape }}</code>
+            </div>
+          </div>
+        </div>
+      </section>
 
-        <!-- 许可证 / 激活码（对标 n8n） -->
-        <div class="card" style="max-width: 560px; margin-bottom: 16px" data-test="license-card">
-          <div style="display: flex; align-items: center; gap: 12px">
-            <div>
-              <div class="dim" style="font-size: 12px">Edition</div>
-              <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px">
-                <span style="font-size: 18px; font-weight: 600">{{ planLabel }}</span>
-                <span class="plan-badge" :class="projects.license?.plan">{{ isActivated ? 'Activated' : 'Free' }}</span>
+      <!-- 实例级 MCP（Preview，对标 n8n Instance-level MCP） -->
+      <section v-else-if="section === 'mcp'" data-test="settings-mcp">
+        <div class="page-head" style="max-width: 1000px">
+          <div style="display: flex; align-items: center; gap: 10px">
+            <h1 class="page-title" style="margin-bottom: 0">Instance-level MCP</h1>
+            <span class="nav-badge preview">Preview</span>
+          </div>
+          <div v-if="mcpStatus" style="display: flex; align-items: center; gap: 12px">
+            <label class="toggle-label" :class="{ on: mcpStatus.enabled }">
+              {{ mcpStatus.enabled ? 'Enabled' : 'Disabled' }}
+              <span class="switch" data-test="mcp-toggle">
+                <input type="checkbox" :checked="mcpStatus.enabled" @change="mcpToggleEnabled" />
+                <span class="slider" />
+              </span>
+            </label>
+            <div class="dropdown-anchor" @click.stop>
+              <button class="btn secondary" data-test="mcp-details" :disabled="!mcpStatus.enabled" @click="mcpShowDetails = !mcpShowDetails">
+                Connection details
+              </button>
+              <div v-if="mcpShowDetails" class="mcp-pop" data-test="mcp-pop">
+                <label style="font-size: 12px; color: var(--dim)">Server URL</label>
+                <code class="api-token" style="margin-top: 4px">{{ mcpServerUrl }}</code>
+                <label style="font-size: 12px; color: var(--dim); display: block; margin-top: 12px">Access token</label>
+                <code v-if="mcpToken" class="api-token" data-test="mcp-token" style="margin-top: 4px">{{ mcpToken }}</code>
+                <p v-else class="dim" style="font-size: 12px; margin: 4px 0 0">
+                  Shown once when MCP access is enabled. Toggle off and on again to rotate the token.
+                </p>
+                <p class="dim" style="font-size: 12px; margin: 10px 0 0">
+                  Send requests as <code>Authorization: Bearer &lt;token&gt;</code> (MCP Streamable HTTP, JSON-RPC 2.0).
+                </p>
               </div>
             </div>
-            <span style="flex: 1" />
-            <button v-if="!isActivated" class="btn primary" data-test="license-open" @click="licenseModalOpen = true">
-              Enter activation key
-            </button>
-            <button v-else class="btn secondary" data-test="license-remove" :disabled="licenseBusy" @click="removeLicense">
-              {{ licenseBusy ? 'Removing…' : 'Remove license' }}
-            </button>
           </div>
-          <p v-if="licenseError" class="error-text" data-test="license-remove-error">{{ licenseError }}</p>
-          <p class="dim" style="font-size: 11.5px; margin-top: 12px">
-            An activation key unlocks Enterprise features (SSO, SCIM, LDAP, audit logs, source control,
-            external secrets). Takes effect immediately — no restart.
-          </p>
+        </div>
+        <p class="sub" style="max-width: 1000px">
+          Connect MCP clients like Claude Code and Cursor to discover and run workflows in this instance.
+        </p>
+        <p v-if="mcpError" class="error-text" data-test="mcp-error">{{ mcpError }}</p>
+
+        <!-- 未启用：n8n 式虚线卡 -->
+        <div v-if="mcpStatus && !mcpStatus.enabled" class="locked-card" style="max-width: 1000px" data-test="mcp-empty">
+          <h2 style="font-weight: 400">Connect AI assistants to run workflows</h2>
+          <p>Enable MCP access so clients can list the workflows you expose below and execute them (production semantics, quota enforced).</p>
+          <button class="btn primary" data-test="mcp-enable" :disabled="mcpBusy" @click="mcpEnable">
+            {{ mcpBusy ? 'Enabling…' : 'Enable MCP access' }}
+          </button>
         </div>
 
-        <div class="card" style="max-width: 560px">
-          <div style="display: flex; align-items: center; gap: 12px">
-            <div>
-              <div class="dim" style="font-size: 12px">Current plan</div>
-              <div style="font-size: 18px; font-weight: 600; margin-top: 2px">{{ usage?.plan ?? 'unlimited' }}</div>
-            </div>
+        <!-- 启用：token 一次性展示 + Workflows / Connected clients 两个 tab -->
+        <template v-else-if="mcpStatus">
+          <div v-if="mcpToken" class="card api-new" style="max-width: 1000px; margin-bottom: 14px">
+            <div class="dim" style="font-size: 12px">Access token — copy it now, it won't be shown again</div>
+            <code class="api-token" data-test="mcp-new-token">{{ mcpToken }}</code>
+          </div>
+
+          <div class="tabs" style="max-width: 1000px">
+            <button class="tab" :class="{ active: mcpTab === 'workflows' }" data-test="mcp-tab-workflows" @click="mcpTab = 'workflows'">Workflows</button>
+            <button class="tab" :class="{ active: mcpTab === 'clients' }" data-test="mcp-tab-clients" @click="mcpTab = 'clients'">Connected clients</button>
             <span style="flex: 1" />
-            <div v-if="usage" class="dim" style="font-size: 13px; text-align: right">
-              {{ usage.used }} / {{ usage.limit === null ? 'unlimited' : usage.limit }} executions this month
+            <button class="icon-refresh" data-test="mcp-refresh" title="Refresh" @click="loadMcp">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="i15"><path d="M21 12a9 9 0 1 1-2.6-6.3M21 4v5h-5" /></svg>
+            </button>
+          </div>
+
+          <!-- Workflows：仅列已启用；添加走弹窗（对标 n8n Enable workflows） -->
+          <template v-if="mcpTab === 'workflows'">
+            <div class="card" style="max-width: 1000px; padding: 0">
+              <table class="api-table">
+                <thead><tr><th>Name</th><th>Location</th><th></th></tr></thead>
+                <tbody>
+                  <tr v-for="w in mcpEnabledWorkflows" :key="w.id" data-test="mcp-wf-row">
+                    <td>{{ w.name }}</td>
+                    <td class="dim">{{ w.projectName }}</td>
+                    <td style="text-align: right">
+                      <button class="btn secondary btn-sm" :data-test-mcp-remove="w.id" @click="removeMcpWorkflow(w.id)">Remove</button>
+                    </td>
+                  </tr>
+                  <tr v-if="!mcpEnabledWorkflows.length">
+                    <td colspan="3">
+                      <div class="table-empty" data-test="mcp-wf-empty">
+                        <h3>No workflows enabled</h3>
+                        <p>Add published workflows so MCP clients can discover and execute them</p>
+                        <button class="btn primary" data-test="mcp-open-enable" @click="openMcpModal">Enable workflows</button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-if="mcpEnabledWorkflows.length" style="max-width: 1000px; margin-top: 12px; display: flex; justify-content: flex-end">
+              <button class="btn primary" data-test="mcp-open-enable" @click="openMcpModal">Enable workflows</button>
+            </div>
+            <p class="dim" style="font-size: 12.5px; margin-top: 10px; max-width: 1000px">
+              Enabled workflows become MCP tools. Calls run the <b>published</b> version, count against the project quota
+              and appear in Executions (mode <code>mcp</code>).
+            </p>
+          </template>
+
+          <template v-else>
+            <div class="card" style="max-width: 1000px; padding: 0">
+              <table class="api-table">
+                <thead><tr><th>Client</th><th>Version</th><th>Last seen</th></tr></thead>
+                <tbody>
+                  <tr v-for="c in mcpStatus.clients" :key="c.name + c.version" data-test="mcp-client-row">
+                    <td>{{ c.name }}</td>
+                    <td class="dim">{{ c.version || '—' }}</td>
+                    <td class="dim">{{ new Date(c.lastSeen).toLocaleString() }}</td>
+                  </tr>
+                  <tr v-if="!mcpStatus.clients.length">
+                    <td colspan="3">
+                      <div class="table-empty">
+                        <h3>No clients connected yet</h3>
+                        <p>Clients appear here after their first <code>initialize</code> handshake (since last server restart)</p>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </template>
+        </template>
+
+        <!-- Enable workflows 弹窗（对标 n8n Enable workflow MCP access） -->
+        <div v-if="mcpModalOpen" class="modal-mask" data-test="mcp-modal" @click.self="mcpModalOpen = false">
+          <div class="modal-card" style="width: 640px">
+            <div style="display: flex; align-items: flex-start; justify-content: space-between">
+              <h2 class="modal-title">Enable workflow MCP access</h2>
+              <button class="modal-x" @click="mcpModalOpen = false">×</button>
+            </div>
+            <div class="info-callout">
+              Workflows that are <b>published</b> can be enabled for MCP access — calls always run the published version.
+            </div>
+            <div class="search-box" style="width: 100%; margin-bottom: 10px">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="i15"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
+              <input v-model="mcpSearch" data-test="mcp-search" placeholder="Search workflows to connect" />
+            </div>
+            <div class="pick-list" data-test="mcp-candidates">
+              <label v-for="w in mcpCandidates" :key="w.id" class="pick-row">
+                <input type="checkbox" :checked="mcpPick.has(w.id)" :data-test-mcp-pick="w.id" style="width: auto" @change="togglePick(w.id)" />
+                <span class="dim">{{ w.projectName }} /</span>
+                <span>{{ w.name }}</span>
+              </label>
+              <p v-if="!mcpCandidates.length" class="dim" style="font-size: 13px; padding: 14px 4px">
+                No published workflows available — publish a workflow first (open it and press Publish).
+              </p>
+            </div>
+            <div class="modal-actions">
+              <button class="btn secondary" @click="mcpModalOpen = false">Cancel</button>
+              <button class="btn primary" data-test="mcp-confirm-enable" :disabled="!mcpPick.size" @click="confirmEnableWorkflows">Enable</button>
             </div>
           </div>
-          <hr style="border: none; border-top: 1px solid var(--border); margin: 16px 0" />
+        </div>
+      </section>
+
+      <!-- Chat 设置（Preview，对标 n8n Chat） -->
+      <section v-else-if="section === 'chat'" data-test="settings-chat">
+        <div style="display: flex; align-items: center; gap: 10px">
+          <h1 class="page-title" style="margin-bottom: 0">Chat</h1>
+          <span class="nav-badge preview">Preview</span>
+        </div>
+        <p v-if="chatError" class="error-text" style="margin-top: 14px" data-test="chat-error">{{ chatError }}</p>
+        <template v-if="chatSettings">
+          <!-- Enable Chat：无边框设置行 + 胶囊开关（对标 n8n） -->
+          <div class="setting-row" style="max-width: 1000px; margin-top: 20px; border-bottom: none; padding: 0">
+            <div class="setting-text">
+              <b>Enable Chat</b>
+              <p>When disabled, the AI Assistant is hidden across the app and its API endpoints are turned off. You can re-enable it here at any time.</p>
+            </div>
+            <!-- 必须是 label：全局 .switch 把 input 藏了，点滑块靠 label 联动 -->
+            <label class="switch" data-test="chat-toggle" style="margin: 0">
+              <input type="checkbox" :checked="chatSettings.enabled" :disabled="chatSaving" @change="saveChat({ enabled: !chatSettings.enabled })" />
+              <span class="slider" />
+            </label>
+          </div>
+
+          <p v-if="!chatSettings.enabled" class="dim" data-test="chat-disabled-note" style="margin-top: 26px; font-size: 14.5px">
+            Chat is currently disabled. Enable it above to configure providers.
+          </p>
+
+          <div v-if="chatSettings.enabled" style="display: flex; align-items: center; max-width: 1000px; margin-top: 26px">
+            <h3 class="sec-title" style="margin: 0">Providers</h3>
+            <span style="flex: 1" />
+            <button class="icon-refresh" data-test="chat-refresh" title="Refresh" @click="loadChat">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="i15"><path d="M21 12a9 9 0 1 1-2.6-6.3M21 4v5h-5" /></svg>
+            </button>
+          </div>
+          <div v-if="chatSettings.enabled" class="card" style="max-width: 1000px; padding: 0; margin-top: 10px">
+            <table class="api-table">
+              <thead><tr><th>Provider</th><th>Models</th><th>Last edited</th><th style="width: 44px"></th></tr></thead>
+              <tbody>
+                <tr v-for="p in chatProviders" :key="p.id" :data-test="`chat-provider-${p.id}`" :style="p.enabled ? '' : 'opacity: 0.5'">
+                  <td>
+                    <span style="display: inline-flex; align-items: center; gap: 9px">
+                      <b>{{ p.label }}</b>
+                      <span v-if="!p.enabled" class="badge" data-test="chat-disabled-badge">disabled</span>
+                    </span>
+                  </td>
+                  <td class="dim">All models</td>
+                  <td class="dim">{{ p.lastEditedAt ? new Date(p.lastEditedAt).toLocaleDateString() : '—' }}</td>
+                  <td style="text-align: right; position: relative" @click.stop>
+                    <button class="row-dots" :data-test="`chat-provider-menu-${p.id}`" @click="providerMenuFor = providerMenuFor === p.id ? null : p.id">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" class="i16"><circle cx="12" cy="5" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="12" cy="19" r="1.6" /></svg>
+                    </button>
+                    <div v-if="providerMenuFor === p.id" class="row-menu-pop" :data-test="`chat-provider-pop-${p.id}`">
+                      <button class="menu-item" :data-test="`chat-provider-edit-${p.id}`" @click="openProviderModal(p)">Edit provider</button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p v-if="chatSettings.enabled" class="dim" style="font-size: 12.5px; margin-top: 10px; max-width: 1000px">
+            Each provider uses the project’s own credential of the listed type (add it under Credentials).
+            Decrypted keys never leave the request — never stored, returned or logged.
+          </p>
+
+          <!-- Configure Anthropic 弹窗（对标 n8n Configure provider） -->
+          <div v-if="providerModalOpen" class="modal-mask" data-test="chat-provider-modal" @click.self="providerModalOpen = false">
+            <div class="modal-card" style="width: 620px">
+              <div style="display: flex; align-items: flex-start; justify-content: space-between">
+                <h2 class="modal-title">Configure {{ providerModal?.label }}</h2>
+                <button class="modal-x" @click="providerModalOpen = false">×</button>
+              </div>
+
+              <!-- ① Enable {Provider} -->
+              <div class="prov-section">
+                <div class="prov-label">Enable {{ providerModal?.label }}</div>
+                <label class="switch" data-test="prov-enable">
+                  <input type="checkbox" :checked="provEnabled" @change="provEnabled = !provEnabled" />
+                  <span class="slider" />
+                </label>
+              </div>
+
+              <!-- ② Default credential（对标 n8n：凭证卡片 + Create new credential；关闭 provider 时隐藏） -->
+              <div v-if="provEnabled" class="prov-section" @click.stop>
+                <div class="prov-label">Default credential</div>
+                <button class="prov-cred-btn" data-test="prov-credential" :class="{ open: provCredOpen }" @click="provCredOpen = !provCredOpen">
+                  {{ provSelectedCredName || 'Select' }}
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width: 14px; height: 14px"><path :d="provCredOpen ? 'M18 15l-6-6-6 6' : 'M6 9l6 6 6-6'" /></svg>
+                </button>
+                <div v-if="provCredOpen" class="prov-cred-pop" data-test="prov-cred-pop">
+                  <button
+                    v-for="c in provCredOptions"
+                    :key="c.id"
+                    class="prov-cred-item"
+                    :class="{ sel: c.id === provCredentialId }"
+                    :data-test-prov-cred="c.id"
+                    @click="provCredentialId = c.id; provCredOpen = false"
+                  >
+                    <span class="prov-cred-name">{{ c.name }}</span>
+                    <span class="prov-cred-sub dim">
+                      {{ credLabel2(c.type) }}<template v-if="meInfo"> - {{ meInfo.name }} &lt;{{ meInfo.email }}&gt;</template>
+                    </span>
+                  </button>
+                  <button class="prov-cred-create" data-test="prov-cred-create" @click="provCreateOpen = true; provCredOpen = false">
+                    ＋ Create new credential
+                  </button>
+                </div>
+              </div>
+
+              <!-- ③ Context window (messages)；关闭 provider 时隐藏 -->
+              <div v-if="provEnabled" class="prov-section">
+                <div class="prov-label">Context window (messages)</div>
+                <p class="dim" style="font-size: 12.5px; margin: 4px 0 8px">
+                  Number of previous interactions (message and reply pairs) to include as context for the model (default: 20)
+                </p>
+                <div class="prov-stepper">
+                  <button data-test="prov-cw-dec" @click="provContextWindow = Math.max(1, provContextWindow - 1)">−</button>
+                  <input
+                    v-model.number="provContextWindow"
+                    data-test="prov-cw"
+                    type="number"
+                    min="1"
+                    max="100"
+                  />
+                  <button data-test="prov-cw-inc" @click="provContextWindow = Math.min(100, provContextWindow + 1)">＋</button>
+                </div>
+              </div>
+
+              <p v-if="provError" class="error-text" style="font-size: 12.5px">{{ provError }}</p>
+              <div class="modal-actions">
+                <button class="btn secondary" @click="providerModalOpen = false">Cancel</button>
+                <button class="btn primary" data-test="chat-provider-confirm" :disabled="provSaving" @click="confirmProvider">
+                  {{ provSaving ? 'Saving…' : 'Confirm' }}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Create new credential（从 provider 下拉进入，类型预选） -->
+          <CredentialModal
+            v-if="provCreateOpen"
+            :create-type="providerModal?.credentialType"
+            @close="provCreateOpen = false"
+            @created="onProvCredCreated"
+          />
+        </template>
+      </section>
+
+      <!-- 计费与套餐（对标 n8n Usage and plan） -->
+      <section v-else data-test="settings-billing">
+        <h1 class="page-title">Usage and plan</h1>
+        <h3 class="sec-title" style="margin-top: 0" data-test="plan-line">You’re on the {{ planLabel }} Edition</h3>
+
+        <!-- Unlock 横幅（未激活时，对标 n8n 的 Unlock banner） -->
+        <button v-if="!isActivated" class="unlock-banner" data-test="license-open" @click="licenseModalOpen = true">
+          <b>Unlock</b>
+          <span>Enterprise features (SSO, SCIM, LDAP, audit logs, environments, external secrets) with an activation key</span>
+        </button>
+
+        <!-- 用量行（对标 Published workflows 计量行） -->
+        <div class="usage-row" data-test="usage-row">
+          <span class="dim">Executions this month</span>
+          <span>{{ usage?.used ?? 0 }} of {{ usage?.limit === null || usage?.limit === undefined ? 'unlimited' : usage?.limit }}</span>
+        </div>
+        <p class="dim" style="font-size: 12.5px; max-width: 880px; margin-top: 8px">
+          Executions are counted per project when a workflow runs (manual or production). Quota is enforced at run time.
+        </p>
+
+        <!-- 底部按钮行：Enter activation key + View plans（右对齐，对标 n8n） -->
+        <div class="plan-actions">
+          <button v-if="!isActivated" class="btn secondary" data-test="license-open-2" @click="licenseModalOpen = true">Enter activation key</button>
+          <button v-else class="btn secondary" data-test="license-remove" :disabled="licenseBusy" @click="removeLicense">
+            {{ licenseBusy ? 'Removing…' : 'Remove license' }}
+          </button>
+          <button class="btn primary" data-test="billing-upgrade" @click="upgrade">View plans</button>
+        </div>
+        <p v-if="licenseError" class="error-text" data-test="license-remove-error">{{ licenseError }}</p>
+        <p v-if="billingError" class="error-text" data-test="billing-error">{{ billingError }}</p>
+
+        <!-- Pro 购买（支付宝） -->
+        <div class="card" style="max-width: 880px; margin-top: 18px">
           <div class="dim" style="font-size: 12px">Upgrade to Pro (¥99/month, Alipay)</div>
           <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px">
             <label style="margin: 0">Months</label>
             <input v-model.number="months" type="number" min="1" max="36" style="width: 90px" />
-            <button class="btn primary" data-test="billing-upgrade" @click="upgrade">
+            <button class="btn primary" data-test="billing-pay" @click="upgrade">
               Pay ¥{{ (99 * months).toFixed(2) }}
             </button>
           </div>
-          <p v-if="billingError" class="error-text" data-test="billing-error">{{ billingError }}</p>
           <p class="dim" style="font-size: 11.5px; margin-top: 12px">
             Payment is credited via Alipay async notification; the plan activates immediately and extends by month.
           </p>
@@ -1264,6 +2194,11 @@ const sections: Array<{ key: Section; label: string }> = [
 .btn.primary { background: var(--accent); color: #fff; }
 .btn.primary:hover { background: var(--accent-dim); }
 .btn.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn.secondary { background: var(--bg-input); border: 1px solid var(--border); color: var(--text-hi); }
+.btn.secondary:hover { border-color: var(--accent); }
+.btn.secondary.danger { color: var(--err, #e5484d); }
+.btn.secondary.danger:hover { border-color: var(--err, #e5484d); }
+.btn-sm { height: 28px; padding: 0 12px; font-size: 12.5px; }
 .sec-row {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 12px 0; border-bottom: 1px solid var(--border);
@@ -1275,9 +2210,223 @@ const sections: Array<{ key: Section; label: string }> = [
 .token-box code { font-size: 12px; word-break: break-all; color: var(--accent); }
 .danger { color: var(--err); }
 
+/* ── n8n 对齐新增 ── */
+/* a.btn 抵消全局链接样式（如 Observability 的 Open /metrics） */
+a.btn {
+  display: inline-flex; align-items: center; text-decoration: none;
+  background: var(--bg-input); border: 1px solid var(--border); color: var(--text-hi);
+}
+a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
+/* 多行代码块（Prometheus 抓取配置） */
+.api-token.pre { white-space: pre; overflow-x: auto; }
+/* 侧栏徽标（New / Preview） */
+.nav-badge {
+  margin-left: auto; font-size: 10.5px; padding: 1px 7px; border-radius: 8px;
+  background: var(--bg-panel); border: 1px solid var(--border); color: var(--text-dim);
+}
+.nav-badge.preview { color: #a78bfa; border-color: rgba(167, 139, 250, 0.45); background: rgba(167, 139, 250, 0.12); }
+
+/* 胶囊开关标签（Enabled 绿字，对标 n8n） */
+.toggle-label { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 13.5px; color: var(--text-dim); cursor: pointer; }
+.toggle-label.on { color: var(--ok); }
+
+/* tabs 行右侧刷新按钮 */
+.icon-refresh {
+  width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg-input); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text-dim); cursor: pointer;
+}
+.icon-refresh:hover { color: var(--text-hi); border-color: var(--accent); }
+.icon-refresh .i15 { width: 15px; height: 15px; }
+
+/* 表格内空态（对标 n8n 表格容器内居中空态） */
+.table-empty { text-align: center; padding: 48px 24px 52px; }
+.table-empty h3 { margin: 0 0 10px; font-size: 17px; font-weight: 500; color: var(--text-hi); }
+.table-empty p { margin: 0 0 20px; font-size: 13.5px; color: var(--text-dim); }
+
+/* 弹窗（对标 n8n 模态：标题 + × + 右下 Cancel/Confirm） */
+.modal-mask {
+  position: fixed; inset: 0; z-index: 100; background: rgba(0, 0, 0, 0.55);
+  display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh;
+}
+.modal-card {
+  max-width: 94vw; background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 22px 24px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+.modal-title { margin: 0 0 16px; font-size: 19px; font-weight: 500; color: var(--text-hi); }
+.modal-label { display: block; margin: 14px 0 6px; font-size: 14px; font-weight: 600; color: var(--text-hi); }
+.modal-x { background: none; border: none; color: var(--text-dim); font-size: 20px; cursor: pointer; padding: 0 6px; line-height: 1; }
+.modal-x:hover { color: var(--text-hi); }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+
+/* 弹窗顶部提示卡（左竖条，对标 n8n callout） */
+.info-callout {
+  border: 1px solid var(--border); border-left: 3px solid var(--text-dim);
+  border-radius: 6px; padding: 12px 14px; margin-bottom: 14px;
+  font-size: 13px; color: var(--text-dim);
+}
+
+/* 弹窗内单选行（Scopes）：橙色 radio，收回全局 input 宽度 */
+.radio-row { display: flex; align-items: center; gap: 9px; margin: 8px 0 0; cursor: pointer; font-size: 14px; color: var(--text-hi); }
+.radio-row input[type='radio'] { width: 15px; height: 15px; flex: 0 0 auto; margin: 0; accent-color: var(--accent); }
+
+/* 弹窗内勾选行（风险确认等）：收回全局 input 宽度 */
+.check-row { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; color: var(--text-hi); line-height: 1.5; }
+.check-row input[type='checkbox'] { width: 16px; height: 16px; flex: 0 0 auto; margin: 2px 0 0; accent-color: var(--accent); }
+
+/* 弹窗内工作流多选列表 */
+.pick-list { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.pick-row {
+  display: flex; align-items: center; gap: 9px; padding: 8px 6px; margin: 0;
+  border-radius: 6px; cursor: pointer; font-size: 13.5px; color: var(--text-hi);
+}
+.pick-row:hover { background: var(--bg-input); }
+.pick-row input[type='checkbox'] { width: 15px; height: 15px; flex: 0 0 auto; margin: 0; accent-color: var(--accent); }
+
+/* 表格行 ⋮ 菜单 */
+.row-dots {
+  width: 30px; height: 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: none; border-radius: 6px; color: var(--text-dim); cursor: pointer;
+}
+.row-dots:hover { background: var(--bg-input); color: var(--text-hi); }
+.row-dots .i16 { width: 16px; height: 16px; }
+.row-menu-pop {
+  position: absolute; right: 8px; top: calc(100% - 6px); z-index: 40; min-width: 150px;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
+  padding: 4px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+.row-menu-pop .menu-item {
+  display: block; width: 100%; text-align: left; padding: 8px 10px; font-size: 13.5px;
+  background: none; border: none; border-radius: 6px; color: var(--text-hi); cursor: pointer;
+}
+.row-menu-pop .menu-item:hover { background: var(--bg-input); }
+/* MCP Connection details 弹层 */
+.dropdown-anchor { position: relative; }
+.mcp-pop {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 30; width: 460px;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
+  padding: 14px 16px 16px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+/* 页头（标题 + 右上用户 chip） */
+.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; max-width: 880px; }
+.me-chip { display: flex; align-items: center; gap: 10px; }
+.me-chip-text { display: flex; flex-direction: column; align-items: flex-end; font-size: 13px; }
+.avatar {
+  width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #f5a623, #a855f7); color: #fff;
+  font-size: 12.5px; font-weight: 600; letter-spacing: 0.3px;
+}
+.req { color: var(--accent); }
+.accent-link { color: var(--accent); text-decoration: none; font-size: 13.5px; }
+.accent-link:hover { text-decoration: underline; }
+
+/* Roles 页 tab（对标 n8n 的 Instance roles / Project roles） */
+.tabs { display: flex; gap: 22px; border-bottom: 1px solid var(--border); margin: 4px 0 18px; max-width: 720px; }
+.tab {
+  background: none; border: none; padding: 8px 2px 10px; font-size: 14px; cursor: pointer;
+  color: var(--text-dim); border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* 企业功能锁定卡（对标 n8n "Available on the Enterprise plan" 虚线卡） */
+.locked-card {
+  max-width: 880px; border: 1px dashed var(--border); border-radius: 8px;
+  padding: 56px 40px; text-align: center; margin-top: 8px;
+}
+.locked-card h2 { margin: 0 0 14px; font-size: 20px; font-weight: 500; color: var(--text-hi); }
+.locked-card p { margin: 0 0 22px; color: var(--text-dim); font-size: 14px; }
+
+/* 设置行卡片（对标 n8n Security & policies / OpenTelemetry 的 row 布局） */
+.setting-card { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-panel); }
+.setting-row {
+  display: flex; align-items: center; gap: 18px; padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.setting-row:last-child { border-bottom: none; }
+.setting-text { flex: 1; min-width: 0; }
+.setting-text b { font-size: 14px; color: var(--text-hi); }
+.setting-text p { margin: 4px 0 0; font-size: 13px; color: var(--text-dim); }
+.chip-upgrade {
+  font-size: 11px; font-weight: 400; padding: 1px 8px; margin-left: 6px;
+  border: 1px solid var(--border); border-radius: 6px; color: var(--text-dim);
+}
+
+/* Users 工具条（搜索 + Invite） */
+.users-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.search-box {
+  display: flex; align-items: center; gap: 8px; width: 320px;
+  background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 0 12px; color: var(--text-dim);
+}
+.search-box input { border: none; background: none; padding: 9px 0; width: 100%; }
+.search-box input:focus { outline: none; }
+.search-box .i15 { width: 15px; height: 15px; flex-shrink: 0; }
+.user-cell { display: flex; align-items: center; gap: 10px; }
+.user-cell-text { display: flex; flex-direction: column; min-width: 0; }
+.user-cell-text .dim { font-size: 12px; }
+
+/* Usage and plan（Unlock 横幅 + 计量行 + 右对齐按钮） */
+.unlock-banner {
+  display: block; width: 100%; max-width: 880px; text-align: left; cursor: pointer;
+  background: rgba(255, 105, 0, 0.08); border: 1px solid rgba(255, 105, 0, 0.45);
+  border-left: 4px solid var(--accent); border-radius: 6px; padding: 14px 16px; margin-bottom: 14px;
+  color: var(--text-hi); font-size: 13.5px;
+}
+.unlock-banner b { color: var(--accent); margin-right: 6px; }
+.unlock-banner span { color: var(--text-dim); }
+.usage-row {
+  display: flex; align-items: center; justify-content: space-between; max-width: 880px;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
+  padding: 16px; font-size: 14px;
+}
+.plan-actions { display: flex; justify-content: flex-end; gap: 10px; max-width: 880px; margin-top: 22px; }
+
 /* 源码同步 */
 .mono { font-family: 'SF Mono', ui-monospace, Menlo, monospace; }
 .sc-changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
 .sc-changes li { display: flex; align-items: center; gap: 10px; font-size: 12.5px; }
 .sc-stat { width: 20px; text-align: center; color: var(--accent); font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 11px; }
+
+/* Configure provider 弹窗（三层：Enable / Default credential / Context window） */
+.prov-section { margin-top: 18px; }
+.prov-label { font-size: 14px; font-weight: 600; color: var(--text-hi); margin-bottom: 6px; }
+.prov-stepper { display: flex; align-items: stretch; }
+.prov-stepper button {
+  width: 38px; padding: 0; font-size: 16px; border: 1px solid var(--border);
+  background: var(--bg-panel); color: var(--text); cursor: pointer;
+}
+.prov-stepper button:first-child { border-radius: 8px 0 0 8px; }
+.prov-stepper button:last-child { border-radius: 0 8px 8px 0; }
+.prov-stepper input {
+  flex: 1; text-align: center; border: 1px solid var(--border); border-left: none; border-right: none;
+  border-radius: 0; background: transparent; color: var(--text); font-size: 13.5px; padding: 8px 0;
+  -moz-appearance: textfield; appearance: textfield; outline: none;
+}
+.prov-stepper input::-webkit-outer-spin-button, .prov-stepper input::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+/* provider 弹窗：凭证下拉（对标 n8n） */
+.prov-cred-btn {
+  display: flex; align-items: center; justify-content: space-between; width: 100%;
+  padding: 10px 14px; margin-top: 6px; font-size: 13.5px; text-align: left;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; color: var(--text); cursor: pointer;
+}
+.prov-cred-btn.open { border-color: #7c5cd6; }
+.prov-cred-pop {
+  margin-top: 8px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  background: var(--panel, #26262e); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+.prov-cred-item {
+  display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left;
+  background: none; border: none; border-bottom: 1px solid var(--border);
+  padding: 12px 16px; cursor: pointer;
+}
+.prov-cred-item:hover, .prov-cred-item.sel { background: var(--hover, rgba(255, 255, 255, 0.06)); }
+.prov-cred-name { font-size: 14px; font-weight: 600; color: var(--text-hi); }
+.prov-cred-sub { font-size: 12.5px; }
+.prov-cred-create {
+  display: block; width: 100%; text-align: left; background: none; border: none;
+  padding: 13px 16px; font-size: 14px; font-weight: 600; color: var(--accent); cursor: pointer;
+}
+.prov-cred-create:hover { background: var(--hover, rgba(255, 255, 255, 0.06)); }
 </style>

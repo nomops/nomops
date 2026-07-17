@@ -99,6 +99,69 @@
       "when": 1783932500828,
       "tag": "0013_puzzling_venus",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1784100296005,
+      "tag": "0014_funny_shadow_king",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1784102104289,
+      "tag": "0015_charming_gressill",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1784103070989,
+      "tag": "0016_cuddly_pixie",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1784124121691,
+      "tag": "0017_goofy_sebastian_shaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1784168608812,
+      "tag": "0018_curved_ikaris",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1784193524236,
+      "tag": "0019_natural_jack_power",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1784255400683,
+      "tag": "0020_loving_the_twelve",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1784257743195,
+      "tag": "0021_lean_the_leader",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1784260827426,
+      "tag": "0022_easy_martin_li",
+      "breakpoints": true
     }
   ]
 }

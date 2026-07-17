@@ -36,10 +36,11 @@ watch(
 );
 
 interface Item {
-  kind: 'action' | 'workflow' | 'credential';
+  kind: 'action' | 'workflow' | 'credential' | 'context';
   icon: string;
   label: string;
   sub: string;
+  shortcut?: string;
   run: () => void;
 }
 
@@ -70,7 +71,21 @@ const results = computed<Item[]>(() => {
       run: () => go('/?tab=credentials'),
     }));
   const acts = q ? actions.value.filter((a) => a.label.toLowerCase().includes(q)) : actions.value;
-  return [...acts, ...wfItems, ...credItems];
+  // 当前视图注入的上下文命令（如画布的 Workflow 组，⌘K 一站直达）
+  const ctxItems: Item[] = ui.paletteContext
+    .filter((c) => !q || c.label.toLowerCase().includes(q))
+    .map((c) => ({
+      kind: 'context',
+      icon: '⌁',
+      label: c.label,
+      sub: c.group,
+      shortcut: c.shortcut,
+      run: () => {
+        ui.closePalette();
+        c.run();
+      },
+    }));
+  return [...acts, ...ctxItems, ...wfItems, ...credItems];
 });
 
 watch(results, () => {
@@ -133,6 +148,7 @@ function onKey(e: KeyboardEvent) {
             <span class="pi-label">{{ item.label }}</span>
             <span class="pi-sub">{{ item.sub }}</span>
           </span>
+          <span v-if="item.shortcut" class="pi-shortcut dim">{{ item.shortcut }}</span>
         </button>
         <p v-if="results.length === 0" class="dim" style="padding: 20px; text-align: center">No results</p>
       </div>
@@ -141,6 +157,7 @@ function onKey(e: KeyboardEvent) {
 </template>
 
 <style scoped>
+.pi-shortcut { margin-left: auto; font-size: 11.5px; white-space: nowrap; }
 .palette-overlay {
   position: fixed; inset: 0; z-index: 80;
   background: rgba(0, 0, 0, 0.5);

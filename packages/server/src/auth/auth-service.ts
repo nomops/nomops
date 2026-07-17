@@ -41,14 +41,14 @@ export class AuthService {
     private readonly mfa: MfaService,
   ) {}
 
-  /** 实例是否待初始化（无任何用户）→ 前端首启引导 owner setup（对标 n8n 自托管）。 */
+  /** 实例是否待初始化（无任何用户）→ 前端首启引导 owner setup（自托管）。 */
   async needsSetup(): Promise<boolean> {
     return (await this.repos.users.count()) === 0;
   }
 
   /**
    * 自托管 owner 初始化：`register` 只用于创建实例的第一个用户（owner）。
-   * 一旦已有用户，公开注册即关闭（对标 n8n：此后只能由 admin 邀请，见 invite/acceptInvite）。
+   * 一旦已有用户，公开注册即关闭（此后只能由 admin 邀请，见 invite/acceptInvite）。
    */
   async register(input: {
     email: string;
@@ -75,7 +75,7 @@ export class AuthService {
   }
 
   /**
-   * 邀请用户（对标 n8n：owner/admin 发起 → 生成邀请链接）。此刻不建 users 行，
+   * 邀请用户（owner/admin 发起 → 生成邀请链接）。此刻不建 users 行，
    * 仅落一条 invitation（存 token 哈希）；接受时才建用户。返回明文 token + 链接供投递/复制。
    * 邮箱已是用户 → 409；已有未接受邀请 → 换发新 token。
    */
@@ -181,6 +181,15 @@ export class AuthService {
     }
     await this.repos.users.setPassword(ticket.userId, await argon2.hash(newPassword));
     await this.repos.passwordResets.delete(tokenHash);
+  }
+
+  /** 登录态改口令（Settings → Personal）：先验当前口令，防会话劫持后静默换密。 */
+  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+    const user = await this.repos.users.findById(userId);
+    if (!user) throw new OperationalError('User not found', { status: 404 });
+    const ok = await argon2.verify(user.passwordHash, currentPassword).catch(() => false);
+    if (!ok) throw new OperationalError('Current password is incorrect', { status: 403 });
+    await this.repos.users.setPassword(userId, await argon2.hash(newPassword));
   }
 
   /**

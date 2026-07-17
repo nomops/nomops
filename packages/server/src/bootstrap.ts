@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
-import { Cipher, Credentials, NodeLoader } from '@nomops/core';
+import { Cipher, Credentials, FileSystemBinaryStore, NodeLoader } from '@nomops/core';
 import type { IEncryptionKeyProvider } from '@nomops/core';
 import { createDatabase, createRepositories, runMigrations } from '@nomops/db';
 import type { DatabaseConfig, DatabaseHandle, Repositories, SettingsRepository } from '@nomops/db';
@@ -22,11 +22,13 @@ import { OidcService } from './sso/oidc-service.js';
 import { OAuth2Service } from './services/oauth2-service.js';
 import { VariableService } from './services/variable-service.js';
 import { DataTableService } from './services/data-table-service.js';
+import { WaitTracker } from './services/wait-tracker.js';
 import { ScimService } from './scim/scim-service.js';
 import { QuotaService } from './services/quota-service.js';
 import { ManualPaymentProvider } from './billing/payment-provider.js';
 import { BillingService } from './billing/billing-service.js';
 import { AssistantService } from './services/assistant-service.js';
+import { McpService } from './services/mcp-service.js';
 import { LogStreamingService } from './services/log-streaming-service.js';
 import { EnvSecretsProvider, SecretsService } from './services/secrets-service.js';
 import type { ISecretsProvider } from './services/secrets-service.js';
@@ -101,6 +103,8 @@ export interface BootstrapOptions {
   credentialTester?: import('./services/credential-test.js').ICredentialTester;
   /** 源码同步的 git 工作目录（缺省 NOMOPS_SOURCE_CONTROL_DIR 或 .nomops/source-control；测试传临时目录隔离）。 */
   sourceControlDir?: string;
+  /** 等待唤醒器扫描间隔毫秒（缺省 10s；测试注入短间隔）。 */
+  waitTrackerIntervalMs?: number;
 }
 
 export interface BootstrapResult {
@@ -174,14 +178,14 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   const auth = new AuthService(repos, jwtSecret, mfa);
   const apiKeys = new ApiKeyService(repos);
   const workflows = new WorkflowService(repos, nodeLoader);
-  // 社区节点（对标 n8n）：安装器缺省走 npm，装到 NOMOPS_COMMUNITY_NODES_DIR（默认 .nomops/nodes）
+  // 社区节点：安装器缺省走 npm，装到 NOMOPS_COMMUNITY_NODES_DIR（默认 .nomops/nodes）
   const communityNodes = new CommunityNodeService(
     repos,
     nodeLoader,
     opts.nodeInstaller ??
       new NpmNodeInstaller(process.env['NOMOPS_COMMUNITY_NODES_DIR'] ?? join(process.cwd(), '.nomops', 'nodes')),
   );
-  // 源码同步（对标 n8n Source Control）：把项目工作流 push/pull 到 git 仓库
+  // 源码同步：把项目工作流 push/pull 到 git 仓库
   const git = new GitService(
     repos,
     workflows,
@@ -195,6 +199,10 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   const quota = new QuotaService(repos, license);
   // 日志流（docs/10 B3）：先于 executions/audit 建好，两者把事件旁路到它
   const logStreaming = new LogStreamingService(repos, opts.logStreamPost);
+  // 二进制存储：执行状态里只留引用，字节流落文件系统（Cloud 可换 S3 实现）
+  const binaryStore = new FileSystemBinaryStore(
+    process.env['NOMOPS_BINARY_DATA_DIR'] ?? join('.nomops', 'binary-data'),
+  );
   const executions = new ExecutionService(
     repos,
     workflows,
@@ -204,6 +212,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     quota,
     queue,
     (evt) => logStreaming.dispatch({ type: 'execution', at: new Date().toISOString(), ...evt }),
+    binaryStore,
   );
 
   const leader = new LeaderElection(lockStore);
@@ -225,6 +234,9 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     () => leader.isLeader(),
     audit,
   );
+  // 等待唤醒器：leader 到点唤醒 waiting 执行（wait/resume）
+  const waitTracker = new WaitTracker(repos, executions, opts.waitTrackerIntervalMs ?? 10_000);
+  if (role === 'main') waitTracker.start();
   const baseUrl = process.env['NOMOPS_BASE_URL'] ?? 'http://localhost:5678';
   const sso = new OidcService(repos, credentials, auth, baseUrl);
   const oauth2 = new OAuth2Service(credentialService, baseUrl);
@@ -241,6 +253,8 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   const billing = new BillingService(repos, audit, alipay);
   // AI 助手：opts.callClaude 供测试注入假实现；生产用默认真实 HTTP
   const assistant = new AssistantService(repos, credentialService, nodeLoader, opts.callClaude);
+  // 实例级 MCP：把勾选的工作流暴露为 MCP tools（Preview）
+  const mcp = new McpService(repos, executions, workflows);
 
   const services: AppServices = {
     repos,
@@ -270,6 +284,8 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     oauth2,
     variables,
     dataTables,
+    waitTracker,
+    mcp,
   };
 
   // 重载已安装社区节点（main/worker 都需要，执行时才能解析到）。尽力而为，失败不崩启动。
@@ -300,6 +316,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     leader,
     redis,
     shutdown: async () => {
+      waitTracker.stop();
       await activeWorkflows.shutdown();
       await leader.stop();
       await queue?.close();

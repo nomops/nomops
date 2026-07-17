@@ -4,19 +4,44 @@
     {
       "name": "frontend",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@nomops/frontend", "dev"],
+      "runtimeArgs": [
+        "--filter",
+        "@nomops/frontend",
+        "dev"
+      ],
       "port": 5173
     },
     {
       "name": "server",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@nomops/server", "dev"],
+      "runtimeArgs": [
+        "--filter",
+        "@nomops/server",
+        "dev"
+      ],
       "port": 5678
+    },
+    {
+      "name": "frontend-verify",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@nomops/frontend",
+        "dev",
+        "--port",
+        "5180",
+        "--strictPort"
+      ],
+      "port": 5180
     },
     {
       "name": "server-enterprise",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@nomops/server", "dev"],
+      "runtimeArgs": [
+        "--filter",
+        "@nomops/server",
+        "dev"
+      ],
       "port": 5678,
       "env": {
         "LICENSE_KEY": "dev-enterprise",

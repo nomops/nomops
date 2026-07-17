@@ -17,6 +17,9 @@ function stubContext(
     },
     getCredentials: overrides.getCredentials ?? (async () => ({})),
     getWorkflowStaticData: () => ({}),
+    isResumed: () => false,
+    // 缺省不挂能力子节点（AiAgent 走旧直连路径）；组合测试可覆盖
+    getInputConnectionData: overrides.getInputConnectionData ?? (async () => []),
     helpers: { httpRequest: async () => ({}), ...overrides.helpers },
   } as IExecuteContext;
 }

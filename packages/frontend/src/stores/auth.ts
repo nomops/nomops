@@ -14,8 +14,8 @@ export const useAuthStore = defineStore('auth', {
       this.setSession(result.token, email);
       return {};
     },
-    async register(email: string, password: string) {
-      const result = await api.register(email, password);
+    async register(email: string, password: string, firstName?: string, lastName?: string) {
+      const result = await api.register(email, password, firstName, lastName);
       this.setSession(result.token, email);
     },
     /** 接受邀请：设口令建号并直接建会话。 */

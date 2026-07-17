@@ -11,9 +11,11 @@ import {
   createWebhookRouter,
 } from './controllers/index.js';
 import { createSsoRouter } from './sso/router.js';
+import { createMetricsRouter } from './services/metrics.js';
 import { createOAuth2Router } from './oauth2/router.js';
 import { createScimRouter } from './scim/router.js';
 import { createBillingRouter } from './billing/router.js';
+import { createMcpRouter } from './mcp/router.js';
 
 /**
  * 构造 Express 应用但不监听端口——单测直接对 app 发请求。
@@ -37,6 +39,8 @@ export function createApp(services?: AppServices): Express {
     app.use(createOAuth2Router(services)); // /oauth2/*（公开：凭证 OAuth 回调 + demo 提供方）
     app.use('/scim/v2', createScimRouter(services)); // SCIM 专用 token 鉴权
     app.use(createInternalRouter(services)); // /internal/*（控制平面指标，共享密钥鉴权；自托管无密钥即 404）
+    app.use(createMetricsRouter(services)); // /metrics（Prometheus 文本；NOMOPS_METRICS=false 关闭）
+    app.use(createMcpRouter(services)); // /mcp-server/http（实例级 MCP，access token 鉴权；未启用 404）
     app.use(
       '/api',
       createAuthMiddleware(services.auth, services.repos, services.apiKeys),

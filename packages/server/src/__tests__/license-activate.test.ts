@@ -7,7 +7,7 @@ import { createApp } from '../app.js';
 import { setupOwner, inviteUser } from './helpers.js';
 
 /**
- * 许可证激活（对标 n8n「Enter activation key」）：运行时激活/移除，企业功能即时解锁/关闭。
+ * 许可证激活：运行时激活/移除，企业功能即时解锁/关闭。
  * 起点社区版（无 LICENSE_KEY）；激活后从 DB 生效，无需重启。实例 admin 门控。
  */
 

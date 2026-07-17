@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
-import type { IConnections, INode, IWorkflowSettings, JsonObject } from '@nomops/workflow';
+import type { IConnections, INode, IPinData, IWorkflowSettings, JsonObject } from '@nomops/workflow';
 
 /**
  * SQLite 方言 schema（docs/02-DATA-MODEL.md 第一节）。
@@ -31,7 +31,7 @@ export const users = sqliteTable('users', {
     .$defaultFn(() => new Date()),
 });
 
-// 公共 REST API 令牌（对标 n8n 的 n8n API）：存 token 的 sha256 哈希，明文仅创建时返回一次（铁律 3）。
+// 公共 REST API 令牌：存 token 的 sha256 哈希，明文仅创建时返回一次（铁律 3）。
 export const apiKeys = sqliteTable(
   'api_keys',
   {
@@ -42,6 +42,9 @@ export const apiKeys = sqliteTable(
     label: text('label').notNull(),
     tokenHash: text('token_hash').notNull().unique(),
     prefix: text('prefix').notNull(),
+    // 过期时间（null=永不过期）与作用域（all|readonly），鉴权时强制
+    expiresAt: integer('expires_at', { mode: 'timestamp' }),
+    scope: text('scope').notNull().default('all'),
     lastUsedAt: integer('last_used_at', { mode: 'timestamp' }),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
@@ -50,7 +53,7 @@ export const apiKeys = sqliteTable(
   (t) => [index('api_keys_user_idx').on(t.userId)],
 );
 
-// 密码重置票据（对标 n8n 自托管）：存 token 的 sha256 哈希，一次性、带过期（铁律 3 延伸）。
+// 密码重置票据（自托管）：存 token 的 sha256 哈希，一次性、带过期（铁律 3 延伸）。
 export const passwordResets = sqliteTable('password_resets', {
   tokenHash: text('token_hash').primaryKey(),
   userId: text('user_id')
@@ -59,7 +62,7 @@ export const passwordResets = sqliteTable('password_resets', {
   expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
 });
 
-// 用户邀请（对标 n8n 自托管：owner/admin 邀请 → 邀请链接 → 接受时才建 users 行）。
+// 用户邀请（自托管：owner/admin 邀请 → 邀请链接 → 接受时才建 users 行）。
 // 存 token 的 sha256 哈希（铁律 3）；未接受的邀请即「pending 用户」，在用户列表里合并展示。
 export const invitations = sqliteTable('invitations', {
   id: uuidPk('id'),
@@ -98,13 +101,22 @@ export const projectRelations = sqliteTable(
 export const workflows = sqliteTable('workflows', {
   id: uuidPk('id'),
   name: text('name').notNull(),
+  description: text('description'),
   active: integer('active', { mode: 'boolean' }).notNull().default(false),
   nodes: text('nodes', { mode: 'json' }).$type<INode[]>().notNull(),
   connections: text('connections', { mode: 'json' }).$type<IConnections>().notNull(),
   settings: text('settings', { mode: 'json' }).$type<IWorkflowSettings>(),
   staticData: text('static_data', { mode: 'json' }).$type<JsonObject>(),
+  // 钉住数据（nodeName → 冻结输出 items）；仅手动运行应用
+  pinData: text('pin_data', { mode: 'json' }).$type<IPinData>(),
   versionId: text('version_id'),
-  // 所属文件夹（对标 n8n）；null = 项目根。归属/嵌套由服务层校验，不加 FK。
+  // 收藏（列表置顶星标）与归档（软删除：默认列表隐藏、触发器下线；n8n 语义 Delete 仅对 archived 开放）
+  favorite: integer('favorite', { mode: 'boolean' }).notNull().default(false),
+  archived: integer('archived', { mode: 'boolean' }).notNull().default(false),
+  // 发布/草稿分离：生产触发跑 publishedVersionId 指向的版本快照；null = 从未发布（生产退回当前定义，兼容旧数据）
+  publishedVersionId: text('published_version_id'),
+  publishedAt: integer('published_at', { mode: 'timestamp' }),
+  // 所属文件夹；null = 项目根。归属/嵌套由服务层校验，不加 FK。
   folderId: text('folder_id'),
   createdAt: integer('created_at', { mode: 'timestamp' })
     .notNull()
@@ -114,7 +126,7 @@ export const workflows = sqliteTable('workflows', {
     .$defaultFn(() => new Date()),
 });
 
-// 工作流版本历史（对标 n8n）：每次编辑保存快照一份，可查看/回滚。projectId 冗余存以便归属过滤。
+// 工作流版本历史：每次编辑保存快照一份，可查看/回滚。projectId 冗余存以便归属过滤。
 export const workflowVersions = sqliteTable(
   'workflow_versions',
   {
@@ -138,7 +150,7 @@ export const workflowVersions = sqliteTable(
   (t) => [index('workflow_versions_workflow_idx').on(t.workflowId)],
 );
 
-// 工作流文件夹（对标 n8n）：项目内组织工作流，支持嵌套（parent_folder_id 自引用，app 层校验）。
+// 工作流文件夹：项目内组织工作流，支持嵌套（parent_folder_id 自引用，app 层校验）。
 export const folders = sqliteTable(
   'folders',
   {
@@ -158,7 +170,7 @@ export const folders = sqliteTable(
   (t) => [index('folders_project_idx').on(t.projectId)],
 );
 
-// 已安装社区节点包（对标 n8n community nodes）：实例级（非项目归属），bootstrap 时据此重载。
+// 已安装社区节点包（community nodes）：实例级（非项目归属），bootstrap 时据此重载。
 export const installedNodes = sqliteTable('installed_nodes', {
   packageName: text('package_name').primaryKey(),
   version: text('version').notNull(),
@@ -192,6 +204,9 @@ export const credentials = sqliteTable('credentials', {
   type: text('type').notNull(),
   data: text('data').notNull(), // 加密后的密文，绝不明文
   createdAt: integer('created_at', { mode: 'timestamp' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer('updated_at', { mode: 'timestamp' })
     .notNull()
     .$defaultFn(() => new Date()),
 });
@@ -275,6 +290,8 @@ export const executions = sqliteTable(
     mode: text('mode').notNull(),
     startedAt: integer('started_at', { mode: 'timestamp' }),
     stoppedAt: integer('stopped_at', { mode: 'timestamp' }),
+    // waiting 状态的唤醒时刻；null = 等外部信号（resume API）。毫秒精度（timestamp 模式是秒，短等待会被截断）
+    waitTill: integer('wait_till', { mode: 'timestamp_ms' }),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -299,6 +316,58 @@ export const webhookEntities = sqliteTable(
     node: text('node').notNull(),
   },
   (t) => [primaryKey({ columns: [t.webhookPath, t.method] })],
+);
+
+// 轮询去重（processed data）：记录某工作流某上下文（节点）已见过的键，只放行新键。
+// 工作流标签：项目维度，名字项目内唯一（服务层校验）。
+export const tags = sqliteTable(
+  'tags',
+  {
+    id: uuidPk('id'),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    name: text('name').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('tags_project_idx').on(t.projectId)],
+);
+
+export const workflowTagMappings = sqliteTable(
+  'workflow_tag_mappings',
+  {
+    workflowId: text('workflow_id')
+      .notNull()
+      .references(() => workflows.id),
+    tagId: text('tag_id')
+      .notNull()
+      .references(() => tags.id),
+  },
+  (t) => [primaryKey({ columns: [t.workflowId, t.tagId] })],
+);
+
+// 工作流运行统计：执行收尾累加（生产=非 manual）。执行历史可清理，统计不受影响。
+export const workflowStatistics = sqliteTable('workflow_statistics', {
+  workflowId: text('workflow_id').primaryKey(),
+  productionSuccess: integer('production_success').notNull().default(0),
+  productionError: integer('production_error').notNull().default(0),
+  manualRuns: integer('manual_runs').notNull().default(0),
+  lastRunAt: integer('last_run_at', { mode: 'timestamp_ms' }),
+});
+
+export const processedData = sqliteTable(
+  'processed_data',
+  {
+    workflowId: text('workflow_id').notNull(),
+    contextKey: text('context_key').notNull(),
+    value: text('value').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [primaryKey({ columns: [t.workflowId, t.contextKey, t.value] })],
 );
 
 export const settings = sqliteTable('settings', {
@@ -385,6 +454,10 @@ export const sqliteSchema = {
   executions,
   executionData,
   webhookEntities,
+  processedData,
+  tags,
+  workflowTagMappings,
+  workflowStatistics,
   settings,
   auditLogs,
   projectQuotas,

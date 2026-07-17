@@ -55,7 +55,7 @@ async function submit() {
   <div class="signup">
     <div class="su-topbar">
       <RouterLink to="/" class="brand">
-        <svg class="mark" viewBox="0 0 32 32" fill="none"><circle cx="7" cy="16" r="3" fill="#ff8a4c" /><circle cx="16" cy="9" r="3" fill="#ee4620" /><circle cx="16" cy="23" r="3" fill="#ee4620" /><circle cx="25" cy="16" r="3.4" fill="#ff8a4c" /><path d="M9.5 15 13.5 10.5M9.5 17 13.5 21.5M18.5 9.5 22.5 15M18.5 22.5 22.5 17" stroke="#7d7d8c" stroke-width="1.4" /></svg>
+        <svg class="mark" viewBox="19 37 130 54" fill="none"><defs><linearGradient id="nomops-mark-auth" gradientUnits="userSpaceOnUse" x1="23" y1="64" x2="145" y2="64"><stop offset="0" stop-color="#22d3ee" /><stop offset="0.5" stop-color="#6366f1" /><stop offset="1" stop-color="#a855f7" /></linearGradient></defs><path d="M57 64C73.2 90 75.4 90 84 64C92.6 38 94.8 38 111 64" stroke="url(#nomops-mark-auth)" stroke-width="6.5" stroke-linecap="round" /><circle cx="40" cy="64" r="17" fill="url(#nomops-mark-auth)" /><circle cx="128" cy="64" r="17" fill="url(#nomops-mark-auth)" /></svg>
         nomops
       </RouterLink>
       <span class="su-right">Already have an account? <RouterLink to="/login">Sign in</RouterLink></span>
@@ -101,7 +101,7 @@ async function submit() {
 }
 .su-topbar { display: flex; align-items: center; justify-content: space-between; padding: 22px 32px; }
 .brand { display: inline-flex; align-items: center; gap: 9px; font-weight: 700; font-size: 20px; color: var(--mkt-text); }
-.brand .mark { width: 28px; height: 28px; }
+.brand .mark { width: 46px; height: 26px; }
 .su-right { color: var(--mkt-dim); font-size: 13.5px; }
 .su-right a { color: var(--mkt-text); text-decoration: underline; margin-left: 4px; }
 

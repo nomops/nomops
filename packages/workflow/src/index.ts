@@ -8,7 +8,7 @@ export const WORKFLOW_PACKAGE = '@nomops/workflow';
 
 export * from './interfaces.js';
 export * from './execution-interfaces.js';
-export { OperationalError, UnexpectedError } from './errors.js';
+export { ExecutionPause, OperationalError, UnexpectedError } from './errors.js';
 export type { IErrorContext } from './errors.js';
 export { Workflow } from './workflow.js';
 export type { IWorkflowInit, IIncomingConnection } from './workflow.js';

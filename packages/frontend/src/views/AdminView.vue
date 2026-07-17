@@ -5,7 +5,7 @@ import { api } from '../api/client.js';
 import { useProjectsStore } from '../stores/projects.js';
 
 /**
- * Admin Panel（对标 n8n Cloud 的账户/实例管理台）：实例概览 + 用量 + 套餐计费 + 成员。
+ * Admin Panel（账户/实例管理台）：实例概览 + 用量 + 套餐计费 + 成员。
  * 数据分别取（部分需 owner/admin，非管理员优雅降级）。
  */
 const router = useRouter();

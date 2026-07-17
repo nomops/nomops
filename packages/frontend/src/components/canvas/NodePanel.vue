@@ -3,27 +3,14 @@ import { computed, ref, watch } from 'vue';
 import type { NodeTypeInfo } from '../../api/client.js';
 import { useNodeTypesStore } from '../../stores/node-types.js';
 import { useEditorStore } from '../../stores/editor.js';
+import { nodeIcon } from '../../lib/icons.js';
+import IconSvg from '../IconSvg.vue';
 
-/** n8n 式节点选择器：右侧滑入抽屉，搜索在顶，分组节点带图标 + 描述。 */
+/** 节点选择器：右侧滑入抽屉，搜索在顶，分组节点带图标 + 描述。 */
 const nodeTypes = useNodeTypesStore();
 const editor = useEditorStore();
 
 const search = ref('');
-
-/** 每个节点类型的图标 emoji（与画布节点一致）。 */
-const ICONS: Record<string, string> = {
-  manualTrigger: '🖱',
-  webhook: '🔗',
-  schedule: '⏰',
-  set: '✎',
-  noOp: '○',
-  if: '⋔',
-  merge: '⛙',
-  code: '{ }',
-  httpRequest: '🌐',
-  executeWorkflow: '⧉',
-  aiAgent: '✦',
-};
 
 const groups = computed(() => {
   const q = search.value.trim().toLowerCase();
@@ -44,6 +31,8 @@ const groupLabel: Record<string, string> = {
   trigger: 'Triggers',
   transform: 'Transform',
   output: 'Output',
+  ai: 'AI',
+  organize: 'Organize',
 };
 
 function pick(desc: NodeTypeInfo) {
@@ -97,7 +86,9 @@ watch(
             @click="pick(desc)"
             @dragstart="onDragStart($event, desc)"
           >
-            <span class="node-item-icon">{{ ICONS[desc.name] ?? '●' }}</span>
+            <span class="node-item-icon">
+              <IconSvg v-bind="nodeIcon(desc.name)" :size="20" />
+            </span>
             <span class="node-item-body">
               <span class="node-item-name">{{ desc.displayName }}</span>
               <span class="node-item-desc">{{ desc.description }}</span>

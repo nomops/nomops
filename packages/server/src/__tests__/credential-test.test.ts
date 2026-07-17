@@ -12,7 +12,7 @@ import type {
 } from '../services/credential-test.js';
 
 /**
- * 凭证连接测试（对标 n8n Test connection）：按类型打服务端点，默认看 HTTP 状态；
+ * 凭证连接测试：按类型打服务端点，默认看 HTTP 状态；
  * slack/graphql 走 body 级判定。假 HTTP 客户端不打真网，并记录请求以断言
  * 「密钥进了请求、但绝不回 API」（铁律 3）。
  */

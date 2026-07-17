@@ -7,7 +7,7 @@ import { createApp } from '../app.js';
 import { inviteUser, setupOwner } from './helpers.js';
 
 /**
- * 工作流版本历史（对标 n8n）：创建/编辑保存快照、列表、查看、回滚、归属隔离、删除清版本。
+ * 工作流版本历史：创建/编辑保存快照、列表、查看、回滚、归属隔离、删除清版本。
  * in-memory SQLite。规则：仅「定义变更」（nodes/connections）触发快照，纯改名/移动不算版本。
  */
 

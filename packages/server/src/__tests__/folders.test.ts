@@ -7,7 +7,7 @@ import { createApp } from '../app.js';
 import { inviteUser } from './helpers.js';
 
 /**
- * 工作流文件夹（对标 n8n）：CRUD + 嵌套 + 工作流归属文件夹/移动/过滤 + 非空拒删 + 防环。
+ * 工作流文件夹：CRUD + 嵌套 + 工作流归属文件夹/移动/过滤 + 非空拒删 + 防环。
  * in-memory SQLite。
  */
 

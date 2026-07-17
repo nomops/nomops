@@ -10,14 +10,20 @@ import {
   type MemberRow,
   type VariableView,
   type WorkflowRow,
+  type WorkflowDependency,
   type FolderRow,
+  type TagRow,
+  type WorkflowMetaRow,
 } from '../api/client.js';
 import { useProjectsStore } from '../stores/projects.js';
 import CredentialModal from '../components/credentials/CredentialModal.vue';
 import StatsBar from '../components/shell/StatsBar.vue';
+import IconSvg from '../components/IconSvg.vue';
 import { credentialTypeMeta } from '../lib/credential-types.js';
+import { credentialIcon } from '../lib/icons.js';
+import { locale, t } from '../lib/i18n.js';
 
-/** n8n Cloud 式 Overview：五 Tab（Workflows/Credentials/Executions/Variables/Data tables）+ 搜索/排序/筛选 + 分页。 */
+/** Overview：五 Tab（Workflows/Credentials/Executions/Variables/Data tables）+ 搜索/排序/筛选 + 分页。 */
 type Tab = 'workflows' | 'credentials' | 'executions' | 'variables' | 'data-tables' | 'project-settings';
 type SortKey = 'updated' | 'name-asc' | 'name-desc';
 
@@ -34,10 +40,33 @@ const folders = ref<FolderRow[]>([]);
 const currentFolderId = ref<string | null>(null); // null = 项目根
 const credentials = ref<CredentialView[]>([]);
 const executions = ref<ExecutionRow[]>([]);
-const executionDetail = ref<{ id: string; data: IRunExecutionData | null } | null>(null);
 
-/* 凭证：n8n 式弹窗（选类型 → 填字段） */
+/* 凭证：弹窗（选类型 → 填字段）；editingCred 非空 = 编辑模式（对标 n8n 卡片 Open） */
 const showCredModal = ref(false);
+const editingCred = ref<CredentialView | null>(null);
+function openCredential(row: CredentialView) {
+  closeMenus();
+  editingCred.value = row;
+  showCredModal.value = true;
+}
+function closeCredModal() {
+  showCredModal.value = false;
+  editingCred.value = null;
+}
+async function onCredUpdated() {
+  credentials.value = await api.credentials.list().catch(() => credentials.value);
+}
+/** 凭证被哪些工作流引用（B3 依赖图反查；对标 n8n 凭证卡片依赖胶囊）。 */
+function credUsedBy(credId: string): Array<{ id: string; name: string }> {
+  const out: Array<{ id: string; name: string }> = [];
+  for (const [wfId, deps] of Object.entries(wfDeps.value)) {
+    if (deps.some((d) => d.type === 'credential' && d.id === credId)) {
+      const wf = workflows.value.find((w) => w.id === wfId);
+      out.push({ id: wfId, name: wf?.name ?? wfId });
+    }
+  }
+  return out;
+}
 
 /* 项目设置（团队项目 tab）：成员管理 */
 const members = ref<MemberRow[]>([]);
@@ -56,6 +85,35 @@ async function loadVariables() {
 }
 function startNewVariable() {
   editingVar.value = { id: 'new', key: '', value: '' };
+}
+
+/* B1 对标 n8n：右上创建按钮随 tab 切换（split：主按钮 + caret 列其余创建项） */
+type CreateKey = 'workflow' | 'credential' | 'variable' | 'data-table';
+const CREATE_ACTIONS: Record<CreateKey, { label: string; run: () => void }> = {
+  workflow: { label: 'Create workflow', run: () => createWorkflow() },
+  credential: { label: 'Create credential', run: () => { editingCred.value = null; showCredModal.value = true; } },
+  variable: {
+    label: 'Create variable',
+    run: () => {
+      if (tab.value !== 'variables') switchTab('variables'); // 行内新建行只在该 tab 可见
+      startNewVariable();
+    },
+  },
+  'data-table': { label: 'Create data table', run: () => openCreateDataTable() },
+};
+/* Executions 无创建动作 → 同 n8n 回退 Create workflow */
+const primaryCreate = computed<CreateKey>(() => {
+  if (tab.value === 'credentials') return 'credential';
+  if (tab.value === 'variables') return 'variable';
+  if (tab.value === 'data-tables') return 'data-table';
+  return 'workflow';
+});
+const secondaryCreates = computed<CreateKey[]>(() =>
+  (Object.keys(CREATE_ACTIONS) as CreateKey[]).filter((k) => k !== primaryCreate.value),
+);
+function runCreate(key: CreateKey) {
+  closeMenus();
+  CREATE_ACTIONS[key].run();
 }
 function editVariable(v: VariableView) {
   editingVar.value = { id: v.id, key: v.key, value: v.value };
@@ -137,6 +195,83 @@ const showFilter = ref(false);
 const page = ref(1);
 const pageSize = ref(50);
 
+/* ── Tags + 运行统计（阶段五） ── */
+const allTags = ref<TagRow[]>([]);
+const metaByWorkflow = ref<Record<string, WorkflowMetaRow>>({});
+const tagFilterId = ref<string | null>(null);
+const managingTagsFor = ref<WorkflowRow | null>(null);
+const managedTagIds = ref<Set<string>>(new Set());
+const newTagName = ref('');
+const tagError = ref('');
+
+async function loadTagsMeta() {
+  const [tags, meta] = await Promise.all([api.tags.list().catch(() => []), api.workflowsMeta().catch(() => [])]);
+  allTags.value = tags.sort((a, b) => a.name.localeCompare(b.name));
+  const map: Record<string, WorkflowMetaRow> = {};
+  for (const m of meta) map[m.workflowId] = m;
+  metaByWorkflow.value = map;
+}
+const tagsOf = (workflowId: string): TagRow[] => metaByWorkflow.value[workflowId]?.tags ?? [];
+/** 卡片元信息里的生产运行数摘要；无统计返回空串不占位。 */
+const statsLabel = (workflowId: string): string => {
+  const s = metaByWorkflow.value[workflowId]?.statistics;
+  if (!s) return '';
+  const prod = s.productionSuccess + s.productionError;
+  return prod > 0 ? t(prod > 1 ? '{n} prod runs' : '{n} prod run', { n: prod }) : '';
+};
+
+function openManageTags(row: WorkflowRow) {
+  closeMenus();
+  managingTagsFor.value = row;
+  managedTagIds.value = new Set(tagsOf(row.id).map((t) => t.id));
+  newTagName.value = '';
+  tagError.value = '';
+}
+function toggleManagedTag(id: string) {
+  const next = new Set(managedTagIds.value);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  managedTagIds.value = next;
+}
+async function createTag() {
+  const name = newTagName.value.trim();
+  if (!name) return;
+  tagError.value = '';
+  try {
+    const created = await api.tags.create(name);
+    allTags.value = [...allTags.value, created].sort((a, b) => a.name.localeCompare(b.name));
+    managedTagIds.value = new Set([...managedTagIds.value, created.id]); // 新建即勾选
+    newTagName.value = '';
+  } catch (err) {
+    tagError.value = (err as Error).message;
+  }
+}
+async function deleteTag(id: string) {
+  tagError.value = '';
+  try {
+    await api.tags.remove(id);
+    if (tagFilterId.value === id) tagFilterId.value = null;
+    const next = new Set(managedTagIds.value);
+    next.delete(id);
+    managedTagIds.value = next;
+    await loadTagsMeta();
+  } catch (err) {
+    tagError.value = (err as Error).message;
+  }
+}
+async function saveWorkflowTags() {
+  const wf = managingTagsFor.value;
+  if (!wf) return;
+  tagError.value = '';
+  try {
+    await api.tags.setForWorkflow(wf.id, [...managedTagIds.value]);
+    managingTagsFor.value = null;
+    await loadTagsMeta();
+  } catch (err) {
+    tagError.value = (err as Error).message;
+  }
+}
+
 onMounted(async () => {
   await projects.fetch();
   await reload();
@@ -167,11 +302,34 @@ watch(
 );
 onUnmounted(() => window.removeEventListener('click', closeMenus));
 
+/* B3 依赖胶囊（对标 n8n DependencyPill）：workflowId → 依赖列表；分组展示可跳转 */
+const wfDeps = ref<Record<string, WorkflowDependency[]>>({});
+const DEP_GROUPS: Array<{ type: WorkflowDependency['type']; label: string; icon: string }> = [
+  { type: 'credential', label: 'Credentials', icon: 'M21 2l-9.6 9.6M15.5 7.5l3 3L22 7l-3-3M11.4 11.6a4.6 4.6 0 1 0-6.5 6.5 4.6 4.6 0 0 0 6.5-6.5z' },
+  { type: 'subWorkflow', label: 'Sub-workflows', icon: 'M15 3h6v6M10 14L21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6' },
+  { type: 'parentWorkflow', label: 'Used by workflows', icon: 'M9 21H3v-6M14 10L3 21M6 11V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2h-6' },
+  { type: 'errorWorkflow', label: 'Error workflow', icon: 'M12 9v4m0 4h.01M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z' },
+  { type: 'errorWorkflowParent', label: 'Error handler for', icon: 'M12 9v4m0 4h.01M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z' },
+];
+function depGroups(wfId: string) {
+  const deps = wfDeps.value[wfId] ?? [];
+  return DEP_GROUPS.map((g) => ({ ...g, deps: deps.filter((d) => d.type === g.type) })).filter((g) => g.deps.length > 0);
+}
+function openDependency(dep: WorkflowDependency) {
+  closeMenus();
+  if (dep.type === 'credential') {
+    switchTab('credentials');
+    search.value = dep.name; // 凭证无独立详情页：切 tab 并按名过滤定位
+  } else {
+    window.open(router.resolve({ name: 'canvas', params: { id: dep.id } }).href, '_blank'); // 同 n8n：新标签打开
+  }
+}
+
 async function reload() {
   error.value = '';
   try {
     const [wf, cred, exec, fld] = await Promise.all([
-      api.workflows.list(currentFolderId.value), // 按当前文件夹过滤
+      api.workflows.list(currentFolderId.value, showArchived.value), // 按当前文件夹过滤；归档视图切换
       api.credentials.list(),
       api.executions.list(),
       api.folders.list(),
@@ -180,6 +338,8 @@ async function reload() {
     credentials.value = cred;
     executions.value = exec.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     folders.value = fld;
+    void loadTagsMeta(); // 标签/统计非关键路径，异步补齐
+    void api.workflows.dependencies().then((d) => (wfDeps.value = d)).catch(() => {}); // 胶囊非关键路径
   } catch (e) {
     error.value = (e as Error).message;
   }
@@ -200,7 +360,10 @@ const sortedWorkflows = computed(() => {
   let rows = workflows.value.slice();
   if (q.value) rows = rows.filter((w) => w.name.toLowerCase().includes(q.value));
   if (activeOnly.value) rows = rows.filter((w) => w.active);
+  if (tagFilterId.value) rows = rows.filter((w) => tagsOf(w.id).some((t) => t.id === tagFilterId.value));
   rows.sort((a, b) => {
+    // 收藏置顶（同组内再按所选键排）
+    if (Boolean(a.favorite) !== Boolean(b.favorite)) return a.favorite ? -1 : 1;
     if (sortKey.value === 'name-asc') return a.name.localeCompare(b.name);
     if (sortKey.value === 'name-desc') return b.name.localeCompare(a.name);
     return b.updatedAt.localeCompare(a.updatedAt);
@@ -212,7 +375,7 @@ const pagedWorkflows = computed(() =>
 );
 const totalPages = computed(() => Math.max(1, Math.ceil(sortedWorkflows.value.length / pageSize.value)));
 
-/* ── 文件夹（对标 n8n） ── */
+/* ── 文件夹 ── */
 const subfolders = computed(() =>
   folders.value
     .filter((f) => f.parentFolderId === currentFolderId.value)
@@ -238,18 +401,29 @@ async function enterFolder(id: string | null) {
   page.value = 1;
   await reload();
 }
-async function createFolder() {
-  const name = window.prompt('Folder name');
-  if (!name?.trim()) return;
+/* B7 对标 n8n：Add folder 图标按钮 → 命名弹窗（Create / Cancel） */
+const folderModalOpen = ref(false);
+const folderNameDraft = ref('');
+const folderModalError = ref('');
+const currentFolderName = computed(() => folders.value.find((f) => f.id === currentFolderId.value)?.name ?? null);
+function openCreateFolder() {
+  folderNameDraft.value = '';
+  folderModalError.value = '';
+  folderModalOpen.value = true;
+}
+async function confirmCreateFolder() {
+  const name = folderNameDraft.value.trim();
+  if (!name) return;
   try {
-    await api.folders.create(name.trim(), currentFolderId.value);
+    await api.folders.create(name, currentFolderId.value);
+    folderModalOpen.value = false;
     await reload();
   } catch (e) {
-    error.value = (e as Error).message;
+    folderModalError.value = (e as Error).message;
   }
 }
 async function deleteFolder(id: string) {
-  if (!window.confirm('Delete this folder? It must be empty.')) return;
+  if (!window.confirm(t('Delete this folder? It must be empty.'))) return;
   try {
     await api.folders.remove(id);
     await reload();
@@ -294,6 +468,56 @@ async function removeWorkflow(id: string) {
   workflows.value = workflows.value.filter((w) => w.id !== id);
 }
 
+/* ── B2 对标 n8n 卡片菜单：Favorite / Duplicate / Archive / Enable MCP access ── */
+const showArchived = ref(false); // 归档视图切换（默认列表隐藏 archived）
+watch(showArchived, () => void reload());
+
+async function toggleFavorite(row: WorkflowRow) {
+  closeMenus();
+  const updated = await api.workflows.setFavorite(row.id, !row.favorite).catch(() => null);
+  if (updated) Object.assign(row, { favorite: updated.favorite });
+}
+
+async function duplicateWorkflow(row: WorkflowRow) {
+  closeMenus();
+  const full = await api.workflows.get(row.id);
+  const copy = await api.workflows.create({
+    name: `${full.name} copy`,
+    nodes: full.nodes,
+    connections: full.connections,
+    folderId: full.folderId,
+  });
+  void router.push({ name: 'canvas', params: { id: copy.id } });
+}
+
+async function archiveWorkflow(row: WorkflowRow) {
+  closeMenus();
+  await api.workflows.archive(row.id).catch((e) => (error.value = (e as Error).message));
+  await reload();
+}
+
+async function unarchiveWorkflow(row: WorkflowRow) {
+  closeMenus();
+  await api.workflows.unarchive(row.id).catch((e) => (error.value = (e as Error).message));
+  await reload();
+}
+
+/** 加入实例 MCP 白名单（需要 admin + 工作流已发布，失败原样提示）。 */
+async function enableMcpAccess(row: WorkflowRow) {
+  closeMenus();
+  error.value = '';
+  try {
+    const status = await api.mcp.status();
+    if (status.workflowIds.includes(row.id)) {
+      error.value = `“${row.name}” already has MCP access`;
+      return;
+    }
+    await api.mcp.setWorkflows([...status.workflowIds, row.id]);
+  } catch (e) {
+    error.value = (e as Error).message; // 非 admin 403 / 未发布 400 / MCP 未启用
+  }
+}
+
 function openWorkflow(id: string) {
   closeMenus();
   void router.push({ name: 'canvas', params: { id } });
@@ -303,7 +527,6 @@ function onCredCreated(created: CredentialView) {
   credentials.value.push(created);
 }
 
-const credIcon = (type: string) => credentialTypeMeta(type)?.icon ?? '🔑';
 const credLabel = (type: string) => credentialTypeMeta(type)?.displayName ?? type;
 
 async function removeCredential(id: string) {
@@ -311,38 +534,104 @@ async function removeCredential(id: string) {
   credentials.value = credentials.value.filter((c) => c.id !== id);
 }
 
-async function openExecution(id: string) {
-  if (executionDetail.value?.id === id) {
-    executionDetail.value = null;
-    return;
+/* ── B5 对标 n8n Executions 表：行点击进画布执行视图；多选/重试/删除/自动刷新 ── */
+
+function openExecution(row: ExecutionRow) {
+  void router.push({ name: 'canvas', params: { id: row.workflowId }, query: { tab: 'executions', exec: row.id } });
+}
+
+/* Auto refresh（同 n8n 默认开，5s；仅 executions tab 时轮询） */
+const execAutoRefresh = ref(true);
+let execPollTimer: ReturnType<typeof setInterval> | null = null;
+watch(
+  tab,
+  (t2) => {
+    if (t2 === 'executions' && !execPollTimer) {
+      execPollTimer = setInterval(() => {
+        if (execAutoRefresh.value) {
+          void api.executions.list().then((exec) => {
+            executions.value = exec.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+          }).catch(() => {});
+        }
+      }, 5000);
+    } else if (t2 !== 'executions' && execPollTimer) {
+      clearInterval(execPollTimer);
+      execPollTimer = null;
+    }
+  },
+  { immediate: true },
+);
+onUnmounted(() => {
+  if (execPollTimer) clearInterval(execPollTimer);
+});
+
+/* 多选（底部浮条：N selected | Delete | Clear selection） */
+const selectedExecIds = ref<Set<string>>(new Set());
+const allExecSelected = computed(
+  () => executions.value.length > 0 && executions.value.every((e) => selectedExecIds.value.has(e.id)),
+);
+function toggleExecSelect(id: string) {
+  const next = new Set(selectedExecIds.value);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  selectedExecIds.value = next;
+}
+function toggleExecSelectAll() {
+  selectedExecIds.value = allExecSelected.value ? new Set() : new Set(executions.value.map((e) => e.id));
+}
+async function deleteSelectedExecs() {
+  const ids = [...selectedExecIds.value];
+  await Promise.all(ids.map((id) => api.executions.remove(id).catch(() => {})));
+  selectedExecIds.value = new Set();
+  executions.value = executions.value.filter((e) => !ids.includes(e.id));
+}
+
+/* 行 ⋮：Retry ×2 / Delete */
+const retryingId = ref<string | null>(null);
+async function retryExec(row: ExecutionRow, useOriginal: boolean) {
+  closeMenus();
+  retryingId.value = row.id;
+  error.value = '';
+  try {
+    await api.executions.retry(row.id, useOriginal);
+    executions.value = (await api.executions.list()).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  } catch (e) {
+    error.value = (e as Error).message;
+  } finally {
+    retryingId.value = null;
   }
-  const result = await api.executions.get(id);
-  executionDetail.value = { id, data: result.data };
+}
+async function deleteExec(row: ExecutionRow) {
+  closeMenus();
+  await api.executions.remove(row.id).catch((e) => (error.value = (e as Error).message));
+  executions.value = executions.value.filter((e) => e.id !== row.id);
 }
 
 const sortLabel = computed(
   () =>
-    ({ updated: 'Sort by last updated', 'name-asc': 'Sort by name (A-Z)', 'name-desc': 'Sort by name (Z-A)' })[
-      sortKey.value
-    ],
+    t(
+      { updated: 'Sort by last updated', 'name-asc': 'Sort by name (A-Z)', 'name-desc': 'Sort by name (Z-A)' }[
+        sortKey.value
+      ],
+    ),
 );
 
 const ownerName = computed(() => {
   const c = projects.current;
-  return !c || c.type === 'personal' ? 'Personal' : c.name;
+  return !c || c.type === 'personal' ? t('Personal') : c.name;
 });
 
-/** n8n：Overview = 聚合视图；点侧栏项目（?project=）= 该项目视图，标题用项目名。 */
+/** Overview = 聚合视图；点侧栏项目（?project=）= 该项目视图，标题用项目名。 */
 const inProjectView = computed(() => Boolean(route.query['project']));
-const pageTitle = computed(() => (inProjectView.value ? projects.currentName : 'Overview'));
+const pageTitle = computed(() => (inProjectView.value ? projects.currentName : t('Overview')));
 const pageSub = computed(() => {
-  if (!inProjectView.value) return 'All the workflows, credentials and data tables you have access to';
+  if (!inProjectView.value) return t('All the workflows, credentials and data tables you have access to');
   return projects.current?.type === 'personal'
-    ? 'Workflows, credentials and data tables owned by you'
-    : `Workflows, credentials and data tables in ${projects.currentName}`;
+    ? t('Workflows, credentials and data tables owned by you')
+    : t('Workflows, credentials and data tables in {name}', { name: projects.currentName });
 });
 
-/** Project settings tab 只在团队项目视图显示（Personal 没有，对齐 n8n）。 */
+/** Project settings tab 只在团队项目视图显示（Personal 没有）。 */
 const showProjectSettings = computed(() => inProjectView.value && projects.current?.type !== 'personal');
 
 async function loadMembers() {
@@ -382,28 +671,28 @@ const projectRoleLabel: Record<string, string> = {
   'project:viewer': 'Viewer',
 };
 
-/** "11 July" 式创建日期（对齐 n8n）。 */
+/** "11 July" 式创建日期（中文界面用 zh-CN 本地化）。 */
 const fmtDate = (iso: string): string =>
-  new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
+  new Date(iso).toLocaleDateString(locale.value === 'zh-CN' ? 'zh-CN' : 'en-GB', { day: 'numeric', month: 'long' });
 
 const timeAgo = (iso: string | null): string => {
   if (!iso) return '-';
   const diff = Date.now() - new Date(iso).getTime();
-  if (diff < 60_000) return 'just now';
+  if (diff < 60_000) return t('just now');
   if (diff < 3_600_000) {
     const m = Math.floor(diff / 60_000);
-    return `${m} minute${m > 1 ? 's' : ''} ago`;
+    return t(m > 1 ? '{n} minutes ago' : '{n} minute ago', { n: m });
   }
   if (diff < 86_400_000) {
     const h = Math.floor(diff / 3_600_000);
-    return `${h} hour${h > 1 ? 's' : ''} ago`;
+    return t(h > 1 ? '{n} hours ago' : '{n} hour ago', { n: h });
   }
-  return new Date(iso).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+  return new Date(iso).toLocaleDateString(locale.value === 'zh-CN' ? 'zh-CN' : 'en-US', { month: 'long', day: 'numeric' });
 };
 
 const showFilterRow = computed(() => tab.value === 'workflows' || tab.value === 'credentials');
 
-/* ── Executions（n8n 式表格） ── */
+/* ── Executions ── */
 const workflowNameById = computed(() => {
   const map: Record<string, string> = {};
   for (const w of workflows.value) map[w.id] = w.name;
@@ -412,7 +701,7 @@ const workflowNameById = computed(() => {
 
 const execStatus: Record<string, { label: string; cls: string }> = {
   success: { label: 'Success', cls: 'ok' },
-  error: { label: 'Failed', cls: 'err' },
+  error: { label: 'Error', cls: 'err' },
   running: { label: 'Running', cls: 'run' },
   canceled: { label: 'Canceled', cls: 'muted' },
   queued: { label: 'Queued', cls: 'muted' },
@@ -422,7 +711,7 @@ const statusMeta = (s: string) => execStatus[s] ?? { label: s, cls: 'muted' };
 
 const fmtStarted = (iso: string | null): string =>
   iso
-    ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    ? new Date(iso).toLocaleString(locale.value === 'zh-CN' ? 'zh-CN' : 'en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
     : '-';
 
 const fmtRunTime = (row: ExecutionRow): string => {
@@ -431,14 +720,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(ms < 10_000 ? 2 : 1)}s`;
 };
 
-/** 展开的执行详情：逐节点运行摘要（名称 / 状态 / 耗时 / 错误）。 */
-const detailRows = computed(() => {
-  const runData = executionDetail.value?.data?.resultData.runData ?? {};
-  return Object.entries(runData).map(([name, runs]) => {
-    const last = runs[runs.length - 1];
-    return { name, time: last?.executionTime ?? 0, error: last?.error?.message, ok: !last?.error };
-  });
-});
+
 </script>
 
 <template>
@@ -450,78 +732,66 @@ const detailRows = computed(() => {
         <p class="ov-sub">{{ pageSub }}</p>
       </div>
       <div class="ov-actions">
-        <!-- Credentials / Variables tab：主按钮切换（对齐 n8n） -->
-        <button
-          v-if="tab === 'credentials'"
-          class="btn primary"
-          data-test="create-credential-top"
-          @click="showCredModal = true"
-        >
-          Create credential
-        </button>
-        <button
-          v-else-if="tab === 'variables'"
-          class="btn primary"
-          data-test="create-variable-top"
-          @click="startNewVariable"
-        >
-          Create variable
-        </button>
-        <button
-          v-else-if="tab === 'data-tables'"
-          class="btn primary"
-          data-test="create-data-table-top"
-          @click="openCreateDataTable"
-        >
-          Create data table
-        </button>
-        <template v-else>
-          <button class="btn secondary" data-test="run-demo" @click="router.push({ name: 'templates' })">
+        <!-- 右上创建按钮随 tab 切换（对标 n8n：split 主按钮 + caret 列其余创建项） -->
+        <template v-if="tab !== 'project-settings'">
+          <button
+            v-if="tab === 'workflows' || tab === 'executions'"
+            class="btn secondary"
+            data-test="run-demo"
+            @click="router.push({ name: 'templates' })"
+          >
             <svg viewBox="0 0 24 24" fill="currentColor" class="i15"><path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12l1-8.5z" /></svg>
-            Run live demo
+            {{ t('Run live demo') }}
           </button>
           <div class="split" @click.stop>
-            <button class="btn primary split-main" data-test="create-workflow" @click="createWorkflow">Create workflow</button>
+            <button class="btn primary split-main" data-test="create-primary" @click="runCreate(primaryCreate)">
+              {{ t(CREATE_ACTIONS[primaryCreate].label) }}
+            </button>
             <button class="split-caret" data-test="create-menu-toggle" @click="toggleMenu('create')">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" class="i14"><path d="M6 9l6 6 6-6" /></svg>
             </button>
             <div v-if="openMenu === 'create'" class="menu create-menu" data-test="create-menu">
-              <button class="menu-item" @click="createWorkflow">Start from scratch</button>
-              <button class="menu-item" @click="closeMenus(); router.push({ name: 'templates' })">Browse templates</button>
+              <button v-for="k in secondaryCreates" :key="k" class="menu-item" :data-test="`create-${k}`" @click="runCreate(k)">
+                {{ t(CREATE_ACTIONS[k].label) }}
+              </button>
             </div>
           </div>
         </template>
       </div>
     </div>
 
-    <!-- 统计卡只在聚合 Overview 显示；项目视图（Personal）不显示（对齐 n8n） -->
+    <!-- 统计卡只在聚合 Overview 显示；项目视图（Personal）不显示 -->
     <StatsBar v-if="!inProjectView" />
 
     <!-- ── Tabs ── -->
     <div class="tabs-row" data-test="overview-tabs">
-      <button class="tab" :class="{ active: tab === 'workflows' }" data-test="tab-workflows" @click="switchTab('workflows')">Workflows</button>
-      <button class="tab" :class="{ active: tab === 'credentials' }" data-test="tab-credentials" @click="switchTab('credentials')">Credentials</button>
-      <button class="tab" :class="{ active: tab === 'executions' }" data-test="tab-executions" @click="switchTab('executions')">Executions</button>
-      <button class="tab" :class="{ active: tab === 'variables' }" data-test="tab-variables" @click="switchTab('variables')">Variables</button>
-      <button class="tab" :class="{ active: tab === 'data-tables' }" data-test="tab-data-tables" @click="switchTab('data-tables')">Data tables</button>
-      <button v-if="showProjectSettings" class="tab" :class="{ active: tab === 'project-settings' }" data-test="tab-project-settings" @click="switchTab('project-settings')">Project settings</button>
+      <button class="tab" :class="{ active: tab === 'workflows' }" data-test="tab-workflows" @click="switchTab('workflows')">{{ t('Workflows') }}</button>
+      <button class="tab" :class="{ active: tab === 'credentials' }" data-test="tab-credentials" @click="switchTab('credentials')">{{ t('Credentials') }}</button>
+      <button class="tab" :class="{ active: tab === 'executions' }" data-test="tab-executions" @click="switchTab('executions')">{{ t('Executions') }}</button>
+      <button class="tab" :class="{ active: tab === 'variables' }" data-test="tab-variables" @click="switchTab('variables')">{{ t('Variables') }}</button>
+      <button class="tab" :class="{ active: tab === 'data-tables' }" data-test="tab-data-tables" @click="switchTab('data-tables')">{{ t('Data tables') }}</button>
+      <button v-if="showProjectSettings" class="tab" :class="{ active: tab === 'project-settings' }" data-test="tab-project-settings" @click="switchTab('project-settings')">{{ t('Project settings') }}</button>
     </div>
 
     <p v-if="error" class="error-text" data-test="overview-error">{{ error }}</p>
 
     <!-- ── Filter / sort / funnel row ── -->
     <div v-if="showFilterRow" class="filter-row">
-      <!-- 项目视图：左侧项目上下文 "👤 Personal ⋮"（对齐 n8n） -->
+      <!-- 项目视图：左侧项目上下文 "👤 Personal ⋮" -->
       <div v-if="inProjectView" class="proj-context" data-test="proj-context">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="i15"><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c0-3.4 3-5.2 6.5-5.2s6.5 1.8 6.5 5.2" /></svg>
         <span>{{ projects.currentName }}</span>
-        <button class="proj-menu" title="Project settings" @click="router.push({ name: 'projects' })">
+        <button class="proj-menu" :title="t('Project settings')" @click="router.push({ name: 'projects' })">
           <svg viewBox="0 0 24 24" fill="currentColor" class="i18"><circle cx="12" cy="5" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="12" cy="19" r="1.6" /></svg>
         </button>
       </div>
       <div class="search" :class="{ focus: false }">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="i15"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
-        <input v-model="search" data-test="overview-search" placeholder="Search" />
+        <input
+          v-model="search"
+          data-test="overview-search"
+          :placeholder="tab === 'credentials' ? t('Search credentials...') : t('Search')"
+        />
       </div>
       <template v-if="tab === 'workflows'">
         <div class="dropdown" @click.stop>
@@ -530,19 +800,43 @@ const detailRows = computed(() => {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="i14"><path d="M6 9l6 6 6-6" /></svg>
           </button>
           <div v-if="openMenu === 'sort'" class="menu sort-menu" data-test="sort-menu">
-            <button class="menu-item" @click="sortKey = 'updated'; closeMenus()">Sort by last updated</button>
-            <button class="menu-item" @click="sortKey = 'name-asc'; closeMenus()">Sort by name (A-Z)</button>
-            <button class="menu-item" @click="sortKey = 'name-desc'; closeMenus()">Sort by name (Z-A)</button>
+            <button class="menu-item" @click="sortKey = 'updated'; closeMenus()">{{ t('Sort by last updated') }}</button>
+            <button class="menu-item" @click="sortKey = 'name-asc'; closeMenus()">{{ t('Sort by name (A-Z)') }}</button>
+            <button class="menu-item" @click="sortKey = 'name-desc'; closeMenus()">{{ t('Sort by name (Z-A)') }}</button>
+          </div>
+        </div>
+        <div v-if="allTags.length" class="dropdown" @click.stop>
+          <button class="sortby" :class="{ 'tag-filter-on': tagFilterId }" data-test="tag-filter-toggle" @click="toggleMenu('tag-filter')">
+            {{ tagFilterId ? (allTags.find((tg) => tg.id === tagFilterId)?.name ?? t('Tag')) : t('All tags') }}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="i14"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+          <div v-if="openMenu === 'tag-filter'" class="menu sort-menu" data-test="tag-filter-menu">
+            <button class="menu-item" @click="tagFilterId = null; closeMenus()">{{ t('All tags') }}</button>
+            <button v-for="tg in allTags" :key="tg.id" class="menu-item" :data-test-tag-option="tg.id" @click="tagFilterId = tg.id; closeMenus()">
+              {{ tg.name }}
+            </button>
           </div>
         </div>
         <button
           class="filter-btn"
           :class="{ on: activeOnly }"
           data-test="filter-active"
-          title="Show active workflows only"
+          :title="t('Show active workflows only')"
           @click="activeOnly = !activeOnly"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="i16"><path d="M3 5h18l-7 8v6l-4-2v-4L3 5z" /></svg>
+        </button>
+        <button
+          class="filter-btn"
+          :class="{ on: showArchived }"
+          data-test="filter-archived"
+          :title="t('Show archived workflows')"
+          @click="showArchived = !showArchived"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="i16"><rect x="3" y="4" width="18" height="5" rx="1" /><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4" /></svg>
+        </button>
+        <button class="filter-btn" data-test="new-folder" :title="t('Add folder')" @click="openCreateFolder">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="i16"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" /><path d="M12 11v5M9.5 13.5h5" /></svg>
         </button>
       </template>
     </div>
@@ -552,13 +846,12 @@ const detailRows = computed(() => {
       <!-- 面包屑 + 新建文件夹 -->
       <div class="folder-bar">
         <div class="breadcrumb" data-test="breadcrumb">
-          <button class="crumb" :class="{ cur: currentFolderId === null }" data-test="crumb-root" @click="enterFolder(null)">All workflows</button>
+          <button class="crumb" :class="{ cur: currentFolderId === null }" data-test="crumb-root" @click="enterFolder(null)">{{ t('All workflows') }}</button>
           <template v-for="f in breadcrumb" :key="f.id">
             <span class="crumb-sep">/</span>
             <button class="crumb" :class="{ cur: f.id === currentFolderId }" @click="enterFolder(f.id)">{{ f.name }}</button>
           </template>
         </div>
-        <button class="btn secondary btn-xs" data-test="new-folder" @click="createFolder">+ New folder</button>
       </div>
 
       <!-- 子文件夹 -->
@@ -566,30 +859,66 @@ const detailRows = computed(() => {
         <div v-for="f in subfolders" :key="f.id" class="folder-card" :data-test-folder="f.id" @click="enterFolder(f.id)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" class="folder-ico"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" /></svg>
           <span class="folder-name">{{ f.name }}</span>
-          <button class="folder-del" title="Delete folder" :data-test-folder-del="f.id" @click.stop="deleteFolder(f.id)">×</button>
+          <button class="folder-del" :title="t('Delete folder')" :data-test-folder-del="f.id" @click.stop="deleteFolder(f.id)">×</button>
         </div>
       </div>
 
       <div v-if="sortedWorkflows.length === 0 && subfolders.length === 0" class="empty-state" data-test="workflow-empty">
         <button class="scratch-card" data-test="start-from-scratch" @click="createWorkflow">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="scratch-icon"><path d="M12 5v14M5 12h14" stroke-linecap="round" /></svg>
-          <span>Start from scratch</span>
+          <span>{{ t('Start from scratch') }}</span>
         </button>
       </div>
 
       <div v-else-if="sortedWorkflows.length === 0" class="dim" data-test="folder-empty" style="padding: 24px; text-align: center">
-        This folder has no workflows.
+        {{ t('This folder has no workflows.') }}
       </div>
 
       <div v-else class="wf-list" data-test="workflow-list">
         <div v-for="row in pagedWorkflows" :key="row.id" class="wf-card">
           <div class="wf-main">
-            <RouterLink class="wf-name" :to="{ name: 'canvas', params: { id: row.id } }">{{ row.name }}</RouterLink>
+            <RouterLink class="wf-name" :to="{ name: 'canvas', params: { id: row.id } }">
+              <span v-if="row.favorite" class="fav-star" :title="t('Favorite')">★</span>{{ row.name }}
+            </RouterLink>
+            <p v-if="row.description" class="wf-desc">{{ row.description }}</p>
             <div class="wf-meta">
-              <span>Last updated {{ timeAgo(row.updatedAt) }}</span>
+              <span>{{ t('Last updated {time}', { time: timeAgo(row.updatedAt) }) }}</span>
               <span class="sep">|</span>
-              <span>Created {{ fmtDate(row.createdAt) }}</span>
-              <span v-if="row.active" class="active-dot" title="Active">Active</span>
+              <span>{{ t('Created {date}', { date: fmtDate(row.createdAt) }) }}</span>
+              <template v-if="statsLabel(row.id)">
+                <span class="sep">|</span>
+                <span data-test="wf-stats">{{ statsLabel(row.id) }}</span>
+              </template>
+              <span v-if="row.active" class="active-dot" :title="t('Active')">{{ t('Active') }}</span>
+              <span v-if="row.archived" class="badge" style="margin-left: 4px">{{ t('Archived') }}</span>
+            </div>
+            <div v-if="tagsOf(row.id).length" class="wf-tags" data-test="wf-tags">
+              <button v-for="tg in tagsOf(row.id)" :key="tg.id" class="tag-chip" :title="t('Filter by {name}', { name: tg.name })" @click="tagFilterId = tg.id">
+                {{ tg.name }}
+              </button>
+            </div>
+          </div>
+          <div v-if="(wfDeps[row.id] ?? []).length" class="dropdown" @click.stop>
+            <button
+              class="dep-pill"
+              :data-test-deps="row.id"
+              :title="t('Click to view resources referenced by this workflow')"
+              @click="toggleMenu(`dep-${row.id}`)"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="i13"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" /><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" /></svg>
+              {{ (wfDeps[row.id] ?? []).length }}
+            </button>
+            <div v-if="openMenu === `dep-${row.id}`" class="menu dep-menu" :data-test-dep-menu="row.id">
+              <template v-for="(g, gi) in depGroups(row.id)" :key="g.type">
+                <div v-if="gi > 0" class="menu-sep" />
+                <div class="menu-label dep-group-label">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="i13"><path :d="g.icon" /></svg>
+                  {{ t(g.label) }}
+                </div>
+                <button v-for="d in g.deps" :key="`${d.type}:${d.id}`" class="menu-item" @click="openDependency(d)">
+                  {{ d.name }}
+                </button>
+              </template>
             </div>
           </div>
           <span class="chip">
@@ -601,29 +930,42 @@ const detailRows = computed(() => {
               <svg viewBox="0 0 24 24" fill="currentColor" class="i18"><circle cx="12" cy="5" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="12" cy="19" r="1.7" /></svg>
             </button>
             <div v-if="openMenu === row.id" class="menu row-menu-pop" :data-test-menu-pop="row.id">
-              <button class="menu-item" @click="openWorkflow(row.id)">Open</button>
-              <button class="menu-item" :data-test-activate="row.id" @click="toggleActive(row)">
-                {{ row.active ? 'Deactivate' : 'Activate' }}
-              </button>
-              <template v-if="folders.length || row.folderId !== null">
-                <div class="menu-sep" />
-                <div class="menu-label">Move to</div>
-                <button v-if="row.folderId !== null" class="menu-item" :data-test-move-root="row.id" @click="moveWorkflowToFolder(row.id, null)">
-                  All workflows (root)
+              <button class="menu-item" @click="openWorkflow(row.id)">{{ t('Open') }}</button>
+              <template v-if="!row.archived">
+                <button class="menu-item" :data-test-favorite="row.id" @click="toggleFavorite(row)">
+                  {{ row.favorite ? t('Unfavorite') : t('Favorite') }}
                 </button>
-                <template v-for="f in folders" :key="f.id">
-                  <button v-if="f.id !== row.folderId" class="menu-item" @click="moveWorkflowToFolder(row.id, f.id)">{{ f.name }}</button>
+                <button class="menu-item" :data-test-duplicate="row.id" @click="duplicateWorkflow(row)">{{ t('Duplicate') }}</button>
+                <button class="menu-item" :data-test-activate="row.id" @click="toggleActive(row)">
+                  {{ row.active ? t('Deactivate') : t('Activate') }}
+                </button>
+                <button class="menu-item" :data-test-manage-tags="row.id" @click="openManageTags(row)">{{ t('Manage tags') }}</button>
+                <button class="menu-item" :data-test-mcp-access="row.id" @click="enableMcpAccess(row)">{{ t('Enable MCP access') }}</button>
+                <template v-if="folders.length || row.folderId !== null">
+                  <div class="menu-sep" />
+                  <div class="menu-label">{{ t('Move to') }}</div>
+                  <button v-if="row.folderId !== null" class="menu-item" :data-test-move-root="row.id" @click="moveWorkflowToFolder(row.id, null)">
+                    {{ t('All workflows (root)') }}
+                  </button>
+                  <template v-for="f in folders" :key="f.id">
+                    <button v-if="f.id !== row.folderId" class="menu-item" @click="moveWorkflowToFolder(row.id, f.id)">{{ f.name }}</button>
+                  </template>
                 </template>
+                <div class="menu-sep" />
+                <button class="menu-item danger" :data-test-archive="row.id" @click="archiveWorkflow(row)">{{ t('Archive') }}</button>
               </template>
-              <div class="menu-sep" />
-              <button class="menu-item danger" :data-test-delete="row.id" @click="removeWorkflow(row.id)">Delete</button>
+              <template v-else>
+                <button class="menu-item" :data-test-unarchive="row.id" @click="unarchiveWorkflow(row)">{{ t('Unarchive') }}</button>
+                <div class="menu-sep" />
+                <button class="menu-item danger" :data-test-delete="row.id" @click="removeWorkflow(row.id)">{{ t('Delete') }}</button>
+              </template>
             </div>
           </div>
         </div>
 
         <!-- 分页 -->
         <div class="pager" data-test="pager">
-          <span class="pg-total">Total {{ sortedWorkflows.length }}</span>
+          <span class="pg-total">{{ t('Total {n}', { n: sortedWorkflows.length }) }}</span>
           <button class="pg-arrow" :disabled="page <= 1" @click="page--">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="i15"><path d="M15 6l-6 6 6 6" /></svg>
           </button>
@@ -640,9 +982,9 @@ const detailRows = computed(() => {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="i15"><path d="M9 6l6 6-6 6" /></svg>
           </button>
           <select v-model.number="pageSize" class="pg-size" @change="page = 1">
-            <option :value="10">10/page</option>
-            <option :value="25">25/page</option>
-            <option :value="50">50/page</option>
+            <option :value="10">{{ t('10/page') }}</option>
+            <option :value="25">{{ t('25/page') }}</option>
+            <option :value="50">{{ t('50/page') }}</option>
           </select>
         </div>
       </div>
@@ -652,134 +994,208 @@ const detailRows = computed(() => {
     <template v-else-if="tab === 'credentials'">
       <div v-if="credentials.length === 0" class="cred-empty" data-test="credential-empty">
         <div class="lock">🔒</div>
-        <h3>Create your first credential</h3>
-        <p class="dim">Credentials let your workflows securely connect to your apps and services</p>
+        <h3>{{ t('Create your first credential') }}</h3>
+        <p class="dim">{{ t('Credentials let your workflows securely connect to your apps and services') }}</p>
         <button class="btn primary" data-test="new-credential" style="margin-top: 8px" @click="showCredModal = true">
-          Add first credential
+          {{ t('Add first credential') }}
         </button>
       </div>
 
       <template v-else>
-        <div class="card" style="padding: 0">
-          <p v-if="filteredCredentials.length === 0" class="dim" style="padding: 24px; text-align: center">No matching credentials.</p>
-          <div v-for="row in filteredCredentials" :key="row.id" class="list-row">
-            <span class="cred-row-icon">{{ credIcon(row.type) }}</span>
-            <div class="row-main">
-              <span class="row-title">{{ row.name }}</span>
-              <div class="row-sub">{{ credLabel(row.type) }} · Created {{ timeAgo(row.createdAt) }}</div>
+        <div class="wf-list">
+          <p v-if="filteredCredentials.length === 0" class="dim" style="padding: 24px; text-align: center">{{ t('No matching credentials.') }}</p>
+          <div v-for="row in filteredCredentials" :key="row.id" class="wf-card" :data-test-cred-card="row.id">
+            <span class="cred-row-icon"><IconSvg v-bind="credentialIcon(row.type)" :size="22" /></span>
+            <div class="wf-main">
+              <a class="wf-name" href="#" @click.prevent="openCredential(row)">{{ row.name }}</a>
+              <div class="wf-meta">
+                <span>{{ credLabel(row.type) }}</span>
+                <span class="sep">|</span>
+                <span>{{ t('Last updated {time}', { time: timeAgo(row.updatedAt ?? row.createdAt) }) }}</span>
+                <span class="sep">|</span>
+                <span>{{ t('Created {date}', { date: fmtDate(row.createdAt) }) }}</span>
+              </div>
             </div>
-            <button style="padding: 4px 10px" @click="removeCredential(row.id)">Delete</button>
+            <div v-if="credUsedBy(row.id).length" class="dropdown" @click.stop>
+              <button
+                class="dep-pill"
+                :data-test-cred-deps="row.id"
+                :title="t('Click to view resources referencing this credential')"
+                @click="toggleMenu(`cred-dep-${row.id}`)"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="i13"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" /><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" /></svg>
+                {{ credUsedBy(row.id).length }}
+              </button>
+              <div v-if="openMenu === `cred-dep-${row.id}`" class="menu dep-menu">
+                <div class="menu-label dep-group-label">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="i13"><path d="M9 21H3v-6M14 10L3 21M6 11V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2h-6" /></svg>
+                  {{ t('Used by workflows') }}
+                </div>
+                <button
+                  v-for="w in credUsedBy(row.id)"
+                  :key="w.id"
+                  class="menu-item"
+                  @click="closeMenus(); openDependency({ type: 'parentWorkflow', id: w.id, name: w.name })"
+                >
+                  {{ w.name }}
+                </button>
+              </div>
+            </div>
+            <span class="chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="i13"><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c0-3.4 3-5.2 6.5-5.2s6.5 1.8 6.5 5.2" /></svg>
+              {{ ownerName }}
+            </span>
+            <div class="dropdown" @click.stop>
+              <button class="row-menu" :data-test-cred-menu="row.id" @click="toggleMenu(`cred-${row.id}`)">
+                <svg viewBox="0 0 24 24" fill="currentColor" class="i18"><circle cx="12" cy="5" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="12" cy="19" r="1.7" /></svg>
+              </button>
+              <div v-if="openMenu === `cred-${row.id}`" class="menu row-menu-pop" :data-test-cred-menu-pop="row.id">
+                <button class="menu-item" :data-test-cred-open="row.id" @click="openCredential(row)">{{ t('Open') }}</button>
+                <div class="menu-sep" />
+                <button class="menu-item danger" :data-test-cred-delete="row.id" @click="closeMenus(); removeCredential(row.id)">{{ t('Delete') }}</button>
+              </div>
+            </div>
           </div>
-        </div>
-        <div style="margin-top: 12px; text-align: right">
-          <button class="btn primary" data-test="new-credential" @click="showCredModal = true">Add credential</button>
         </div>
       </template>
 
-      <CredentialModal v-if="showCredModal" @close="showCredModal = false" @created="onCredCreated" />
     </template>
 
-    <!-- ── Executions ── -->
+    <!-- ── Executions（B5 对标 n8n：Auto refresh / 多选 / 红色错误行 / Retry） ── -->
     <template v-else-if="tab === 'executions'">
       <div class="exec-tools">
-        <span class="exec-sublabel dim">
-          {{ executions.length }} execution{{ executions.length === 1 ? '' : 's' }}
-        </span>
+        <label class="exec-autorefresh">
+          <input v-model="execAutoRefresh" type="checkbox" data-test="exec-autorefresh" />
+          {{ t('Auto refresh') }}
+        </label>
         <span style="flex: 1" />
+        <span class="exec-sublabel dim">
+          {{ t(executions.length === 1 ? '{n} execution' : '{n} executions', { n: executions.length }) }}
+        </span>
       </div>
 
-      <div class="card" style="padding: 0; overflow: hidden" data-test="executions-list">
+      <div class="card" style="padding: 0; overflow: visible" data-test="executions-list">
         <table class="exec-table">
           <thead>
             <tr>
-              <th class="exec-caret-col" />
-              <th>Workflow</th>
-              <th>Status</th>
-              <th>Started</th>
-              <th>Run Time</th>
-              <th>Exec. ID</th>
+              <th class="exec-check-col">
+                <input type="checkbox" :checked="allExecSelected" data-test="exec-select-all" @change="toggleExecSelectAll" />
+              </th>
+              <th>{{ t('Workflow') }}</th>
+              <th>{{ t('Status') }}</th>
+              <th>{{ t('Started') }}</th>
+              <th>{{ t('Run Time') }}</th>
+              <th>{{ t('Exec. ID') }}</th>
+              <th class="exec-actions-col" />
             </tr>
           </thead>
           <tbody>
             <tr v-if="executions.length === 0">
-              <td colspan="6" class="exec-empty">No executions</td>
+              <td colspan="7" class="exec-empty">{{ t('No executions') }}</td>
             </tr>
-            <template v-for="row in executions" :key="row.id">
-              <tr class="exec-row" :data-test-exec="row.id" @click="openExecution(row.id)">
-                <td class="exec-caret-col">
-                  <span class="expand-caret" :class="{ open: executionDetail?.id === row.id }">›</span>
-                </td>
-                <td class="exec-wf">{{ workflowNameById[row.workflowId] ?? '(deleted workflow)' }}</td>
-                <td>
-                  <span class="exec-pill" :class="statusMeta(row.status).cls">{{ statusMeta(row.status).label }}</span>
-                </td>
-                <td class="dim">{{ fmtStarted(row.startedAt) }}</td>
-                <td class="dim tnum">{{ fmtRunTime(row) }}</td>
-                <td class="dim exec-id">{{ row.id.slice(0, 8) }}</td>
-              </tr>
-              <tr v-if="executionDetail?.id === row.id" class="exec-detail-row">
-                <td colspan="6">
-                  <div class="exec-detail-panel">
-                    <p v-if="detailRows.length === 0" class="dim" style="font-size: 12px">No node run data.</p>
-                    <div v-for="d in detailRows" :key="d.name" class="exec-node-row">
-                      <span :style="{ color: d.ok ? 'var(--ok)' : 'var(--err)' }">●</span>
-                      <span class="exec-node-name">{{ d.name }}</span>
-                      <span class="dim tnum" style="font-size: 11px">{{ d.time }}ms</span>
-                      <span v-if="d.error" class="error-text" style="font-size: 11px">{{ d.error }}</span>
-                    </div>
+            <tr
+              v-for="row in executions"
+              :key="row.id"
+              class="exec-row"
+              :class="{ 'exec-error': row.status === 'error' }"
+              :data-test-exec="row.id"
+            >
+              <td class="exec-check-col" @click.stop>
+                <input
+                  type="checkbox"
+                  :checked="selectedExecIds.has(row.id)"
+                  :data-test-exec-check="row.id"
+                  @change="toggleExecSelect(row.id)"
+                />
+              </td>
+              <td class="exec-wf" @click="openExecution(row)">
+                {{ workflowNameById[row.workflowId] ?? t('(deleted workflow)') }}
+              </td>
+              <td @click="openExecution(row)">
+                <span class="exec-status" :class="statusMeta(row.status).cls">
+                  <svg v-if="row.status === 'success'" viewBox="0 0 24 24" fill="currentColor" class="i15"><circle cx="12" cy="12" r="10" /><path d="M8.5 12.5l2.5 2.5 4.5-5" fill="none" stroke="var(--bg, #1a1a22)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                  <svg v-else-if="row.status === 'error'" viewBox="0 0 24 24" fill="currentColor" class="i15"><circle cx="12" cy="12" r="10" /><path d="M9 9l6 6M15 9l-6 6" fill="none" stroke="var(--bg, #1a1a22)" stroke-width="2" stroke-linecap="round" /></svg>
+                  <svg v-else viewBox="0 0 24 24" fill="currentColor" class="i15"><circle cx="12" cy="12" r="10" /></svg>
+                  {{ t(statusMeta(row.status).label) }}
+                </span>
+              </td>
+              <td class="dim" @click="openExecution(row)">{{ fmtStarted(row.startedAt) }}</td>
+              <td class="dim tnum" @click="openExecution(row)">{{ fmtRunTime(row) }}</td>
+              <td class="dim exec-id" @click="openExecution(row)">{{ row.id.slice(0, 8) }}</td>
+              <td class="exec-actions-col" @click.stop>
+                <div class="dropdown">
+                  <button class="row-menu" :data-test-exec-menu="row.id" @click="toggleMenu(`exec-${row.id}`)">
+                    <svg viewBox="0 0 24 24" fill="currentColor" class="i18"><circle cx="12" cy="5" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="12" cy="19" r="1.7" /></svg>
+                  </button>
+                  <div v-if="openMenu === `exec-${row.id}`" class="menu row-menu-pop exec-menu-pop" :data-test-exec-menu-pop="row.id">
+                    <button class="menu-item" :disabled="retryingId === row.id" @click="retryExec(row, false)">
+                      {{ retryingId === row.id ? t('Retrying…') : t('Retry with currently saved workflow') }}
+                    </button>
+                    <button class="menu-item" :disabled="retryingId === row.id" @click="retryExec(row, true)">
+                      {{ t('Retry with original workflow') }}
+                    </button>
+                    <div class="menu-sep" />
+                    <button class="menu-item danger" :data-test-exec-delete="row.id" @click="deleteExec(row)">{{ t('Delete') }}</button>
                   </div>
-                </td>
-              </tr>
-            </template>
+                </div>
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>
+
+      <!-- 多选浮条（对标 n8n） -->
+      <div v-if="selectedExecIds.size > 0" class="exec-bulkbar" data-test="exec-bulkbar">
+        <span>{{ t(selectedExecIds.size === 1 ? '{n} row selected' : '{n} rows selected', { n: selectedExecIds.size }) }}</span>
+        <button class="btn danger-solid" data-test="exec-bulk-delete" @click="deleteSelectedExecs">{{ t('Delete') }}</button>
+        <button class="btn neutral" data-test="exec-bulk-clear" @click="selectedExecIds = new Set()">{{ t('Clear selection') }}</button>
+      </div>
     </template>
 
-    <!-- ── Project settings（团队项目：成员管理，对齐 n8n） ── -->
+    <!-- ── Project settings（团队项目：成员管理） ── -->
     <template v-else-if="tab === 'project-settings'">
       <div class="proj-settings" data-test="project-settings">
         <div class="ps-section">
-          <h3 class="ps-title">Project name</h3>
+          <h3 class="ps-title">{{ t('Project name') }}</h3>
           <input class="ps-name" :value="projects.currentName" readonly />
         </div>
         <div class="ps-section">
-          <h3 class="ps-title">Members</h3>
+          <h3 class="ps-title">{{ t('Members') }}</h3>
           <p v-if="memberError" class="error-text" data-test="ps-error">{{ memberError }}</p>
           <div class="card" style="padding: 0">
             <table>
               <thead>
-                <tr><th>Email</th><th>Role</th><th /></tr>
+                <tr><th>{{ t('Email') }}</th><th>{{ t('Role') }}</th><th /></tr>
               </thead>
               <tbody>
                 <tr v-for="m in members" :key="m.userId">
                   <td>{{ m.email }}</td>
                   <td style="width: 160px">
                     <select :value="m.role" @change="changeMemberRole(m.userId, $event)">
-                      <option value="project:owner">Owner</option>
-                      <option value="project:editor">Editor</option>
-                      <option value="project:viewer">Viewer</option>
+                      <option value="project:owner">{{ t('Owner') }}</option>
+                      <option value="project:editor">{{ t('Editor') }}</option>
+                      <option value="project:viewer">{{ t('Viewer') }}</option>
                     </select>
                   </td>
-                  <td style="width: 90px; text-align: right"><button @click="removeMember(m.userId)">Remove</button></td>
+                  <td style="width: 90px; text-align: right"><button @click="removeMember(m.userId)">{{ t('Remove') }}</button></td>
                 </tr>
                 <tr v-if="members.length === 0">
-                  <td colspan="3" class="dim" style="text-align: center; padding: 18px">Only you have access to this project.</td>
+                  <td colspan="3" class="dim" style="text-align: center; padding: 18px">{{ t('Only you have access to this project.') }}</td>
                 </tr>
               </tbody>
             </table>
           </div>
           <div class="ps-add">
-            <input v-model="memberEmail" placeholder="Member email" data-test="ps-member-email" />
+            <input v-model="memberEmail" :placeholder="t('Member email')" data-test="ps-member-email" />
             <select v-model="memberRole" style="width: 150px">
-              <option value="project:editor">Editor</option>
-              <option value="project:viewer">Viewer</option>
-              <option value="project:owner">Owner</option>
+              <option value="project:editor">{{ t('Editor') }}</option>
+              <option value="project:viewer">{{ t('Viewer') }}</option>
+              <option value="project:owner">{{ t('Owner') }}</option>
             </select>
-            <button class="btn primary" data-test="ps-add-member" :disabled="!memberEmail" @click="addMember">Add member</button>
+            <button class="btn primary" data-test="ps-add-member" :disabled="!memberEmail" @click="addMember">{{ t('Add member') }}</button>
           </div>
         </div>
-        <div class="ps-hint dim">{{ projectRoleLabel[projects.current?.role ?? ''] ?? 'Member' }} · manage this project’s members and their roles.</div>
+        <div class="ps-hint dim">{{ t(projectRoleLabel[projects.current?.role ?? ''] ?? 'Member') }} · {{ t('manage this project’s members and their roles.') }}</div>
       </div>
     </template>
 
@@ -789,15 +1205,15 @@ const detailRows = computed(() => {
 
       <div v-if="variables.length === 0 && !editingVar" class="cred-empty" data-test="variable-empty">
         <div class="lock">👋</div>
-        <h3>{{ ownerName }}, let’s set up a variable</h3>
-        <p class="dim">Variables can be used to store data that can be referenced easily across multiple workflows.</p>
-        <button class="btn primary" data-test="add-first-variable" style="margin-top: 8px" @click="startNewVariable">Add first variable</button>
+        <h3>{{ t('{name}, let’s set up a variable', { name: ownerName }) }}</h3>
+        <p class="dim">{{ t('Variables can be used to store data that can be referenced easily across multiple workflows.') }}</p>
+        <button class="btn primary" data-test="add-first-variable" style="margin-top: 8px" @click="startNewVariable">{{ t('Add first variable') }}</button>
       </div>
 
       <div v-else class="card" style="padding: 0" data-test="variables-list">
         <table class="var-table">
           <thead>
-            <tr><th>Name</th><th>Value</th><th>Usage</th><th /></tr>
+            <tr><th>{{ t('Name') }}</th><th>{{ t('Value') }}</th><th>{{ t('Usage') }}</th><th /></tr>
           </thead>
           <tbody>
             <tr v-if="editingVar && editingVar.id === 'new'" class="var-edit-row">
@@ -805,8 +1221,8 @@ const detailRows = computed(() => {
               <td><input v-model="editingVar.value" data-test="var-value" placeholder="value" /></td>
               <td class="dim">—</td>
               <td class="var-actions">
-                <button class="btn primary" data-test="var-save" @click="saveVariable">Save</button>
-                <button @click="editingVar = null">Cancel</button>
+                <button class="btn primary" data-test="var-save" @click="saveVariable">{{ t('Save') }}</button>
+                <button @click="editingVar = null">{{ t('Cancel') }}</button>
               </td>
             </tr>
             <tr v-for="v in variables" :key="v.id" class="var-row">
@@ -815,8 +1231,8 @@ const detailRows = computed(() => {
                 <td><input v-model="editingVar.value" /></td>
                 <td class="dim">—</td>
                 <td class="var-actions">
-                  <button class="btn primary" @click="saveVariable">Save</button>
-                  <button @click="editingVar = null">Cancel</button>
+                  <button class="btn primary" @click="saveVariable">{{ t('Save') }}</button>
+                  <button @click="editingVar = null">{{ t('Cancel') }}</button>
                 </td>
               </template>
               <template v-else>
@@ -824,8 +1240,8 @@ const detailRows = computed(() => {
                 <td class="var-val">{{ v.value || '—' }}</td>
                 <td><code class="var-usage">{{ varUsage(v.key) }}</code></td>
                 <td class="var-actions">
-                  <button :data-test-var-edit="v.id" @click="editVariable(v)">Edit</button>
-                  <button class="danger" :data-test-var-delete="v.id" @click="deleteVariable(v.id)">Delete</button>
+                  <button :data-test-var-edit="v.id" @click="editVariable(v)">{{ t('Edit') }}</button>
+                  <button class="danger" :data-test-var-delete="v.id" @click="deleteVariable(v.id)">{{ t('Delete') }}</button>
                 </td>
               </template>
             </tr>
@@ -842,59 +1258,122 @@ const detailRows = computed(() => {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" class="soon-icon">
           <ellipse cx="12" cy="6" rx="7" ry="3" /><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3" />
         </svg>
-        <h3>You don't have any data tables yet</h3>
-        <p class="dim">Use data tables to persist execution results, share data between workflows, and track metrics for evaluation.</p>
-        <button class="btn primary" data-test="create-first-data-table" style="margin-top: 8px" @click="openCreateDataTable">Create data table</button>
+        <h3>{{ t("You don't have any data tables yet") }}</h3>
+        <p class="dim">{{ t('Use data tables to persist execution results, share data between workflows, and track metrics for evaluation.') }}</p>
+        <button class="btn primary" data-test="create-first-data-table" style="margin-top: 8px" @click="openCreateDataTable">{{ t('Create data table') }}</button>
       </div>
 
       <div v-else class="dt-grid" data-test="data-tables-list">
         <div
-          v-for="t in dataTables"
-          :key="t.id"
+          v-for="dt in dataTables"
+          :key="dt.id"
           class="dt-card"
-          :data-test-data-table="t.id"
-          @click="openDataTable(t.id)"
+          :data-test-data-table="dt.id"
+          @click="openDataTable(dt.id)"
         >
           <div class="dt-card-head">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" class="dt-card-icon">
               <ellipse cx="12" cy="6" rx="7" ry="3" /><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3" />
             </svg>
-            <span class="dt-card-name">{{ t.name }}</span>
+            <span class="dt-card-name">{{ dt.name }}</span>
             <div class="dropdown" @click.stop>
-              <button class="row-menu" :data-test-dt-menu="t.id" @click="toggleMenu('dt-' + t.id)">
+              <button class="row-menu" :data-test-dt-menu="dt.id" @click="toggleMenu('dt-' + dt.id)">
                 <svg viewBox="0 0 24 24" fill="currentColor" class="i18"><circle cx="12" cy="5" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="12" cy="19" r="1.7" /></svg>
               </button>
-              <div v-if="openMenu === 'dt-' + t.id" class="menu row-menu-pop">
-                <button class="menu-item" @click="openDataTable(t.id)">Open</button>
-                <button class="menu-item danger" @click="deleteDataTable(t.id)">Delete</button>
+              <div v-if="openMenu === 'dt-' + dt.id" class="menu row-menu-pop">
+                <button class="menu-item" @click="openDataTable(dt.id)">{{ t('Open') }}</button>
+                <button class="menu-item danger" @click="deleteDataTable(dt.id)">{{ t('Delete') }}</button>
               </div>
             </div>
           </div>
           <div class="dt-card-meta">
-            <span>{{ t.columns.length }} {{ t.columns.length === 1 ? 'column' : 'columns' }}</span>
+            <span>{{ t(dt.columns.length === 1 ? '{n} column' : '{n} columns', { n: dt.columns.length }) }}</span>
             <span class="dt-dot">·</span>
-            <span>{{ t.rowCount }} {{ t.rowCount === 1 ? 'row' : 'rows' }}</span>
+            <span>{{ t(dt.rowCount === 1 ? '{n} row' : '{n} rows', { n: dt.rowCount }) }}</span>
           </div>
         </div>
       </div>
     </template>
 
+    <!-- Add folder 命名弹窗（B7 对标 n8n message.prompt） -->
+    <div v-if="folderModalOpen" class="modal-mask" data-test="folder-modal" @click.self="folderModalOpen = false">
+      <div class="modal-card">
+        <h2 class="modal-title">
+          {{ currentFolderName ? t("Create folder in '{parent}'", { parent: currentFolderName }) : t('Create a new folder here') }}
+        </h2>
+        <input
+          v-model="folderNameDraft"
+          class="modal-input"
+          data-test="folder-name-input"
+          :placeholder="t('Folder name')"
+          @keydown.enter="confirmCreateFolder"
+        />
+        <p v-if="folderModalError" class="error-text">{{ folderModalError }}</p>
+        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px">
+          <button class="btn neutral" @click="folderModalOpen = false">{{ t('Cancel') }}</button>
+          <button class="btn primary" data-test="folder-create" :disabled="!folderNameDraft.trim()" @click="confirmCreateFolder">
+            {{ t('Create') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 凭证弹窗（根级：任何 tab 经 caret 下拉均可创建；edit 非空 = 编辑） -->
+    <CredentialModal
+      v-if="showCredModal"
+      :edit="editingCred ?? undefined"
+      @close="closeCredModal"
+      @created="onCredCreated"
+      @updated="onCredUpdated"
+    />
+
     <!-- ── Create data table 弹窗 ── -->
     <div v-if="showDataTableModal" class="modal-mask" data-test="data-table-modal" @click.self="showDataTableModal = false">
       <div class="modal-card">
-        <h2 class="modal-title">Create new data table</h2>
-        <label class="modal-label">Name</label>
+        <h2 class="modal-title">{{ t('Create new data table') }}</h2>
+        <label class="modal-label">{{ t('Name') }}</label>
         <input
           v-model="newTableName"
           class="modal-input"
           data-test="data-table-name"
-          placeholder="e.g. customers"
+          :placeholder="t('e.g. customers')"
           @keyup.enter="createDataTable"
         />
         <p v-if="dtError" class="error-text">{{ dtError }}</p>
         <div class="modal-actions">
-          <button class="btn secondary" @click="showDataTableModal = false">Cancel</button>
-          <button class="btn primary" data-test="data-table-create" :disabled="!newTableName.trim() || creatingTable" @click="createDataTable">Create</button>
+          <button class="btn secondary" @click="showDataTableModal = false">{{ t('Cancel') }}</button>
+          <button class="btn primary" data-test="data-table-create" :disabled="!newTableName.trim() || creatingTable" @click="createDataTable">{{ t('Create') }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 弹窗：管理某工作流的标签（覆盖式保存） -->
+    <div v-if="managingTagsFor" class="modal-mask" data-test="manage-tags-modal" @click.self="managingTagsFor = null">
+      <div class="modal-card">
+        <h2 class="modal-title">{{ t('Manage tags') }}</h2>
+        <p class="tag-modal-sub">{{ managingTagsFor.name }}</p>
+        <div class="tag-new-row">
+          <input
+            v-model="newTagName"
+            class="modal-input"
+            data-test="new-tag-name"
+            :placeholder="t('Create new tag')"
+            @keyup.enter="createTag"
+          />
+          <button class="btn secondary btn-xs" data-test="new-tag-create" :disabled="!newTagName.trim()" @click="createTag">{{ t('Add') }}</button>
+        </div>
+        <div v-if="allTags.length" class="tag-check-list">
+          <label v-for="tg in allTags" :key="tg.id" class="tag-check-row">
+            <input type="checkbox" :checked="managedTagIds.has(tg.id)" :data-test-tag-check="tg.id" @change="toggleManagedTag(tg.id)" />
+            <span class="tag-check-name">{{ tg.name }}</span>
+            <button class="tag-del" :title="t('Delete tag {name} (removes it from all workflows)', { name: tg.name })" :data-test-tag-del="tg.id" @click.prevent="deleteTag(tg.id)">×</button>
+          </label>
+        </div>
+        <p v-else class="dim" style="font-size: 13px">{{ t('No tags yet — create one above.') }}</p>
+        <p v-if="tagError" class="error-text">{{ tagError }}</p>
+        <div class="modal-actions">
+          <button class="btn secondary" @click="managingTagsFor = null">{{ t('Cancel') }}</button>
+          <button class="btn primary" data-test="save-workflow-tags" @click="saveWorkflowTags">{{ t('Save') }}</button>
         </div>
       </div>
     </div>
@@ -1104,7 +1583,7 @@ const detailRows = computed(() => {
 .var-actions .danger { color: var(--err); }
 .var-edit-row input { width: 100%; }
 
-/* Executions (n8n 式表格) */
+/* Executions */
 .exec-tools { display: flex; align-items: center; margin: 18px 0 12px; }
 .exec-sublabel { font-size: 13px; }
 .exec-table { width: 100%; border-collapse: collapse; }
@@ -1112,6 +1591,27 @@ const detailRows = computed(() => {
   text-align: left; font-size: 12px; font-weight: 500; color: var(--text-dim);
   padding: 11px 16px; background: var(--bg-hover); border-bottom: 1px solid var(--border); white-space: nowrap;
 }
+.exec-check-col { width: 40px; padding-right: 0 !important; text-align: center; }
+.exec-check-col input { accent-color: var(--accent); cursor: pointer; }
+.exec-actions-col { width: 48px; text-align: right; }
+.exec-row.exec-error > td { background: color-mix(in srgb, var(--err) 9%, transparent); }
+.exec-autorefresh { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; white-space: nowrap; }
+.exec-status { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; }
+.exec-status.ok { color: var(--ok); }
+.exec-status.err { color: var(--err); }
+.exec-status.run { color: var(--accent); }
+.exec-status.muted { color: var(--text-dim); }
+.exec-status svg { flex: none; }
+.exec-autorefresh input { accent-color: var(--accent); cursor: pointer; }
+.exec-menu-pop { right: 8px; min-width: 280px; }
+.exec-bulkbar {
+  position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 12px;
+  background: var(--panel, #2a2a33); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 16px; font-size: 13px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45); z-index: 60;
+}
+.btn.danger-solid { background: var(--err); color: #fff; border: none; }
 .exec-caret-col { width: 34px; padding-right: 0 !important; }
 .exec-row { cursor: pointer; }
 .exec-row td { padding: 13px 16px; font-size: 13px; border-bottom: 1px solid var(--border); }
@@ -1174,6 +1674,49 @@ const detailRows = computed(() => {
 .modal-input:focus { outline: none; border-color: var(--accent); }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
 .modal-actions .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.wf-desc { margin: 3px 0 0; font-size: 12.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 720px; }
+
+/* 收藏星标 + 归档徽章 */
+.fav-star { color: var(--accent); margin-right: 5px; font-size: 13px; }
+.dep-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 9px; font-size: 12px; border-radius: 10px;
+  border: 1px solid var(--border); background: transparent; color: var(--text-dim);
+  cursor: pointer;
+}
+.dep-pill:hover { color: var(--text); border-color: var(--text-faint); }
+.dep-menu { min-width: 220px; max-height: 320px; overflow-y: auto; }
+.dep-group-label { display: flex; align-items: center; gap: 7px; text-transform: none; letter-spacing: 0; font-size: 12px; }
+.badge { font-size: 11.5px; padding: 1px 8px; border-radius: 8px; border: 1px solid var(--border); color: var(--text-dim); }
+
+/* Tags：卡片 chips + 筛选 + 管理弹窗 */
+.wf-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.tag-chip {
+  border: 1px solid var(--border); background: var(--bg-subtle, rgba(125, 125, 125, 0.08));
+  color: var(--text-dim); font-size: 11.5px; line-height: 1; padding: 4px 9px;
+  border-radius: 999px; cursor: pointer;
+}
+.tag-chip:hover { border-color: var(--accent); color: var(--accent); }
+.tag-filter-on { border-color: var(--accent); color: var(--accent); }
+.tag-modal-sub { margin: -12px 0 14px; font-size: 13px; color: var(--text-dim); }
+.tag-new-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+.tag-new-row .modal-input { flex: 1; margin: 0; }
+.tag-check-list { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.tag-check-row {
+  display: flex; align-items: center; gap: 9px; padding: 7px 8px;
+  border-radius: 6px; cursor: pointer; font-size: 13.5px; color: var(--text-hi);
+}
+.tag-check-row:hover { background: var(--bg-subtle, rgba(125, 125, 125, 0.08)); }
+/* 全局 input 有 width:100%，这里必须收回复选框固有尺寸 */
+.tag-check-row input[type='checkbox'] { accent-color: var(--accent); width: 15px; height: 15px; flex: 0 0 auto; margin: 0; }
+.tag-check-name { flex: 1; }
+.tag-del {
+  border: none; background: none; color: var(--text-dim); font-size: 15px;
+  cursor: pointer; padding: 0 4px; border-radius: 4px; visibility: hidden;
+}
+.tag-check-row:hover .tag-del { visibility: visible; }
+.tag-del:hover { color: var(--danger, #e5484d); }
 .dt-source { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; }
 .dt-source-opt {
   display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; cursor: pointer;

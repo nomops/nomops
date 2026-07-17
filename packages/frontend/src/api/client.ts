@@ -15,16 +15,43 @@ import type {
 const TOKEN_KEY = 'nomops.token';
 const PROJECT_KEY = 'nomops.projectId';
 
+export interface ChatProviderRow {
+  id: string;
+  label: string;
+  credentialType: string;
+  models: string[];
+  enabled: boolean;
+  credentialId: string | null;
+  contextWindow: number;
+  lastEditedAt: string | null;
+}
+
+export interface WorkflowDependency {
+  type: 'credential' | 'subWorkflow' | 'parentWorkflow' | 'errorWorkflow' | 'errorWorkflowParent';
+  id: string;
+  name: string;
+}
+
 export interface WorkflowRow {
   id: string;
   name: string;
+  description?: string | null;
   active: boolean;
   nodes: INode[];
   connections: IConnections;
   settings: IWorkflowSettings | null;
+  /** 钉住数据（nodeName → 冻结输出 items）；仅手动运行应用。 */
+  pinData: Record<string, Array<{ json: JsonObject }>> | null;
   folderId: string | null;
+  favorite?: boolean;
+  archived?: boolean;
   createdAt: string;
   updatedAt: string;
+  /** 发布/草稿分离：生产触发跑已发布版本；null = 从未发布。 */
+  publishedVersionId?: string | null;
+  publishedAt?: string | null;
+  /** 仅详情接口返回：草稿是否领先已发布版本。 */
+  publishedDirty?: boolean;
 }
 
 export interface FolderRow {
@@ -88,6 +115,7 @@ export interface CredentialView {
   name: string;
   type: string;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface VariableView {
@@ -117,6 +145,31 @@ export interface DataTableRowView {
   createdAt: string;
   updatedAt: string;
   data: Record<string, unknown>;
+}
+
+export interface McpStatus {
+  enabled: boolean;
+  tokenConfigured: boolean;
+  serverPath: string;
+  workflowIds: string[];
+  workflows: Array<{ id: string; name: string; projectName: string; published: boolean; enabled: boolean }>;
+  clients: Array<{ name: string; version: string; lastSeen: string }>;
+}
+
+export interface TagRow {
+  id: string;
+  name: string;
+}
+
+export interface WorkflowMetaRow {
+  workflowId: string;
+  tags: TagRow[];
+  statistics: {
+    productionSuccess: number;
+    productionError: number;
+    manualRuns: number;
+    lastRunAt: string | null;
+  } | null;
 }
 
 export interface AuthResult {
@@ -169,6 +222,8 @@ export interface ApiKeyRow {
   id: string;
   label: string;
   prefix: string;
+  scope: 'all' | 'readonly';
+  expiresAt: string | null;
   lastUsedAt: string | null;
   createdAt: string;
 }
@@ -217,8 +272,9 @@ async function http<T>(method: string, path: string, body?: unknown): Promise<T>
 }
 
 export const api = {
-  register: (email: string, password: string) =>
-    http<AuthResult>('POST', '/auth/register', { email, password }),
+  register: (email: string, password: string, firstName?: string, lastName?: string) =>
+    http<AuthResult>('POST', '/auth/register', { email, password, firstName, lastName }),
+  needsSetup: () => http<{ needsSetup: boolean }>('GET', '/auth/needs-setup'),
   login: (email: string, password: string, mfaCode?: string) =>
     http<AuthResult | { mfaRequired: true }>('POST', '/auth/login', { email, password, mfaCode }),
   forgotPassword: (email: string) => http<{ ok: true }>('POST', '/auth/forgot', { email }),
@@ -241,24 +297,51 @@ export const api = {
   },
 
   workflows: {
-    // folderId：undefined → 全部；null → 项目根；string → 指定文件夹
-    list: (folderId?: string | null) =>
-      http<WorkflowRow[]>(
-        'GET',
-        folderId === undefined ? '/api/workflows' : `/api/workflows?folderId=${folderId === null ? 'root' : folderId}`,
-      ),
+    // folderId：undefined → 全部；null → 项目根；string → 指定文件夹。archived=true 只看归档。
+    list: (folderId?: string | null, archived = false) => {
+      const params = new URLSearchParams();
+      if (folderId !== undefined) params.set('folderId', folderId === null ? 'root' : folderId);
+      if (archived) params.set('archived', 'true');
+      const qs = params.toString();
+      return http<WorkflowRow[]>('GET', `/api/workflows${qs ? `?${qs}` : ''}`);
+    },
+    /* 项目依赖图（卡片依赖胶囊）：workflowId → 依赖列表 */
+    dependencies: () => http<Record<string, WorkflowDependency[]>>('GET', '/api/workflows/dependencies'),
+    setFavorite: (id: string, favorite: boolean) =>
+      http<WorkflowRow>('POST', `/api/workflows/${id}/favorite`, { favorite }),
+    archive: (id: string) => http<WorkflowRow>('POST', `/api/workflows/${id}/archive`),
+    unarchive: (id: string) => http<WorkflowRow>('POST', `/api/workflows/${id}/unarchive`),
     get: (id: string) => http<WorkflowRow>('GET', `/api/workflows/${id}`),
     create: (body: { name: string; nodes: INode[]; connections: IConnections; folderId?: string | null }) =>
       http<WorkflowRow>('POST', '/api/workflows', body),
-    update: (id: string, body: Partial<{ name: string; nodes: INode[]; connections: IConnections }>) =>
+    update: (
+      id: string,
+      body: Partial<{
+        name: string;
+        description: string | null;
+        nodes: INode[];
+        connections: IConnections;
+        pinData: Record<string, Array<{ json: JsonObject }>> | null;
+      }>,
+    ) =>
       http<WorkflowRow>('PATCH', `/api/workflows/${id}`, body),
     move: (id: string, folderId: string | null) =>
       http<WorkflowRow>('PATCH', `/api/workflows/${id}`, { folderId }),
     remove: (id: string) => http<void>('DELETE', `/api/workflows/${id}`),
-    run: (id: string, destinationNode?: string) =>
-      http<RunSummary>('POST', `/api/workflows/${id}/run`, destinationNode ? { destinationNode } : {}),
+    run: (id: string, opts: { destinationNode?: string; startNode?: string } = {}) =>
+      http<RunSummary>('POST', `/api/workflows/${id}/run`, opts),
+    /* 画布聊天（Chat Trigger）：消息进工作流，回最后节点的文本输出 */
+    chat: (id: string, message: string, sessionId: string) =>
+      http<{ executionId: string; status: string; reply: string; error?: string }>(
+        'POST', `/api/workflows/${id}/chat`, { message, sessionId },
+      ),
     activate: (id: string, active: boolean) =>
       http<{ id: string; active: boolean }>('POST', `/api/workflows/${id}/activate`, { active }),
+    publish: (id: string) =>
+      http<{ id: string; publishedVersionId: string; publishedAt: string; publishedDirty: false }>(
+        'POST',
+        `/api/workflows/${id}/publish`,
+      ),
     versions: (id: string) =>
       http<WorkflowVersionMeta[]>('GET', `/api/workflows/${id}/versions`),
     version: (id: string, versionId: string) =>
@@ -279,10 +362,17 @@ export const api = {
     list: () => http<ExecutionRow[]>('GET', '/api/executions'),
     get: (id: string) =>
       http<{ execution: ExecutionRow; data: IRunExecutionData | null }>('GET', `/api/executions/${id}`),
+    remove: (id: string) => http<void>('DELETE', `/api/executions/${id}`),
+    /* useOriginal=true 用执行时的定义快照重跑，否则用当前保存的草稿 */
+    retry: (id: string, useOriginal: boolean) =>
+      http<RunSummary>('POST', `/api/executions/${id}/retry`, { useOriginal }),
   },
 
   credentials: {
     list: () => http<CredentialView[]>('GET', '/api/credentials'),
+    /* 编辑：改名 + 覆写填写的字段（留空 = 保持不变；旧值绝不回显） */
+    update: (id: string, body: { name?: string; data?: Record<string, unknown> }) =>
+      http<CredentialView>('PATCH', `/api/credentials/${id}`, body),
     create: (body: { name: string; type: string; data: JsonObject }) =>
       http<CredentialView>('POST', '/api/credentials', body),
     test: (id: string) =>
@@ -304,6 +394,16 @@ export const api = {
       http<VariableView>('PATCH', `/api/variables/${id}`, body),
     remove: (id: string) => http<void>('DELETE', `/api/variables/${id}`),
   },
+
+  tags: {
+    list: () => http<TagRow[]>('GET', '/api/tags'),
+    create: (name: string) => http<TagRow>('POST', '/api/tags', { name }),
+    remove: (id: string) => http<void>('DELETE', `/api/tags/${id}`),
+    setForWorkflow: (workflowId: string, tagIds: string[]) =>
+      http<{ ok: true }>('PUT', `/api/workflows/${workflowId}/tags`, { tagIds }),
+  },
+
+  workflowsMeta: () => http<WorkflowMetaRow[]>('GET', '/api/workflows-meta'),
 
   dataTables: {
     list: () => http<DataTableView[]>('GET', '/api/data-tables'),
@@ -370,7 +470,7 @@ export const api = {
     pull: () => http<{ created: number; updated: number; skipped: string[] }>('POST', '/api/source-control/pull'),
   },
 
-  insights: () =>
+  insights: (from_?: string, to?: string) =>
     http<{
       total: number;
       success: number;
@@ -380,13 +480,33 @@ export const api = {
       avgRuntimeMs: number;
       estSavedMinutes: number;
       daily: Array<{ date: string; total: number; success: number; error: number }>;
-    }>('GET', '/api/insights'),
+      granularity: 'hour' | 'day';
+    }>('GET', `/api/insights${from_ && to ? `?from=${encodeURIComponent(from_)}&to=${encodeURIComponent(to)}` : ''}`),
 
   me: () =>
     http<{ id: string; email: string; firstName: string | null; lastName: string | null; role: string; mfaEnabled: boolean; projectId: string }>(
       'GET',
       '/api/me',
     ),
+  /* 实例级 MCP（Settings → Instance-level MCP，Preview） */
+  mcp: {
+    status: () => http<McpStatus>('GET', '/api/mcp'),
+    enable: () => http<McpStatus & { token: string }>('POST', '/api/mcp/enable'),
+    disable: () => http<McpStatus>('POST', '/api/mcp/disable'),
+    setWorkflows: (workflowIds: string[]) => http<McpStatus>('PUT', '/api/mcp/workflows', { workflowIds }),
+  },
+
+  /* Chat 设置（Settings → Chat，Preview） */
+  chatSettings: {
+    get: () => http<{ enabled: boolean; model: string }>('GET', '/api/chat-settings'),
+    update: (body: { enabled?: boolean; model?: string }) =>
+      http<{ enabled: boolean; model: string }>('PUT', '/api/chat-settings', body),
+  },
+
+  updateMe: (body: { firstName?: string; lastName?: string }) =>
+    http<{ id: string; email: string; firstName: string | null; lastName: string | null }>('PATCH', '/api/me', body),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    http<{ ok: true }>('POST', '/api/me/password', { currentPassword, newPassword }),
 
   sso: {
     config: () =>
@@ -402,7 +522,8 @@ export const api = {
 
   apiKeys: {
     list: () => http<ApiKeyRow[]>('GET', '/api/api-keys'),
-    create: (label: string) => http<{ token: string; apiKey: ApiKeyRow }>('POST', '/api/api-keys', { label }),
+    create: (label: string, opts: { expiresInDays?: number | null; scope?: 'all' | 'readonly' } = {}) =>
+      http<{ token: string; apiKey: ApiKeyRow }>('POST', '/api/api-keys', { label, ...opts }),
     revoke: (id: string) => http<void>('DELETE', `/api/api-keys/${id}`),
   },
 
@@ -414,10 +535,20 @@ export const api = {
 
   instanceUsers: {
     list: () =>
-      http<Array<{ id: string; email: string; role: string; disabled: boolean; pending: boolean; createdAt: string }>>(
-        'GET',
-        '/api/instance/users',
-      ),
+      http<
+        Array<{
+          id: string;
+          email: string;
+          firstName?: string | null;
+          lastName?: string | null;
+          role: string;
+          disabled: boolean;
+          mfaEnabled?: boolean;
+          projectCount?: number;
+          pending: boolean;
+          createdAt: string;
+        }>
+      >('GET', '/api/instance/users'),
     setRole: (id: string, role: string) =>
       http<{ id: string; role: string }>('PATCH', `/api/instance/users/${id}/role`, { role }),
     // 邀请用户（无 SMTP：返回可复制的邀请链接由 admin 转交）
@@ -493,11 +624,24 @@ export const api = {
   },
 
   assistant: {
-    chat: (messages: Array<{ role: 'user' | 'assistant'; content: string }>, credentialId?: string) =>
+    /* Chat provider 注册表 + 各家配置（Select model 与 Settings 数据源） */
+    providers: () => http<ChatProviderRow[]>('GET', '/api/assistant/providers'),
+    /* Configure provider（Settings → Chat 弹窗）：Enable / Default credential / Context window */
+    updateProvider: (id: string, body: { enabled?: boolean; credentialId?: string | null; contextWindow?: number }) =>
+      http<ChatProviderRow>('PATCH', `/api/assistant/providers/${id}`, body),
+    chat: (
+      messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+      opts: { credentialId?: string; system?: string; model?: string } = {},
+    ) =>
       http<{
         reply: string;
         workflow: { name: string; nodes: INode[]; connections: IConnections } | null;
-      }>('POST', '/api/assistant/chat', { messages, ...(credentialId ? { credentialId } : {}) }),
+      }>('POST', '/api/assistant/chat', {
+        messages,
+        ...(opts.credentialId ? { credentialId: opts.credentialId } : {}),
+        ...(opts.system ? { system: opts.system } : {}),
+        ...(opts.model ? { model: opts.model } : {}),
+      }),
   },
 
   templates: {

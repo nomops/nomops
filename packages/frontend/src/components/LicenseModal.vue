@@ -2,7 +2,7 @@
 import { ref, watch } from 'vue';
 import { api, type LicenseInfo } from '../api/client.js';
 
-/** 许可证激活弹窗（对标 n8n「Enter activation key」）。 */
+/** 许可证激活弹窗。 */
 const props = defineProps<{ open: boolean }>();
 const emit = defineEmits<{ (e: 'close'): void; (e: 'activated', info: LicenseInfo): void }>();
 

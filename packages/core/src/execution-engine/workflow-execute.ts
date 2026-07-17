@@ -11,6 +11,7 @@ import type {
   Workflow,
 } from '@nomops/workflow';
 import {
+  ExecutionPause,
   OperationalError,
   createRunExecutionData,
   toExecutionError,
@@ -18,6 +19,7 @@ import {
 import type { INodeLoader } from '../nodes-loader/node-loader.js';
 import type { IWorkflowExecuteAdditionalData } from './node-execution-context.js';
 import { createExecuteContext } from './node-execution-context.js';
+import { executeRoutingNode, hasRoutingDeclarations } from './routing-executor.js';
 
 /** 引擎 hooks：server 层挂 WS 推送/落库；引擎只调，不知其用途。 */
 export interface IExecutionHooks {
@@ -176,6 +178,7 @@ export class WorkflowExecute {
     }
     const stack = executionData.nodeExecutionStack;
     const filter = state.startData?.runNodeFilter;
+    state.waitTill = undefined; // 本轮起跑即清除旧的等待时刻（完成/再次挂起时重置）
 
     let status: IRun['status'] = 'success';
 
@@ -194,6 +197,26 @@ export class WorkflowExecute {
       // 禁用节点：input 0 直通到 output 0
       if (node.disabled) {
         this.routeOutput(workflow, state, node, [exec.data['main']?.[0] ?? []]);
+        continue;
+      }
+
+      // 钉住数据：直接采用冻结输出，不执行节点（Workflow 是否携带 pin 由调用方决定）
+      const pinned = workflow.getPinData(node.name);
+      if (pinned !== undefined) {
+        await this.options.hooks?.nodeExecuteBefore?.(node.name);
+        const pinnedTask: ITaskData = {
+          startTime: Date.now(),
+          executionTime: 0,
+          data: this.toConnections([pinned]),
+          source: exec.source?.['main'] ?? [],
+          pinned: true,
+        };
+        state.resultData.runData[node.name] ??= [];
+        state.resultData.runData[node.name]!.push(pinnedTask);
+        state.resultData.lastNodeExecuted = node.name;
+        await this.options.hooks?.nodeExecuteAfter?.(node.name, pinnedTask);
+        if (state.startData?.destinationNode === node.name) continue;
+        this.routeOutput(workflow, state, node, [pinned]);
         continue;
       }
 
@@ -221,6 +244,14 @@ export class WorkflowExecute {
           source: exec.source?.['main'] ?? [],
         };
       } catch (error) {
+        // 暂停信号（控制流）：当前帧带 resumed 标记压回栈，状态整体可序列化落库等唤醒
+        if (error instanceof ExecutionPause) {
+          stack.push({ ...exec, resumed: true });
+          state.waitTill = error.waitTill ?? null;
+          state.resultData.lastNodeExecuted = node.name;
+          status = 'waiting';
+          break;
+        }
         const execError = toExecutionError(error, { node: node.name });
         taskData = {
           startTime,
@@ -281,7 +312,8 @@ export class WorkflowExecute {
   ): Promise<INodeExecutionData[][]> {
     const node = exec.node;
     const nodeType = await this.nodeLoader.getByNameAndVersion(node.type, node.typeVersion);
-    if (!nodeType.execute) {
+    const declarative = !nodeType.execute && hasRoutingDeclarations(nodeType.description);
+    if (!nodeType.execute && !declarative) {
       throw new OperationalError(`节点 ${node.name}（${node.type}）没有 execute 实现`, {
         node: node.name,
       });
@@ -293,8 +325,17 @@ export class WorkflowExecute {
       runData: state.resultData.runData,
       staticData: this.options.staticData ?? {},
       additionalData: this.options.additionalData ?? {},
+      resumed: exec.resumed === true,
+      resolver: this.nodeLoader, // 能力子节点（ai_*）解析
     });
-    return nodeType.execute.call(context);
+    // 声明式节点：无 execute，按 description 的 routing 声明拼请求
+    if (declarative) {
+      return executeRoutingNode(
+        context as Parameters<typeof executeRoutingNode>[0],
+        nodeType.description,
+      );
+    }
+    return nodeType.execute!.call(context);
   }
 
   /* ── 输出扩散（实现在模块级 routeNodeOutput，触发种子注入复用同一逻辑） ── */

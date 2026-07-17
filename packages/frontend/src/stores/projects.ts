@@ -21,7 +21,7 @@ export const useProjectsStore = defineStore('projects', {
     currentRole(): string {
       return this.current?.role ?? 'project:viewer';
     },
-    /** 展示名：个人项目统一显示为 "Personal"（对齐 n8n），团队项目用真实名。 */
+    /** 展示名：个人项目统一显示为 "Personal"，团队项目用真实名。 */
     currentName(): string {
       const c = this.current;
       return !c || c.type === 'personal' ? 'Personal' : c.name;

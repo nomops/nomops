@@ -10,7 +10,7 @@ import {
 } from '../api/client.js';
 import { useProjectsStore } from '../stores/projects.js';
 
-/** n8n Cloud 式 Data table 明细：面包屑 + 工具栏 + 可编辑网格（系统列 id/createdAt/updatedAt + 用户列）。 */
+/** Data table 明细：面包屑 + 工具栏 + 可编辑网格（系统列 id/createdAt/updatedAt + 用户列）。 */
 const route = useRoute();
 const router = useRouter();
 const projects = useProjectsStore();

@@ -77,7 +77,7 @@ export class NpmNodeInstaller implements INodeInstaller {
 
 /**
  * 社区节点：安装/列出/卸载 npm 节点包，并把其节点注册进加载器。
- * 信任模型对标 n8n——owner 安装，节点代码进程内执行（与 Code 节点同级），故路由限实例 admin。
+ * 信任模型：owner 安装，节点代码进程内执行（与 Code 节点同级），故路由限实例 admin。
  * 铁律 5：加载器一视同仁 <pkg>.* 与 nomops.*，引擎/前端不为社区节点写特判。
  */
 export class CommunityNodeService {

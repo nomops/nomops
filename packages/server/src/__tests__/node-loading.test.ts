@@ -15,16 +15,29 @@ describe('内置节点通过加载器可用', () => {
     const names = loader.getAllDescriptions().map((d) => d.name).sort();
     expect(names).toEqual([
       'aiAgent',
+      'anthropicChatModel',
+      'chatTrigger',
       'code',
       'executeWorkflow',
+      'github',
+      'hackerNews',
       'httpRequest',
+      'httpTool',
       'if',
       'manualTrigger',
       'merge',
       'noOp',
+      'notion',
+      'pollingTrigger',
       'schedule',
+      'sendGrid',
       'set',
+      'slack',
+      'stickyNote',
+      'stripe',
+      'wait',
       'webhook',
+      'windowMemory',
     ]);
   });
 

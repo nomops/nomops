@@ -9,6 +9,7 @@ import { verifyHandoff } from '../auth/handoff.js';
 import { requireFeature } from '../license/license-service.js';
 import { isProjectRole } from '../auth/rbac.js';
 import { computeInsights } from '../services/insights.js';
+import { CHAT_PROVIDERS } from '../services/assistant-service.js';
 import { getTemplate, templateSummaries } from '../services/template-registry.js';
 import {
   acceptInviteSchema,
@@ -17,6 +18,7 @@ import {
   createProjectSchema,
   inviteSchema,
   credentialBodySchema,
+  credentialPatchSchema,
   dataTableBodySchema,
   dataTableColumnSchema,
   dataTableRenameSchema,
@@ -28,8 +30,13 @@ import {
   quotaBodySchema,
   registerSchema,
   runBodySchema,
+  chatBodySchema,
+  updateMeSchema,
+  changePasswordSchema,
   ssoConfigSchema,
+  tagBodySchema,
   variableBodySchema,
+  workflowTagsSchema,
   workflowBodySchema,
   workflowPatchSchema,
   communityNodeInstallSchema,
@@ -150,11 +157,19 @@ export function createInternalRouter(services: AppServices): Router {
 export function createAuthRouter(services: AppServices): Router {
   const router = Router();
 
-  // 实例初始化状态：无任何用户 → 前端首启引导 owner setup（对标 n8n）。公开。
+  // 实例初始化状态：无任何用户 → 前端首启引导 owner setup。公开。
   router.get(
     '/state',
     h(async (_req, res) => {
       res.json({ needsSetup: await services.auth.needsSetup() });
+    }),
+  );
+
+  // 首访引导：无任何用户 → 前端登录页自动切「Set up owner account」（对标 n8n /setup）
+  router.get(
+    '/needs-setup',
+    h(async (_req, res) => {
+      res.json({ needsSetup: (await services.repos.users.count()) === 0 });
     }),
   );
 
@@ -317,10 +332,57 @@ export function createApiRouter(services: AppServices): Router {
   router.get(
     '/workflows',
     h(async (req, res) => {
-      // ?folderId 缺省 → 全部；'root'/'' → 项目根；其它 → 指定文件夹
+      // ?folderId 缺省 → 全部；'root'/'' → 项目根；其它 → 指定文件夹。?archived=true 只看归档。
       const fq = req.query['folderId'];
       const folderId = fq === undefined ? undefined : fq === 'root' || fq === '' ? null : String(fq);
-      res.json(await services.workflows.list(auth(req).projectId, folderId));
+      const archived = req.query['archived'] === 'true';
+      res.json(await services.workflows.list(auth(req).projectId, folderId, archived));
+    }),
+  );
+
+  /* 项目依赖图（卡片依赖胶囊；静态段路由须在 /workflows/:id 之前注册） */
+  router.get(
+    '/workflows/dependencies',
+    h(async (req, res) => {
+      res.json(await services.workflows.dependencies(auth(req).projectId));
+    }),
+  );
+
+  /* ── 收藏 / 归档（对标 n8n 卡片菜单 Favorite / Archive；Delete 仅对 archived 开放） ── */
+  router.post(
+    '/workflows/:id/favorite',
+    editor,
+    h(async (req, res) => {
+      const row = await services.workflows.getById(param(req, 'id'), auth(req).projectId);
+      const favorite = Boolean((req.body as { favorite?: boolean })?.favorite);
+      res.json(await services.repos.workflows.setFlags(row.id, { favorite }));
+    }),
+  );
+
+  router.post(
+    '/workflows/:id/archive',
+    editor,
+    h(async (req, res) => {
+      const row = await services.workflows.getById(param(req, 'id'), auth(req).projectId);
+      // 归档即下线：触发器注销 + active=false（n8n 语义）
+      if (row.active) {
+        await services.activeWorkflows.remove(row.id);
+        await services.repos.workflows.setActive(row.id, false);
+      }
+      const updated = await services.repos.workflows.setFlags(row.id, { archived: true });
+      recordAudit(services, req, 'workflow.archive', { type: 'workflow', id: row.id });
+      res.json(updated);
+    }),
+  );
+
+  router.post(
+    '/workflows/:id/unarchive',
+    editor,
+    h(async (req, res) => {
+      const row = await services.workflows.getById(param(req, 'id'), auth(req).projectId);
+      const updated = await services.repos.workflows.setFlags(row.id, { archived: false });
+      recordAudit(services, req, 'workflow.unarchive', { type: 'workflow', id: row.id });
+      res.json(updated);
     }),
   );
 
@@ -338,7 +400,22 @@ export function createApiRouter(services: AppServices): Router {
   router.get(
     '/workflows/:id',
     h(async (req, res) => {
-      res.json(await services.workflows.getById(param(req, 'id'), auth(req).projectId));
+      const row = await services.workflows.getById(param(req, 'id'), auth(req).projectId);
+      // publishedDirty：草稿是否领先已发布版本（前端画布 Publish 按钮状态）
+      res.json({ ...row, publishedDirty: await services.workflows.publishedDirty(row) });
+    }),
+  );
+
+  /* ── 发布（生产触发跑已发布版本；保存只改草稿） ── */
+  router.post(
+    '/workflows/:id/publish',
+    editor,
+    h(async (req, res) => {
+      const row = await services.workflows.publish(param(req, 'id'), auth(req).projectId, auth(req).userId);
+      // 激活中的工作流重发布 → 重注册触发器（webhook 路径/轮询间隔可能变了）
+      if (row.active) await services.activeWorkflows.add(row);
+      recordAudit(services, req, 'workflow.publish', { type: 'workflow', id: row.id });
+      res.json({ id: row.id, publishedVersionId: row.publishedVersionId, publishedAt: row.publishedAt, publishedDirty: false });
     }),
   );
 
@@ -363,7 +440,7 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
-  /* ── 工作流版本历史（对标 n8n：编辑保存快照、可查看/回滚） ── */
+  /* ── 工作流版本历史（编辑保存快照、可查看/回滚） ── */
   router.get(
     '/workflows/:id/versions',
     h(async (req, res) => {
@@ -405,7 +482,7 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
-  /* ── 文件夹（对标 n8n：项目内组织工作流，支持嵌套） ── */
+  /* ── 文件夹（项目内组织工作流，支持嵌套） ── */
   router.get(
     '/folders',
     h(async (req, res) => {
@@ -476,6 +553,16 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
+  /* 画布/API 聊天（Chat Trigger 起点，对标 n8n Chat 面板） */
+  router.post(
+    '/workflows/:id/chat',
+    editor,
+    h(async (req, res) => {
+      const body = parseBody(chatBodySchema, req);
+      res.json(await services.executions.chat(param(req, 'id'), auth(req).projectId, body.message, body.sessionId));
+    }),
+  );
+
   router.post(
     '/workflows/:id/run',
     editor,
@@ -493,8 +580,12 @@ export function createApiRouter(services: AppServices): Router {
     editor,
     h(async (req, res) => {
       const body = parseBody(activateBodySchema, req);
-      const row = await services.workflows.getById(param(req, 'id'), auth(req).projectId);
+      let row = await services.workflows.getById(param(req, 'id'), auth(req).projectId);
       if (body.active) {
+        // 从未发布 → 激活即发布当前定义（对标 n8n：激活总是让「此刻的定义」上生产）
+        if (!row.publishedVersionId) {
+          row = await services.workflows.publish(row.id, auth(req).projectId, auth(req).userId);
+        }
         await services.activeWorkflows.add(row); // 失败抛 OperationalError → 400（activationError）
         await services.repos.workflows.setActive(row.id, true);
       } else {
@@ -521,6 +612,72 @@ export function createApiRouter(services: AppServices): Router {
     '/executions/:id',
     h(async (req, res) => {
       res.json(await services.executions.getById(param(req, 'id'), auth(req).projectId));
+    }),
+  );
+
+  // 下载执行产物二进制：归属校验（铁律 2）+ 引用必须真实出现在该执行数据里（防任意 id 拉文件）
+  router.get(
+    '/executions/:id/binary/:binaryId',
+    h(async (req, res) => {
+      const { data } = await services.executions.getById(param(req, 'id'), auth(req).projectId);
+      const binaryId = param(req, 'binaryId');
+      const serialized = JSON.stringify(data ?? {});
+      if (!serialized.includes(`"${binaryId}"`)) {
+        throw new OperationalError('Binary data not found in this execution', { status: 404 });
+      }
+      const store = services.executions.getBinaryStore();
+      if (!store) throw new OperationalError('Binary storage is not configured', { status: 404 });
+      const buffer = await store.get(binaryId);
+      // 从执行数据里找该引用的元数据（mimeType/fileName）
+      const match = serialized.match(new RegExp(`\\{[^{}]*"id":"${binaryId}"[^{}]*\\}`));
+      let mimeType = 'application/octet-stream';
+      let fileName: string | undefined;
+      if (match) {
+        try {
+          const meta = JSON.parse(match[0]) as { mimeType?: string; fileName?: string };
+          if (meta.mimeType) mimeType = meta.mimeType;
+          fileName = meta.fileName;
+        } catch {
+          /* 元数据解析失败用默认 */
+        }
+      }
+      res.setHeader('content-type', mimeType);
+      if (fileName) res.setHeader('content-disposition', `attachment; filename="${fileName.replace(/"/g, '')}"`);
+      res.end(buffer);
+    }),
+  );
+
+  /* 删除执行记录（B5 对标 n8n executions 表：行菜单 Delete + 多选批量） */
+  router.delete(
+    '/executions/:id',
+    editor,
+    h(async (req, res) => {
+      await services.executions.delete(param(req, 'id'), auth(req).projectId);
+      recordAudit(services, req, 'execution.delete', { type: 'execution', id: param(req, 'id') });
+      res.status(204).end();
+    }),
+  );
+
+  /* 重试（B5）：useOriginal=true 用执行时的定义快照，否则用当前保存的草稿 */
+  router.post(
+    '/executions/:id/retry',
+    editor,
+    h(async (req, res) => {
+      const useOriginal = Boolean((req.body as { useOriginal?: boolean })?.useOriginal);
+      const summary = await services.executions.retry(param(req, 'id'), auth(req).projectId, useOriginal);
+      recordAudit(services, req, 'execution.retry', { type: 'execution', id: param(req, 'id') });
+      res.json(summary);
+    }),
+  );
+
+  // 唤醒 waiting 执行（Wait 节点的外部信号模式；到点唤醒由 wait-tracker 负责）
+  router.post(
+    '/executions/:id/resume',
+    editor,
+    h(async (req, res) => {
+      const summary = await services.executions.resume(param(req, 'id'), auth(req).projectId);
+      recordAudit(services, req, 'execution.resume', { type: 'execution', id: param(req, 'id') });
+      res.json(summary);
     }),
   );
 
@@ -552,6 +709,21 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
+  /* 编辑凭证（对标 n8n 卡片 Open）：改名 + 覆写填写的字段（留空 = 保持不变） */
+  router.patch(
+    '/credentials/:id',
+    editor,
+    h(async (req, res) => {
+      const body = parseBody(credentialPatchSchema, req);
+      const view = await services.credentials.update(param(req, 'id'), auth(req).projectId, {
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.data !== undefined ? { data: body.data as JsonObject } : {}),
+      });
+      recordAudit(services, req, 'credential.update', { type: 'credential', id: view.id });
+      res.json(view);
+    }),
+  );
+
   router.delete(
     '/credentials/:id',
     editor,
@@ -578,6 +750,71 @@ export function createApiRouter(services: AppServices): Router {
       const id = String(req.query['id'] ?? '');
       const authUrl = await services.oauth2.buildAuthUrl(id, auth(req).projectId);
       res.json({ authUrl });
+    }),
+  );
+
+  /* ── tags（工作流标签，项目维度） ── */
+  router.get(
+    '/tags',
+    h(async (req, res) => {
+      res.json(await services.repos.tags.findAllByProject(auth(req).projectId));
+    }),
+  );
+  router.post(
+    '/tags',
+    editor,
+    h(async (req, res) => {
+      const { name } = parseBody(tagBodySchema, req);
+      const existing = await services.repos.tags.findAllByProject(auth(req).projectId);
+      if (existing.some((t) => t.name.toLowerCase() === name.toLowerCase())) {
+        throw new OperationalError(`A tag named "${name}" already exists`, { status: 409 });
+      }
+      res.status(201).json(await services.repos.tags.create(auth(req).projectId, name));
+    }),
+  );
+  router.delete(
+    '/tags/:id',
+    editor,
+    h(async (req, res) => {
+      const tag = await services.repos.tags.findById(param(req, 'id'), auth(req).projectId);
+      if (!tag) throw new OperationalError('Tag not found', { status: 404 });
+      await services.repos.tags.delete(tag.id);
+      res.status(204).end();
+    }),
+  );
+  // 覆盖式设置某工作流的标签（tagIds 必须都属于本项目）
+  router.put(
+    '/workflows/:id/tags',
+    editor,
+    h(async (req, res) => {
+      const { tagIds } = parseBody(workflowTagsSchema, req);
+      await services.workflows.getById(param(req, 'id'), auth(req).projectId); // 归属
+      for (const tagId of tagIds) {
+        if (!(await services.repos.tags.findById(tagId, auth(req).projectId))) {
+          throw new OperationalError('Tag not found', { tagId, status: 404 });
+        }
+      }
+      await services.repos.tags.setWorkflowTags(param(req, 'id'), tagIds);
+      res.json({ ok: true });
+    }),
+  );
+  // 一批工作流的标签 + 运行统计（Overview 列表页一次取全）
+  router.get(
+    '/workflows-meta',
+    h(async (req, res) => {
+      const rows = await services.workflows.list(auth(req).projectId);
+      const ids = rows.map((w) => w.id);
+      const [tagMap, statsMap] = await Promise.all([
+        services.repos.tags.tagsForWorkflows(ids),
+        services.repos.tags.statisticsFor(ids),
+      ]);
+      res.json(
+        ids.map((id) => ({
+          workflowId: id,
+          tags: (tagMap.get(id) ?? []).map((t) => ({ id: t.id, name: t.name })),
+          statistics: statsMap.get(id) ?? null,
+        })),
+      );
     }),
   );
 
@@ -911,23 +1148,177 @@ export function createApiRouter(services: AppServices): Router {
     '/insights',
     h(async (req, res) => {
       const executions = await services.executions.list(auth(req).projectId);
-      res.json(computeInsights(executions, new Date()));
+      // E2 对标 n8n：?from=ISO&to=ISO 自定义日期范围；缺省近 7 日
+      const parse = (v: unknown): Date | null => {
+        if (typeof v !== 'string' || !v) return null;
+        const d = new Date(v);
+        return Number.isNaN(d.getTime()) ? null : d;
+      };
+      const from = parse(req.query['from']);
+      const to = parse(req.query['to']);
+      const range = from && to && from.getTime() <= to.getTime() ? { from, to } : undefined;
+      res.json(computeInsights(executions, new Date(), range));
     }),
   );
 
-  /* ── AI 助手（docs/10 B2） ── */
+  /* Chat provider 注册表 + 各家已存配置（Chat 页与 Settings 数据源；不含任何密钥） */
+  const providerConfig = async (id: string): Promise<{ enabled: boolean; credentialId: string | null; contextWindow: number; lastEditedAt: string | null }> => {
+    const raw = await services.repos.settings.get(`chat.provider.${id}`);
+    const parsed = raw ? (JSON.parse(raw) as { enabled?: boolean; credentialId?: string | null; contextWindow?: number; lastEditedAt?: string }) : {};
+    return {
+      enabled: parsed.enabled !== false,
+      credentialId: parsed.credentialId ?? null,
+      contextWindow: parsed.contextWindow ?? 20,
+      lastEditedAt: parsed.lastEditedAt ?? null,
+    };
+  };
+
+  router.get(
+    '/assistant/providers',
+    h(async (_req, res) => {
+      res.json(
+        await Promise.all(
+          CHAT_PROVIDERS.map(async (p) => ({
+            id: p.id,
+            label: p.label,
+            credentialType: p.credentialType,
+            models: p.models,
+            ...(await providerConfig(p.id)),
+          })),
+        ),
+      );
+    }),
+  );
+
+  /* Configure provider（Settings → Chat 弹窗；对标 n8n：Enable / Default credential / Context window） */
+  router.patch(
+    '/assistant/providers/:id',
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      const id = param(req, 'id');
+      const provider = CHAT_PROVIDERS.find((p) => p.id === id);
+      if (!provider) throw new OperationalError('Unknown provider', { status: 404 });
+      const body = (req.body ?? {}) as { enabled?: boolean; credentialId?: string | null; contextWindow?: number };
+      const current = await providerConfig(id);
+      // 凭证归属 + 类型校验（防把别家凭证配给它）
+      let credentialId = body.credentialId !== undefined ? body.credentialId : current.credentialId;
+      if (credentialId) {
+        const cred = await services.repos.credentials.findById(credentialId, auth(req).projectId);
+        if (!cred || cred.type !== provider.credentialType) {
+          throw new OperationalError(`Credential must be of type ${provider.credentialType}`, { status: 400 });
+        }
+      }
+      const next = {
+        enabled: typeof body.enabled === 'boolean' ? body.enabled : current.enabled,
+        credentialId: credentialId ?? null,
+        contextWindow:
+          typeof body.contextWindow === 'number' && body.contextWindow >= 1 && body.contextWindow <= 100
+            ? Math.round(body.contextWindow)
+            : current.contextWindow,
+        lastEditedAt: new Date().toISOString(),
+      };
+      await services.repos.settings.set(`chat.provider.${id}`, JSON.stringify(next));
+      recordAudit(services, req, 'chat.provider-update', { type: 'chat-provider', id });
+      res.json({ id, label: provider.label, credentialType: provider.credentialType, models: provider.models, ...next });
+    }),
+  );
+
+  /* ── AI 助手（docs/10 B2；Settings → Chat 可整体关停） ── */
   router.post(
     '/assistant/chat',
     h(async (req, res) => {
+      if ((await services.repos.settings.get('chat.enabled')) === 'false') {
+        throw new OperationalError('Chat is disabled on this instance', { status: 403 });
+      }
       const body = (req.body ?? {}) as {
         messages?: Array<{ role: 'user' | 'assistant'; content: string }>;
         credentialId?: string;
+        /** Personal agents（Chat 页）：自定义 system prompt。 */
+        system?: string;
+        /** Chat 页 Select model：会话级模型（Anthropic 系）。 */
+        model?: string;
       };
       if (!Array.isArray(body.messages)) {
         throw new OperationalError('messages is required', { status: 400 });
       }
-      const result = await services.assistant.chat(auth(req).projectId, body.messages, body.credentialId);
+      const system = typeof body.system === 'string' ? body.system.slice(0, 4000) : undefined;
+      const model =
+        typeof body.model === 'string' && /^[a-zA-Z0-9][\w.-]{1,63}$/.test(body.model) ? body.model : undefined;
+      const result = await services.assistant.chat(auth(req).projectId, body.messages, body.credentialId, system, model);
       res.json(result);
+    }),
+  );
+
+  /* ── Chat 设置（Settings → Chat，Preview）：开关 + 默认模型 ── */
+  router.get(
+    '/chat-settings',
+    h(async (_req, res) => {
+      res.json({
+        enabled: (await services.repos.settings.get('chat.enabled')) !== 'false',
+        model: (await services.repos.settings.get('chat.model')) ?? 'claude-sonnet-5',
+      });
+    }),
+  );
+
+  router.put(
+    '/chat-settings',
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      const body = (req.body ?? {}) as { enabled?: boolean; model?: string };
+      if (typeof body.enabled === 'boolean') {
+        await services.repos.settings.set('chat.enabled', body.enabled ? 'true' : 'false');
+      }
+      if (typeof body.model === 'string' && body.model.trim()) {
+        await services.repos.settings.set('chat.model', body.model.trim());
+      }
+      recordAudit(services, req, 'chat.settings-update');
+      res.json({
+        enabled: (await services.repos.settings.get('chat.enabled')) !== 'false',
+        model: (await services.repos.settings.get('chat.model')) ?? 'claude-sonnet-5',
+      });
+    }),
+  );
+
+  /* ── 实例级 MCP（Settings → Instance-level MCP，Preview；实例 admin） ── */
+  router.get(
+    '/mcp',
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      res.json(await services.mcp.status());
+    }),
+  );
+
+  router.post(
+    '/mcp/enable',
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      const { token } = await services.mcp.enable(); // 明文仅此一次；重开即轮换
+      recordAudit(services, req, 'mcp.enable');
+      res.json({ token, ...(await services.mcp.status()) });
+    }),
+  );
+
+  router.post(
+    '/mcp/disable',
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      await services.mcp.disable();
+      recordAudit(services, req, 'mcp.disable');
+      res.json(await services.mcp.status());
+    }),
+  );
+
+  router.put(
+    '/mcp/workflows',
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      const body = (req.body ?? {}) as { workflowIds?: string[] };
+      if (!Array.isArray(body.workflowIds) || body.workflowIds.some((x) => typeof x !== 'string')) {
+        throw new OperationalError('workflowIds must be an array of strings', { status: 400 });
+      }
+      await services.mcp.setWorkflows(body.workflowIds);
+      recordAudit(services, req, 'mcp.workflows-update');
+      res.json(await services.mcp.status());
     }),
   );
 
@@ -962,7 +1353,7 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
-  /* ── 社区节点（对标 n8n：owner 安装 npm 节点包，实例级） ── */
+  /* ── 社区节点（owner 安装 npm 节点包，实例级） ── */
   router.get(
     '/community-nodes',
     h(async (req, res) => {
@@ -995,7 +1386,7 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
-  /* ── 源码同步（对标 n8n Source Control：工作流 push/pull 到 git；企业版 + 实例 admin） ── */
+  /* ── 源码同步（工作流 push/pull 到 git；企业版 + 实例 admin） ── */
   const sourceControlFeature = requireFeature(services.license, 'sourceControl');
   router.get(
     '/source-control',
@@ -1076,7 +1467,7 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
-  // 激活许可证（对标 n8n「Enter activation key」）：落库 + 运行时生效，无需重启。实例 admin。
+  // 激活许可证：落库 + 运行时生效，无需重启。实例 admin。
   router.post(
     '/license/activate',
     h(async (req, res) => {
@@ -1137,7 +1528,28 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
-  /* ── 公共 API 令牌（对标 n8n 的 n8n API；用户级归属） ── */
+  /* 个人资料：改姓名（Settings → Personal） */
+  router.patch(
+    '/me',
+    h(async (req, res) => {
+      const body = parseBody(updateMeSchema, req);
+      const user = await services.repos.users.update(auth(req).userId, body);
+      res.json({ id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName });
+    }),
+  );
+
+  /* 改口令（登录态，先验当前口令） */
+  router.post(
+    '/me/password',
+    h(async (req, res) => {
+      const body = parseBody(changePasswordSchema, req);
+      await services.auth.changePassword(auth(req).userId, body.currentPassword, body.newPassword);
+      recordAudit(services, req, 'user.password-change', { type: 'user', id: auth(req).userId });
+      res.json({ ok: true });
+    }),
+  );
+
+  /* ── 公共 API 令牌（用户级归属） ── */
   router.get(
     '/api-keys',
     h(async (req, res) => {
@@ -1148,9 +1560,16 @@ export function createApiRouter(services: AppServices): Router {
   router.post(
     '/api-keys',
     h(async (req, res) => {
-      const label = String((req.body as { label?: string })?.label ?? '').trim();
+      const body = (req.body ?? {}) as { label?: string; expiresInDays?: number | null; scope?: string };
+      const label = String(body.label ?? '').trim();
       if (!label) throw new OperationalError('label is required', { status: 400 });
-      const created = await services.apiKeys.create(auth(req).userId, label);
+      const expiresInDays =
+        body.expiresInDays == null ? null : Math.max(1, Math.min(3650, Math.floor(Number(body.expiresInDays))));
+      if (body.expiresInDays != null && !Number.isFinite(Number(body.expiresInDays))) {
+        throw new OperationalError('expiresInDays must be a number', { status: 400 });
+      }
+      const scope = body.scope === 'readonly' ? 'readonly' : 'all';
+      const created = await services.apiKeys.create(auth(req).userId, label, { expiresInDays, scope });
       recordAudit(services, req, 'apiKey.create', { type: 'apiKey', id: created.apiKey.id }, { label });
       // token 明文只在此返回一次
       res.status(201).json(created);
@@ -1300,13 +1719,22 @@ export function createApiRouter(services: AppServices): Router {
       await assertInstanceAdmin(req);
       const users = await services.repos.users.findAll();
       const invitations = await services.repos.invitations.findAll();
-      // 已激活用户 + 未接受邀请（pending）合并展示（对标 n8n Users 列表）
+      // Projects 列（对标 n8n）：成员所属项目数；owner/admin 前端显示 "All projects"
+      const projectCounts = new Map<string, number>();
+      for (const u of users) {
+        projectCounts.set(u.id, (await services.repos.projects.findAllByUserWithRole(u.id)).length);
+      }
+      // 已激活用户 + 未接受邀请（pending）合并展示（Users 列表）
       res.json([
         ...users.map((u) => ({
           id: u.id,
           email: u.email,
+          firstName: u.firstName,
+          lastName: u.lastName,
           role: u.role,
           disabled: u.disabled,
+          mfaEnabled: u.mfaEnabled,
+          projectCount: projectCounts.get(u.id) ?? 0,
           pending: false,
           createdAt: u.createdAt,
         })),

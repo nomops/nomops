@@ -4,10 +4,12 @@ import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '../../stores/auth.js';
 import { useProjectsStore } from '../../stores/projects.js';
 import { useUiStore } from '../../stores/ui.js';
+import { WHATS_NEW, hasUnreadNews, markNewsRead } from '../../lib/whats-new.js';
 import { api } from '../../api/client.js';
+import { t } from '../../lib/i18n.js';
 
 /**
- * n8n Cloud 式左侧边栏：品牌 + 顶栏工具（新建/搜索/折叠）、
+ * 左侧边栏：品牌 + 顶栏工具（新建/搜索/折叠）、
  * AI Assistant / Overview / Personal，底部 Admin Panel · Templates · Insights · Help · Settings。
  * 折叠态收为窄图标栏；快速新建下拉；搜索开命令面板；Help/Settings 弹出子菜单。
  */
@@ -45,17 +47,39 @@ function startResize(e: MouseEvent) {
 }
 
 const flyout = ref<'settings' | 'help' | null>(null);
+
+/* A1 对标 n8n：Help 红点 = What's New 未读；打开即读 */
+const newsUnread = ref(hasUnreadNews());
+const showNews = ref(false);
+function openWhatsNew() {
+  showNews.value = true;
+  markNewsRead();
+  newsUnread.value = false;
+  closeAll();
+}
 const quickOpen = ref(false);
 function toggleFlyout(which: 'settings' | 'help') {
   quickOpen.value = false;
   flyout.value = flyout.value === which ? null : which;
+}
+/* A3 对标 n8n：Help/Settings 子菜单 hover 展开（离开延迟收起，给滑向子菜单留缓冲） */
+let flyoutHideTimer: ReturnType<typeof setTimeout> | null = null;
+function flyoutEnter(which: 'settings' | 'help') {
+  if (flyoutHideTimer) clearTimeout(flyoutHideTimer);
+  flyoutHideTimer = null;
+  quickOpen.value = false;
+  flyout.value = which;
+}
+function flyoutLeave() {
+  if (flyoutHideTimer) clearTimeout(flyoutHideTimer);
+  flyoutHideTimer = setTimeout(() => (flyout.value = null), 250);
 }
 function closeAll() {
   flyout.value = null;
   quickOpen.value = false;
 }
 
-/** 切到某项目的视图（n8n：Personal / 团队项目各自一页）。换了上下文才重载拉数据。 */
+/** 切到某项目的视图（Personal / 团队项目各自一页）。换了上下文才重载拉数据。 */
 function switchProject(projectId: string) {
   const changed = projects.current?.id !== projectId;
   projects.switchTo(projectId);
@@ -95,18 +119,18 @@ function quickNewDataTable() {
 }
 function quickNewAiChat() {
   closeAll();
-  void router.push({ name: 'assistant' });
+  void router.push({ name: 'chat' });
 }
-/** 新建团队项目（n8n：低套餐显示 Upgrade；有 rbac 才可建）。 */
+/** 新建团队项目（低套餐显示 Upgrade；有 rbac 才可建）。 */
 async function quickNewProject() {
   closeAll();
   if (!projects.hasFeature('rbac')) {
     void router.push({ name: 'settings', query: { s: 'billing' } });
     return;
   }
-  const name = window.prompt('Project name', 'My project');
+  const name = window.prompt(t('Project name'), t('My project'));
   if (name === null) return;
-  const project = await projects.createProject(name.trim() || 'My project');
+  const project = await projects.createProject(name.trim() || t('My project'));
   projects.switchTo(project.id);
   void router.push({ name: 'overview', query: { project: project.id } }).then(() => router.go(0));
 }
@@ -118,7 +142,15 @@ function onKeydown(e: KeyboardEvent) {
     ui.openPalette();
   }
 }
-onMounted(() => window.addEventListener('keydown', onKeydown));
+/* Settings → Chat 关停时隐藏 Chat 入口（状态在 ui store：Settings 切换即实时生效） */
+const chatEnabled = computed(() => ui.chatEnabled);
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown);
+  void api.chatSettings
+    .get()
+    .then((s) => ui.setChatEnabled(s.enabled))
+    .catch(() => ui.setChatEnabled(true));
+});
 onUnmounted(() => {
   window.removeEventListener('keydown', onKeydown);
   endResize();
@@ -143,72 +175,77 @@ async function openAbout() {
     @click="closeAll"
   >
     <!-- 拖拽调宽把手（展开态） -->
-    <div v-if="!collapsed" class="resize-handle" data-test="sidebar-resize" title="Drag to resize" @mousedown="startResize" @click.stop />
+    <div v-if="!collapsed" class="resize-handle" data-test="sidebar-resize" :title="t('Drag to resize')" @mousedown="startResize" @click.stop />
 
     <!-- 品牌 + 顶栏工具 -->
     <div class="brand-row">
       <RouterLink class="brand" :to="{ name: 'overview' }" title="nomops">
-        <svg class="brand-mark" viewBox="0 0 32 32" fill="none">
-          <circle cx="7" cy="16" r="3.2" fill="#ff6900" />
-          <circle cx="16" cy="9" r="3.2" fill="#ff6900" />
-          <circle cx="16" cy="23" r="3.2" fill="#a855f7" />
-          <circle cx="25" cy="16" r="3.2" fill="#a855f7" />
-          <path d="M9.5 15 13.5 10.5M9.5 17 13.5 21.5M18.5 9.6 22.6 14.4M18.5 22.4 22.6 17.6" stroke="#6b6b78" stroke-width="1.6" />
+        <svg class="brand-mark" viewBox="19 37 130 54" fill="none">
+          <defs>
+            <linearGradient id="nomops-mark-nav" gradientUnits="userSpaceOnUse" x1="23" y1="64" x2="145" y2="64">
+              <stop offset="0" stop-color="#22d3ee" />
+              <stop offset="0.5" stop-color="#6366f1" />
+              <stop offset="1" stop-color="#a855f7" />
+            </linearGradient>
+          </defs>
+          <path d="M57 64C73.2 90 75.4 90 84 64C92.6 38 94.8 38 111 64" stroke="url(#nomops-mark-nav)" stroke-width="6.5" stroke-linecap="round" />
+          <circle cx="40" cy="64" r="17" fill="url(#nomops-mark-nav)" />
+          <circle cx="128" cy="64" r="17" fill="url(#nomops-mark-nav)" />
         </svg>
         <span v-if="!collapsed" class="brand-word">nomops</span>
       </RouterLink>
 
       <div v-if="!collapsed" class="brand-tools" @click.stop>
         <div class="flyout-anchor">
-          <button class="icon-btn" data-test="quick-create" title="Create" @click.stop="quickOpen = !quickOpen; flyout = null">
+          <button class="icon-btn" data-test="quick-create" :title="t('Create')" @click.stop="quickOpen = !quickOpen; flyout = null">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14" /></svg>
           </button>
           <div v-if="quickOpen" class="flyout quick" data-test="quick-menu" @click.stop>
-            <button class="flyout-item qc" data-test="quick-workflow" @click="quickNewWorkflow">New workflow<span class="qc-chev">›</span></button>
-            <button class="flyout-item qc" data-test="quick-credential" @click="quickNewCredential">New credential<span class="qc-chev">›</span></button>
-            <button class="flyout-item qc" data-test="quick-variable" @click="quickNewVariable">New variable<span class="qc-chev">›</span></button>
-            <button class="flyout-item qc" data-test="quick-datatable" @click="quickNewDataTable">New data table<span class="qc-chev">›</span></button>
+            <button class="flyout-item qc" data-test="quick-workflow" @click="quickNewWorkflow">{{ t('New workflow') }}<span class="qc-chev">›</span></button>
+            <button class="flyout-item qc" data-test="quick-credential" @click="quickNewCredential">{{ t('New credential') }}<span class="qc-chev">›</span></button>
+            <button class="flyout-item qc" data-test="quick-variable" @click="quickNewVariable">{{ t('New variable') }}<span class="qc-chev">›</span></button>
+            <button class="flyout-item qc" data-test="quick-datatable" @click="quickNewDataTable">{{ t('New data table') }}<span class="qc-chev">›</span></button>
             <button class="flyout-item qc" data-test="quick-project" @click="quickNewProject">
-              New project
-              <span v-if="!projects.hasFeature('rbac')" class="qc-upgrade">Upgrade</span>
+              {{ t('New project') }}
+              <span v-if="!projects.hasFeature('rbac')" class="qc-upgrade">{{ t('Upgrade') }}</span>
               <span v-else class="qc-chev">›</span>
             </button>
-            <button class="flyout-item qc" data-test="quick-aichat" @click="quickNewAiChat">New AI chat</button>
+            <button class="flyout-item qc" data-test="quick-aichat" @click="quickNewAiChat">{{ t('New AI chat') }}</button>
           </div>
         </div>
-        <button class="icon-btn" data-test="sidebar-search" title="Search (⌘K)" @click.stop="ui.openPalette()">
+        <button class="icon-btn" data-test="sidebar-search" :title="t('Search (⌘K)')" @click.stop="ui.openPalette()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
         </button>
-        <button class="icon-btn" data-test="sidebar-collapse" title="Collapse" @click.stop="ui.toggleSidebar()">
+        <button class="icon-btn" data-test="sidebar-collapse" :title="t('Collapse')" @click.stop="ui.toggleSidebar()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /></svg>
         </button>
       </div>
-      <button v-else class="icon-btn expand" data-test="sidebar-collapse" title="Expand" @click.stop="ui.toggleSidebar()">
+      <button v-else class="icon-btn expand" data-test="sidebar-collapse" :title="t('Expand')" @click.stop="ui.toggleSidebar()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6" /></svg>
       </button>
     </div>
 
     <!-- 顶部导航 -->
-    <RouterLink class="nav-item" :class="{ active: route.name === 'assistant' }" title="AI Assistant" data-test="nav-assistant" :to="{ name: 'assistant' }">
-      <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15l-1.9-4.1L5.5 9l4.6-1.4L12 3z" /><path d="M18 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2z" /></svg>
-      <span class="lbl">AI Assistant</span>
-      <span v-if="!collapsed" class="badge-preview">Preview</span>
-    </RouterLink>
-
-    <RouterLink class="nav-item" :class="{ active: (route.name === 'overview' && !route.query.project) || route.name === 'canvas' }" :to="{ name: 'overview' }" title="Overview">
+    <RouterLink class="nav-item" :class="{ active: (route.name === 'overview' && !route.query.project) || route.name === 'canvas' }" :to="{ name: 'overview' }" :title="t('Overview')">
       <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V20h14V9.5" /></svg>
-      <span class="lbl">Overview</span>
+      <span class="lbl">{{ t('Overview') }}</span>
     </RouterLink>
 
-    <!-- 个人空间（n8n 恒显示为 "Personal"） -->
-    <button v-for="p in personalProjects" :key="p.id" class="nav-item" :class="{ active: route.name === 'overview' && route.query.project === p.id }" :data-test-project="p.id" title="Personal" @click="switchProject(p.id)">
+    <RouterLink v-if="chatEnabled" class="nav-item" :class="{ active: route.name === 'chat' }" :title="t('Chat')" data-test="nav-chat" :to="{ name: 'chat' }">
+      <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14a2 2 0 0 1-2 2H8l-4 3.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z" /></svg>
+      <span class="lbl">{{ t('Chat') }}</span>
+      <span v-if="!collapsed" class="badge-preview">{{ t('Preview') }}</span>
+    </RouterLink>
+
+    <!-- 个人空间（恒显示为 "Personal"） -->
+    <button v-for="p in personalProjects" :key="p.id" class="nav-item" :class="{ active: route.name === 'overview' && route.query.project === p.id }" :data-test-project="p.id" :title="t('Personal')" @click="switchProject(p.id)">
       <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6" /><path d="M5 20c0-3.6 3.1-5.6 7-5.6s7 2 7 5.6" /></svg>
-      <span class="lbl">Personal</span>
+      <span class="lbl">{{ t('Personal') }}</span>
     </button>
 
     <!-- 团队项目 -->
     <template v-if="teamProjects.length">
-      <div v-if="!collapsed" class="nav-section">Projects</div>
+      <div v-if="!collapsed" class="nav-section">{{ t('Projects') }}</div>
       <button v-for="p in teamProjects" :key="p.id" class="nav-item" :class="{ active: route.name === 'overview' && route.query.project === p.id }" :data-test-project="p.id" :title="p.name" @click="switchProject(p.id)">
         <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3" /><path d="M2 20c0-3.2 2.6-5 5.5-5 1 0 1.9.2 2.7.6" /><circle cx="17" cy="10" r="2.6" /><path d="M12.5 20c0-2.8 2.2-4.4 4.7-4.4S22 17.2 22 20" /></svg>
         <span class="lbl">{{ p.name }}</span>
@@ -218,49 +255,57 @@ async function openAbout() {
     <div class="sb-spacer" />
 
     <div class="sidebar-bottom">
-      <RouterLink class="nav-item" :class="{ active: route.name === 'admin' }" data-test="nav-admin" title="Admin Panel" :to="{ name: 'admin' }">
+      <RouterLink class="nav-item" :class="{ active: route.name === 'admin' }" data-test="nav-admin" :title="t('Admin Panel')" :to="{ name: 'admin' }">
         <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16a4 4 0 0 1 .4-8A5.5 5.5 0 0 1 17 8.5 3.75 3.75 0 0 1 18 16H6z" /></svg>
-        <span class="lbl">Admin Panel</span>
+        <span class="lbl">{{ t('Admin Panel') }}</span>
       </RouterLink>
-      <RouterLink class="nav-item" :class="{ active: route.name === 'templates' }" :to="{ name: 'templates' }" title="Templates" data-test="nav-templates">
+      <RouterLink class="nav-item" :class="{ active: route.name === 'templates' }" :to="{ name: 'templates' }" :title="t('Templates')" data-test="nav-templates">
         <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 7.5 12 12l9-4.5L12 3z" /><path d="M3 12l9 4.5L21 12M3 16.5 12 21l9-4.5" /></svg>
-        <span class="lbl">Templates</span>
+        <span class="lbl">{{ t('Templates') }}</span>
       </RouterLink>
-      <RouterLink class="nav-item" :class="{ active: route.name === 'insights' }" :to="{ name: 'insights' }" title="Insights" data-test="nav-insights">
+      <RouterLink class="nav-item" :class="{ active: route.name === 'insights' }" :to="{ name: 'insights' }" :title="t('Insights')" data-test="nav-insights">
         <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V4M4 20h16" /><rect x="7" y="12" width="3" height="5" /><rect x="12" y="8" width="3" height="9" /><rect x="17" y="10" width="3" height="7" /></svg>
-        <span class="lbl">Insights</span>
+        <span class="lbl">{{ t('Insights') }}</span>
       </RouterLink>
 
-      <div class="flyout-anchor">
-        <button class="nav-item" data-test="help-menu" title="Help" @click.stop="toggleFlyout('help')">
-          <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.8.4-1 .8-1 1.7" /><path d="M12 17h.01" /></svg>
-          <span class="lbl">Help</span>
+      <div class="flyout-anchor" @mouseenter="flyoutEnter('help')" @mouseleave="flyoutLeave">
+        <button class="nav-item" data-test="help-menu" :title="t('Help')" @click.stop="toggleFlyout('help')">
+          <span class="ico-wrap">
+            <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.8.4-1 .8-1 1.7" /><path d="M12 17h.01" /></svg>
+            <span v-if="newsUnread" class="news-dot" data-test="news-dot" />
+          </span>
+          <span class="lbl">{{ t('Help') }}</span>
           <svg v-if="!collapsed" class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6" /></svg>
         </button>
         <div v-if="flyout === 'help'" class="flyout" data-test="help-flyout" @click.stop>
-          <button class="flyout-item" data-test="help-about" @click="openAbout">About nomops</button>
-          <button class="flyout-item" data-test="help-bug" @click="showBug = true; closeAll()">Report a problem</button>
-          <div class="flyout-label">Documentation</div>
+          <button class="flyout-item" data-test="help-whats-new" @click="openWhatsNew">
+            {{ t("What's New") }}
+            <span v-if="newsUnread" class="news-dot inline" />
+          </button>
+          <button class="flyout-item" data-test="help-about" @click="openAbout">{{ t('About nomops') }}</button>
+          <button class="flyout-item" data-test="help-bug" @click="showBug = true; closeAll()">{{ t('Report a problem') }}</button>
+          <div class="flyout-label">{{ t('Documentation') }}</div>
           <span class="flyout-item dim">docs/ (README → 01–10)</span>
         </div>
       </div>
 
-      <div class="flyout-anchor">
-        <button class="nav-item" :class="{ active: route.name === 'settings' }" data-test="settings-menu" title="Settings" @click.stop="toggleFlyout('settings')">
+      <div class="flyout-anchor" @mouseenter="flyoutEnter('settings')" @mouseleave="flyoutLeave">
+        <button class="nav-item" :class="{ active: route.name === 'settings' }" data-test="settings-menu" :title="t('Settings')" @click.stop="toggleFlyout('settings')">
           <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2" /><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.5-2-3.4-2.3 1a7.6 7.6 0 0 0-1.7-1L15 3H11l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.3-1-2 3.4L4.6 11a7.6 7.6 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7.6 7.6 0 0 0 1.7 1L11 21h4l.4-2.6a7.6 7.6 0 0 0 1.7-1l2.3 1 2-3.4-2-1.5z" /></svg>
-          <span class="lbl">Settings</span>
+          <span class="lbl">{{ t('Settings') }}</span>
           <svg v-if="!collapsed" class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6" /></svg>
         </button>
         <div v-if="flyout === 'settings'" class="flyout" data-test="settings-flyout" @click.stop>
-          <button class="flyout-item" data-test="settings-personal" @click="goSettings('personal')">Personal</button>
-          <button class="flyout-item" data-test="settings-users" @click="goSettings('users')">Users</button>
-          <button class="flyout-item" data-test="settings-members" @click="closeAll(); router.push({ name: 'projects' })">Members & projects</button>
+          <button class="flyout-item" data-test="settings-personal" @click="goSettings('personal')">{{ t('Personal') }}</button>
+          <button class="flyout-item" data-test="settings-users" @click="goSettings('users')">{{ t('Users') }}</button>
+          <button class="flyout-item" data-test="settings-members" @click="closeAll(); router.push({ name: 'projects' })">{{ t('Members & projects') }}</button>
           <button class="flyout-item" data-test="settings-sso" @click="goSettings('sso')">SSO</button>
-          <button class="flyout-item" data-test="settings-security" @click="goSettings('security')">Security</button>
-          <button class="flyout-item" data-test="settings-billing" @click="goSettings('billing')">Usage & plan</button>
-          <button v-if="projects.hasFeature('auditLogs')" class="flyout-item" data-test="settings-audit" @click="closeAll(); router.push({ name: 'audit' })">Audit logs</button>
+          <button class="flyout-item" data-test="settings-security" @click="goSettings('security')">{{ t('Security') }}</button>
+          <button class="flyout-item" data-test="settings-billing" @click="goSettings('billing')">{{ t('Usage & plan') }}</button>
+          <button class="flyout-item" data-test="settings-languages" @click="goSettings('languages')">{{ t('Languages') }}</button>
+          <button v-if="projects.hasFeature('auditLogs')" class="flyout-item" data-test="settings-audit" @click="closeAll(); router.push({ name: 'audit' })">{{ t('Audit logs') }}</button>
           <div class="flyout-sep" />
-          <button class="flyout-item" data-test="settings-logout" @click="logout">Sign out</button>
+          <button class="flyout-item" data-test="settings-logout" @click="logout">{{ t('Sign out') }}</button>
         </div>
       </div>
     </div>
@@ -271,35 +316,52 @@ async function openAbout() {
       <div class="brand-word" style="font-size: 24px">nomops</div>
       <div class="dim" style="font-size: 12px; margin-top: 2px">
         v{{ about?.version ?? '…' }}
-        <span class="plan-badge" :class="about?.plan">{{ about?.plan === 'enterprise' ? 'Enterprise' : 'Community' }}</span>
+        <span class="plan-badge" :class="about?.plan">{{ about?.plan === 'enterprise' ? t('Enterprise') : t('Community') }}</span>
       </div>
       <p class="dim" style="font-size: 13px; margin: 14px 0">
-        {{ about?.description ?? 'Node-based workflow automation platform' }}
+        {{ about?.description ?? t('Node-based workflow automation platform') }}
       </p>
       <div class="about-meta">
-        <div><span class="dim">Core</span><span>workflow · core · nodes</span></div>
-        <div><span class="dim">Built-in nodes</span><span>{{ about?.nodeCount ?? '–' }}</span></div>
-        <div><span class="dim">Docs</span><span>{{ about?.docs ?? 'docs/' }}</span></div>
+        <div><span class="dim">{{ t('Core') }}</span><span>workflow · core · nodes</span></div>
+        <div><span class="dim">{{ t('Built-in nodes') }}</span><span>{{ about?.nodeCount ?? '–' }}</span></div>
+        <div><span class="dim">{{ t('Docs') }}</span><span>{{ about?.docs ?? 'docs/' }}</span></div>
       </div>
-      <button class="btn primary" style="margin-top: 16px" @click="showAbout = false">Close</button>
+      <button class="btn primary" style="margin-top: 16px" @click="showAbout = false">{{ t('Close') }}</button>
     </div>
   </div>
 
   <!-- 报告问题 -->
-  <div v-if="showBug" class="about-overlay" data-test="bug-modal" @click.self="showBug = false">
+  <div v-if="showNews" class="news-mask" data-test="whats-new-modal" @click.self="showNews = false">
+      <div class="news-card">
+        <div class="news-head">
+          <strong>{{ t("What's New") }}</strong>
+          <button class="news-x" @click="showNews = false">✕</button>
+        </div>
+        <div class="news-body">
+          <div v-for="e in WHATS_NEW" :key="e.id" class="news-entry">
+            <div class="news-title">{{ e.title }} <span class="dim news-date">{{ e.date }}</span></div>
+            <ul>
+              <li v-for="(pt, i) in e.points" :key="i">{{ pt }}</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="showBug" class="about-overlay" data-test="bug-modal" @click.self="showBug = false">
     <div class="about-card" style="text-align: left; width: 380px">
-      <div style="font-weight: 600; font-size: 16px; text-align: center; margin-bottom: 12px">Report a problem</div>
+      <div style="font-weight: 600; font-size: 16px; text-align: center; margin-bottom: 12px">{{ t('Report a problem') }}</div>
       <p class="dim" style="font-size: 13px; line-height: 1.7">
-        Please include the following so we can reproduce it:<br />
-        1. Steps, expected vs actual result<br />
-        2. Failing node name and execution ID (see Executions)<br />
-        3. Browser console / instance log snippet<br />
-        4. Version v{{ about?.version ?? '…' }}
+        {{ t('Please include the following so we can reproduce it:') }}<br />
+        {{ t('1. Steps, expected vs actual result') }}<br />
+        {{ t('2. Failing node name and execution ID (see Executions)') }}<br />
+        {{ t('3. Browser console / instance log snippet') }}<br />
+        {{ t('4. Version v{v}', { v: about?.version ?? '…' }) }}
       </p>
       <p class="dim" style="font-size: 12px; margin-top: 10px">
-        Self-hosted logs: <code>docker logs</code>; in dev, see the server process output.
+        {{ t('Self-hosted logs: {cmd}; in dev, see the server process output.', { cmd: 'docker logs' }) }}
       </p>
-      <button class="btn primary" style="width: 100%; margin-top: 14px" @click="showBug = false">Got it</button>
+      <button class="btn primary" style="width: 100%; margin-top: 14px" @click="showBug = false">{{ t('Got it') }}</button>
     </div>
   </div>
 </template>
@@ -324,7 +386,7 @@ async function openAbout() {
 .brand-row { display: flex; align-items: center; gap: 6px; padding: 6px 6px 14px; }
 .brand { display: flex; align-items: center; gap: 5px; text-decoration: none; min-width: 0; flex: 1; }
 .brand-word { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.brand-mark { width: 24px; height: 24px; flex-shrink: 0; }
+.brand-mark { width: 38px; height: 22px; flex-shrink: 0; }
 .brand-word { font-weight: 700; font-size: 16px; letter-spacing: -0.3px; color: var(--text-hi); }
 .brand-tools { display: flex; align-items: center; gap: 0; margin-left: auto; flex-shrink: 0; }
 .icon-btn {
@@ -386,4 +448,27 @@ async function openAbout() {
 .btn { display: inline-flex; align-items: center; justify-content: center; height: 34px; padding: 0 14px; border-radius: var(--radius); border: none; font-size: 14px; font-weight: 500; cursor: pointer; }
 .btn.primary { background: var(--accent); color: #fff; }
 .btn.primary:hover { background: var(--accent-dim); }
+
+/* A1 What's New 红点与弹窗 */
+.ico-wrap { position: relative; display: inline-flex; }
+.news-dot {
+  position: absolute; top: -3px; right: -3px; width: 7px; height: 7px;
+  border-radius: 50%; background: var(--err, #e5484d);
+}
+.news-dot.inline { position: static; margin-left: 8px; display: inline-block; }
+.news-mask { position: fixed; inset: 0; z-index: 110; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; }
+.news-card {
+  width: 560px; max-height: 70vh; display: flex; flex-direction: column;
+  background: var(--panel, #26262e); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+}
+.news-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 10px; font-size: 15px; }
+.news-x { background: none; border: none; padding: 2px 6px; color: var(--text-dim); cursor: pointer; }
+.news-x:hover { color: var(--text); }
+.news-body { overflow-y: auto; padding: 4px 20px 18px; }
+.news-entry { margin-bottom: 14px; }
+.news-title { font-weight: 600; font-size: 13.5px; margin-bottom: 4px; }
+.news-date { font-weight: 400; font-size: 11.5px; margin-left: 8px; }
+.news-entry ul { margin: 0; padding-left: 18px; }
+.news-entry li { font-size: 12.5px; line-height: 1.6; color: var(--text-dim); }
 </style>

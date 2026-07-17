@@ -16,6 +16,7 @@ export interface ICredentialView {
   name: string;
   type: string;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 export class CredentialService {
@@ -64,6 +65,31 @@ export class CredentialService {
     await this.repos.credentials.update(id, { data: encrypted });
   }
 
+  /**
+   * 用户编辑凭证（对标 n8n 凭证卡片 Open）：改名 + 覆写填写的字段。
+   * data 只合并非空字段到现有解密数据再整体重加密——旧值绝不回显，编辑表单留空即保持不变。
+   */
+  async update(
+    id: string,
+    projectId: string,
+    patch: { name?: string; data?: JsonObject },
+  ): Promise<ICredentialView> {
+    const row = await this.repos.credentials.findById(id, projectId);
+    if (!row) throw new OperationalError('Credential not found', { credentialId: id, status: 404 });
+    const update: { name?: string; data?: string } = {};
+    if (patch.name !== undefined && patch.name !== row.name) update.name = patch.name;
+    const filled = Object.fromEntries(
+      Object.entries(patch.data ?? {}).filter(([, v]) => v !== '' && v !== undefined && v !== null),
+    );
+    if (Object.keys(filled).length > 0) {
+      const current = await this.credentials.decrypt(row.data, { projectId });
+      update.data = await this.credentials.encrypt({ ...current, ...filled }, { projectId });
+    }
+    await this.repos.credentials.update(id, update);
+    const fresh = await this.repos.credentials.findById(id, projectId);
+    return this.toView(fresh!);
+  }
+
   /** OAuth 连接状态（只回布尔，绝不回 token——铁律 3）。 */
   async oauthStatus(id: string, projectId: string): Promise<{ connected: boolean }> {
     const data = await this.rawData(id, projectId);
@@ -72,7 +98,7 @@ export class CredentialService {
   }
 
   /**
-   * 测试连接（对标 n8n）：解密凭证 → 按类型打对应服务的只读端点看 HTTP 状态。
+   * 测试连接：解密凭证 → 按类型打对应服务的只读端点看 HTTP 状态。
    * 可测类型不存在 → tested:false（凭证已存但无连接测试）；缺字段 → tested:false。
    * 密钥只进请求发给目标服务，绝不回 API/落日志（铁律 3）。
    */
@@ -101,7 +127,7 @@ export class CredentialService {
     await this.repos.credentials.delete(id);
   }
 
-  private toView(row: { id: string; name: string; type: string; createdAt: Date }): ICredentialView {
-    return { id: row.id, name: row.name, type: row.type, createdAt: row.createdAt };
+  private toView(row: { id: string; name: string; type: string; createdAt: Date; updatedAt: Date }): ICredentialView {
+    return { id: row.id, name: row.name, type: row.type, createdAt: row.createdAt, updatedAt: row.updatedAt };
   }
 }

@@ -37,8 +37,8 @@ describe('契约 ↔ Vue Flow 转换', () => {
     };
     const edges = toFlowEdges(connections);
     expect(edges).toHaveLength(2);
-    expect(edges[0]).toMatchObject({ source: 'IF', target: 'T', sourceHandle: 'out-0' });
-    expect(edges[1]).toMatchObject({ source: 'IF', target: 'F', sourceHandle: 'out-1' });
+    expect(edges[0]).toMatchObject({ source: 'IF', target: 'T', sourceHandle: 'out-main-0' });
+    expect(edges[1]).toMatchObject({ source: 'IF', target: 'F', sourceHandle: 'out-main-1' });
   });
 
   it('handleIndex 解析端口序号', () => {

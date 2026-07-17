@@ -4,7 +4,7 @@ import type { JsonObject } from '@nomops/workflow';
 import type { CredentialService } from './credential-service.js';
 
 /**
- * 凭证级 OAuth2（Authorization Code）流程（对标 n8n 的「Connect my account」）。
+ * 凭证级 OAuth2（Authorization Code）流程（「Connect my account」）。
  * 用户在凭证里填 authUrl / accessTokenUrl / clientId / clientSecret / scope，
  * 点 Connect → 跳提供方授权 → 回调换 token → 加密存回凭证 data.oauthTokenData。
  * token 只经内部链路，绝不出 API/进日志（铁律 3）。state 内存态（单进程切片）。

@@ -21,10 +21,12 @@ import type { LdapService } from './ldap/ldap-service.js';
 import type { OAuth2Service } from './services/oauth2-service.js';
 import type { VariableService } from './services/variable-service.js';
 import type { DataTableService } from './services/data-table-service.js';
+import type { WaitTracker } from './services/wait-tracker.js';
 import type { ApiKeyService } from './services/api-key-service.js';
 import type { MfaService } from './services/mfa-service.js';
 import type { CommunityNodeService } from './services/community-node-service.js';
 import type { GitService } from './services/git-service.js';
+import type { McpService } from './services/mcp-service.js';
 
 /** 服务容器：构造函数注入（docs/05），app 层只见接口不见组装细节。 */
 export interface AppServices {
@@ -55,4 +57,6 @@ export interface AppServices {
   oauth2: OAuth2Service;
   variables: VariableService;
   dataTables: DataTableService;
+  waitTracker: WaitTracker;
+  mcp: McpService;
 }

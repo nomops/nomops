@@ -407,3 +407,106 @@ describe('禁用节点', () => {
     expect(outputJson(run.data, 'C')).toEqual([{ x: 1 }]);
   });
 });
+
+describe('钉住数据（pinned data）', () => {
+  it('钉住的节点不执行，直接用冻结输出，下游照常', async () => {
+    // B 是必炸节点——只要引擎真的执行它测试就会失败；pin 应让它被跳过
+    const wf = new Workflow({
+      name: 'pinned',
+      nodes: [node('A', 't.pass'), node('B', 't.fail'), node('C', 't.pass')],
+      connections: {
+        A: { main: [[to('B')]] },
+        B: { main: [[to('C')]] },
+      },
+      pinData: { B: [{ json: { frozen: true } }, { json: { frozen: 2 } }] },
+    });
+
+    const run = await engine().run(wf, undefined, undefined, [{ json: { x: 1 } }]);
+
+    expect(run.status).toBe('success');
+    expect(outputJson(run.data, 'B')).toEqual([{ frozen: true }, { frozen: 2 }]);
+    expect(outputJson(run.data, 'C')).toEqual([{ frozen: true }, { frozen: 2 }]);
+    expect(run.data.resultData.runData['B']![0]!.pinned).toBe(true);
+    expect(run.data.resultData.runData['C']![0]!.pinned).toBeUndefined();
+  });
+
+  it('不携带 pinData 构造的 Workflow 正常执行节点（生产语义）', async () => {
+    const wf = new Workflow({
+      name: 'unpinned',
+      nodes: [node('A', 't.pass'), node('B', 't.double', { newValue: 7 }), node('C', 't.pass')],
+      connections: {
+        A: { main: [[to('B')]] },
+        B: { main: [[to('C')]] },
+      },
+    });
+
+    const run = await engine().run(wf, undefined, undefined, [{ json: { value: 1 } }]);
+    expect(run.status).toBe('success');
+    expect(outputJson(run.data, 'C')).toEqual([{ value: 7 }]);
+  });
+
+  it('pin 到 destinationNode 时到达即停，不扩散下游', async () => {
+    const wf = new Workflow({
+      name: 'pin-dest',
+      nodes: [node('A', 't.pass'), node('B', 't.fail'), node('C', 't.pass')],
+      connections: {
+        A: { main: [[to('B')]] },
+        B: { main: [[to('C')]] },
+      },
+      pinData: { B: [{ json: { stop: 'here' } }] },
+    });
+
+    const run = await engine().run(wf, undefined, 'B');
+    expect(run.status).toBe('success');
+    expect(outputJson(run.data, 'B')).toEqual([{ stop: 'here' }]);
+    expect(run.data.resultData.runData['C']).toBeUndefined();
+  });
+
+  it('钉住起点节点：种子数据被冻结输出替代', async () => {
+    const wf = new Workflow({
+      name: 'pin-start',
+      nodes: [node('A', 't.fail'), node('B', 't.pass')],
+      connections: { A: { main: [[to('B')]] } },
+      pinData: { A: [{ json: { seeded: 'pin' } }] },
+    });
+
+    const run = await engine().run(wf);
+    expect(run.status).toBe('success');
+    expect(outputJson(run.data, 'B')).toEqual([{ seeded: 'pin' }]);
+  });
+});
+
+describe('wait/resume（挂起与唤醒）', () => {
+  // 内联等待节点：首跑挂起 100ms，续跑放行输入
+  const pauseNode = loadable('t.pause', ['main'], async function (this: IExecuteContext) {
+    if (this.isResumed()) return [this.getInputData()];
+    const { ExecutionPause } = await import('@nomops/workflow');
+    throw new ExecutionPause({ waitTill: Date.now() + 100 });
+  });
+
+  function pauseEngine() {
+    return new WorkflowExecute(new NodeLoader([...testNodes, pauseNode]));
+  }
+
+  it('首跑挂起为 waiting、状态可序列化；恢复后 Wait 放行、下游继续', async () => {
+    const wf = new Workflow({
+      name: 'wait-flow',
+      nodes: [node('A', 't.pass'), node('W', 't.pause'), node('C', 't.pass')],
+      connections: { A: { main: [[to('W')]] }, W: { main: [[to('C')]] } },
+    });
+
+    const first = await pauseEngine().run(wf, undefined, undefined, [{ json: { v: 7 } }]);
+    expect(first.status).toBe('waiting');
+    expect(typeof first.data.waitTill).toBe('number');
+    expect(first.data.resultData.runData['C']).toBeUndefined(); // 下游未跑
+
+    // 铁律 4：挂起状态整体可 JSON 序列化，跨进程恢复
+    const revived = JSON.parse(JSON.stringify(first.data)) as IRunExecutionData;
+    const second = await pauseEngine().processRunExecutionData(wf, revived);
+
+    expect(second.status).toBe('success');
+    expect(second.data.waitTill).toBeUndefined(); // 完成后清除
+    expect(outputJson(second.data, 'W')).toEqual([{ v: 7 }]); // Wait 透传输入
+    expect(outputJson(second.data, 'C')).toEqual([{ v: 7 }]);
+  });
+});

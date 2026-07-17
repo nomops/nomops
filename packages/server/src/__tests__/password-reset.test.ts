@@ -6,7 +6,7 @@ import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
 
 /**
- * 忘记密码（实例内，对标 n8n 自托管）：请求 → 重置 → 新口令生效/旧失效 → 一次性 / 过期 / 不枚举。
+ * 忘记密码（实例内，自托管）：请求 → 重置 → 新口令生效/旧失效 → 一次性 / 过期 / 不枚举。
  * 明文 token 不入 API（走投递/日志），测试直接经 service 取 token 控制时间。
  */
 

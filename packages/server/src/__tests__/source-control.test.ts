@@ -12,7 +12,7 @@ import { createApp } from '../app.js';
 import { setupOwner, inviteUser } from './helpers.js';
 
 /**
- * 源码同步（对标 n8n Source Control）：连接 → push → 另一实例 pull 往返，走真实 git
+ * 源码同步：连接 → push → 另一实例 pull 往返，走真实 git
  * （本地 bare 仓库当远端，无网络）。企业版 + 实例 admin 门控。
  */
 

@@ -14,9 +14,17 @@ export type { INodeLoader, INodeTypeInfo } from './nodes-loader/node-loader.js';
 
 export { WorkflowExecute, seedTriggerOutput, routeNodeOutput } from './execution-engine/workflow-execute.js';
 export type { IExecutionHooks, IWorkflowExecuteOptions } from './execution-engine/workflow-execute.js';
-export { createExecuteContext } from './execution-engine/node-execution-context.js';
-export type { IWorkflowExecuteAdditionalData } from './execution-engine/node-execution-context.js';
+export {
+  buildPartialRunState,
+  computeDirtyNodes,
+  incomingSignatureOf,
+} from './execution-engine/partial-execution.js';
+export { executeRoutingNode, hasRoutingDeclarations } from './execution-engine/routing-executor.js';
+export { createExecuteContext, createSupplyContext, defaultHttpRequest } from './execution-engine/node-execution-context.js';
+export type { INodeTypeResolver, IWorkflowExecuteAdditionalData } from './execution-engine/node-execution-context.js';
 
+export { FileSystemBinaryStore, InMemoryBinaryStore } from './binary-data/binary-store.js';
+export type { IBinaryDataStore, IBinaryMeta } from './binary-data/binary-store.js';
 export { Cipher } from './encryption/cipher.js';
 export { StaticKeyProvider } from './encryption/key-provider.js';
 export type { IEncryptionKeyProvider } from './encryption/key-provider.js';

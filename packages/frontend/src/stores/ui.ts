@@ -1,5 +1,16 @@
 import { defineStore } from 'pinia';
 
+/** 视图注入命令面板的上下文命令（如画布的 Workflow 动作组）。 */
+export interface PaletteCommand {
+  id: string;
+  label: string;
+  /** 分组名（显示在副行，如 'Workflow'）。 */
+  group: string;
+  /** 快捷键标注（仅展示）。 */
+  shortcut?: string;
+  run: () => void;
+}
+
 export const SIDEBAR_MIN = 220;
 export const SIDEBAR_MAX = 480;
 const storedWidth = Number(localStorage.getItem('nomops.sidebarWidth'));
@@ -10,6 +21,10 @@ export const useUiStore = defineStore('ui', {
     sidebarCollapsed: localStorage.getItem('nomops.sidebarCollapsed') === '1',
     sidebarWidth: storedWidth >= SIDEBAR_MIN && storedWidth <= SIDEBAR_MAX ? storedWidth : 244,
     paletteOpen: false,
+    /** 当前视图注入的上下文命令（离开视图时清空）。 */
+    paletteContext: [] as PaletteCommand[],
+    /** Settings → Chat 开关的共享状态：侧栏 Chat 入口实时显隐（切换即生效，无需刷新）。 */
+    chatEnabled: true,
   }),
   actions: {
     toggleSidebar() {
@@ -27,6 +42,15 @@ export const useUiStore = defineStore('ui', {
     },
     closePalette() {
       this.paletteOpen = false;
+    },
+    setPaletteContext(commands: PaletteCommand[]) {
+      this.paletteContext = commands;
+    },
+    clearPaletteContext() {
+      this.paletteContext = [];
+    },
+    setChatEnabled(enabled: boolean) {
+      this.chatEnabled = enabled;
     },
   },
 });

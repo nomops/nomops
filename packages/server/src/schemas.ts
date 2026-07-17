@@ -15,6 +15,17 @@ export const loginSchema = z.object({
   mfaCode: z.string().optional(), // 两步验证：TOTP 码或备份码
 });
 
+/** 个人资料（Settings → Personal）。 */
+export const updateMeSchema = z.object({
+  firstName: z.string().max(100).optional(),
+  lastName: z.string().max(100).optional(),
+});
+
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8, 'Password must be at least 8 characters'),
+});
+
 /** 邀请用户（实例 admin）：邮箱 + 实例角色（owner 只能由降级/建初始 owner 产生，不可邀请）。 */
 export const inviteSchema = z.object({
   email: z.string().email(),
@@ -52,15 +63,22 @@ export const connectionsSchema = z.record(
   ),
 );
 
+/** 钉住数据：nodeName → 冻结输出 items（json 必填，binary/pairedItem 透传）。null = 清空。 */
+export const pinDataSchema = z
+  .record(z.array(z.object({ json: z.record(z.unknown()) }).passthrough()).max(200))
+  .nullable();
+
 export const workflowBodySchema = z.object({
   name: z.string().min(1).max(200),
+  description: z.string().max(2000).nullable().optional(),
   nodes: z.array(nodeSchema),
   connections: connectionsSchema,
   settings: z.record(z.unknown()).optional(),
+  pinData: pinDataSchema.optional(),
   folderId: z.string().nullable().optional(), // 所属文件夹；null = 项目根
 });
 
-/** 文件夹（对标 n8n）：项目内组织工作流，支持嵌套。 */
+/** 文件夹：项目内组织工作流，支持嵌套。 */
 export const folderBodySchema = z.object({
   name: z.string().min(1).max(200),
   parentFolderId: z.string().nullable().optional(),
@@ -93,8 +111,18 @@ export const licenseActivateSchema = z.object({
   activationKey: z.string().min(1, 'Activation key is required').max(5000),
 });
 
+/** 画布/API 聊天（Chat Trigger）。 */
+export const chatBodySchema = z.object({
+  message: z.string().min(1).max(20_000),
+  sessionId: z.string().min(1).max(100).optional().default('default'),
+});
+
 export const runBodySchema = z.object({
   destinationNode: z.string().optional(),
+  /** 多触发器画布：从指定 trigger 节点开始执行（对标 n8n "Execute workflow from X"）。 */
+  startNode: z.string().optional(),
+  /** true = 部分执行：复用最近一次执行的干净上游数据，只重跑脏子图（需配合 destinationNode）。 */
+  usePreviousData: z.boolean().optional(),
 });
 
 export const activateBodySchema = z.object({
@@ -105,6 +133,14 @@ const projectRoleSchema = z.enum(['project:viewer', 'project:editor', 'project:o
 
 export const createProjectSchema = z.object({
   name: z.string().min(1).max(200),
+});
+
+export const tagBodySchema = z.object({
+  name: z.string().min(1).max(50),
+});
+
+export const workflowTagsSchema = z.object({
+  tagIds: z.array(z.string()).max(20),
 });
 
 export const variableBodySchema = z.object({
@@ -160,4 +196,10 @@ export const credentialBodySchema = z.object({
   name: z.string().min(1).max(200),
   type: z.string().min(1).max(100),
   data: z.record(z.unknown()), // 明文只在请求瞬间存在，立刻加密
+});
+
+/** 编辑凭证：改名 + 覆写填写的字段（留空字段 = 保持不变，type 不可改）。 */
+export const credentialPatchSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  data: z.record(z.unknown()).optional(),
 });

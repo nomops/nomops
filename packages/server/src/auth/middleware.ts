@@ -4,7 +4,7 @@ import type { AuthService } from './auth-service.js';
 import type { ApiKeyService } from '../services/api-key-service.js';
 import { roleAtLeast, type ProjectRole } from './rbac.js';
 
-/** 公共 API 令牌头（对标 n8n 的 X-N8N-API-KEY）。 */
+/** 公共 API 令牌头。 */
 export const API_KEY_HEADER = 'x-nomops-api-key';
 
 /** 解析后的请求身份，挂在 req.auth。 */
@@ -62,6 +62,11 @@ export function createAuthMiddleware(authService: AuthService, repos: Repositori
         .then(async (result) => {
           if (!result) {
             res.status(401).json({ error: 'Invalid API key' });
+            return;
+          }
+          // 作用域强制：readonly 令牌只放行读方法
+          if (result.scope === 'readonly' && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+            res.status(403).json({ error: 'This API key is read-only' });
             return;
           }
           // 默认项目上下文 = 用户的个人项目（无 X-Project-Id 时）

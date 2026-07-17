@@ -12,6 +12,7 @@ coverage/
 .DS_Store
 *.db
 *.db-journal
+*.db.bak
 .nomops/
 cp-data/
 control-plane.db

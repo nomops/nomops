@@ -67,13 +67,13 @@ export const useExecutionStore = defineStore('execution', {
     },
 
     /** 运行工作流；destinationNode 给定时只跑到该节点（NDV 的「Execute step」）。 */
-    async run(workflowId: string, destinationNode?: string) {
+    async run(workflowId: string, opts: { destinationNode?: string; startNode?: string } = {}) {
       this.runError = null;
       this.statusByNode = {};
       this.lastRunData = null;
       this.running = true;
       try {
-        const summary = await api.workflows.run(workflowId, destinationNode);
+        const summary = await api.workflows.run(workflowId, opts);
         if (summary.error) this.runError = summary.error;
       } catch (error) {
         this.runError = (error as Error).message;

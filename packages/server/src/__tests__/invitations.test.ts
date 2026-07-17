@@ -7,7 +7,7 @@ import { createApp } from '../app.js';
 import { setupOwner } from './helpers.js';
 
 /**
- * 用户邀请（对标 n8n 自托管）：首个用户 = owner，公开注册此后关闭；owner/admin 邀请 →
+ * 用户邀请（自托管）：首个用户 = owner，公开注册此后关闭；owner/admin 邀请 →
  * 邀请链接 → 接受时才建 users 行。存 token 哈希（铁律 3），一次性消费。
  */
 

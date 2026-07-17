@@ -2,7 +2,7 @@ import request from 'supertest';
 import type { Express } from 'express';
 
 /**
- * 测试用户创建助手（对标 n8n 自托管：首个用户 = owner，其余经邀请）。
+ * 测试用户创建助手（自托管：首个用户 = owner，其余经邀请）。
  * 公开注册 `/auth/register` 只对无用户的实例开放（创建 owner）；此后要靠 owner 邀请。
  */
 

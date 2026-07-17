@@ -1,4 +1,4 @@
-import type { IConnections, INode, IWorkflowSettings } from './interfaces.js';
+import type { IConnections, INode, INodeExecutionData, IPinData, IWorkflowSettings } from './interfaces.js';
 import { OperationalError } from './errors.js';
 
 export interface IWorkflowInit {
@@ -8,6 +8,8 @@ export interface IWorkflowInit {
   connections: IConnections;
   settings?: IWorkflowSettings;
   active?: boolean;
+  /** 钉住数据；仅调用方（手动运行）显式携带时引擎才会应用。 */
+  pinData?: IPinData;
 }
 
 /** 一条入向连接：某节点的某输入端口，接的是哪个上游节点的哪个输出端口。 */
@@ -29,6 +31,7 @@ export class Workflow {
   readonly nodes = new Map<string, INode>();
   readonly connectionsBySource: IConnections;
   readonly settings: IWorkflowSettings;
+  readonly pinData: IPinData;
 
   /** 反向索引：destNodeName → connectionType → 入向连接列表。 */
   private readonly incoming = new Map<string, Map<string, IIncomingConnection[]>>();
@@ -38,6 +41,7 @@ export class Workflow {
     this.name = init.name;
     this.connectionsBySource = init.connections;
     this.settings = init.settings ?? {};
+    this.pinData = init.pinData ?? {};
 
     for (const node of init.nodes) {
       if (this.nodes.has(node.name)) {
@@ -89,6 +93,11 @@ export class Workflow {
     return node;
   }
 
+  /** 某节点的钉住输出（无则 undefined）。空数组视为有效 pin（明确表示零 items）。 */
+  getPinData(nodeName: string): INodeExecutionData[] | undefined {
+    return this.pinData[nodeName];
+  }
+
   /** 某节点某类型的全部入向连接。 */
   getIncomingConnections(nodeName: string, type = 'main'): IIncomingConnection[] {
     return this.incoming.get(nodeName)?.get(type) ?? [];
@@ -130,16 +139,35 @@ export class Workflow {
     return seen;
   }
 
+  /** 某节点是否有任意 main 出向连接。 */
+  private hasMainOutput(nodeName: string): boolean {
+    return (this.connectionsBySource[nodeName]?.['main'] ?? []).some(
+      (endpoints) => endpoints && endpoints.length > 0,
+    );
+  }
+
+  /** 某节点是否是纯能力子节点（只有 ai_* 出向、无 main 进出）——不参与数据流，不能当起点。 */
+  isSubNode(nodeName: string): boolean {
+    if (this.getIncomingConnections(nodeName).length > 0) return false;
+    if (this.hasMainOutput(nodeName)) return false;
+    const byType = this.connectionsBySource[nodeName] ?? {};
+    return Object.keys(byType).some((type) => type !== 'main');
+  }
+
   /**
    * 找起点节点：无 main 入向连接、未禁用的第一个节点。
+   * 纯能力子节点（只挂 ai_* 输出，如模型/工具/记忆）被排除。
    * 引擎调用方可显式传 startNode 覆盖（如手动运行指定 trigger）。
    */
   getStartNode(): INode | undefined {
     const candidates: INode[] = [];
     for (const node of this.nodes.values()) {
       if (node.disabled) continue;
-      if (this.getIncomingConnections(node.name).length === 0) candidates.push(node);
+      if (this.getIncomingConnections(node.name).length !== 0) continue;
+      if (this.isSubNode(node.name)) continue;
+      candidates.push(node);
     }
-    return candidates[0];
+    // 偏好带 main 出向的候选（孤立节点排后）
+    return candidates.find((n) => this.hasMainOutput(n.name)) ?? candidates[0];
   }
 }

@@ -27,6 +27,8 @@ export interface IExecuteData {
   node: INode;
   data: ITaskDataConnections;
   source: ITaskDataConnectionsSource | null;
+  /** true = 本帧是从 waiting 恢复的续跑（节点用 ctx.isResumed() 感知）。 */
+  resumed?: boolean;
 }
 
 /** 可序列化的执行错误快照（不是 Error 实例）。 */
@@ -47,6 +49,8 @@ export interface ITaskData {
   data?: ITaskDataConnections;
   error?: IExecutionError;
   source: Array<ISourceData | null>;
+  /** true = 本次「运行」用的是钉住数据，节点并未真正执行。 */
+  pinned?: boolean;
 }
 
 /** 每个节点的执行结果列表（循环里同一节点可多次运行）。 */
@@ -83,6 +87,8 @@ export interface IRunExecutionData {
     waitingExecution: IWaitingForExecution;
     waitingExecutionSource: IWaitingForExecutionSource;
   };
+  /** waiting 状态的唤醒时刻（epoch 毫秒）；null/undefined = 等外部信号。 */
+  waitTill?: number | null;
   resumeToken?: string;
 }
 

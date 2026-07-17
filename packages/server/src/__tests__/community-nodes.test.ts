@@ -11,7 +11,7 @@ import { inviteUser, setupOwner } from './helpers.js';
 import type { INodeInstaller } from '../services/community-node-service.js';
 
 /**
- * 社区节点（对标 n8n）：安装/列出/卸载 + 注册进加载器 + 可执行 + 重载 + 归属(实例 admin) + 错误。
+ * 社区节点：安装/列出/卸载 + 注册进加载器 + 可执行 + 重载 + 归属(实例 admin) + 错误。
  * 用假安装器把包名映射到本地 fixture（.mjs），无需联网、无 npm 调用。
  */
 
