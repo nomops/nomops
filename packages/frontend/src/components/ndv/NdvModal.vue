@@ -26,6 +26,9 @@ const visibleProps = computed(() => {
   );
 });
 
+/* n8n 中栏按节点型定宽(实测 IF/HTTP 640、Set 420);以可见参数数近似 */
+const centerWidth = computed(() => (visibleProps.value.length <= 4 ? 420 : 640));
+
 const runData = computed(() => execution.lastRunData?.resultData.runData ?? {});
 const lastRun = computed(() => (node.value ? lastRunOf(runData.value, node.value.name) : null));
 const outputItems = computed(() => outputPorts(lastRun.value).flat());
@@ -36,12 +39,6 @@ const hasInputPort = computed(() => (desc.value?.inputs.length ?? 0) > 0);
 
 function close() {
   editor.ndvOpen = false;
-}
-
-function deleteNode() {
-  if (!node.value) return;
-  editor.removeNode(node.value.name);
-  close();
 }
 
 function setContinueOnError(event: Event) {
@@ -74,8 +71,8 @@ async function executeStep() {
             <span v-if="lastRun?.error" style="color: var(--err)"> · {{ lastRun.error.message }}</span>
           </span>
         </div>
+        <!-- 对齐 n8n:NDV 头带无 Delete(画布 Delete/Backspace 已覆盖删除路径) -->
         <div style="display: flex; gap: 8px">
-          <button data-test="ndv-delete" @click="deleteNode">Delete node</button>
           <button data-test="ndv-close" @click="close">✕</button>
         </div>
       </header>
@@ -92,7 +89,7 @@ async function executeStep() {
           />
         </section>
 
-        <section class="ndv-col params">
+        <section class="ndv-col params" :style="{ flexBasis: centerWidth + 'px' }">
           <!-- Parameters | Settings 双 tab + Execute step -->
           <div class="param-tabs">
             <button class="ptab" :class="{ active: tab === 'parameters' }" data-test="ndv-tab-params" @click="tab = 'parameters'">

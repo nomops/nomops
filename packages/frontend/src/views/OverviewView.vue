@@ -1090,12 +1090,13 @@ const fmtRunTime = (row: ExecutionRow): string => {
               <th>{{ t('Started') }}</th>
               <th>{{ t('Run time') }}</th>
               <th>{{ t('Exec. ID') }}</th>
+              <th class="exec-flask-col" />
               <th class="exec-actions-col" />
             </tr>
           </thead>
           <tbody>
             <tr v-if="executions.length === 0">
-              <td colspan="7" class="exec-empty">{{ t('No executions') }}</td>
+              <td colspan="8" class="exec-empty">{{ t('No executions') }}</td>
             </tr>
             <tr
               v-for="row in executions"
@@ -1126,6 +1127,9 @@ const fmtRunTime = (row: ExecutionRow): string => {
               <td class="dim" @click="openExecution(row)">{{ fmtStarted(row.startedAt) }}</td>
               <td class="dim tnum" @click="openExecution(row)">{{ fmtRunTime(row) }}</td>
               <td class="dim exec-id" @click="openExecution(row)">{{ row.id.slice(0, 8) }}</td>
+              <td class="exec-flask-col" :title="row.mode === 'manual' ? t('Manual execution') : ''" @click="openExecution(row)">
+                <svg v-if="row.mode === 'manual'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="i15 flask-i"><path d="M10 2v6.5L4.6 18a2 2 0 0 0 1.8 3h11.2a2 2 0 0 0 1.8-3L14 8.5V2M8.5 2h7M7 15h10" /></svg>
+              </td>
               <td class="exec-actions-col" @click.stop>
                 <div class="dropdown">
                   <button class="row-menu" :data-test-exec-menu="row.id" @click="toggleMenu(`exec-${row.id}`)">
@@ -1440,11 +1444,13 @@ const fmtRunTime = (row: ExecutionRow): string => {
   font-family: inherit; width: 100%; padding: 0; box-shadow: none;
 }
 .search input::placeholder { color: var(--color--text--tint-1); }
+/* n8n 实测:排序控件 196×32(与搜索同宽)/12px 字/衬 0 12 0 8 */
 .sortby {
-  display: flex; align-items: center; gap: 22px; background: var(--color--background--light-2);
+  display: flex; align-items: center; justify-content: space-between; width: 196px;
+  background: var(--color--background--light-2);
   border: none; box-shadow: inset 0 0 0 1px var(--border-color);
-  border-radius: var(--radius); height: 32px; padding: 0 var(--spacing--xs);
-  color: var(--color--text--shade-1); font-size: var(--font-size--sm); cursor: pointer;
+  border-radius: var(--radius); height: 32px; padding: 0 var(--spacing--xs) 0 var(--spacing--2xs);
+  color: var(--color--text--shade-1); font-size: var(--font-size--2xs); cursor: pointer;
 }
 .sortby:hover { box-shadow: inset 0 0 0 1px var(--border-color--strong); }
 .filter-btn {
@@ -1632,6 +1638,9 @@ const fmtRunTime = (row: ExecutionRow): string => {
 .exec-table th:nth-child(6), .exec-table td:nth-child(6) { width: 98px; }
 .exec-check-col input { accent-color: var(--accent); cursor: pointer; }
 .exec-actions-col { width: 48px; text-align: right; }
+/* n8n 实测:manual 试管图标列 47px */
+.exec-flask-col { width: 47px; text-align: center; }
+.flask-i { color: var(--color--text--tint-1); }
 /* n8n 实测：错误行整行 rgba(215,56,58,.1)(实例专有值,无对应全局令牌) */
 .exec-row.exec-error > td { background: rgba(215, 56, 58, 0.1); }
 .exec-autorefresh { display: inline-flex; align-items: center; gap: 8px; font-size: var(--font-size--sm); color: var(--color--text--shade-1); cursor: pointer; white-space: nowrap; }

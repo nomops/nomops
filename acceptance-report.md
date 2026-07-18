@@ -35,15 +35,15 @@
 | ¥99 Pro 支付块 | Settings/Usage | 无(n8n 是 View plans 外链) | 保留(商业化) |
 | Languages 设置页 | Settings | 无(n8n 无 i18n 页) | 保留 |
 | Observability/Audit 页 | Settings/侧栏 | n8n 为 OpenTelemetry | 保留命名或改名对齐 |
-| Delete node 按钮 | NDV 头带 | 无(画布右键) | 建议移除(画布已有删除路径)→ 待确认 |
+| Delete node 按钮 | NDV 头带 | 无(画布右键) | ✅ 已移除(画布 Delete/Backspace 路径确认存在) |
 | 执行行内 Retry 双选项 | Executions ⋮ | n8n 相同(Retry 两种) | 一致,保留 |
 | 工作流卡片 Activate/Manage tags/Move to | 卡片 ⋮ | n8n 无(Publish 体系/无移动) | 保留(nomops 功能) |
 | 文件夹(免注册可用) | 列表工具行 | n8n 注册门控 | 保留(体验优于 n8n) |
 
 ## 四、遗留清单(实现侧,非阻塞)
-1. Executions 尾部 flask(manual)/retry 图标列 —— 需要 API 暴露执行 mode
-2. NDV 每节点类型中栏宽度表(简单节点 420)
-3. 排序钮 caret 间距 11px
+1. ✅ Executions flask(manual)图标列 —— ExecutionRow 本就含 mode 字段,已实现(47px 列,视觉待有数据时复验)
+2. ✅ NDV 中栏宽度 —— 启发式落地:可见参数 ≤4 → 420,否则 640(与 Set/IF 实测吻合)
+3. ✅ 排序控件 —— 修正为 n8n 真值 196×32/12px 字(与搜索同宽)
 4. 表达式自动补全弹层 UI 与执行行 ⋮ 菜单 —— 阶段三遗留的 2 个"需人工手测"项
 5. 鉴权页组(login/signup)仍为 nomops 浅色自有设计 —— n8n 侧取证被阻(见 manifest §0.2),如需对齐需专项安排
 
