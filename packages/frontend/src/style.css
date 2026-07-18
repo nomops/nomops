@@ -1,29 +1,38 @@
-:root {
-  /* n8n Cloud 精确调色（取自 guowangkun.app.n8n.cloud/home/workflows 计算样式） */
-  --bg: #171717;
-  --bg-panel: #262626;
-  --bg-sidebar: #171717;
-  --bg-input: #262626;
-  --bg-hover: #2b2b2b;
-  --border: rgba(255, 255, 255, 0.1);
-  --border-strong: rgba(255, 255, 255, 0.16);
-  --text: #e5e5e5;
-  --text-hi: #ffffff;
-  --text-dim: #bbbbbb;
-  --text-faint: #8a8a8a;
-  --accent: #ff6900;
-  --accent-dim: #e85f00;
-  --ok: #4cc38a;
-  --err: #ef6f6c;
-  --running: #f5a623;
-  --upgrade: #2fbf71;
-  --radius: 6px;
-  --sidebar-w: 200px;
-  /* auth 页：n8n 式中性深色底 + 干净卡片（主按钮走 --accent 橙） */
-  --grad-primary: var(--accent);
-  --auth-bg: radial-gradient(1000px 560px at 50% -8%, #1f1f1f 0%, #171717 58%);
-  --auth-card: var(--bg-panel);
-  font-family: 'Inter', -apple-system, 'PingFang SC', 'Segoe UI', sans-serif;
+/* ══════════════════════════════════════════════════════════════════
+   令牌来源唯一化：真值全部在 n8n-tokens.css（从 n8n 2.30.4 实例逐字提取,
+   已做 883/883 计算值等值验收）。本文件只做两件事：
+   1) 把历史别名(--bg/--accent/…)重定向到真令牌，存量组件零改动继承真值；
+   2) 全局基础样式。新代码一律直接用 n8n-tokens.css 的真名，禁止裸色值。
+   主题机制与 n8n 一致：index.html <body data-theme="dark">。
+   ══════════════════════════════════════════════════════════════════ */
+/* 别名必须声明在 body（而非 :root）：var() 在“声明处”解析，
+   dark 覆盖挂在 body[data-theme=dark] 上，:root 层解析只能拿到浅色值。 */
+body {
+  /* —— 历史别名 → 真令牌（跟随 body 主题解析） —— */
+  --bg: var(--color--background--light-2);          /* #171717 neutral-950 */
+  --bg-panel: var(--color--background--light-3);    /* #262626 neutral-900 */
+  --bg-sidebar: var(--color--background--light-2);
+  --bg-input: var(--color--background--light-3);
+  --bg-hover: var(--color--background--light-1);    /* #2b2b2b neutral-850 */
+  --border: var(--border-color);                    /* white-alpha-100 */
+  --border-strong: var(--border-color--strong);     /* white-alpha-200 */
+  --text: var(--color--text);                       /* neutral-200 #e5e5e5 */
+  --text-hi: var(--color--text--shade-1);           /* white */
+  --text-dim: var(--color--text--tint-1);           /* neutral-400 #bbb */
+  --text-faint: var(--color--neutral-500);          /* #999 */
+  --accent: var(--color--primary);                  /* orange-500 #ff6900 */
+  --accent-dim: var(--background--brand--hover);    /* orange-600 */
+  --ok: var(--color--success);
+  --err: var(--color--danger);
+  --running: var(--color--gold-400);
+  --upgrade: var(--color--success);
+  /* --radius 不再覆写：由 n8n-tokens.css 提供（4px 真值） */
+  --sidebar-w: 200px;                               /* 实测 aside#sidebar 展开宽 */
+  /* auth 页背景（nomops 自有；卡片/主按钮均走真令牌） */
+  --grad-primary: var(--color--primary);
+  --auth-bg: radial-gradient(1000px 560px at 50% -8%, var(--color--background--light-1) 0%, var(--color--background--light-2) 58%);
+  --auth-card: var(--color--background--light-3);
+  font-family: var(--font-family);
 }
 
 * { box-sizing: border-box; }
@@ -32,24 +41,43 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-size: 14px;
+  /* n8n 实测: body 16px / line-height 1（组件各自显式设字号） */
+  font-size: var(--font-size--md);
+  line-height: var(--line-height--xs);
 }
 
 #app { height: 100vh; display: flex; flex-direction: column; }
 
+/* 按钮 — n8n 实测：高 32、内衬 0 12、圆角 4、字 14px/500；
+   primary = inset 1px 橙环 + 0 1px 3px -1px 投影；secondary 走 --button--*--secondary 令牌 */
 button {
-  background: var(--bg-input);
-  color: var(--text);
-  border: 1px solid var(--border);
+  background: var(--button--color--background--secondary);
+  color: var(--button--color--text--secondary);
+  border: var(--border-width) var(--border-style) var(--button--border-color--secondary);
   border-radius: var(--radius);
-  padding: 6px 14px;
+  height: 32px;
+  padding: 0 var(--spacing--xs);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--font-size--sm);
+  font-weight: var(--font-weight--medium);
+  font-family: inherit;
   white-space: nowrap;
 }
-button:hover { border-color: var(--accent); }
-button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-button.primary:hover { background: var(--accent-dim); }
+button:hover {
+  color: var(--button--color--text--secondary--hover-active-focus);
+  border-color: var(--button--border-color--secondary--hover-active-focus);
+  background: var(--button--color--background--secondary--hover);
+}
+button.primary {
+  background: var(--button--color--background--primary);
+  border: none;
+  color: var(--button--color--text--primary);
+  box-shadow: inset 0 0 0 1px var(--button--border-color--primary), 0 1px 3px -1px var(--color--black-alpha-100);
+}
+button.primary:hover {
+  background: var(--button--color--background--primary--hover-active-focus);
+  box-shadow: inset 0 0 0 1px var(--button--border-color--primary--hover-active), 0 1px 3px -1px var(--color--black-alpha-100);
+}
 button.gradient {
   background: var(--grad-primary); border: none; color: #fff;
   font-weight: 500; padding: 11px 16px; width: 100%; font-size: 14px;
@@ -79,6 +107,9 @@ th { color: var(--text-dim); font-weight: 500; }
 .app-shell { display: flex; height: 100vh; }
 .app-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 
+/* 侧栏 — n8n 实测：宽 200；logo 行 44px(衬 8px 6px, gap 4)；
+   列表容器衬 0 6px 8px；条目 32px 高/衬 4px/圆角 4/gap 4/白字 14px/图标 16px；
+   激活底 = --color--background--light-1(#2b2b2b) */
 .sidebar {
   width: var(--sidebar-w);
   flex-shrink: 0;
@@ -86,19 +117,19 @@ th { color: var(--text-dim); font-weight: 500; }
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  padding: 12px 10px;
+  padding: 0 var(--spacing--3xs) var(--spacing--2xs);
 }
-.sidebar .brand-row { display: flex; align-items: center; gap: 8px; padding: 4px 8px 14px; }
+.sidebar .brand-row { display: flex; align-items: center; gap: var(--spacing--4xs); padding: var(--spacing--2xs) var(--spacing--3xs); height: 44px; box-sizing: border-box; }
 .sidebar .brand { color: var(--accent); font-weight: 700; font-size: 17px; text-decoration: none; }
 .sidebar .nav-item {
-  display: flex; align-items: center; gap: 9px;
-  padding: 8px 9px; border-radius: 8px;
-  color: var(--text); text-decoration: none; font-size: 14px;
+  display: flex; align-items: center; gap: var(--spacing--4xs);
+  padding: var(--spacing--4xs); border-radius: var(--radius); height: 32px; box-sizing: border-box;
+  color: var(--color--text--shade-1); text-decoration: none; font-size: var(--font-size--sm);
   cursor: pointer; border: none; background: none; width: 100%; text-align: left;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.sidebar .nav-item:hover { background: var(--bg-hover); color: var(--text); }
-.sidebar .nav-item.active { background: var(--bg-hover); color: var(--text); }
+.sidebar .nav-item:hover { background: var(--color--background--light-1); color: var(--color--text--shade-1); }
+.sidebar .nav-item.active { background: var(--color--background--light-1); color: var(--color--text--shade-1); }
 .sidebar .nav-section {
   font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
   color: var(--text-dim); padding: 14px 10px 6px;
@@ -107,14 +138,16 @@ th { color: var(--text-dim); font-weight: 500; }
 .sidebar .user-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: 12.5px; color: var(--text-dim); }
 .sidebar .user-row .email { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Overview 页 */
-.tabs-row { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+/* Overview 页 tab — n8n 实测：行无整条下划线；tab 14px/500、
+   未激活 = --color--text、激活 = primary + 2px 下划线；内衬 0 16px 10px(激活 8px+2px 线) */
+.tabs-row { display: flex; gap: var(--spacing--4xs); margin-bottom: 16px; }
 .tabs-row .tab {
   background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0;
-  color: var(--text-dim); padding: 8px 14px; font-size: 13.5px;
+  color: var(--color--text); padding: 0 var(--spacing--sm) 8px; font-size: var(--font-size--sm);
+  font-weight: var(--font-weight--medium); line-height: var(--line-height--xs);
 }
-.tabs-row .tab:hover { color: var(--text-hi); }
-.tabs-row .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 500; }
+.tabs-row .tab:hover { color: var(--color--text--shade-1); }
+.tabs-row .tab.active { color: var(--color--primary); border-bottom-color: var(--color--primary); }
 
 .list-row {
   display: flex; align-items: center; gap: 14px;
@@ -161,12 +194,23 @@ th { color: var(--text-dim); font-weight: 500; }
    （此处曾有早期迭代的全局 .nomops-node 规则，min-width:150px 会盖过
    scoped 的 96px 方卡/68px 圆形子节点，已移除。） */
 
-/* CodeMirror 表达式高亮 */
+/* CodeMirror 表达式编辑器 — n8n 实测：bg light-2 / 1px border / 圆角 0 4 4 0(左接 = gutter)/
+   内容 CommitMono 12px 白 / 内衬 4px 0 4px 8px */
 .cm-editor {
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  font-size: 13px;
+  background: var(--expression-editor--color--background);
+  border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  font-size: var(--font-size--2xs);
 }
-.cm-editor.cm-focused { outline: none; border-color: var(--accent); }
-.cm-expression { color: var(--accent); font-weight: 600; }
+.cm-editor .cm-content {
+  font-family: var(--font-family--monospace);
+  color: var(--color--text--shade-1);
+  padding: 4px 0 4px 8px;
+}
+.cm-editor.cm-focused { outline: none; border-color: var(--color--primary); }
+/* {{ }} 可解析片段 — n8n 令牌:valid 绿底/invalid 红底(此处静态高亮用 pending 样式) */
+.cm-expression {
+  color: var(--expression-editor--resolvable--color--foreground--valid);
+  background: var(--expression-editor--resolvable--color--background--valid);
+  border-radius: 2px;
+}
