@@ -441,9 +441,14 @@ async function moveWorkflowToFolder(wfId: string, folderId: string | null) {
   }
 }
 
-const filteredCredentials = computed(() =>
-  q.value ? credentials.value.filter((c) => c.name.toLowerCase().includes(q.value)) : credentials.value,
-);
+const filteredCredentials = computed(() => {
+  const list = q.value ? credentials.value.filter((c) => c.name.toLowerCase().includes(q.value)) : credentials.value;
+  return [...list].sort((a, b) => {
+    if (sortKey.value === 'name-asc') return a.name.localeCompare(b.name);
+    if (sortKey.value === 'name-desc') return b.name.localeCompare(a.name);
+    return (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '');
+  });
+});
 
 async function createWorkflow() {
   closeMenus();
@@ -793,58 +798,57 @@ const fmtRunTime = (row: ExecutionRow): string => {
           :placeholder="tab === 'credentials' ? t('Search credentials...') : t('Search')"
         />
       </div>
-      <template v-if="tab === 'workflows'">
-        <div class="dropdown" @click.stop>
-          <button class="sortby" data-test="sort-toggle" @click="toggleMenu('sort')">
-            {{ sortLabel }}
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="i14"><path d="M6 9l6 6 6-6" /></svg>
-          </button>
-          <div v-if="openMenu === 'sort'" class="menu sort-menu" data-test="sort-menu">
-            <button class="menu-item" @click="sortKey = 'updated'; closeMenus()">{{ t('Sort by last updated') }}</button>
-            <button class="menu-item" @click="sortKey = 'name-asc'; closeMenus()">{{ t('Sort by name (A-Z)') }}</button>
-            <button class="menu-item" @click="sortKey = 'name-desc'; closeMenus()">{{ t('Sort by name (Z-A)') }}</button>
-          </div>
+      <!-- n8n 结构：Search + Sort(两 tab)+ 漏斗弹层(Tags/Status/Show archived)+ Add folder(仅 workflows) -->
+      <div class="dropdown" @click.stop>
+        <button class="sortby" data-test="sort-toggle" @click="toggleMenu('sort')">
+          {{ sortLabel }}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="i14"><path d="M6 9l6 6 6-6" /></svg>
+        </button>
+        <div v-if="openMenu === 'sort'" class="menu sort-menu" data-test="sort-menu">
+          <button class="menu-item" @click="sortKey = 'updated'; closeMenus()">{{ t('Sort by last updated') }}</button>
+          <button class="menu-item" @click="sortKey = 'name-asc'; closeMenus()">{{ t('Sort by name (A-Z)') }}</button>
+          <button class="menu-item" @click="sortKey = 'name-desc'; closeMenus()">{{ t('Sort by name (Z-A)') }}</button>
         </div>
-        <div v-if="allTags.length" class="dropdown" @click.stop>
-          <button class="sortby" :class="{ 'tag-filter-on': tagFilterId }" data-test="tag-filter-toggle" @click="toggleMenu('tag-filter')">
-            {{ tagFilterId ? (allTags.find((tg) => tg.id === tagFilterId)?.name ?? t('Tag')) : t('All tags') }}
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="i14"><path d="M6 9l6 6 6-6" /></svg>
-          </button>
-          <div v-if="openMenu === 'tag-filter'" class="menu sort-menu" data-test="tag-filter-menu">
-            <button class="menu-item" @click="tagFilterId = null; closeMenus()">{{ t('All tags') }}</button>
-            <button v-for="tg in allTags" :key="tg.id" class="menu-item" :data-test-tag-option="tg.id" @click="tagFilterId = tg.id; closeMenus()">
-              {{ tg.name }}
-            </button>
-          </div>
-        </div>
+      </div>
+      <div class="dropdown" @click.stop>
         <button
           class="filter-btn"
-          :class="{ on: activeOnly }"
-          data-test="filter-active"
-          :title="t('Show active workflows only')"
-          @click="activeOnly = !activeOnly"
+          :class="{ on: activeOnly || showArchived || tagFilterId }"
+          data-test="filters-toggle"
+          :title="t('Filters')"
+          @click="toggleMenu('filters')"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="i16"><path d="M3 5h18l-7 8v6l-4-2v-4L3 5z" /></svg>
         </button>
-        <button
-          class="filter-btn"
-          :class="{ on: showArchived }"
-          data-test="filter-archived"
-          :title="t('Show archived workflows')"
-          @click="showArchived = !showArchived"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="i16"><rect x="3" y="4" width="18" height="5" rx="1" /><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4" /></svg>
-        </button>
-        <button class="filter-btn" data-test="new-folder" :title="t('Add folder')" @click="openCreateFolder">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="i16"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" /><path d="M12 11v5M9.5 13.5h5" /></svg>
-        </button>
-      </template>
+        <div v-if="openMenu === 'filters'" class="menu filter-pop" data-test="filters-menu">
+          <template v-if="tab === 'workflows'">
+            <div class="fp-label">{{ t('Tags') }}</div>
+            <select class="fp-select" :value="tagFilterId ?? ''" data-test="filter-tags" @change="tagFilterId = ($event.target as HTMLSelectElement).value || null">
+              <option value="">{{ t('Filter by tags') }}</option>
+              <option v-for="tg in allTags" :key="tg.id" :value="tg.id">{{ tg.name }}</option>
+            </select>
+            <div class="fp-label">{{ t('Status') }}</div>
+            <select class="fp-select" :value="activeOnly ? 'published' : 'all'" data-test="filter-status" @change="activeOnly = ($event.target as HTMLSelectElement).value === 'published'">
+              <option value="all">{{ t('All') }}</option>
+              <option value="published">{{ t('Published') }}</option>
+            </select>
+            <label class="fp-check">
+              <input v-model="showArchived" type="checkbox" data-test="filter-archived" />
+              {{ t('Show archived workflows') }}
+            </label>
+          </template>
+          <p v-else class="dim" style="font-size: 12px; padding: 4px 2px">{{ t('No filters available') }}</p>
+        </div>
+      </div>
+      <button v-if="tab === 'workflows'" class="filter-btn" data-test="new-folder" :title="t('Add folder')" @click="openCreateFolder">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="i16"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" /><path d="M12 11v5M9.5 13.5h5" /></svg>
+      </button>
     </div>
 
     <!-- ── Workflows ── -->
     <template v-if="tab === 'workflows'">
-      <!-- 面包屑 + 新建文件夹 -->
-      <div class="folder-bar">
+      <!-- 面包屑 + 新建文件夹（对齐 n8n:根目录无文件夹时不占位） -->
+      <div v-if="currentFolderId !== null || folders.length > 0" class="folder-bar">
         <div class="breadcrumb" data-test="breadcrumb">
           <button class="crumb" :class="{ cur: currentFolderId === null }" data-test="crumb-root" @click="enterFolder(null)">{{ t('All workflows') }}</button>
           <template v-for="f in breadcrumb" :key="f.id">
@@ -1084,7 +1088,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
               <th>{{ t('Workflow') }}</th>
               <th>{{ t('Status') }}</th>
               <th>{{ t('Started') }}</th>
-              <th>{{ t('Run Time') }}</th>
+              <th>{{ t('Run time') }}</th>
               <th>{{ t('Exec. ID') }}</th>
               <th class="exec-actions-col" />
             </tr>
@@ -1381,23 +1385,28 @@ const fmtRunTime = (row: ExecutionRow): string => {
 </template>
 
 <style scoped>
-.ov { padding: 22px 26px 40px; width: 100%; }
+/* n8n 实测@1440: 内容列 x248..1392(左右 48 gutter)、标题区高≈101 至 KPI */
+.ov { padding: 28px 48px 40px 28px; width: 100%; }
 
 /* Header */
-.ov-head { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 22px; }
+.ov-head { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 34px; }
 .ov-title h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.2px; color: var(--text-hi); }
 .ov-sub { margin: 4px 0 0; color: var(--text-dim); font-size: 14px; }
 .ov-actions { margin-left: auto; display: flex; align-items: stretch; gap: 10px; }
 
+/* n8n 实测：页头按钮 32px/衬 0 12/圆角 4 */
 .btn {
-  display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px;
-  border-radius: var(--radius); border: none; font-size: 14px; font-weight: 500;
-  cursor: pointer; white-space: nowrap; font-family: inherit; color: var(--text-hi);
+  display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 var(--spacing--xs);
+  border-radius: var(--radius); border: none; font-size: var(--font-size--sm); font-weight: var(--font-weight--medium);
+  cursor: pointer; white-space: nowrap; font-family: inherit; color: var(--color--text--shade-1);
 }
-.btn.secondary { background: var(--bg-panel); }
-.btn.secondary:hover { background: #303030; }
-.btn.primary { background: var(--accent); color: #fff; }
-.btn.primary:hover { background: var(--accent-dim); }
+.btn.secondary { background: var(--color--background--light-3); box-shadow: inset 0 0 0 1px var(--border-color); }
+.btn.secondary:hover { background: var(--color--background--light-1); }
+.btn.primary {
+  background: var(--button--color--background--primary); color: var(--button--color--text--primary);
+  box-shadow: inset 0 0 0 1px var(--button--border-color--primary), 0 1px 3px -1px var(--color--black-alpha-100);
+}
+.btn.primary:hover { background: var(--button--color--background--primary--hover-active-focus); }
 
 .split { position: relative; display: inline-flex; align-items: stretch; }
 .split .split-main { border-radius: var(--radius) 0 0 var(--radius); }
@@ -1409,7 +1418,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
 .split-caret:hover { background: var(--accent-dim); }
 
 /* Filter row */
-.filter-row { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin: 18px 0 16px; }
+.filter-row { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin: 18px 0 12px; }
 .proj-context { display: flex; align-items: center; gap: 8px; margin-right: auto; color: var(--text); font-size: 14px; }
 .proj-context .i15 { color: var(--text-dim); }
 .proj-menu {
@@ -1417,30 +1426,35 @@ const fmtRunTime = (row: ExecutionRow): string => {
   border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
 .proj-menu:hover { background: var(--bg-hover); color: var(--text); }
+/* n8n 实测（搜索框）：高 32、圆角 4、bg light-2、1px white-alpha-100 内嵌环、
+   内衬 0 12px、内部 gap 12、文字 14px 白 */
 .search {
-  display: flex; align-items: center; gap: 8px; background: var(--bg-panel);
-  border: 1px solid var(--border); border-radius: var(--radius); height: 34px; padding: 0 12px;
-  width: 230px; color: var(--text-faint);
+  display: flex; align-items: center; gap: var(--spacing--xs); background: var(--color--background--light-2);
+  border: none; box-shadow: inset 0 0 0 1px var(--border-color);
+  border-radius: var(--radius); height: 32px; padding: 0 var(--spacing--xs);
+  width: 196px; color: var(--color--text--tint-1);
 }
-.search:focus-within { border-color: var(--border-strong); }
+.search:focus-within { box-shadow: inset 0 0 0 1px var(--border-color--strong); }
 .search input {
-  border: none; background: none; outline: none; color: var(--text); font-size: 14px;
-  font-family: inherit; width: 100%; padding: 0;
+  border: none; background: none; outline: none; color: var(--color--text--shade-1); font-size: var(--font-size--sm);
+  font-family: inherit; width: 100%; padding: 0; box-shadow: none;
 }
-.search input::placeholder { color: var(--text-faint); }
+.search input::placeholder { color: var(--color--text--tint-1); }
 .sortby {
-  display: flex; align-items: center; gap: 22px; background: var(--bg-panel);
-  border: 1px solid var(--border); border-radius: var(--radius); height: 34px; padding: 0 12px;
-  color: var(--text); font-size: 14px; cursor: pointer;
+  display: flex; align-items: center; gap: 22px; background: var(--color--background--light-2);
+  border: none; box-shadow: inset 0 0 0 1px var(--border-color);
+  border-radius: var(--radius); height: 32px; padding: 0 var(--spacing--xs);
+  color: var(--color--text--shade-1); font-size: var(--font-size--sm); cursor: pointer;
 }
-.sortby:hover { border-color: var(--border-strong); }
+.sortby:hover { box-shadow: inset 0 0 0 1px var(--border-color--strong); }
 .filter-btn {
-  width: 34px; height: 34px; background: var(--bg-panel); border: 1px solid var(--border);
+  width: 32px; height: 32px; background: var(--color--background--light-2);
+  border: none; box-shadow: inset 0 0 0 1px var(--border-color);
   border-radius: var(--radius); display: flex; align-items: center; justify-content: center;
-  cursor: pointer; color: var(--text);
+  cursor: pointer; color: var(--color--text--shade-1);
 }
-.filter-btn:hover { border-color: var(--border-strong); }
-.filter-btn.on { border-color: var(--accent); color: var(--accent); }
+.filter-btn:hover { box-shadow: inset 0 0 0 1px var(--border-color--strong); }
+.filter-btn.on { box-shadow: inset 0 0 0 1px var(--color--primary); color: var(--color--primary); }
 
 /* Dropdown menus */
 .dropdown { position: relative; }
@@ -1482,48 +1496,61 @@ const fmtRunTime = (row: ExecutionRow): string => {
 }
 .folder-del:hover { color: var(--err, #ef5f5f); background: rgba(239, 95, 95, 0.12); }
 
-/* Workflow cards */
-.wf-list { display: flex; flex-direction: column; gap: 10px; }
+/* Workflow cards — n8n 实测：bg light-3、1px border-color、圆角 8(--radius--lg)、
+   卡间距 8(--spacing--2xs)、内衬 16(--spacing--sm)、标题 14px/500 白/行高 1.35、meta 12px tint-1 */
+.wf-list { display: flex; flex-direction: column; gap: var(--spacing--2xs); }
 .wf-card {
-  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
-  display: flex; align-items: center; gap: 16px; padding: 16px 20px;
+  background: var(--color--background--light-3); border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--radius--lg);
+  display: flex; align-items: center; gap: var(--spacing--sm); padding: var(--spacing--sm);
 }
-.wf-card:hover { border-color: var(--border-strong); }
+.wf-card:hover { border-color: var(--border-color--strong); }
 .wf-main { flex: 1; min-width: 0; }
-.wf-name { font-size: 14px; font-weight: 500; color: var(--text-hi); text-decoration: none; }
-.wf-name:hover { color: var(--accent); }
-.wf-meta { font-size: 13px; color: var(--text-dim); margin-top: 5px; display: flex; align-items: center; gap: 10px; }
-.wf-meta .sep { color: var(--text-faint); }
+.wf-name {
+  font-size: var(--font-size--sm); font-weight: var(--font-weight--medium);
+  color: var(--color--text--shade-1); line-height: var(--line-height--lg); text-decoration: none;
+}
+.wf-name:hover { color: var(--color--primary); }
+.wf-meta {
+  font-size: var(--font-size--2xs); color: var(--color--text--tint-1);
+  margin-top: 5px; display: flex; align-items: center; gap: 10px;
+}
+.wf-meta .sep { color: var(--color--text--tint-1); }
 .wf-meta .active-dot { color: var(--ok); font-size: 12px; }
 .wf-meta .active-dot::before { content: '● '; }
+/* n8n 实测：Personal 徽章 25px 高 / bg light-3 / 1px border / 圆角 4 / 文字 12px */
 .chip {
-  display: inline-flex; align-items: center; gap: 6px; background: var(--bg-hover);
-  border: 1px solid var(--border); border-radius: var(--radius); padding: 5px 10px;
-  font-size: 12px; color: var(--text); white-space: nowrap;
+  display: inline-flex; align-items: center; gap: var(--spacing--3xs); background: var(--color--background--light-3);
+  border: var(--border-width) var(--border-style) var(--border-color); border-radius: var(--radius);
+  height: 25px; padding: 0 var(--spacing--2xs); box-sizing: border-box;
+  font-size: var(--font-size--2xs); color: var(--color--text); white-space: nowrap;
 }
-.chip svg { color: var(--text-dim); }
+.chip svg { color: var(--color--text--tint-1); }
+/* n8n 实测：行内 ⋮ 28×28 / 圆角 4 / 透明底 */
 .row-menu {
-  width: 30px; height: 30px; border-radius: 6px; background: none; border: none;
-  color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: var(--radius); background: none; border: none;
+  color: var(--color--text--shade-1); cursor: pointer; display: flex; align-items: center; justify-content: center;
 }
-.row-menu:hover { background: var(--bg-hover); }
+.row-menu:hover { background: var(--background--hover); }
 
-/* Pagination */
-.pager { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 10px; color: var(--text-dim); font-size: 13px; }
+/* Pagination — n8n 实测：Total 12px 白；页号 30×28、当前页 1px primary 描边 + 12px/600 primary、透明底 */
+.pager { display: flex; align-items: center; justify-content: flex-end; gap: var(--spacing--2xs); margin-top: 10px; color: var(--color--text--shade-1); font-size: var(--font-size--2xs); }
 .pg-total { margin-right: 6px; }
 .pg-arrow {
-  width: 30px; height: 30px; border-radius: 6px; background: var(--bg-panel); border: 1px solid var(--border);
-  color: var(--text-faint); display: flex; align-items: center; justify-content: center; cursor: pointer;
+  width: 28px; height: 28px; border-radius: var(--radius); background: none; border: none;
+  color: var(--color--text--tint-1); display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
+.pg-arrow:hover { background: var(--background--hover); }
 .pg-arrow:disabled { opacity: 0.4; cursor: not-allowed; }
 .pg-num {
-  min-width: 30px; height: 30px; padding: 0 6px; border-radius: 6px; border: 1px solid var(--border);
-  background: var(--bg-panel); color: var(--text); font-size: 13px; cursor: pointer;
+  min-width: 30px; height: 28px; padding: 0 4px; border-radius: var(--radius); border: var(--border-width) var(--border-style) transparent;
+  background: none; color: var(--color--text); font-size: var(--font-size--2xs); cursor: pointer;
 }
-.pg-num.active { border-color: var(--accent); color: var(--accent); background: none; }
+.pg-num.active { border-color: var(--color--primary); color: var(--color--primary); font-weight: var(--font-weight--bold); }
 .pg-size {
-  height: 30px; padding: 0 8px; border-radius: 6px; background: var(--bg-panel);
-  border: 1px solid var(--border); color: var(--text); font-size: 13px; cursor: pointer; width: auto;
+  height: 28px; padding: 0 var(--spacing--2xs); border-radius: var(--radius); background: none;
+  border: none; box-shadow: inset 0 0 0 1px var(--border-color);
+  color: var(--color--text); font-size: var(--font-size--2xs); cursor: pointer; width: auto;
 }
 
 /* Empty states */
@@ -1541,8 +1568,9 @@ const fmtRunTime = (row: ExecutionRow): string => {
 }
 .cred-empty .lock { font-size: 40px; opacity: 0.8; }
 .cred-empty h3 { margin: 8px 0 0; font-weight: 600; color: var(--text-hi); }
+/* n8n 实测：凭证品牌图标 26×26 裸图，无底框无圆角 */
 .cred-row-icon {
-  width: 32px; height: 32px; flex-shrink: 0; border-radius: 8px; background: var(--bg-hover);
+  width: 26px; height: 26px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center; font-size: 15px;
 }
 .soon {
@@ -1584,26 +1612,50 @@ const fmtRunTime = (row: ExecutionRow): string => {
 .var-edit-row input { width: 100%; }
 
 /* Executions */
-.exec-tools { display: flex; align-items: center; margin: 18px 0 12px; }
+.exec-tools { display: flex; align-items: center; margin: 18px 0 14px; padding-left: 24px; }
 .exec-sublabel { font-size: 13px; }
 .exec-table { width: 100%; border-collapse: collapse; }
+/* n8n 实测：表头 36px 高 / bg light-1 / 12px-600 neutral-200 / 衬 0 8px 0 16px /
+   底边 1px neutral-800(--color--foreground) */
 .exec-table thead th {
-  text-align: left; font-size: 12px; font-weight: 500; color: var(--text-dim);
-  padding: 11px 16px; background: var(--bg-hover); border-bottom: 1px solid var(--border); white-space: nowrap;
+  text-align: left; font-size: var(--font-size--2xs); font-weight: var(--font-weight--bold); color: var(--color--text);
+  height: 36px; padding: 0 var(--spacing--2xs) 0 var(--spacing--sm);
+  background: var(--color--background--light-1);
+  border-bottom: var(--border-width) var(--border-style) var(--color--foreground); white-space: nowrap;
 }
-.exec-check-col { width: 40px; padding-right: 0 !important; text-align: center; }
+/* n8n 实测列宽@1440:check 50 / Status 153 / Started 187 / Run time 110 / Exec.ID 98 / 尾 56 */
+.exec-check-col { width: 50px; padding-right: 0 !important; text-align: center; }
+.exec-table th:nth-child(2), .exec-table td:nth-child(2) { width: 371px; }
+.exec-table th:nth-child(3), .exec-table td:nth-child(3) { width: 153px; }
+.exec-table th:nth-child(4), .exec-table td:nth-child(4) { width: 187px; }
+.exec-table th:nth-child(5), .exec-table td:nth-child(5) { width: 110px; }
+.exec-table th:nth-child(6), .exec-table td:nth-child(6) { width: 98px; }
 .exec-check-col input { accent-color: var(--accent); cursor: pointer; }
 .exec-actions-col { width: 48px; text-align: right; }
-.exec-row.exec-error > td { background: color-mix(in srgb, var(--err) 9%, transparent); }
-.exec-autorefresh { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; white-space: nowrap; }
-.exec-status { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; }
-.exec-status.ok { color: var(--ok); }
-.exec-status.err { color: var(--err); }
-.exec-status.run { color: var(--accent); }
-.exec-status.muted { color: var(--text-dim); }
+/* n8n 实测：错误行整行 rgba(215,56,58,.1)(实例专有值,无对应全局令牌) */
+.exec-row.exec-error > td { background: rgba(215, 56, 58, 0.1); }
+.exec-autorefresh { display: inline-flex; align-items: center; gap: 8px; font-size: var(--font-size--sm); color: var(--color--text--shade-1); cursor: pointer; white-space: nowrap; }
+/* n8n 实测：状态列 14px 白字 + 彩色图标 */
+.exec-status { display: inline-flex; align-items: center; gap: 7px; font-size: var(--font-size--sm); color: var(--color--text--shade-1); }
+.exec-status svg { color: var(--color--text--tint-1); }
+.exec-status.ok svg { color: var(--color--success); }
+.exec-status.err svg { color: var(--color--danger); }
+.exec-status.run svg { color: var(--color--primary); }
+.exec-status.muted { color: var(--color--text--tint-1); }
 .exec-status svg { flex: none; }
 .exec-autorefresh input { accent-color: var(--accent); cursor: pointer; }
 .exec-menu-pop { right: 8px; min-width: 280px; }
+/* n8n Filters 弹层：Tags/Status 下拉 + Show archived 复选 */
+.filter-pop { top: calc(100% + 6px); right: 0; min-width: 300px; padding: 12px; }
+.fp-label { font-size: var(--font-size--2xs); color: var(--color--text--shade-1); font-weight: var(--font-weight--medium); margin: 8px 0 6px; }
+.fp-label:first-child { margin-top: 0; }
+.fp-select {
+  width: 100%; height: 32px; background: var(--color--background--light-2);
+  border: var(--border-width) var(--border-style) var(--border-color); border-radius: var(--radius);
+  color: var(--color--text--shade-1); font-size: var(--font-size--sm); padding: 0 var(--spacing--2xs);
+}
+.fp-check { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: var(--font-size--sm); color: var(--color--text--shade-1); cursor: pointer; }
+.fp-check input { width: auto; accent-color: var(--color--primary); }
 .exec-bulkbar {
   position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%);
   display: flex; align-items: center; gap: 12px;
@@ -1614,8 +1666,13 @@ const fmtRunTime = (row: ExecutionRow): string => {
 .btn.danger-solid { background: var(--err); color: #fff; border: none; }
 .exec-caret-col { width: 34px; padding-right: 0 !important; }
 .exec-row { cursor: pointer; }
-.exec-row td { padding: 13px 16px; font-size: 13px; border-bottom: 1px solid var(--border); }
-.exec-row:hover td { background: var(--bg-hover); }
+/* n8n 实测：行高 48 / 单元格衬 0 8px 0 16px / 14px / 底边 1px neutral-800 */
+.exec-row td {
+  height: 48px; padding: 0 var(--spacing--2xs) 0 var(--spacing--sm);
+  font-size: var(--font-size--sm);
+  border-bottom: var(--border-width) var(--border-style) var(--color--foreground);
+}
+.exec-row:hover td { background: var(--background--hover); }
 .exec-wf { color: var(--text-hi); font-weight: 500; }
 .exec-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 .tnum { font-variant-numeric: tabular-nums; }

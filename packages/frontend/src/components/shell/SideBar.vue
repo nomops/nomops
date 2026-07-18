@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '../../stores/auth.js';
 import { useProjectsStore } from '../../stores/projects.js';
 import { useUiStore } from '../../stores/ui.js';
+import SettingsMenu from './SettingsMenu.vue';
 import { WHATS_NEW, hasUnreadNews, markNewsRead } from '../../lib/whats-new.js';
 import { api } from '../../api/client.js';
 import { t } from '../../lib/i18n.js';
@@ -87,17 +88,7 @@ function switchProject(projectId: string) {
   if (changed) void nav.then(() => router.go(0));
 }
 
-function goSettings(s: string) {
-  closeAll();
-  void router.push({ name: 'settings', query: { s } });
-}
 
-function logout() {
-  closeAll();
-  auth.logout();
-  projects.reset();
-  void router.push({ name: 'login' });
-}
 
 /* 快速新建 */
 async function quickNewWorkflow() {
@@ -277,15 +268,16 @@ async function openAbout() {
           <span class="lbl">{{ t('Help') }}</span>
           <svg v-if="!collapsed" class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6" /></svg>
         </button>
+        <!-- 结构对齐 n8n Help 菜单：普通条目 → About → 分组标题 "What's new" → 组内条目 -->
         <div v-if="flyout === 'help'" class="flyout" data-test="help-flyout" @click.stop>
+          <span class="flyout-item dim" data-test="help-docs">{{ t('Documentation') }} · docs/ (README → 01–10)</span>
+          <button class="flyout-item" data-test="help-bug" @click="showBug = true; closeAll()">{{ t('Report a problem') }}</button>
+          <button class="flyout-item" data-test="help-about" @click="openAbout">{{ t('About nomops') }}</button>
+          <div class="flyout-label">{{ t("What's new") }}</div>
           <button class="flyout-item" data-test="help-whats-new" @click="openWhatsNew">
             {{ t("What's New") }}
             <span v-if="newsUnread" class="news-dot inline" />
           </button>
-          <button class="flyout-item" data-test="help-about" @click="openAbout">{{ t('About nomops') }}</button>
-          <button class="flyout-item" data-test="help-bug" @click="showBug = true; closeAll()">{{ t('Report a problem') }}</button>
-          <div class="flyout-label">{{ t('Documentation') }}</div>
-          <span class="flyout-item dim">docs/ (README → 01–10)</span>
         </div>
       </div>
 
@@ -295,17 +287,8 @@ async function openAbout() {
           <span class="lbl">{{ t('Settings') }}</span>
           <svg v-if="!collapsed" class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6" /></svg>
         </button>
-        <div v-if="flyout === 'settings'" class="flyout" data-test="settings-flyout" @click.stop>
-          <button class="flyout-item" data-test="settings-personal" @click="goSettings('personal')">{{ t('Personal') }}</button>
-          <button class="flyout-item" data-test="settings-users" @click="goSettings('users')">{{ t('Users') }}</button>
-          <button class="flyout-item" data-test="settings-members" @click="closeAll(); router.push({ name: 'projects' })">{{ t('Members & projects') }}</button>
-          <button class="flyout-item" data-test="settings-sso" @click="goSettings('sso')">SSO</button>
-          <button class="flyout-item" data-test="settings-security" @click="goSettings('security')">{{ t('Security') }}</button>
-          <button class="flyout-item" data-test="settings-billing" @click="goSettings('billing')">{{ t('Usage & plan') }}</button>
-          <button class="flyout-item" data-test="settings-languages" @click="goSettings('languages')">{{ t('Languages') }}</button>
-          <button v-if="projects.hasFeature('auditLogs')" class="flyout-item" data-test="settings-audit" @click="closeAll(); router.push({ name: 'audit' })">{{ t('Audit logs') }}</button>
-          <div class="flyout-sep" />
-          <button class="flyout-item" data-test="settings-logout" @click="logout">{{ t('Sign out') }}</button>
+        <div v-if="flyout === 'settings'" class="flyout flyout-bare" @click.stop>
+          <SettingsMenu @close="closeAll" />
         </div>
       </div>
     </div>
@@ -389,19 +372,23 @@ async function openAbout() {
 .brand-mark { width: 38px; height: 22px; flex-shrink: 0; }
 .brand-word { font-weight: 700; font-size: 16px; letter-spacing: -0.3px; color: var(--text-hi); }
 .brand-tools { display: flex; align-items: center; gap: 0; margin-left: auto; flex-shrink: 0; }
+/* n8n 实测：顶部工具钮 28×28/圆角 4；导航图标 16×16 白（24px 盒居中）；
+   Preview 徽章 purple-200 底/purple-600 字/圆角 16/10px 600/衬 2px 4px */
 .icon-btn {
-  width: 26px; height: 26px; flex-shrink: 0; border: none; background: none; color: var(--text);
-  border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer;
+  width: 28px; height: 28px; flex-shrink: 0; border: none; background: none; color: var(--color--text--shade-1);
+  border-radius: var(--radius); display: flex; align-items: center; justify-content: center; cursor: pointer;
+  padding: 0;
 }
-.icon-btn:hover { background: var(--bg-hover); }
+.icon-btn:hover { background: var(--color--background--light-1); }
 .icon-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
 
-.nav-ico { width: 18px; height: 18px; flex-shrink: 0; color: var(--text-dim); }
-.nav-item.active .nav-ico { color: var(--text-hi); }
+.nav-ico { width: 16px; height: 16px; flex-shrink: 0; margin: var(--spacing--4xs); color: var(--color--text--shade-1); }
+.nav-item.active .nav-ico { color: var(--color--text--shade-1); }
 .nav-item .lbl { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .badge-preview {
-  font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 10px; flex-shrink: 0;
-  background: var(--preview-bg, #ddd6ff); color: var(--preview-fg, #7f22fe);
+  font-size: 10px; font-weight: var(--font-weight--bold); padding: 2px var(--spacing--4xs);
+  border-radius: var(--radius--md); flex-shrink: 0;
+  background: var(--color--purple-200); color: var(--color--purple-600);
 }
 .nav-section {
   font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
@@ -471,4 +458,6 @@ async function openAbout() {
 .news-date { font-weight: 400; font-size: 11.5px; margin-left: 8px; }
 .news-entry ul { margin: 0; padding-left: 18px; }
 .news-entry li { font-size: 12.5px; line-height: 1.6; color: var(--text-dim); }
+
+.flyout-bare { padding: 0; background: none; border: none; box-shadow: none; }
 </style>

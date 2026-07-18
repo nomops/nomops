@@ -44,36 +44,19 @@ interface Item {
   run: () => void;
 }
 
-const actions = computed<Item[]>(() => [
-  { kind: 'action', icon: '＋', label: 'New workflow', sub: 'Action', run: createWorkflow },
-  { kind: 'action', icon: '🔑', label: 'New credential', sub: 'Action', run: () => go('/?tab=credentials') },
-  { kind: 'action', icon: '📋', label: 'View executions', sub: 'Action', run: () => go('/?tab=executions') },
-]);
+/** 分组结构对齐 n8n 命令面板：Workflows(建/开) / Credentials(建/开) 各成组，
+    上下文命令(画布注入)按其组名单独成组置顶。 */
+interface Group {
+  label: string;
+  items: Item[];
+}
 
-const results = computed<Item[]>(() => {
+const groups = computed<Group[]>(() => {
   const q = query.value.trim().toLowerCase();
-  const wfItems: Item[] = workflows.value
-    .filter((w) => !q || w.name.toLowerCase().includes(q))
-    .map((w) => ({
-      kind: 'workflow',
-      icon: '🔀',
-      label: w.name,
-      sub: `Workflow · ${w.nodes.length} nodes`,
-      run: () => go(`/workflow/${w.id}`),
-    }));
-  const credItems: Item[] = credentials.value
-    .filter((c) => !q || c.name.toLowerCase().includes(q))
-    .map((c) => ({
-      kind: 'credential',
-      icon: '🔑',
-      label: c.name,
-      sub: `Credential · ${c.type}`,
-      run: () => go('/?tab=credentials'),
-    }));
-  const acts = q ? actions.value.filter((a) => a.label.toLowerCase().includes(q)) : actions.value;
-  // 当前视图注入的上下文命令（如画布的 Workflow 组，⌘K 一站直达）
+  const match = (s: string) => !q || s.toLowerCase().includes(q);
+
   const ctxItems: Item[] = ui.paletteContext
-    .filter((c) => !q || c.label.toLowerCase().includes(q))
+    .filter((c) => match(c.label))
     .map((c) => ({
       kind: 'context',
       icon: '⌁',
@@ -85,8 +68,42 @@ const results = computed<Item[]>(() => {
         c.run();
       },
     }));
-  return [...acts, ...ctxItems, ...wfItems, ...credItems];
+
+  const wfGroup: Item[] = [
+    ...(match('Create workflow') ? [{ kind: 'action' as const, icon: '＋', label: 'Create workflow', sub: '', run: createWorkflow }] : []),
+    ...workflows.value.filter((w) => match(w.name)).map((w) => ({
+      kind: 'workflow' as const,
+      icon: '🔀',
+      label: w.name,
+      sub: `${w.nodes.length} nodes`,
+      run: () => go(`/workflow/${w.id}`),
+    })),
+  ];
+
+  const credGroup: Item[] = [
+    ...(match('Create credential') ? [{ kind: 'action' as const, icon: '＋', label: 'Create credential', sub: '', run: () => go('/?tab=credentials') }] : []),
+    ...credentials.value.filter((c) => match(c.name)).map((c) => ({
+      kind: 'credential' as const,
+      icon: '🔑',
+      label: c.name,
+      sub: c.type,
+      run: () => go('/?tab=credentials'),
+    })),
+  ];
+
+  const execGroup: Item[] = match('View executions')
+    ? [{ kind: 'action', icon: '📋', label: 'View executions', sub: '', run: () => go('/?tab=executions') }]
+    : [];
+
+  const out: Group[] = [];
+  if (ctxItems.length) out.push({ label: ui.paletteContext[0]?.group ?? 'Commands', items: ctxItems });
+  if (wfGroup.length) out.push({ label: 'Workflows', items: wfGroup });
+  if (credGroup.length) out.push({ label: 'Credentials', items: credGroup });
+  if (execGroup.length) out.push({ label: 'Executions', items: execGroup });
+  return out;
 });
+
+const results = computed<Item[]>(() => groups.value.flatMap((g) => g.items));
 
 watch(results, () => {
   active.value = 0;
@@ -123,33 +140,35 @@ function onKey(e: KeyboardEvent) {
   <div v-if="ui.paletteOpen" class="palette-overlay" data-test="command-palette" @click.self="ui.closePalette()">
     <div class="palette">
       <div class="palette-search">
-        <span class="search-icon">🔍</span>
         <input
           ref="inputEl"
           v-model="query"
           data-test="palette-input"
-          placeholder="Search workflows, credentials, or run an action…"
+          placeholder="Type a command or search..."
           @keydown="onKey"
         />
         <span class="kbd">esc</span>
       </div>
       <div class="palette-list">
-        <button
-          v-for="(item, i) in results"
-          :key="item.kind + item.label + i"
-          class="palette-item"
-          :class="{ active: i === active }"
-          :data-test-palette-item="item.label"
-          @mouseenter="active = i"
-          @click="item.run()"
-        >
-          <span class="pi-icon">{{ item.icon }}</span>
-          <span class="pi-body">
-            <span class="pi-label">{{ item.label }}</span>
-            <span class="pi-sub">{{ item.sub }}</span>
-          </span>
-          <span v-if="item.shortcut" class="pi-shortcut dim">{{ item.shortcut }}</span>
-        </button>
+        <template v-for="g in groups" :key="g.label">
+          <div class="palette-group-label">{{ g.label }}</div>
+          <button
+            v-for="item in g.items"
+            :key="item.kind + item.label"
+            class="palette-item"
+            :class="{ active: results.indexOf(item) === active }"
+            :data-test-palette-item="item.label"
+            @mouseenter="active = results.indexOf(item)"
+            @click="item.run()"
+          >
+            <span class="pi-icon">{{ item.icon }}</span>
+            <span class="pi-body">
+              <span class="pi-label">{{ item.label }}</span>
+              <span v-if="item.sub" class="pi-sub">{{ item.sub }}</span>
+            </span>
+            <span v-if="item.shortcut" class="pi-shortcut dim">{{ item.shortcut }}</span>
+          </button>
+        </template>
         <p v-if="results.length === 0" class="dim" style="padding: 20px; text-align: center">No results</p>
       </div>
     </div>
@@ -158,38 +177,49 @@ function onKey(e: KeyboardEvent) {
 
 <style scoped>
 .pi-shortcut { margin-left: auto; font-size: 11.5px; white-space: nowrap; }
+/* n8n 实测（命令面板 _commandBar_）：面板 700px/bg light-3/1px border/4px 圆角/
+   --command-bar--shadow 阴影；**无遮罩变暗**；输入行 48px(衬 0 32px 0 16px, 14px)；
+   列表区衬 8px；分组标 12px neutral-400 衬 12px 8px；条目高 40px */
 .palette-overlay {
-  position: fixed; inset: 0; z-index: 80;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh;
+  position: fixed; inset: 0; z-index: var(--command-bar--z);
+  background: transparent;
+  display: flex; justify-content: center; align-items: flex-start; padding-top: 20vh;
 }
 .palette {
-  width: 560px; max-width: 92vw;
-  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px;
-  overflow: hidden; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  width: 700px; max-width: 92vw;
+  background: var(--color--background--light-3);
+  border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--radius);
+  overflow: hidden; box-shadow: var(--command-bar--shadow);
 }
-.palette-search { position: relative; display: flex; align-items: center; border-bottom: 1px solid var(--border); }
-.palette-search .search-icon { position: absolute; left: 14px; font-size: 13px; opacity: 0.6; }
+.palette-search { position: relative; display: flex; align-items: center; border-bottom: var(--border-width) var(--border-style) var(--border-color); }
+.palette-search .search-icon { display: none; }
 .palette-search input {
-  flex: 1; background: none; border: none; border-radius: 0;
-  padding: 14px 14px 14px 38px; font-size: 15px;
+  flex: 1; background: none; border: none; border-radius: 0; box-shadow: none;
+  height: 48px; padding: 0 32px 0 var(--spacing--sm); font-size: var(--font-size--sm);
+  color: var(--color--text);
 }
-.palette-search input:focus { outline: none; }
+.palette-search input:focus { outline: none; box-shadow: none; }
 .kbd {
-  margin-right: 12px; font-size: 11px; color: var(--text-dim);
-  border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px;
+  margin-right: var(--spacing--xs); font-size: 11px; color: var(--color--text--tint-1);
+  border: var(--border-width) var(--border-style) var(--border-color); border-radius: var(--radius); padding: 1px 6px;
 }
-.palette-list { max-height: 380px; overflow-y: auto; padding: 6px; }
+.palette-list { max-height: 352px; overflow-y: auto; padding: var(--spacing--2xs); }
+.palette-group-label {
+  font-size: var(--font-size--2xs); color: var(--color--text--tint-1);
+  padding: var(--spacing--xs) var(--spacing--2xs);
+}
 .palette-item {
-  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
-  padding: 9px 10px; border: none; background: none; border-radius: 8px;
+  display: flex; align-items: center; gap: var(--spacing--xs); width: 100%; text-align: left;
+  height: 40px; padding: 0 var(--spacing--2xs); border: none; background: none; border-radius: var(--radius);
 }
-.palette-item.active { background: var(--bg-hover); }
+.palette-item.active { background: var(--command-bar-item--color--background--hover); }
 .pi-icon {
-  width: 30px; height: 30px; flex-shrink: 0; border-radius: 7px;
-  background: var(--bg-input); display: flex; align-items: center; justify-content: center; font-size: 14px;
+  width: 24px; height: 24px; flex-shrink: 0; border-radius: var(--radius);
+  background: none; display: flex; align-items: center; justify-content: center; font-size: 14px;
+  color: var(--color--text--shade-1);
 }
 .pi-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.pi-label { font-size: 13.5px; color: var(--text); }
-.pi-sub { font-size: 11.5px; color: var(--text-dim); margin-top: 1px; }
+.pi-label { font-size: var(--font-size--sm); color: var(--color--text--shade-1); }
+.pi-sub { font-size: var(--font-size--2xs); color: var(--color--text--tint-1); margin-top: 1px; }
 </style>

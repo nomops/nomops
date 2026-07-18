@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { api, type ApiKeyRow, type CommunityNode, type LicenseInfo } from '../api/client.js';
 import { useProjectsStore } from '../stores/projects.js';
 import { useUiStore } from '../stores/ui.js';
+import { SETTINGS_SECTIONS, SETTINGS_ICONS } from '../lib/settings-nav.js';
 import CredentialModal from '../components/credentials/CredentialModal.vue';
 import { credentialTypeMeta } from '../lib/credential-types.js';
 import LicenseModal from '../components/LicenseModal.vue';
@@ -929,44 +930,8 @@ async function scPull() {
 }
 
 /** 单路径/多路径图标（内联 SVG 内容，stroke 由父 svg 提供）。 */
-const icons: Record<Section, string> = {
-  billing: '<path d="M4 19V9.5L8 5l4 4.5L16 5l4 4.5V19H4z" fill="none"/><path d="M4 19h16M8 15v1.5M12 13v3.5M16 15v1.5"/>',
-  personal: '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c0-3.4 3-5.2 6.5-5.2s6.5 1.8 6.5 5.2"/>',
-  languages: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.6 3.8 9s-1.3 6.5-3.8 9c-2.5-2.5-3.8-5.6-3.8-9S9.5 5.5 12 3z"/>',
-  users: '<circle cx="9" cy="8" r="3"/><path d="M2 20c0-3.2 2.6-5 5.5-5 1 0 1.9.2 2.7.6"/><circle cx="17" cy="10" r="2.6"/><path d="M12.5 20c0-2.8 2.2-4.4 4.7-4.4S22 17.2 22 20"/>',
-  roles: '<circle cx="12" cy="7.5" r="3"/><path d="M6 20c0-3.2 2.6-5.2 6-5.2s6 2 6 5.2"/><path d="M18.5 4.5l1.2 1.2M4.3 5.7l1.2-1.2"/>',
-  api: '<circle cx="7" cy="12" r="3.2"/><path d="M10.2 12H21M17 12v3.5M20.5 12v2.5"/>',
-  secrets: '<rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
-  sourcecontrol: '<circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7M8.4 6.5c6 0 7.6 1.5 7.6 4.5M18 10.5c0 3.5-3 5-8 5"/>',
-  sso: '<circle cx="8" cy="12" r="4"/><path d="M12 12h9M18 12v3.5M21.5 12v2.5"/>',
-  security: '<path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6l7-3z"/>',
-  ldap: '<rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v3M6 16v-2.5h12V16"/>',
-  logstream: '<path d="M4 12h11M11 8l4 4-4 4M20 5v14"/>',
-  observability: '<path d="M4 4l4 5 4-2.5 4 5.5 4-3.5"/><path d="M4 20h16M6 20v-4M11 20v-6.5M16 20v-3.5M21 20v-6"/>',
-  community: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M17.5 14v7M14 17.5h7"/>',
-  mcp: '<path d="M5 15c-1.7 0-3-1.3-3-3s1.3-3 3-3M5 9c0-3 2.5-5 5.5-5 2 0 3.7 1 4.6 2.6M19 9c1.7 0 3 1.3 3 3s-1.3 3-3 3M19 15c0 3-2.5 5-5.5 5-2 0-3.7-1-4.6-2.6"/>',
-  chat: '<path d="M21 12a8 8 0 0 1-8 8H4l2.2-2.6A8 8 0 1 1 21 12z"/>',
-};
-
-/* 侧栏结构对标 n8n Settings（顺序 / 命名 / New 徽标 / 底部橙色版本号） */
-const sections: Array<{ key: Section; label: string; badge?: string }> = [
-  { key: 'billing', label: 'Usage and plan' },
-  { key: 'personal', label: 'Personal' },
-  { key: 'languages', label: 'Languages' },
-  { key: 'users', label: 'Users' },
-  { key: 'roles', label: 'Roles', badge: 'New' },
-  { key: 'api', label: 'nomops API' },
-  { key: 'secrets', label: 'External Secrets' },
-  { key: 'sourcecontrol', label: 'Environments' },
-  { key: 'sso', label: 'SSO' },
-  { key: 'security', label: 'Security & policies' },
-  { key: 'ldap', label: 'LDAP' },
-  { key: 'logstream', label: 'Log Streaming' },
-  { key: 'observability', label: 'Observability' },
-  { key: 'community', label: 'Community nodes' },
-  { key: 'mcp', label: 'Instance-level MCP', badge: 'Preview' },
-  { key: 'chat', label: 'Chat', badge: 'Preview' },
-];
+const icons = SETTINGS_ICONS;
+const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge?: string }>;
 </script>
 
 <template>
@@ -2156,26 +2121,43 @@ const sections: Array<{ key: Section; label: string; badge?: string }> = [
 .settings-body { flex: 1; display: flex; min-height: 0; }
 .settings-nav {
   width: 230px; flex-shrink: 0; border-right: 1px solid var(--border);
-  padding: 16px 12px; background: var(--bg); display: flex; flex-direction: column;
+  padding: 4px 6px 16px; background: var(--bg); display: flex; flex-direction: column;
 }
+/* n8n 实测：返回行 43px(衬 12px)/文字 14px-500 白;
+   条目与主侧栏同规格 32px/衬 4/圆角 4/gap 4/白字 14px/图标 16;激活 light-1 */
 .settings-back {
-  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
-  padding: 6px 8px 14px; border: none; background: none; color: var(--text-hi);
-  font-size: 15px; font-weight: 600; cursor: pointer;
+  display: flex; align-items: center; gap: 6px; width: 100%; text-align: left;
+  padding: 12px; border: none; background: none; color: var(--color--text--shade-1);
+  font-size: var(--font-size--sm); font-weight: var(--font-weight--medium); cursor: pointer; height: auto;
 }
-.settings-back svg { width: 18px; height: 18px; flex-shrink: 0; }
+.settings-back svg { width: 16px; height: 16px; flex-shrink: 0; }
 .settings-nav-item {
-  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
-  padding: 8px 10px; border: none; background: none; border-radius: 8px;
-  color: var(--text); font-size: 14px; cursor: pointer; margin-bottom: 1px;
+  display: flex; align-items: center; gap: var(--spacing--4xs); width: 100%; text-align: left;
+  height: 32px; padding: var(--spacing--4xs); border: none; background: none; border-radius: var(--radius);
+  color: var(--color--text--shade-1); font-size: var(--font-size--sm); cursor: pointer; margin-bottom: 1px;
 }
-.settings-nav-item:hover { background: var(--bg-hover); }
-.settings-nav-item.active { background: var(--bg-panel); }
-.settings-nav-item .nav-ico { width: 18px; height: 18px; flex-shrink: 0; color: var(--text-dim); }
-.settings-nav-item.active .nav-ico { color: var(--text-hi); }
+.settings-nav-item:hover { background: var(--color--background--light-1); }
+.settings-nav-item.active { background: var(--color--background--light-1); }
+.settings-nav-item .nav-ico { width: 16px; height: 16px; flex-shrink: 0; margin: var(--spacing--4xs); color: var(--color--text--shade-1); }
+.settings-nav-item.active .nav-ico { color: var(--color--text--shade-1); }
 .settings-version { margin-top: auto; padding: 12px 10px 4px; font-size: 12px; color: var(--accent); }
 
 .settings-content { flex: 1; overflow-y: auto; padding: 26px 40px 60px; }
+/* n8n 实测：Settings 表单系统 = 输入 36px/圆角 6/bg light-2;主按钮 36px/圆角 6/衬 0 16 */
+.settings-content :deep(input[type='text']), .settings-content :deep(input[type='email']),
+.settings-content :deep(input[type='password']), .settings-content :deep(input:not([type])),
+.settings-content :deep(select) {
+  height: 36px; background: var(--color--background--light-2); border: none;
+  box-shadow: inset 0 0 0 1px var(--border-color);
+  border-radius: var(--radius--2xs); color: var(--color--text--shade-1);
+  font-size: var(--font-size--sm); padding: 0 var(--spacing--xs);
+}
+.settings-content :deep(input:focus), .settings-content :deep(select:focus) {
+  outline: none; box-shadow: inset 0 0 0 1px var(--color--primary);
+}
+.settings-content :deep(button.primary) {
+  height: 36px; border-radius: var(--radius--2xs); padding: 0 var(--spacing--sm);
+}
 .page-title { margin: 0 0 22px; font-size: 28px; font-weight: 400; letter-spacing: -0.3px; color: var(--text-hi); }
 .sec-title { margin: 26px 0 12px; font-size: 18px; font-weight: 400; color: var(--text-hi); }
 .sub { margin: -14px 0 18px; color: var(--text-dim); font-size: 13.5px; max-width: 620px; line-height: 1.6; }

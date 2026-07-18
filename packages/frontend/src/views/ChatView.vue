@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { api, type WorkflowRow } from '../api/client.js';
+import SettingsMenu from '../components/shell/SettingsMenu.vue';
 
 /**
  * Chat 页（D1，完全对标 n8n Chat）：整页接管布局。
@@ -125,6 +126,7 @@ const groupedSessions = computed(() => {
 
 /* ── Select model 下拉（同 n8n：搜索 + Personal agents / Workflow agents / Anthropic） ── */
 const modelPickerOpen = ref(false);
+const settingsFlyoutOpen = ref(false);
 const modelSearch = ref('');
 interface PickerItem {
   group: string;
@@ -178,6 +180,7 @@ function pickTarget(item: PickerItem) {
 }
 function onDocClick() {
   modelPickerOpen.value = false;
+  settingsFlyoutOpen.value = false;
 }
 onMounted(() => window.addEventListener('click', onDocClick));
 onUnmounted(() => window.removeEventListener('click', onDocClick));
@@ -300,11 +303,16 @@ function chatWith(target: ChatTarget) {
         </template>
       </div>
 
-      <button class="side-item" data-test="chat-settings" @click="router.push({ name: 'settings' })">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2" /><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.5-2-3.4-2.3 1a7.6 7.6 0 0 0-1.7-1L15 3H11l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.3-1-2 3.4L4.6 11a7.6 7.6 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7.6 7.6 0 0 0 1.7 1L11 21h4l.4-2.6a7.6 7.6 0 0 0 1.7-1l2.3 1 2-3.4-2-1.5z" /></svg>
-        Settings
-        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6" /></svg>
-      </button>
+      <div class="chat-settings-anchor" @click.stop>
+        <button class="side-item" data-test="chat-settings" @click="settingsFlyoutOpen = !settingsFlyoutOpen">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2" /><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.5-2-3.4-2.3 1a7.6 7.6 0 0 0-1.7-1L15 3H11l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.3-1-2 3.4L4.6 11a7.6 7.6 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7.6 7.6 0 0 0 1.7 1L11 21h4l.4-2.6a7.6 7.6 0 0 0 1.7-1l2.3 1 2-3.4-2-1.5z" /></svg>
+          Settings
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6" /></svg>
+        </button>
+        <div v-if="settingsFlyoutOpen" class="chat-settings-pop">
+          <SettingsMenu @close="settingsFlyoutOpen = false" />
+        </div>
+      </div>
     </aside>
 
     <!-- 主区 -->
@@ -446,9 +454,9 @@ function chatWith(target: ChatTarget) {
 
 /* ── 专属侧栏 ── */
 .chat-side {
-  width: 240px; flex: none; border-right: 1px solid var(--border);
+  width: 200px; flex: none; border-right: 1px solid var(--border);
   background: var(--bg-panel, #232329);
-  display: flex; flex-direction: column; padding: 8px; overflow: hidden;
+  display: flex; flex-direction: column; padding: 8px; overflow: visible;
 }
 .chat-side svg { width: 15px; height: 15px; flex: none; }
 .side-top { padding: 4px 4px 12px; }
@@ -532,28 +540,31 @@ function chatWith(target: ChatTarget) {
 .apply svg { width: 14px; height: 14px; }
 
 /* 底部输入区 */
-.composer-dock { padding: 0 24px 22px; max-width: 980px; width: 100%; margin: 0 auto; }
+.composer-dock { padding: 0 24px 22px; max-width: 806px; width: 100%; margin: 0 auto; } /* n8n 实测 composer 758 宽 */
 .model-hint svg, .model-btn svg { width: 14px; height: 14px; flex: none; }
 .model-hint {
   display: flex; align-items: center; gap: 7px;
-  border: 1px solid #7c5cd6; background: rgba(124, 92, 214, 0.12);
-  border-radius: 10px 10px 0 0; padding: 12px 16px; font-size: 13px; color: var(--text);
+  border: 1px solid var(--focus--border-color); background: var(--color--purple-alpha-100);
+  border-radius: var(--radius--lg) var(--radius--lg) 0 0; padding: 12px 16px; font-size: var(--font-size--sm); color: var(--color--text--shade-1);
 }
-.model-hint a { color: #b39df1; text-decoration: underline; }
+.model-hint a { color: var(--color--purple-300); text-decoration: underline; }
 .model-hint + .composer { border-top-left-radius: 0; border-top-right-radius: 0; }
+/* n8n 实测：composer = bg light-3 / 圆角 8 / 衬 8 / 1px 白环 + 0 1px 3px -1px 投影 */
 .composer {
   position: relative; width: 100%;
-  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
-  padding: 14px 16px;
+  background: var(--color--background--light-3); border: none;
+  box-shadow: 0 0 0 1px var(--border-color), 0 1px 3px -1px var(--color--black-alpha-100);
+  border-radius: var(--radius--lg);
+  padding: var(--spacing--2xs);
 }
-.composer:focus-within { border-color: #7c5cd6; }
+.composer:focus-within { box-shadow: 0 0 0 1px var(--focus--border-color), 0 1px 3px -1px var(--color--black-alpha-100); }
 .composer.disabled { opacity: 0.85; }
 .composer textarea {
-  width: 100%; border: none; background: none; outline: none; resize: none;
-  color: var(--text); font-size: 14.5px; font-family: inherit; line-height: 1.6;
-  padding: 0; padding-right: 40px; max-height: 200px;
+  width: 100%; border: none; background: none; outline: none; resize: none; box-shadow: none;
+  color: var(--color--text--shade-1); font-size: var(--font-size--md); font-family: inherit; line-height: 1.6;
+  padding: 6px; padding-right: 40px; max-height: 200px;
 }
-.composer textarea::placeholder { color: var(--text-faint); }
+.composer textarea::placeholder { color: var(--color--text--tint-1); }
 .composer textarea:disabled { cursor: not-allowed; }
 .send {
   position: absolute; right: 12px; bottom: 12px;
@@ -588,4 +599,7 @@ function chatWith(target: ChatTarget) {
   border: 1px solid var(--border); border-radius: 7px; color: var(--text); outline: none; resize: vertical;
 }
 .agent-card input:focus, .agent-card textarea:focus { border-color: var(--accent); }
+
+.chat-settings-anchor { position: relative; }
+.chat-settings-pop { position: absolute; bottom: 0; left: calc(100% + 10px); z-index: 90; }
 </style>

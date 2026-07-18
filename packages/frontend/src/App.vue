@@ -12,8 +12,8 @@ const route = useRoute();
 
 // app 外壳（侧栏）：仅登录态。登录/注册等公开页走裸 RouterView。
 const showShell = computed(() => Boolean(auth.token));
-// Chat 页整页接管：专属侧栏替换主侧栏（对标 n8n Chat 页）
-const chatHubTakeover = computed(() => route.name === 'chat');
+// 整页接管路由（对标 n8n）：Chat 与 Settings 用专属侧栏替换主侧栏
+const chatHubTakeover = computed(() => route.name === 'chat' || route.name === 'settings');
 
 onMounted(() => {
   if (auth.token) void projects.fetch();

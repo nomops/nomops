@@ -55,72 +55,86 @@ const cards = computed(() => {
 </script>
 
 <template>
-  <div class="stats-bar" data-test="stats-bar">
-    <div v-for="c in cards" :key="c.label" class="stat-card" :class="{ saved: c.saved }">
-      <div class="stat-label">
-        {{ t(c.label) }}
-        <svg v-if="c.saved" class="info-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" stroke-linecap="round" />
-        </svg>
-      </div>
-      <div class="stat-value" :class="{ dim: c.dim }">
-        {{ c.value }}<span v-if="c.unit" class="unit">{{ c.unit }}</span>
-      </div>
-    </div>
-  </div>
+  <!-- n8n 实测（2.30.4 /home/workflows KPI 条）：
+       ul 外框 1px var(--border-color) + 6px 圆角(--radius--2xs) + overflow hidden;
+       格子高 99px、bg --color--background--light-3、padding 6px 24px 0;
+       label <strong> 14px/400 白；数值 <em> 24px/600 白；整格可点跳 /insights/<type> -->
+  <ul class="stats-bar" data-test="stats-bar">
+    <li v-for="c in cards" :key="c.label">
+      <router-link class="stat-cell" :to="{ path: '/insights' }">
+        <strong class="stat-label">
+          {{ t(c.label) }}
+          <svg v-if="c.saved" class="info-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" stroke-linecap="round" />
+          </svg>
+        </strong>
+        <em class="stat-value" :class="{ dim: c.dim }">
+          {{ c.value }}<span v-if="c.unit" class="unit">{{ c.unit }}</span>
+        </em>
+      </router-link>
+    </li>
+  </ul>
 </template>
 
 <style scoped>
 .stats-bar {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 12px;
-  margin-bottom: 26px;
+  display: flex;
+  list-style: none;
+  margin: 0 0 26px;
+  padding: 0;
+  border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--radius--2xs);
+  overflow: hidden;
+  /* overflow:hidden 会把 flex 子项的 min-height 归零，明确禁止在 .ov 列里被压缩 */
+  flex-shrink: 0;
 }
-.stat-card {
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px 18px 18px;
+.stats-bar li {
+  flex: 1;
+  display: flex;
   min-width: 0;
 }
-/* "Time saved" 卡：左上细微高亮 */
-.stat-card.saved {
-  background:
-    radial-gradient(120% 140% at 0% 0%, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 55%),
-    var(--bg-panel);
+.stats-bar li + li { border-left: var(--border-width) var(--border-style) var(--border-color); }
+.stat-cell {
+  flex: 1;
+  min-width: 0;
+  height: 99px;
+  padding: var(--spacing--3xs) var(--spacing--lg) 0;
+  background: var(--color--background--light-3);
+  text-decoration: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--spacing--2xs);
 }
+.stat-cell:hover { background: var(--color--background--light-1); }
 .stat-label {
-  font-size: 14px;
-  color: var(--text);
+  font-size: var(--font-size--sm);
+  font-weight: var(--font-weight--regular);
+  color: var(--color--text--shade-1);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--spacing--3xs);
 }
 .stat-value {
-  font-size: 30px;
-  font-weight: 600;
-  color: var(--text-hi);
-  margin-top: 14px;
-  letter-spacing: -0.5px;
-  line-height: 1;
+  font-style: normal;
+  font-size: 24px;
+  font-weight: var(--font-weight--bold);
+  color: var(--color--text--shade-1);
+  line-height: var(--line-height--xs);
 }
 .stat-value.dim {
-  color: var(--text-faint);
-  font-weight: 500;
+  color: var(--color--text--tint-1);
+  font-weight: var(--font-weight--medium);
 }
 .stat-value .unit {
-  font-size: 20px;
-  font-weight: 500;
+  font-size: var(--font-size--lg);
+  font-weight: var(--font-weight--medium);
   margin-left: 1px;
 }
 .info-i {
   width: 15px;
   height: 15px;
   flex-shrink: 0;
-  color: var(--text-faint);
-}
-@media (max-width: 1080px) {
-  .stats-bar { grid-template-columns: repeat(2, 1fr); }
+  color: var(--color--text--tint-1);
 }
 </style>
