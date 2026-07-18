@@ -275,7 +275,7 @@ onUnmounted(() => {
       <!-- ── Step 2: configure (wide, left rail tabs) ── -->
       <template v-else>
         <header class="cred-head config">
-          <span class="head-icon"><IconSvg v-bind="credentialIcon(selectedType)" :size="22" /></span>
+          <span class="head-icon"><IconSvg v-bind="credentialIcon(selectedType)" :size="26" /></span>
           <div class="head-name">
             <input v-model="name" class="name-input" data-test="cred-name" placeholder="Name this credential" />
             <div class="head-type">{{ meta?.displayName }}</div>
@@ -415,22 +415,26 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* n8n 实测：遮罩 = --dialog--overlay--color--background(slate-alpha-700)；
+   面板 bg light-3 / 1px border / 圆角 8 / el-dialog 阴影 0 6px 16px rgba(68,28,23,.06)；
+   pick 步 420px；config 步 70% 视宽 */
 .cred-overlay {
-  position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.55);
+  position: fixed; inset: 0; z-index: var(--modals--z); background: var(--dialog--overlay--color--background);
   display: flex; align-items: center; justify-content: center; padding: 20px;
 }
 .cred-modal {
-  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px;
+  background: var(--dialog--color--background); border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--radius--lg);
   display: flex; flex-direction: column; max-height: 86vh;
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 6px 16px rgba(68, 28, 23, 0.06); /* el-dialog 实测值，无对应全局令牌 */
 }
-/* pick 步窄、overflow 可见（下拉溢出）；config 步宽、左右两栏 */
-.cred-modal.pick { width: 460px; max-width: 94vw; overflow: visible; }
-.cred-modal.config { width: 900px; max-width: 94vw; overflow: hidden; }
+.cred-modal.pick { width: 420px; max-width: 94vw; overflow: visible; }
+.cred-modal.config { width: 70vw; max-width: 94vw; overflow: hidden; }
 
 /* Header */
-.cred-head { display: flex; align-items: center; gap: 14px; padding: 16px 20px; border-bottom: 1px solid var(--border); }
-.cred-title { font-size: 17px; font-weight: 600; color: var(--text-hi); flex: 1; }
+.cred-head { display: flex; align-items: center; gap: 14px; padding: var(--spacing--sm) var(--spacing--lg); border-bottom: var(--border-width) var(--border-style) var(--border-color); }
+/* n8n 实测：模态标题 20px/400 白 */
+.cred-title { font-size: var(--font-size--xl); font-weight: var(--font-weight--regular); color: var(--color--text--shade-1); flex: 1; }
 .icon-x {
   width: 30px; height: 30px; border-radius: 7px; border: none; background: none; color: var(--text-dim);
   cursor: pointer; font-size: 14px; flex-shrink: 0;
@@ -438,14 +442,15 @@ onUnmounted(() => {
 .icon-x:hover { background: var(--bg-hover); color: var(--text); }
 
 .cred-head.config { align-items: center; }
+/* n8n 实测：品牌图标 26×26 裸图，无底框 */
 .head-icon {
-  width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%; background: var(--bg-input);
-  border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 19px;
+  width: 26px; height: 26px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
 }
 .head-name { flex: 1; min-width: 0; }
 .name-input {
-  width: 100%; max-width: 420px; background: none; border: 1px solid transparent; border-radius: 6px; padding: 3px 6px;
-  color: var(--text-hi); font-size: 17px; font-weight: 600; font-family: inherit;
+  width: 100%; max-width: 420px; background: none; border: 1px solid transparent; border-radius: var(--radius--2xs); padding: 3px 6px;
+  color: var(--color--text--shade-1); font-size: var(--font-size--xl); font-weight: var(--font-weight--regular); font-family: inherit;
 }
 .name-input:hover { border-color: var(--border); }
 .name-input:focus { outline: none; border-color: var(--accent); background: var(--bg-input); }
@@ -454,34 +459,40 @@ onUnmounted(() => {
 
 /* Config: two-column body */
 .config-body { flex: 1 1 auto; min-height: 0; display: flex; }
+/* n8n 实测：左栏 tab 14px；未激活 neutral-200、激活白 + light-1 底 */
 .side-tabs {
-  width: 176px; flex-shrink: 0; border-right: 1px solid var(--border); padding: 14px 12px;
+  width: 176px; flex-shrink: 0; border-right: var(--border-width) var(--border-style) var(--border-color); padding: 14px 12px;
   display: flex; flex-direction: column; gap: 2px;
 }
 .side-tabs button {
-  text-align: left; padding: 9px 12px; border: none; background: none; border-radius: 7px;
-  color: var(--text-dim); font-size: 13.5px; cursor: pointer; font-family: inherit;
+  text-align: left; padding: 8px 12px; border: none; background: none; border-radius: var(--radius);
+  color: var(--color--text); font-size: var(--font-size--sm); cursor: pointer; font-family: inherit; height: auto;
 }
-.side-tabs button:hover { background: var(--bg-hover); color: var(--text); }
-.side-tabs button.active { background: var(--bg-hover); color: var(--text-hi); font-weight: 500; }
+.side-tabs button:hover { background: var(--color--background--light-1); color: var(--color--text--shade-1); }
+.side-tabs button.active { background: var(--color--background--light-1); color: var(--color--text--shade-1); font-weight: var(--font-weight--regular); }
 
 .tab-content { flex: 1; min-width: 0; overflow-y: auto; padding: 22px 26px 26px; }
 
 /* Body (pick step) */
-.cred-body { padding: 18px 20px 20px; }
-.fld-label { display: block; font-size: 12.5px; color: var(--text-dim); margin-bottom: 8px; }
+/* n8n 实测：内容衬 24px；说明行 16px neutral-200、下距 16 */
+.cred-body { padding: var(--spacing--md) var(--spacing--lg) var(--spacing--lg); }
+.fld-label { display: block; font-size: var(--font-size--md); color: var(--color--text); margin-bottom: var(--spacing--sm); }
 .pick-actions { margin-top: 16px; }
+/* n8n 实测：模态主按钮 36px 高 / 圆角 6 / 衬 0 16 */
+.pick-actions .btn { height: 36px; border-radius: var(--radius--2xs); padding: 0 var(--spacing--sm); }
 
 /* Fields */
 .field { margin-bottom: 18px; }
 .field:last-child { margin-bottom: 0; }
-.field label { display: block; margin: 0 0 7px; color: var(--text); font-size: 13px; }
+/* n8n 实测：模态/NDV 输入 36px 高 / 圆角 6 / 14px 字 / bg light-2 */
+.field label { display: block; margin: 0 0 7px; color: var(--color--text); font-size: var(--font-size--sm); }
 .field input,
 .select-wrap select {
-  width: 100%; height: 40px; padding: 0 12px; background: var(--bg-input); border: 1px solid var(--border);
-  border-radius: var(--radius); color: var(--text); font-size: 13.5px; font-family: inherit;
+  width: 100%; height: 36px; padding: 0 var(--spacing--xs); background: var(--color--background--light-2);
+  border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--radius--2xs); color: var(--color--text--shade-1); font-size: var(--font-size--sm); font-family: inherit;
 }
-.field input:focus, .select-wrap select:focus { outline: none; border-color: var(--accent); }
+.field input:focus, .select-wrap select:focus { outline: none; border-color: var(--color--primary); }
 .fld-hint { font-size: 11.5px; color: var(--text-faint); margin: 6px 0 0; }
 
 .setup-help { font-size: 12.5px; color: var(--text-dim); margin: 0 0 20px; }
@@ -507,13 +518,15 @@ onUnmounted(() => {
 
 /* Combobox (pick step) */
 .combo { position: relative; }
+/* n8n 实测：类型选择组合框 48px 高 / bg light-2 / 圆角 4 / 16px 字 */
 .combo-control {
-  display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px 0 12px;
-  background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); cursor: text;
+  display: flex; align-items: center; gap: 8px; height: 48px; padding: 0 10px 0 12px;
+  background: var(--color--background--light-2); border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--radius); cursor: text;
 }
 .combo.open .combo-control { border-color: var(--accent); }
 .combo-search { width: 15px; height: 15px; flex-shrink: 0; color: var(--text-faint); }
-.combo-input { flex: 1; height: 100%; background: none !important; border: none !important; padding: 0 !important; color: var(--text); font-size: 14px; }
+.combo-input { flex: 1; height: 100%; background: none !important; border: none !important; padding: 0 !important; box-shadow: none !important; color: var(--color--text--shade-1); font-size: var(--font-size--md); }
 .combo-input:focus { outline: none; }
 .combo-caret { width: 15px; height: 15px; flex-shrink: 0; color: var(--text-faint); transition: transform 0.15s; }
 .combo.open .combo-caret { transform: rotate(180deg); }

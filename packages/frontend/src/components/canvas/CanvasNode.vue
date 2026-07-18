@@ -156,25 +156,30 @@ const bottomStyle = (i: number, count: number) => ({
   position: absolute; left: -20px; top: 50%; transform: translateY(-50%);
   font-size: 14px; filter: saturate(1.4);
 }
+/* n8n 实测（2.30.4 画布 _node_）：96×96、bg --node--color--background(dark #2b2b2b)、
+   border 1.5px rgba(255,255,255,.63)（实测 oklch 白/0.632）、圆角 8；图标 48；
+   子节点圆 80×80；label 卡下 192px 宽白字 14px */
 .nomops-node {
   position: relative;
   width: 96px; height: 96px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 16px;
+  background: var(--node--color--background);
+  border: 1.5px solid var(--color--white-alpha-200); /* n8n 实测默认边 α0.2 */
+  border-radius: var(--radius--lg);
   display: flex; align-items: center; justify-content: center;
 }
-.nomops-node.trigger { border-top-left-radius: 48px; border-bottom-left-radius: 48px; }
-/* 能力子节点：小圆（对齐 n8n AI 子节点形态） */
-.nomops-node.subnode { width: 68px; height: 68px; border-radius: 50%; }
-.nomops-node.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.nomops-node.status-running { border-color: var(--running); box-shadow: 0 0 14px rgba(245, 166, 35, 0.45); }
-.nomops-node.status-success { border-color: var(--ok); }
-.nomops-node.status-error { border-color: var(--err); box-shadow: 0 0 14px rgba(239, 111, 108, 0.45); }
+.nomops-node.trigger { border-top-left-radius: 36px; border-bottom-left-radius: 36px; } /* n8n 实测 36 */
+.nomops-node.subnode { width: 80px; height: 80px; border-radius: 50%; }
+.nomops-node.selected { border-color: var(--canvas--color--selected); box-shadow: 0 0 0 1px var(--canvas--color--selected); }
+.nomops-node.status-running { border-color: var(--node--border-color--running); }
+.nomops-node.status-success { border-color: var(--color--success); }
+.nomops-node.status-error { border-color: var(--color--danger); }
 .node-icon { line-height: 0; }
 .node-label {
-  margin-top: 10px; font-size: 13px; font-weight: 500; color: var(--text);
-  max-width: 150px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin-top: 6px; font-size: var(--font-size--md); font-weight: var(--font-weight--regular); /* n8n 实测 16px */
+  color: var(--color--text--shade-1); line-height: var(--line-height--lg);
+  width: 192px; max-width: 192px; text-align: center;
+  white-space: normal; overflow: hidden; text-overflow: ellipsis;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
 .port-label {
   position: absolute; right: -6px; transform: translateX(100%);
@@ -191,17 +196,19 @@ const bottomStyle = (i: number, count: number) => ({
 }
 .ai-port-label.staggered { bottom: -27px; }
 
-/* 便签（画布注释） */
+/* 便签 — n8n 实测：--sticky--* 令牌（dark: 变体1 黄=yellow-900底/800边;
+   蓝=blue-900/800; 绿=green-950/900; 紫=purple-950/800）、圆角 4、1px 边 */
 .sticky-note {
-  width: 220px; min-height: 120px; border-radius: 8px; padding: 12px;
-  font-size: 12.5px; line-height: 1.5; cursor: default;
-  border: 1px solid rgba(0, 0, 0, 0.25);
+  width: 240px; min-height: 160px; border-radius: var(--radius); padding: 12px;
+  font-size: var(--font-size--xs); line-height: 1.5; cursor: default;
+  border: var(--border-width) var(--border-style) var(--sticky--border-color);
+  background: var(--sticky--color--background); color: var(--sticky--color--text);
 }
-.sticky-note.selected { box-shadow: 0 0 0 2px var(--accent); }
-.sticky-yellow { background: #f3d34a; color: #4a3f10; }
-.sticky-blue { background: #7db9e8; color: #10304a; }
-.sticky-green { background: #8fd6a3; color: #12401f; }
-.sticky-purple { background: #c9a6ee; color: #331a4d; }
+.sticky-note.selected { box-shadow: 0 0 0 2px var(--canvas--color--selected); }
+.sticky-yellow { background: var(--sticky--color--background--variant-1); border-color: var(--sticky--border-color--variant-1); }
+.sticky-blue { background: var(--sticky--color--background--variant-5); border-color: var(--sticky--border-color--variant-5); }
+.sticky-green { background: var(--sticky--color--background--variant-4); border-color: var(--sticky--border-color--variant-4); }
+.sticky-purple { background: var(--sticky--color--background--variant-6); border-color: var(--sticky--border-color--variant-6); }
 .sticky-content { white-space: pre-wrap; word-break: break-word; }
 .sticky-edit {
   width: 100%; min-height: 96px; background: rgba(255, 255, 255, 0.35);

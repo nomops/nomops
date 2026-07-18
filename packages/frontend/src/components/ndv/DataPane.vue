@@ -9,12 +9,24 @@ import { tableOf } from '../../lib/run-data.js';
  */
 // 注意：Vue 会把未传的 Boolean prop 铸成 false，因此 draggable 要显式默认 true
 const props = withDefaults(
-  defineProps<{ title: string; items: INodeExecutionData[]; emptyHint?: string; draggable?: boolean }>(),
-  { draggable: true, emptyHint: undefined },
+  defineProps<{
+    title: string;
+    items: INodeExecutionData[];
+    emptyHint?: string;
+    draggable?: boolean;
+    /** n8n 式空态：标题 + 主按钮文案（如 Execute previous nodes / Execute step） */
+    emptyTitle?: string;
+    emptyAction?: string;
+    emptyCaption?: string;
+  }>(),
+  { draggable: true, emptyHint: undefined, emptyTitle: undefined, emptyAction: undefined, emptyCaption: undefined },
 );
 
 type ViewMode = 'schema' | 'table' | 'json';
 const view = ref<ViewMode>('table');
+
+defineEmits<{ 'empty-action': [] }>();
+
 
 const table = computed(() => tableOf(props.items));
 
@@ -85,9 +97,15 @@ function onDragField(event: DragEvent, path: string) {
     </div>
 
     <div class="pane-body">
-      <p v-if="items.length === 0" class="dim" style="font-size: 12px; text-align: center; margin-top: 30px">
-        {{ emptyHint ?? 'No data yet — run once' }}
-      </p>
+      <!-- n8n 实测空态：标题 16px/600 白 + primary 按钮(32px) + 说明行 -->
+      <div v-if="items.length === 0" class="pane-empty" data-test="pane-empty">
+        <template v-if="emptyTitle">
+          <div class="pe-title">{{ emptyTitle }}</div>
+          <button v-if="emptyAction" class="pe-action" @click="$emit('empty-action')">{{ emptyAction }}</button>
+          <div v-if="emptyCaption" class="pe-caption">{{ emptyCaption }}</div>
+        </template>
+        <p v-else class="dim" style="font-size: 12px">{{ emptyHint ?? 'No data yet — run once' }}</p>
+      </div>
 
       <!-- Schema：字段行可拖拽进参数框 -->
       <div v-else-if="view === 'schema'" class="schema-list" data-test="pane-schema">
@@ -135,10 +153,12 @@ function onDragField(event: DragEvent, path: string) {
 
 <style scoped>
 .data-pane { display: flex; flex-direction: column; min-width: 0; height: 100%; }
+/* n8n 实测：INPUT/OUTPUT 头 = 12px/600 白色大写、字距放宽、无底边线 */
 .pane-head {
   display: flex; justify-content: space-between; align-items: center; gap: 8px;
-  padding: 8px 12px; border-bottom: 1px solid var(--border);
-  font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase;
+  padding: 14px var(--spacing--sm) 8px;
+  font-size: var(--font-size--2xs); font-weight: var(--font-weight--bold);
+  color: var(--color--text--shade-1); text-transform: uppercase; letter-spacing: var(--letter-spacing--widest);
 }
 .view-tabs { display: flex; gap: 2px; background: var(--bg-input); border-radius: 6px; padding: 2px; }
 .view-tabs button {
@@ -147,6 +167,16 @@ function onDragField(event: DragEvent, path: string) {
 }
 .view-tabs button.on { background: var(--bg-panel); color: var(--text); }
 .pane-body { flex: 1; overflow: auto; padding: 8px 12px; }
+.pane-empty { display: flex; flex-direction: column; align-items: center; gap: 14px; margin-top: 34%; text-align: center; }
+.pe-title { font-size: var(--font-size--md); font-weight: var(--font-weight--bold); color: var(--color--text--shade-1); }
+.pe-action {
+  height: 32px; padding: 0 var(--spacing--xs); border: none; border-radius: var(--radius);
+  background: var(--button--color--background--primary); color: var(--button--color--text--primary);
+  font-size: var(--font-size--sm); font-weight: var(--font-weight--medium);
+  box-shadow: inset 0 0 0 1px var(--button--border-color--primary), 0 1px 3px -1px var(--color--black-alpha-100);
+}
+.pe-action:hover { background: var(--button--color--background--primary--hover-active-focus); }
+.pe-caption { font-size: var(--font-size--sm); color: var(--color--text); }
 .pane-table th, .pane-table td { font-size: 12px; padding: 6px 8px; }
 .th-draggable { cursor: grab; }
 .th-draggable:hover { color: var(--accent); }

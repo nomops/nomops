@@ -7,6 +7,8 @@ import { isPropertyVisible } from '../../lib/display-options.js';
 import { inputItemsFor, lastRunOf, outputPorts } from '../../lib/run-data.js';
 import ParamInput from '../node-view/ParamInput.vue';
 import DataPane from './DataPane.vue';
+import IconSvg from '../IconSvg.vue';
+import { nodeIcon } from '../../lib/icons.js';
 
 /** NDV 模态：输入数据 | 参数（Parameters/Settings tab）| 输出数据 三栏。双击节点打开。 */
 const editor = useEditorStore();
@@ -63,8 +65,9 @@ async function executeStep() {
   <div v-if="editor.ndvOpen && node" class="ndv-overlay" data-test="ndv-modal" @click.self="close">
     <div class="ndv">
       <header class="ndv-head">
-        <div>
-          <span style="font-weight: 600; font-size: 15px">{{ node.name }}</span>
+        <div class="ndv-title">
+          <span class="ndv-node-icon"><IconSvg v-bind="nodeIcon(node.type)" :size="20" /></span>
+          <span class="ndv-name">{{ node.name }}</span>
           <span class="dim" style="margin-left: 8px; font-size: 12px">
             {{ desc?.displayName }} · v{{ node.typeVersion }}
             <template v-if="lastRun"> · {{ lastRun.executionTime }}ms</template>
@@ -79,7 +82,14 @@ async function executeStep() {
 
       <div class="ndv-body">
         <section v-if="hasInputPort" class="ndv-col side">
-          <DataPane title="Input" :items="inputItems" empty-hint="No upstream data yet" />
+          <DataPane
+            title="Input"
+            :items="inputItems"
+            empty-title="No input data"
+            empty-action="Execute previous nodes"
+            empty-caption="to view input data"
+            @empty-action="executeStep"
+          />
         </section>
 
         <section class="ndv-col params">
@@ -141,7 +151,14 @@ async function executeStep() {
         </section>
 
         <section class="ndv-col side">
-          <DataPane title="Output" :items="outputItems" />
+          <DataPane
+            title="Output"
+            :items="outputItems"
+            empty-title="No output data"
+            empty-action="Execute step"
+            empty-caption="to view output data"
+            @empty-action="executeStep"
+          />
         </section>
       </div>
     </div>
@@ -149,41 +166,56 @@ async function executeStep() {
 </template>
 
 <style scoped>
+/* n8n 实测（NDV 骨架）：全屏浮层，模态左右/底部各留 25px 露出画布；
+   顶部 66px 头带（标题/拖柄/Docs/X）；三栏 = 侧栏 375px 定宽 bg light-3、
+   中栏弹性 bg light-1(4px 拖柄)；容器底角 8px 圆角 */
 .ndv-overlay {
-  position: fixed; inset: 0; z-index: 50;
-  background: rgba(0, 0, 0, 0.55);
-  display: flex; align-items: center; justify-content: center;
+  position: fixed; inset: 0; z-index: var(--ndv--z);
+  background: var(--dialog--overlay--color--background--dark);
+  display: flex; flex-direction: column;
 }
 .ndv {
-  width: min(1150px, 94vw); height: min(680px, 88vh);
-  background: var(--bg-panel);
-  border: 1px solid var(--border); border-radius: 12px;
+  flex: 1; min-height: 0; margin: 0 25px 25px;
   display: flex; flex-direction: column; overflow: hidden;
 }
 .ndv-head {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  height: 66px; flex-shrink: 0; padding: 0 var(--spacing--sm);
+  color: var(--color--text--shade-1);
 }
-.ndv-body { flex: 1; display: flex; min-height: 0; }
+/* n8n 实测：头带 = 节点图标 + 名称(16px 白)，右侧 Docs/X */
+.ndv-title { display: flex; align-items: center; gap: var(--spacing--2xs); min-width: 0; }
+.ndv-node-icon { display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center; flex-shrink: 0; }
+.ndv-name { font-size: var(--font-size--md); font-weight: var(--font-weight--regular); color: var(--color--text--shade-1); }
+.ndv-body {
+  flex: 1; display: flex; min-height: 0;
+  border-radius: 0 0 var(--radius--lg) var(--radius--lg); overflow: hidden;
+}
 .ndv-col { min-width: 0; display: flex; flex-direction: column; }
-.ndv-col.side { flex: 1; background: var(--bg); }
-.ndv-col.params { flex: 1.1; border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
+/* n8n 实测：侧栏弹性均分、中栏定宽(IF/HTTP 类 640;简单节点 420 —— 每节点宽度表留后续) */
+.ndv-col.side { flex: 1; min-width: 0; background: var(--color--background--light-3); }
+.ndv-col.params { flex: 0 0 640px; background: var(--ndv--header--color); border-left: 4px solid var(--color--background--light-1); border-right: 4px solid var(--color--background--light-1); }
 .param-tabs {
   display: flex; align-items: center; gap: 4px;
-  padding: 6px 10px; border-bottom: 1px solid var(--border);
+  padding: 10px var(--spacing--sm); flex-shrink: 0;
 }
+/* n8n 实测：tab 12px/600；激活橙、未激活 tint-1 */
 .ptab {
-  background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0;
-  color: var(--text-dim); padding: 6px 10px; font-size: 13px;
+  background: none; border: none; border-radius: 0; height: auto;
+  color: var(--color--text--tint-1); padding: 4px 8px;
+  font-size: var(--font-size--2xs); font-weight: var(--font-weight--bold);
 }
-.ptab:hover { color: var(--text); }
-.ptab.active { color: var(--text); border-bottom-color: var(--accent); }
+.ptab:hover { color: var(--color--text); background: none; }
+.ptab.active { color: var(--color--primary); }
+/* n8n 实测：Execute step 28px 高 / 13px-500 / primary + inset 环 */
 .execute-step {
-  background: var(--accent); border-color: var(--accent); color: #fff;
-  padding: 5px 12px; font-size: 12.5px;
+  height: 28px; background: var(--button--color--background--primary); border: none; color: var(--button--color--text--primary);
+  padding: 0 var(--spacing--xs); font-size: 13px; font-weight: var(--font-weight--medium);
+  border-radius: var(--radius);
+  box-shadow: inset 0 0 0 1px var(--button--border-color--primary), 0 1px 3px -1px var(--color--black-alpha-100);
 }
-.execute-step:hover { background: var(--accent-dim); }
-.params-body { flex: 1; overflow-y: auto; padding: 12px 14px; }
+.execute-step:hover { background: var(--button--color--background--primary--hover-active-focus); }
+.params-body { flex: 1; overflow-y: auto; padding: 12px var(--spacing--sm); }
 .setting-row { display: flex; align-items: center; gap: 6px; margin: 0; }
 
 /* Focus panel 钉按钮：悬浮参数行右上，hover 显现 */

@@ -103,44 +103,53 @@ watch(
 </template>
 
 <style scoped>
+/* n8n 实测（节点创建抽屉）：宽 ~385 / bg light-3；标题 18px-600 白；
+   条目：衬 12px 8px 12px 0 + 外距 0 12 0 16、题 14px-500 白、
+   描述 12px --color--text(非弱化色)可换行、右缘 ›  */
 .picker-drawer {
-  position: absolute; top: 0; right: 0; bottom: 0; width: 380px; z-index: 20;
-  background: var(--bg-panel); border-left: 1px solid var(--border);
+  position: absolute; top: 0; right: 0; bottom: 0; width: 385px; z-index: var(--node-creator--z);
+  background: var(--color--background--light-3); border-left: var(--border-width) var(--border-style) var(--border-color);
   display: flex; flex-direction: column;
-  box-shadow: -12px 0 32px rgba(0, 0, 0, 0.35);
 }
 .picker-head {
   display: flex; justify-content: space-between; align-items: flex-start;
-  padding: 18px 18px 14px;
+  padding: 18px 16px 14px;
 }
-.picker-title { font-size: 17px; font-weight: 600; }
-.picker-sub { font-size: 12.5px; color: var(--text-dim); margin-top: 3px; }
+.picker-title { font-size: var(--font-size--lg); font-weight: var(--font-weight--bold); color: var(--color--text--shade-1); }
+.picker-sub { font-size: var(--font-size--2xs); color: var(--color--text); margin-top: 3px; }
 .picker-close { padding: 4px 8px; }
-.picker-search { position: relative; padding: 0 18px 12px; }
+.picker-search { position: relative; padding: 0 16px 12px; }
 .picker-search .search-icon {
-  position: absolute; left: 30px; top: 9px; font-size: 12px; opacity: 0.6;
+  position: absolute; left: 28px; top: 9px; font-size: 12px; opacity: 0.6;
 }
-.picker-search input { padding-left: 34px; }
-.picker-list { flex: 1; overflow-y: auto; padding: 0 10px 16px; }
+.picker-search input {
+  padding-left: 34px; height: 40px;
+  background: var(--color--background--light-3);
+  border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--radius); color: var(--color--text--shade-1); font-size: var(--font-size--sm);
+}
+.picker-search input:focus { border-color: var(--color--primary); }
+.picker-list { flex: 1; overflow-y: auto; padding: 0 0 16px; }
 .group-label {
-  font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
-  color: var(--text-dim); padding: 12px 8px 4px;
+  font-size: var(--font-size--3xs); text-transform: uppercase; letter-spacing: var(--letter-spacing--wider);
+  color: var(--color--text--tint-1); padding: 12px 16px 4px;
 }
 .node-item {
-  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
-  padding: 10px 10px; border: none; background: none; border-radius: 8px; cursor: pointer;
+  display: flex; align-items: center; gap: var(--spacing--xs); width: calc(100% - 28px); text-align: left;
+  margin: 0 12px 0 16px; padding: 12px 8px 12px 0;
+  border: none; background: none; border-radius: var(--radius); cursor: pointer;
 }
-.node-item:hover { background: var(--bg-hover); }
+.node-item:hover { background: var(--color--background--light-1); }
 .node-item-icon {
-  width: 34px; height: 34px; flex-shrink: 0; border-radius: 8px;
-  background: var(--bg-input); display: flex; align-items: center; justify-content: center;
-  font-size: 16px;
+  width: 34px; height: 34px; flex-shrink: 0; border-radius: var(--radius);
+  background: none; display: flex; align-items: center; justify-content: center;
+  font-size: 16px; color: var(--color--text--shade-1);
 }
 .node-item-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.node-item-name { font-size: 13.5px; color: var(--text); }
+.node-item-name { font-size: var(--font-size--sm); font-weight: var(--font-weight--medium); color: var(--color--text--shade-1); }
 .node-item-desc {
-  font-size: 11.5px; color: var(--text-dim); margin-top: 2px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-size: var(--font-size--2xs); color: var(--color--text); margin-top: 2px;
+  line-height: var(--line-height--md);
 }
 .node-item-arrow { color: var(--text-dim); opacity: 0; transition: opacity 0.12s; }
 .node-item:hover .node-item-arrow { opacity: 1; }

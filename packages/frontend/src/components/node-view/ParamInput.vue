@@ -121,11 +121,14 @@ function commitJson() {
           @dragover="onDragOverExpr"
           @dragleave="dragOver = false"
         >
-          <ExpressionInput
-            v-if="isExpression"
-            :model-value="String(current ?? '')"
-            @update:model-value="emit('change', $event)"
-          />
+          <div v-if="isExpression" class="expr-row">
+            <span class="expr-gutter" title="Expression">=</span>
+            <ExpressionInput
+              class="expr-cm"
+              :model-value="String(current ?? '')"
+              @update:model-value="emit('change', $event)"
+            />
+          </div>
           <input
             v-else
             :value="String(current ?? '')"
@@ -147,13 +150,18 @@ function commitJson() {
         @input="emit('change', Number(($event.target as HTMLInputElement).value))"
       />
 
-      <input
+      <!-- n8n 实测开关：轨 32×16 圆胶囊 / off=light-2+1px neutral-700 边 / knob 12 白 / on=green-500 -->
+      <button
         v-else-if="prop.type === 'boolean'"
-        type="checkbox"
-        style="width: auto"
-        :checked="Boolean(current)"
-        @change="emit('change', ($event.target as HTMLInputElement).checked)"
-      />
+        type="button"
+        class="pswitch"
+        :class="{ on: Boolean(current) }"
+        role="switch"
+        :aria-checked="Boolean(current)"
+        @click="emit('change', !current)"
+      >
+        <span class="pswitch-knob" />
+      </button>
 
       <select
         v-else-if="prop.type === 'options'"
@@ -190,8 +198,55 @@ function commitJson() {
 </template>
 
 <style scoped>
-.param { margin-bottom: 4px; }
+/* n8n 实测（NDV 参数区）：行距 10；label 12px/400 白、下距 8；
+   文本输入 32px/bg light-2/inset 1px 环/圆角 4/14px 白;
+   下拉 30px/1px 边/12px;开关 32×16 */
+.param { margin-bottom: 10px; }
+.param :deep(label), .param > label {
+  display: block; margin: 0 0 8px; color: var(--color--text--shade-1);
+  font-size: var(--font-size--2xs); font-weight: var(--font-weight--regular);
+}
+.param :deep(input[type='text']), .param :deep(input:not([type])), .param :deep(input[type='number']),
+.param :deep(input[type='datetime-local']), .param :deep(textarea) {
+  background: var(--color--background--light-2); border: none;
+  box-shadow: inset 0 0 0 1px var(--border-color);
+  border-radius: var(--radius); color: var(--color--text--shade-1);
+  font-size: var(--font-size--sm); padding: 0 var(--spacing--xs);
+}
+.param :deep(input[type='text']), .param :deep(input:not([type])), .param :deep(input[type='number']) { height: 32px; }
+.param :deep(textarea) { padding: 8px var(--spacing--xs); }
+.param :deep(input:focus), .param :deep(textarea:focus) { outline: none; box-shadow: inset 0 0 0 1px var(--color--primary); }
+.param :deep(select) {
+  height: 30px; background: var(--color--background--light-2);
+  border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--radius); color: var(--color--text--shade-1);
+  font-size: var(--font-size--2xs); padding: 0 var(--spacing--2xs);
+}
+.pswitch {
+  position: relative; width: 32px; height: 16px; padding: 0; flex-shrink: 0;
+  border-radius: var(--radius--full); cursor: pointer;
+  background: var(--switch--color--background);
+  border: var(--border-width) var(--border-style) var(--switch--border-color);
+  transition: background 0.15s;
+}
+.pswitch-knob {
+  position: absolute; top: 1px; left: 1px; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--switch--toggle--color); box-shadow: 0 1px 2px var(--color--black-alpha-200);
+  transition: transform 0.15s;
+}
+.pswitch.on { background: var(--switch--color--background--active); border-color: transparent; }
+.pswitch.on .pswitch-knob { transform: translateX(16px); }
 .desc { font-size: 11px; margin: 4px 0 0; }
+/* n8n 实测：表达式态左侧 = gutter 块，与编辑框拼合(编辑框圆角 0 4 4 0) */
+.expr-row { display: flex; align-items: stretch; }
+.expr-gutter {
+  flex-shrink: 0; width: 20px; display: flex; align-items: center; justify-content: center;
+  background: var(--color--background--light-3);
+  border: var(--border-width) var(--border-style) var(--border-color); border-right: none;
+  border-radius: var(--radius) 0 0 var(--radius);
+  color: var(--color--text--tint-1); font-size: var(--font-size--2xs); font-family: var(--font-family--monospace);
+}
+.expr-cm { flex: 1; min-width: 0; }
 .fx {
   padding: 0 6px; margin-left: 6px; font-size: 11px; border-radius: 4px;
   background: transparent; border: 1px solid var(--border);

@@ -1112,7 +1112,8 @@ async function loadSavePolicy() {
 </template>
 
 <style scoped>
-.canvas-view { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.canvas-view { flex: 1; display: flex; flex-direction: column; min-height: 0;  position: relative;
+}
 
 .wf-menu-item.disabled { opacity: 0.45; cursor: not-allowed; }
 
@@ -1216,16 +1217,19 @@ async function loadSavePolicy() {
 .tag-check { width: 14px; color: var(--accent); flex: none; }
 .tag-empty { margin: 0; padding: 8px 10px; font-size: 12px; }
 
-/* 画布内 tabs（Editor | Executions） */
+/* 画布内 tabs — n8n 实测：pill 外层 bg neutral-800/圆角 4/衬 2、
+   浮动居中在头带下缘(y48,压过 65px 头带);格 26px/12px-500,激活 bg light-2 */
 .canvas-tabs {
-  display: flex; gap: 2px; background: var(--bg-input);
-  border: 1px solid var(--border); border-radius: 8px; padding: 3px;
+  position: absolute; left: 50%; top: 48px; transform: translateX(-50%); z-index: 12;
+  display: flex; background: var(--color--neutral-800);
+  border-radius: var(--radius); padding: 2px;
 }
 .canvas-tab {
-  border: none; background: none; padding: 5px 14px; border-radius: 6px;
-  font-size: 13px; color: var(--text-dim); cursor: pointer;
+  border: none; background: none; height: 26px; padding: 0 var(--spacing--xs); border-radius: var(--radius);
+  font-size: var(--font-size--2xs); font-weight: var(--font-weight--medium);
+  color: var(--color--text); cursor: pointer;
 }
-.canvas-tab.active { background: var(--bg-panel); color: var(--text-hi); }
+.canvas-tab.active { background: var(--color--background--light-2); color: var(--color--text--shade-1); }
 
 /* Executions 视图 */
 .exec-body { flex: 1; display: flex; min-height: 0; }
@@ -1305,9 +1309,10 @@ async function loadSavePolicy() {
 .wfs-row { display: flex; align-items: center; gap: 20px; margin-bottom: 14px; }
 .wfs-row label { flex: 0 0 300px; margin: 0; font-size: 13.5px; color: var(--text-hi); line-height: 1.4; }
 .wfs-row select { flex: 1; }
+/* n8n 实测：头带 65px 高 / bg light-3 / 无下边线(pill 悬浮压过下缘) */
 .toolbar {
-  display: flex; align-items: center; gap: 12px;
-  padding: 8px 16px; background: var(--bg-panel); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px; height: 65px; flex-shrink: 0;
+  padding: 0 var(--spacing--sm); background: var(--color--background--light-3);
 }
 .breadcrumb { display: flex; align-items: center; gap: 8px; }
 .crumb-project { color: var(--text-dim); font-size: 13px; }
@@ -1343,13 +1348,16 @@ async function loadSavePolicy() {
 }
 .add-first-step:hover { border-color: var(--accent); color: var(--text); }
 .add-first-step .plus { font-size: 34px; }
+/* n8n 实测：Execute workflow = 36px 高 / 圆角 6 / 衬 0 16 / 14px-500 /
+   primary + inset 橙环 + 0 1px 3px -1px 投影（非胶囊、无橙色泛光） */
 .execute-workflow {
   position: absolute; bottom: 56px; left: 50%; transform: translateX(-50%); z-index: 8;
-  background: var(--accent); border: none; color: #fff; font-weight: 600;
-  padding: 10px 26px; font-size: 14px; border-radius: 22px;
-  box-shadow: 0 4px 16px rgba(255, 105, 0, 0.35);
+  height: 36px; background: var(--button--color--background--primary); border: none;
+  color: var(--button--color--text--primary); font-weight: var(--font-weight--medium);
+  padding: 0 var(--spacing--sm); font-size: var(--font-size--sm); border-radius: var(--radius--2xs);
+  box-shadow: inset 0 0 0 1px var(--button--border-color--primary), 0 1px 3px -1px var(--color--black-alpha-100);
 }
-.execute-workflow:hover { background: var(--accent-dim); }
+.execute-workflow:hover { background: var(--button--color--background--primary--hover-active-focus); }
 .run-error-toast {
   position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%); z-index: 8;
   color: var(--err); font-size: 12px; background: var(--bg-panel);
@@ -1357,14 +1365,15 @@ async function loadSavePolicy() {
 }
 /* Logs 条入文档流：展开/收起自然压缩画布区，浮动控件始终保持间距 */
 .canvas-stage { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* n8n 实测：Logs 条 33px(衬 8px 8px 8px 16px)/ bg light-2 / 文案 12px-500 白 */
 .logs-bar {
   flex: none; z-index: 9;
-  background: var(--bg-panel); border-top: 1px solid var(--border);
+  background: var(--color--background--light-2); border-top: var(--border-width) var(--border-style) var(--border-color);
 }
 .logs-head {
   display: flex; align-items: center; width: 100%; text-align: left;
-  padding: 8px 16px; background: none; border: none; border-radius: 0;
-  font-size: 12.5px; color: var(--text-dim);
+  padding: 8px 8px 8px 16px; background: none; border: none; border-radius: 0; height: auto;
+  font-size: var(--font-size--2xs); font-weight: var(--font-weight--medium); color: var(--color--text--shade-1);
 }
 .logs-body { max-height: 180px; overflow-y: auto; padding: 4px 16px 12px; }
 .log-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: 13px; }

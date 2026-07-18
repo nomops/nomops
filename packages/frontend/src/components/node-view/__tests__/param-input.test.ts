@@ -48,9 +48,9 @@ describe('ParamInput（schema 驱动控件分发）', () => {
     expect(w.emitted('change')![0]).toEqual([42]);
   });
 
-  it('boolean → checkbox', async () => {
+  it('boolean → n8n 式开关(role=switch)', async () => {
     const w = make({ type: 'boolean', default: false }, false);
-    await w.find('input[type="checkbox"]').setValue(true);
+    await w.find('[role="switch"]').trigger('click');
     expect(w.emitted('change')![0]).toEqual([true]);
   });
 

@@ -120,11 +120,15 @@ function onDrop(event: DragEvent) {
 </template>
 
 <style scoped>
-.canvas-wrap { flex: 1; min-height: 0; position: relative; }
-/* AI 能力连接：灰色虚线（区别于 main 数据流实线） */
+/* n8n 实测：画布底 --canvas--color--background(dark neutral-950)、
+   点阵 --canvas--dot--color(neutral-700)、主连线 oklch(0.627 0 0) 2px */
+.canvas-wrap { flex: 1; min-height: 0; position: relative; background: var(--canvas--color--background); }
+.canvas-wrap :deep(.vue-flow__background circle) { fill: var(--canvas--dot--color); }
+.canvas-wrap :deep(.vue-flow__edge-path) { stroke: oklch(0.42 0 0); stroke-width: 2px; } /* n8n 实测默认边线 */
+/* AI 能力连接：灰色虚线（n8n 同为虚线） */
 .canvas-wrap :deep(.vue-flow__edge.edge-ai path.vue-flow__edge-path) {
   stroke-dasharray: 6 4;
-  stroke: var(--text-faint);
+  stroke: oklch(0.42 0 0);
 }
 .zoom-controls {
   position: absolute; left: 14px; bottom: 14px; z-index: 10;
@@ -133,8 +137,8 @@ function onDrop(event: DragEvent) {
 .zc-i { width: 15px; height: 15px; }
 .zoom-controls button {
   width: 32px; height: 32px; padding: 0; font-size: 15px;
-  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
+  background: var(--color--background--light-3); border: var(--border-width) var(--border-style) var(--border-color); border-radius: var(--radius);
   display: flex; align-items: center; justify-content: center;
 }
-.zoom-controls button:hover { border-color: var(--accent); }
+.zoom-controls button:hover { border-color: var(--border-color--strong); }
 </style>
