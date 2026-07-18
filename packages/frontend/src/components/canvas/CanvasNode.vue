@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { Handle, Position } from '@vue-flow/core';
 import type { INode } from '@nomops/workflow';
 import { useNodeTypesStore } from '../../stores/node-types.js';
@@ -53,9 +53,40 @@ const canExecute = computed(() => {
   return true;
 });
 const overflowOpen = ref(false);
+const stickyColorOpen = ref(false);
 function closeOverflow() {
   overflowOpen.value = false;
 }
+
+/* 弹层(⋯ 菜单 / 便签色板)= 点击外部才关(popover 标准模式)。
+   之前用 @mouseleave 关会误触:弹层在工具条下方,而工具条容器 pointer-events:none,
+   鼠标从触发按钮移向弹层时会“穿透”到画布 → 触发节点 mouseleave → 没点到就关了。 */
+const toolbarRef = ref<HTMLElement>();
+let outsideHandler: ((e: PointerEvent) => void) | null = null;
+function detachOutside() {
+  if (outsideHandler) {
+    document.removeEventListener('pointerdown', outsideHandler, true);
+    outsideHandler = null;
+  }
+}
+watch(
+  () => overflowOpen.value || stickyColorOpen.value,
+  (open) => {
+    if (open && !outsideHandler) {
+      // 打开动作本身是 click(pointerdown 已过),故同步挂载不会自关
+      outsideHandler = (e: PointerEvent) => {
+        if (!toolbarRef.value?.contains(e.target as Node)) {
+          overflowOpen.value = false;
+          stickyColorOpen.value = false;
+        }
+      };
+      document.addEventListener('pointerdown', outsideHandler, true);
+    } else if (!open) {
+      detachOutside();
+    }
+  },
+);
+onBeforeUnmount(detachOutside);
 
 async function onExecute() {
   closeOverflow();
@@ -80,9 +111,9 @@ function onOpen() {
   editor.openNdv(props.data.node.name);
 }
 
-/** 便签颜色(对标 n8n change-sticky-color;nomops 便签色模型=parameters.color)。 */
+/** 便签颜色(对标 n8n change-sticky-color;nomops 便签色模型=parameters.color)。
+    stickyColorOpen 已在上方(watch 之前)声明,避免 watch getter 同步取值时命中 TDZ。 */
 const STICKY_COLORS = ['yellow', 'blue', 'green', 'purple'] as const;
-const stickyColorOpen = ref(false);
 function setStickyColor(c: string) {
   editor.setParam(props.data.node.name, 'color', c);
   stickyColorOpen.value = false;
@@ -118,18 +149,17 @@ const bottomStyle = (i: number, count: number) => ({
     :class="[`sticky-${stickyColor}`, { selected }]"
     :data-test-node="data.node.name"
     @dblclick.stop="stickyEditing = true"
-    @mouseleave="closeOverflow(); stickyColorOpen = false"
   >
     <!-- 便签悬停工具条(对标 n8n:🗑 Delete · 🎨 颜色 · ⋯ More;无执行/无禁用) -->
-    <div class="node-toolbar sticky-toolbar" :class="{ pinned: overflowOpen || stickyColorOpen }" @mousedown.stop @dblclick.stop>
+    <div ref="toolbarRef" class="node-toolbar sticky-toolbar" :class="{ pinned: overflowOpen || stickyColorOpen }" @mousedown.stop @dblclick.stop>
       <div class="node-toolbar-items" data-test="canvas-node-toolbar">
         <button class="tb-btn" title="Delete" data-test-node-tb="delete" @click.stop="onDelete">
           <svg viewBox="0 0 24 24" class="tb-i"><path fill="currentColor" d="M21 6a1 1 0 1 1 0 2h-1v12.125c0 .817-.424 1.534-.941 2.019-.522.488-1.256.856-2.059.856H7c-.803 0-1.537-.368-2.059-.856C4.424 21.659 4 20.943 4 20.125V8H3a1 1 0 0 1 0-2zm-7-5a3 3 0 0 1 3 3H7a3 3 0 0 1 3-3z" /></svg>
         </button>
-        <button class="tb-btn" title="Change color" data-test-node-tb="sticky-color" @click.stop="stickyColorOpen = !stickyColorOpen">
+        <button class="tb-btn" title="Change color" data-test-node-tb="sticky-color" @click.stop="stickyColorOpen = !stickyColorOpen; overflowOpen = false">
           <svg viewBox="0 0 24 24" class="tb-i"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M12 22a1 1 0 0 1 0-20a10 9 0 0 1 10 9a5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z" /><circle cx="13.5" cy="6.5" r=".5" fill="currentColor" /><circle cx="17.5" cy="10.5" r=".5" fill="currentColor" /><circle cx="6.5" cy="12.5" r=".5" fill="currentColor" /><circle cx="8.5" cy="7.5" r=".5" fill="currentColor" /></g></svg>
         </button>
-        <button class="tb-btn" title="More actions" data-test-node-tb="overflow" @click.stop="overflowOpen = !overflowOpen">
+        <button class="tb-btn" title="More actions" data-test-node-tb="overflow" @click.stop="overflowOpen = !overflowOpen; stickyColorOpen = false">
           <svg viewBox="0 0 24 24" class="tb-i"><path fill="currentColor" d="M4.5 9.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5m7.5 0a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5m7.5 0a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5" /></svg>
         </button>
       </div>
@@ -162,7 +192,7 @@ const bottomStyle = (i: number, count: number) => ({
     <div v-else class="sticky-content">{{ data.node.parameters['content'] || 'Double-click to edit' }}</div>
   </div>
 
-  <div v-else class="node-wrap" :data-test-node="data.node.name" @mouseleave="closeOverflow">
+  <div v-else class="node-wrap" :data-test-node="data.node.name">
     <!-- 触发器左侧闪电旗标 -->
     <span v-if="isTrigger" class="trigger-flag">⚡</span>
 
@@ -171,7 +201,7 @@ const bottomStyle = (i: number, count: number) => ({
       :class="[{ selected, trigger: isTrigger, subnode: isSubNode, disabled: isDisabled }, status ? `status-${status}` : '']"
     >
       <!-- 悬停工具条(对标 n8n canvas-node-toolbar):默认 opacity 0,悬停/聚焦/菜单打开时浮出 -->
-      <div class="node-toolbar" :class="{ pinned: overflowOpen }" @mousedown.stop @dblclick.stop>
+      <div ref="toolbarRef" class="node-toolbar" :class="{ pinned: overflowOpen }" @mousedown.stop @dblclick.stop>
         <div class="node-toolbar-items" data-test="canvas-node-toolbar">
           <button
             v-if="canExecute"
