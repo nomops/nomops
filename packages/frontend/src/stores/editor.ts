@@ -191,6 +191,32 @@ export const useEditorStore = defineStore('editor', {
       this.dirty = true;
     },
 
+    /** 悬停工具条「⏻ Deactivate/Activate」：切换节点禁用态(引擎跳过 disabled 节点、直通输入)。 */
+    toggleDisabled(name: string) {
+      const node = this.nodes.find((n) => n.name === name);
+      if (!node) return;
+      this.pushHistory();
+      node.disabled = !node.disabled;
+      this.dirty = true;
+    },
+
+    /** 悬停工具条「⋯ → Duplicate」：克隆节点(新 id/唯一名/偏移落位、深拷参数、不带连线)。 */
+    duplicateNode(name: string) {
+      const src = this.nodes.find((n) => n.name === name);
+      if (!src) return;
+      this.pushHistory();
+      const copy: INode = {
+        ...JSON.parse(JSON.stringify(src)) as INode,
+        id: crypto.randomUUID(),
+        name: uniqueNodeName(src.name, this.nodes.map((n) => n.name)),
+        position: [src.position[0] + 96 + 32, src.position[1] + 32], // n8n 式右下偏移
+      };
+      this.nodes.push(copy);
+      this.selectedNodeName = copy.name;
+      this.dirty = true;
+      return copy;
+    },
+
     /** Focus panel：钉/取钉参数；钉入时自动展开面板。 */
     togglePinParam(nodeName: string, paramName: string) {
       const idx = this.pinnedParams.findIndex((p) => p.nodeName === nodeName && p.paramName === paramName);

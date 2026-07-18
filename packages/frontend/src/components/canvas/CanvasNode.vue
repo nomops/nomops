@@ -41,6 +41,53 @@ function commitSticky(event: Event) {
 /** 每个节点类型的 SVG 图标与主色（core 图标着色，品牌图标自带配色）。 */
 const visual = computed(() => nodeIcon(props.data.node.type));
 
+/* ── 悬停工具条（对标 n8n 2.30.4 canvas-node-toolbar）──
+   实测按钮集分流:
+   - 普通/触发器/Agent/Tool 子节点 → ▶ Execute step · ⏻ Deactivate · 🗑 Delete · ⋯ More
+   - 能力子节点(仅 ai_languageModel/ai_memory 输出,不能单独跑)→ 去掉 ▶,余 3 键
+   - 便签 → 🗑 Delete · 🎨 颜色 · ⋯ More(见便签分支) */
+const isDisabled = computed(() => Boolean(props.data.node.disabled));
+const canExecute = computed(() => {
+  if (isSticky.value) return false;
+  if (isSubNode.value && aiOutputs.value.every((t) => t === 'ai_languageModel' || t === 'ai_memory')) return false;
+  return true;
+});
+const overflowOpen = ref(false);
+function closeOverflow() {
+  overflowOpen.value = false;
+}
+
+async function onExecute() {
+  closeOverflow();
+  if (!editor.id || execution.running) return;
+  await editor.save();
+  await execution.run(editor.id, { destinationNode: props.data.node.name });
+}
+function onToggleDisable() {
+  closeOverflow();
+  editor.toggleDisabled(props.data.node.name);
+}
+function onDelete() {
+  closeOverflow();
+  editor.removeNode(props.data.node.name);
+}
+function onDuplicate() {
+  closeOverflow();
+  editor.duplicateNode(props.data.node.name);
+}
+function onOpen() {
+  closeOverflow();
+  editor.openNdv(props.data.node.name);
+}
+
+/** 便签颜色(对标 n8n change-sticky-color;nomops 便签色模型=parameters.color)。 */
+const STICKY_COLORS = ['yellow', 'blue', 'green', 'purple'] as const;
+const stickyColorOpen = ref(false);
+function setStickyColor(c: string) {
+  editor.setParam(props.data.node.name, 'color', c);
+  stickyColorOpen.value = false;
+}
+
 /** ai 连接类型的短标签（Agent 底部能力口下方显示）。 */
 const AI_LABELS: Record<string, string> = {
   ai_languageModel: 'Model',
@@ -71,7 +118,38 @@ const bottomStyle = (i: number, count: number) => ({
     :class="[`sticky-${stickyColor}`, { selected }]"
     :data-test-node="data.node.name"
     @dblclick.stop="stickyEditing = true"
+    @mouseleave="closeOverflow(); stickyColorOpen = false"
   >
+    <!-- 便签悬停工具条(对标 n8n:🗑 Delete · 🎨 颜色 · ⋯ More;无执行/无禁用) -->
+    <div class="node-toolbar sticky-toolbar" :class="{ pinned: overflowOpen || stickyColorOpen }" @mousedown.stop @dblclick.stop>
+      <div class="node-toolbar-items" data-test="canvas-node-toolbar">
+        <button class="tb-btn" title="Delete" data-test-node-tb="delete" @click.stop="onDelete">
+          <svg viewBox="0 0 24 24" class="tb-i"><path fill="currentColor" d="M21 6a1 1 0 1 1 0 2h-1v12.125c0 .817-.424 1.534-.941 2.019-.522.488-1.256.856-2.059.856H7c-.803 0-1.537-.368-2.059-.856C4.424 21.659 4 20.943 4 20.125V8H3a1 1 0 0 1 0-2zm-7-5a3 3 0 0 1 3 3H7a3 3 0 0 1 3-3z" /></svg>
+        </button>
+        <button class="tb-btn" title="Change color" data-test-node-tb="sticky-color" @click.stop="stickyColorOpen = !stickyColorOpen">
+          <svg viewBox="0 0 24 24" class="tb-i"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M12 22a1 1 0 0 1 0-20a10 9 0 0 1 10 9a5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z" /><circle cx="13.5" cy="6.5" r=".5" fill="currentColor" /><circle cx="17.5" cy="10.5" r=".5" fill="currentColor" /><circle cx="6.5" cy="12.5" r=".5" fill="currentColor" /><circle cx="8.5" cy="7.5" r=".5" fill="currentColor" /></g></svg>
+        </button>
+        <button class="tb-btn" title="More actions" data-test-node-tb="overflow" @click.stop="overflowOpen = !overflowOpen">
+          <svg viewBox="0 0 24 24" class="tb-i"><path fill="currentColor" d="M4.5 9.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5m7.5 0a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5m7.5 0a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5" /></svg>
+        </button>
+      </div>
+      <!-- 颜色板:nomops 便签四色 -->
+      <div v-if="stickyColorOpen" class="sticky-swatches" @click.stop>
+        <button
+          v-for="c in STICKY_COLORS"
+          :key="c"
+          class="swatch"
+          :class="[`sw-${c}`, { on: stickyColor === c }]"
+          :title="c"
+          @click.stop="setStickyColor(c)"
+        />
+      </div>
+      <div v-if="overflowOpen" class="node-menu" data-test="node-overflow-menu" @click.stop>
+        <button class="nm-item" @click="onDuplicate">Duplicate</button>
+        <div class="nm-sep" />
+        <button class="nm-item danger" @click="onDelete">Delete</button>
+      </div>
+    </div>
     <textarea
       v-if="stickyEditing"
       class="sticky-edit"
@@ -84,14 +162,59 @@ const bottomStyle = (i: number, count: number) => ({
     <div v-else class="sticky-content">{{ data.node.parameters['content'] || 'Double-click to edit' }}</div>
   </div>
 
-  <div v-else class="node-wrap" :data-test-node="data.node.name">
+  <div v-else class="node-wrap" :data-test-node="data.node.name" @mouseleave="closeOverflow">
     <!-- 触发器左侧闪电旗标 -->
     <span v-if="isTrigger" class="trigger-flag">⚡</span>
 
     <div
       class="nomops-node"
-      :class="[{ selected, trigger: isTrigger, subnode: isSubNode }, status ? `status-${status}` : '']"
+      :class="[{ selected, trigger: isTrigger, subnode: isSubNode, disabled: isDisabled }, status ? `status-${status}` : '']"
     >
+      <!-- 悬停工具条(对标 n8n canvas-node-toolbar):默认 opacity 0,悬停/聚焦/菜单打开时浮出 -->
+      <div class="node-toolbar" :class="{ pinned: overflowOpen }" @mousedown.stop @dblclick.stop>
+        <div class="node-toolbar-items" data-test="canvas-node-toolbar">
+          <button
+            v-if="canExecute"
+            class="tb-btn"
+            title="Execute step"
+            data-test-node-tb="execute"
+            :disabled="execution.running"
+            @click.stop="onExecute"
+          >
+            <svg viewBox="0 0 24 24" class="tb-i"><path fill="currentColor" d="M5.52 2.122c.322-.175.713-.16 1.021.037l14 9a1 1 0 0 1 0 1.682l-14 9A1.001 1.001 0 0 1 5 21V3a1 1 0 0 1 .52-.878" /></svg>
+          </button>
+          <button
+            class="tb-btn"
+            :title="isDisabled ? 'Activate' : 'Deactivate'"
+            data-test-node-tb="disable"
+            @click.stop="onToggleDisable"
+          >
+            <svg viewBox="0 0 24 24" class="tb-i"><path fill="currentColor" d="M16.645 5.907a1.5 1.5 0 0 1 2.122.028 9.77 9.77 0 0 1 2.585 4.953 9.9 9.9 0 0 1-.53 5.579 9.66 9.66 0 0 1-3.476 4.357 9.36 9.36 0 0 1-5.28 1.657 9.36 9.36 0 0 1-5.292-1.623 9.66 9.66 0 0 1-3.504-4.335 9.9 9.9 0 0 1-.564-5.576 9.77 9.77 0 0 1 2.556-4.97l.11-.105a1.501 1.501 0 0 1 2.05 2.187l-.166.178a6.8 6.8 0 0 0-1.602 3.266 6.9 6.9 0 0 0 .393 3.884 6.66 6.66 0 0 0 2.413 2.989 6.36 6.36 0 0 0 3.595 1.105 6.36 6.36 0 0 0 3.59-1.128 6.66 6.66 0 0 0 2.394-3.005 6.9 6.9 0 0 0 .37-3.887 6.77 6.77 0 0 0-1.79-3.433 1.5 1.5 0 0 1 .026-2.12" /><path fill="currentColor" d="M12.035 1.481a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-3 0v-9a1.5 1.5 0 0 1 1.5-1.5" /></svg>
+          </button>
+          <button class="tb-btn" title="Delete" data-test-node-tb="delete" @click.stop="onDelete">
+            <svg viewBox="0 0 24 24" class="tb-i"><path fill="currentColor" d="M21 6a1 1 0 1 1 0 2h-1v12.125c0 .817-.424 1.534-.941 2.019-.522.488-1.256.856-2.059.856H7c-.803 0-1.537-.368-2.059-.856C4.424 21.659 4 20.943 4 20.125V8H3a1 1 0 0 1 0-2zm-7-5a3 3 0 0 1 3 3H7a3 3 0 0 1 3-3z" /></svg>
+          </button>
+          <button
+            class="tb-btn"
+            title="More actions"
+            data-test-node-tb="overflow"
+            @click.stop="overflowOpen = !overflowOpen"
+          >
+            <svg viewBox="0 0 24 24" class="tb-i"><path fill="currentColor" d="M4.5 9.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5m7.5 0a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5m7.5 0a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5" /></svg>
+          </button>
+        </div>
+        <!-- ⋯ 溢出菜单:落地能对应 nomops 真实能力的子集(Open/Execute/Deactivate/Duplicate/Delete);
+             n8n 的 Rename/Pin/Replace/Convert-to-subworkflow 暂未实现,不放空项 -->
+        <div v-if="overflowOpen" class="node-menu" data-test="node-overflow-menu" @click.stop>
+          <button class="nm-item" @click="onOpen">Open…</button>
+          <button v-if="canExecute" class="nm-item" @click="onExecute">Execute step</button>
+          <button class="nm-item" @click="onToggleDisable">{{ isDisabled ? 'Activate' : 'Deactivate' }}</button>
+          <button class="nm-item" @click="onDuplicate">Duplicate</button>
+          <div class="nm-sep" />
+          <button class="nm-item danger" @click="onDelete">Delete</button>
+        </div>
+      </div>
+
       <!-- main 输入：左侧 -->
       <Handle
         v-for="(_, i) in mainInputs"
@@ -145,8 +268,8 @@ const bottomStyle = (i: number, count: number) => ({
       />
     </div>
 
-    <!-- 名称在卡片下方 -->
-    <div class="node-label">{{ data.node.name }}</div>
+    <!-- 名称在卡片下方(禁用态 n8n 补 " (Deactivated)") -->
+    <div class="node-label">{{ data.node.name }}<span v-if="isDisabled"> (Deactivated)</span></div>
   </div>
 </template>
 
@@ -170,6 +293,7 @@ const bottomStyle = (i: number, count: number) => ({
 .nomops-node.trigger { border-top-left-radius: 36px; border-bottom-left-radius: 36px; } /* n8n 实测 36 */
 .nomops-node.subnode { width: 80px; height: 80px; border-radius: 50%; }
 .nomops-node.selected { border-color: var(--canvas--color--selected); box-shadow: 0 0 0 1px var(--canvas--color--selected); }
+.nomops-node.disabled { border-color: var(--color--foreground); } /* n8n 实测:禁用态边框 → foreground 中灰 */
 .nomops-node.status-running { border-color: var(--node--border-color--running); }
 .nomops-node.status-success { border-color: var(--color--success); }
 .nomops-node.status-error { border-color: var(--color--danger); }
@@ -185,6 +309,71 @@ const bottomStyle = (i: number, count: number) => ({
   position: absolute; right: -6px; transform: translateX(100%);
   font-size: 10px; color: var(--text-dim);
 }
+
+/* ── 悬停工具条 — n8n 2.30.4 实测 ──
+   外层:absolute/bottom:100%/居中/衬底 --spacing--xs(离节点间距)/pointer-events:none;
+   药丸:--canvas--color--background 底、圆角 --radius、按钮 28×28、图标 12、字色 tint-1;
+   默认 opacity 0,:hover / :focus-within / .pinned → 1(过渡 .1s)。 */
+.node-toolbar {
+  position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+  padding-bottom: var(--spacing--xs);
+  display: flex; justify-content: center;
+  pointer-events: none; z-index: 5;
+}
+.node-toolbar-items {
+  display: flex; align-items: center;
+  background: var(--canvas--color--background);
+  border-radius: var(--radius);
+  pointer-events: auto;
+  opacity: 0; transition: opacity 0.1s ease-in;
+}
+.nomops-node:hover .node-toolbar-items,
+.nomops-node:focus-within .node-toolbar-items,
+.sticky-note:hover .node-toolbar-items,
+.node-toolbar.pinned .node-toolbar-items { opacity: 1; }
+.tb-btn {
+  width: 28px; height: 28px; padding: 0;
+  display: grid; place-items: center;
+  background: none; border: none; border-radius: var(--radius);
+  color: var(--color--text--tint-1); cursor: pointer;
+}
+.tb-btn:hover:not(:disabled) { background: var(--color--background--light-1); color: var(--color--text--shade-1); }
+.tb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.tb-i { width: 12px; height: 12px; display: block; }
+
+/* ⋯ 溢出菜单 / 便签色板 */
+.node-menu {
+  position: absolute; top: 100%; right: 0; margin-top: 4px;
+  display: flex; flex-direction: column; min-width: 168px;
+  background: var(--color--background--light-3);
+  border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--radius); padding: 4px;
+  box-shadow: 0 4px 16px var(--color--black-alpha-100);
+  pointer-events: auto; z-index: 10;
+}
+.nm-item {
+  text-align: left; padding: 6px 10px; font-size: var(--font-size--2xs);
+  color: var(--color--text); background: none; border: none; border-radius: var(--radius);
+  cursor: pointer; white-space: nowrap; font-family: inherit;
+}
+.nm-item:hover { background: var(--color--background--light-1); color: var(--color--text--shade-1); }
+.nm-item.danger { color: var(--color--danger); }
+.nm-sep { height: 1px; background: var(--border-color); margin: 4px 2px; }
+
+.sticky-swatches {
+  position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 4px;
+  display: flex; gap: 6px; padding: 6px;
+  background: var(--color--background--light-3);
+  border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--radius); box-shadow: 0 4px 16px var(--color--black-alpha-100);
+  pointer-events: auto; z-index: 10;
+}
+.swatch { width: 18px; height: 18px; border-radius: var(--radius); border: 1px solid var(--border-color); cursor: pointer; }
+.swatch.on { box-shadow: 0 0 0 2px var(--canvas--color--selected); }
+.sw-yellow { background: var(--sticky--color--background--variant-1); }
+.sw-blue { background: var(--sticky--color--background--variant-5); }
+.sw-green { background: var(--sticky--color--background--variant-4); }
+.sw-purple { background: var(--sticky--color--background--variant-6); }
 /* ai 能力口：菱形观感 + 类型标签在卡片下方 */
 :deep(.ai-handle) {
   width: 9px; height: 9px; border-radius: 2px; transform: translate(-50%, 0) rotate(45deg);
@@ -199,6 +388,7 @@ const bottomStyle = (i: number, count: number) => ({
 /* 便签 — n8n 实测：--sticky--* 令牌（dark: 变体1 黄=yellow-900底/800边;
    蓝=blue-900/800; 绿=green-950/900; 紫=purple-950/800）、圆角 4、1px 边 */
 .sticky-note {
+  position: relative;
   width: 240px; min-height: 160px; border-radius: var(--radius); padding: 12px;
   font-size: var(--font-size--xs); line-height: 1.5; cursor: default;
   border: var(--border-width) var(--border-style) var(--sticky--border-color);

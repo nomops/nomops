@@ -47,6 +47,11 @@
 4. ✅ 表达式自动补全弹层 —— 用真 Chrome 打开 n8n NDV 手测取证(SUGGESTED 分组头 10px/600 大写 + 列表 CommitMono/条目衬 2×8/选中 neutral-700 底+purple-400 字 + 右侧 280 宽说明卡/紫 mono 标题)。nomops 侧用 `@codemirror/autocomplete` + `EditorView.theme` 逐值落地,只列引擎真实注入的 8 个 `$` 全局(不造引擎没有的函数),已在 nomops NDV(HTTP Request→URL→ƒx)并排复量:分组头 10/600/大写/衬 2×4、选中 neutral-700+purple-400+CommitMono/衬 2×8、说明卡 280 宽——全中。
 5. ✅ 执行行 ⋮ 菜单 —— 同上手测,两个 Retry 项加 "(from node with error)" 后缀并按 status==='error' 门控。
 6. ✅ 鉴权页组(login/forgot-password)—— 用真 Chrome 登出 n8n 取证 /signin+/forgot-password 计算样式:页面平铺 light-2、卡片 352×light-3/1px white-alpha-100/圆角 8/投影 rgba(99,77,255,.06) 0 4px16px、标题 20/400、label 14/500 衬下 8、输入 36 高/圆角 6/bg light-2/inset 1px 环(聚焦 purple-500)、按钮 36 橙 primary、链接 16/400 橙。nomops LoginView 已逐值对齐并在 5181 复量(卡片 [544,106,352,352]、输入 36、聚焦环 purple-500——全中);"Forgot my password" 请求页标题改为 n8n 真值 "Recover password"。SignupView 为 nomops 自有营销页(n8n 无对应,保留)。
+7. ✅ 节点悬停工具条(canvas-node-toolbar)—— nomops 原先**完全没有**;用真 Chrome(Control_Chrome)读 n8n 20 个真实节点 + 4 便签取证按钮集差异,逐值实现于 CanvasNode.vue:
+   - 药丸 `--canvas--color--background`/圆角 4/高 28、按钮 28×28/图标 12(viewBox24 逐字复刻 play/power/trash/ellipsis/palette)/字色 tint-1、默认 opacity0 悬停→1;禁用态边框 → `--color--foreground`、名称补 "(Deactivated)"(均 n8n 真值)。
+   - 三种按钮集(实测分流):普通/触发器/Agent/Tool → ▶Execute step·⏻Deactivate·🗑Delete·⋯More;**能力子节点(Model/Memory)去掉 ▶,余 3 键**;便签 → 🗑·🎨Change color·⋯。
+   - 动作全部有真实能力:执行=`execution.run(destinationNode)`、禁用=新增 `editor.toggleDisabled`(引擎 workflow-execute 已 input0 直通)、删除=`removeNode`、复制=新增 `duplicateNode`;⋯ 菜单落地 Open/Execute/Deactivate/Duplicate/Delete(n8n 的 Rename/Pin/Replace/Convert-to-subworkflow 暂未实现,不放空项)。
+   - 5181 并排复量:触发器 4 键 + 子节点 3 键(a11y group 双证)、⋯ 菜单、删除、禁用(边框 lab20.78=foreground/"(Deactivated)"/title→Activate)、便签 3 键 + 4 色板(黄→蓝切换生效)——全中。
 
 ## 五、环境清理记录
 - n8n 侧:临时工作流 "UI Verify Tmp" 归档+删除(200/200),零残留
