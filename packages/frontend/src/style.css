@@ -28,9 +28,9 @@ body {
   --upgrade: var(--color--success);
   /* --radius 不再覆写：由 n8n-tokens.css 提供（4px 真值） */
   --sidebar-w: 200px;                               /* 实测 aside#sidebar 展开宽 */
-  /* auth 页背景（nomops 自有；卡片/主按钮均走真令牌） */
+  /* auth 页 — n8n /signin 实测：页面平铺 light-2，卡片 light-3 */
   --grad-primary: var(--color--primary);
-  --auth-bg: radial-gradient(1000px 560px at 50% -8%, var(--color--background--light-1) 0%, var(--color--background--light-2) 58%);
+  --auth-bg: var(--color--background--light-2);
   --auth-card: var(--color--background--light-3);
   font-family: var(--font-family);
 }
@@ -208,6 +208,8 @@ th { color: var(--text-dim); font-weight: 500; }
   padding: 4px 0 4px 8px;
 }
 .cm-editor.cm-focused { outline: none; border-color: var(--color--primary); }
+/* 表达式自动补全弹层样式改由 ExpressionInput.vue 的 EditorView.theme 注入
+   （编辑器作用域优先级高于 CodeMirror 运行时默认样式，无需在此打优先级战）。 */
 /* {{ }} 可解析片段 — n8n 令牌:valid 绿底/invalid 红底(此处静态高亮用 pending 样式) */
 .cm-expression {
   color: var(--expression-editor--resolvable--color--foreground--valid);

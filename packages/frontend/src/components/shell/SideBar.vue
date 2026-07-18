@@ -270,6 +270,9 @@ async function openAbout() {
         </button>
         <!-- 结构对齐 n8n Help 菜单：普通条目 → About → 分组标题 "What's new" → 组内条目 -->
         <div v-if="flyout === 'help'" class="flyout" data-test="help-flyout" @click.stop>
+          <button class="flyout-item" data-test="help-run-demo" @click="router.push({ name: 'templates' }); closeAll()">
+            {{ t('Run live demo') }}
+          </button>
           <span class="flyout-item dim" data-test="help-docs">{{ t('Documentation') }} · docs/ (README → 01–10)</span>
           <button class="flyout-item" data-test="help-bug" @click="showBug = true; closeAll()">{{ t('Report a problem') }}</button>
           <button class="flyout-item" data-test="help-about" @click="openAbout">{{ t('About nomops') }}</button>

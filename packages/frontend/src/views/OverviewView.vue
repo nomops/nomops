@@ -739,15 +739,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
       <div class="ov-actions">
         <!-- 右上创建按钮随 tab 切换（对标 n8n：split 主按钮 + caret 列其余创建项） -->
         <template v-if="tab !== 'project-settings'">
-          <button
-            v-if="tab === 'workflows' || tab === 'executions'"
-            class="btn secondary"
-            data-test="run-demo"
-            @click="router.push({ name: 'templates' })"
-          >
-            <svg viewBox="0 0 24 24" fill="currentColor" class="i15"><path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12l1-8.5z" /></svg>
-            {{ t('Run live demo') }}
-          </button>
+          <!-- Run live demo 已按裁决移入侧栏 Help 菜单 -->
           <div class="split" @click.stop>
             <button class="btn primary split-main" data-test="create-primary" @click="runCreate(primaryCreate)">
               {{ t(CREATE_ACTIONS[primaryCreate].label) }}
@@ -1136,13 +1128,16 @@ const fmtRunTime = (row: ExecutionRow): string => {
                     <svg viewBox="0 0 24 24" fill="currentColor" class="i18"><circle cx="12" cy="5" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="12" cy="19" r="1.7" /></svg>
                   </button>
                   <div v-if="openMenu === `exec-${row.id}`" class="menu row-menu-pop exec-menu-pop" :data-test-exec-menu-pop="row.id">
-                    <button class="menu-item" :disabled="retryingId === row.id" @click="retryExec(row, false)">
-                      {{ retryingId === row.id ? t('Retrying…') : t('Retry with currently saved workflow') }}
-                    </button>
-                    <button class="menu-item" :disabled="retryingId === row.id" @click="retryExec(row, true)">
-                      {{ t('Retry with original workflow') }}
-                    </button>
-                    <div class="menu-sep" />
+                    <!-- n8n 真值(错误行 ⋮ 实测):两个 Retry 项带 “(from node with error)” 后缀,仅错误执行可重试 -->
+                    <template v-if="row.status === 'error'">
+                      <button class="menu-item" :disabled="retryingId === row.id" @click="retryExec(row, false)">
+                        {{ retryingId === row.id ? t('Retrying…') : t('Retry with currently saved workflow (from node with error)') }}
+                      </button>
+                      <button class="menu-item" :disabled="retryingId === row.id" @click="retryExec(row, true)">
+                        {{ t('Retry with original workflow (from node with error)') }}
+                      </button>
+                      <div class="menu-sep" />
+                    </template>
                     <button class="menu-item danger" :data-test-exec-delete="row.id" @click="deleteExec(row)">{{ t('Delete') }}</button>
                   </div>
                 </div>

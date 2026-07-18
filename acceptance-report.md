@@ -29,14 +29,14 @@
 
 | 元素 | 位置 | n8n 有无 | 建议 |
 |---|---|---|---|
-| Run live demo 按钮 | Overview 页头 | 无 | 保留(演示入口)或移入 Help 菜单 |
+| Run live demo 按钮 | Overview 页头 | 无 | ✅ 已裁决:移入侧栏 Help 飞出菜单顶部(页头不再有此钮) |
 | Admin Panel 入口 | 主侧栏底部 | 无(n8n 无运营台) | 保留(nomops 核心差异化) |
 | Personal 导航项 | 主侧栏 | n8n 折叠于 Overview | 保留 |
 | ¥99 Pro 支付块 | Settings/Usage | 无(n8n 是 View plans 外链) | 保留(商业化) |
 | Languages 设置页 | Settings | 无(n8n 无 i18n 页) | 保留 |
 | Observability/Audit 页 | Settings/侧栏 | n8n 为 OpenTelemetry | 保留命名或改名对齐 |
 | Delete node 按钮 | NDV 头带 | 无(画布右键) | ✅ 已移除(画布 Delete/Backspace 路径确认存在) |
-| 执行行内 Retry 双选项 | Executions ⋮ | n8n 相同(Retry 两种) | 一致,保留 |
+| 执行行内 Retry 双选项 | Executions ⋮ | n8n 相同(Retry 两种) | ✅ 对齐真值:两项加 "(from node with error)" 后缀,且仅错误执行显示(手测取证) |
 | 工作流卡片 Activate/Manage tags/Move to | 卡片 ⋮ | n8n 无(Publish 体系/无移动) | 保留(nomops 功能) |
 | 文件夹(免注册可用) | 列表工具行 | n8n 注册门控 | 保留(体验优于 n8n) |
 
@@ -44,8 +44,9 @@
 1. ✅ Executions flask(manual)图标列 —— ExecutionRow 本就含 mode 字段,已实现(47px 列,视觉待有数据时复验)
 2. ✅ NDV 中栏宽度 —— 启发式落地:可见参数 ≤4 → 420,否则 640(与 Set/IF 实测吻合)
 3. ✅ 排序控件 —— 修正为 n8n 真值 196×32/12px 字(与搜索同宽)
-4. 表达式自动补全弹层 UI 与执行行 ⋮ 菜单 —— 阶段三遗留的 2 个"需人工手测"项
-5. 鉴权页组(login/signup)仍为 nomops 浅色自有设计 —— n8n 侧取证被阻(见 manifest §0.2),如需对齐需专项安排
+4. ✅ 表达式自动补全弹层 —— 用真 Chrome 打开 n8n NDV 手测取证(SUGGESTED 分组头 10px/600 大写 + 列表 CommitMono/条目衬 2×8/选中 neutral-700 底+purple-400 字 + 右侧 280 宽说明卡/紫 mono 标题)。nomops 侧用 `@codemirror/autocomplete` + `EditorView.theme` 逐值落地,只列引擎真实注入的 8 个 `$` 全局(不造引擎没有的函数),已在 nomops NDV(HTTP Request→URL→ƒx)并排复量:分组头 10/600/大写/衬 2×4、选中 neutral-700+purple-400+CommitMono/衬 2×8、说明卡 280 宽——全中。
+5. ✅ 执行行 ⋮ 菜单 —— 同上手测,两个 Retry 项加 "(from node with error)" 后缀并按 status==='error' 门控。
+6. ✅ 鉴权页组(login/forgot-password)—— 用真 Chrome 登出 n8n 取证 /signin+/forgot-password 计算样式:页面平铺 light-2、卡片 352×light-3/1px white-alpha-100/圆角 8/投影 rgba(99,77,255,.06) 0 4px16px、标题 20/400、label 14/500 衬下 8、输入 36 高/圆角 6/bg light-2/inset 1px 环(聚焦 purple-500)、按钮 36 橙 primary、链接 16/400 橙。nomops LoginView 已逐值对齐并在 5181 复量(卡片 [544,106,352,352]、输入 36、聚焦环 purple-500——全中);"Forgot my password" 请求页标题改为 n8n 真值 "Recover password"。SignupView 为 nomops 自有营销页(n8n 无对应,保留)。
 
 ## 五、环境清理记录
 - n8n 侧:临时工作流 "UI Verify Tmp" 归档+删除(200/200),零残留

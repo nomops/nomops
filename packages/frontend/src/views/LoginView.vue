@@ -167,7 +167,7 @@ async function submitReset() {
 
       <!-- 忘记密码请求 -->
       <template v-else-if="mode === 'forgot'">
-        <h1 class="card-title">Forgot my password</h1>
+        <h1 class="card-title">Recover password</h1>
         <form @submit.prevent="submitForgot">
           <label class="field-label">Email</label>
           <input v-model="email" data-test="forgot-email" type="email" required />
@@ -269,6 +269,12 @@ async function submitReset() {
 </template>
 
 <style scoped>
+/* ══ n8n 2.30.4 /signin 实测（1440×840, dark）══
+   页面平铺 light-2；logo 块高 52 顶距 35，与卡片间距 19；
+   卡片 352 宽 / light-3 / 1px white-alpha-100 / 圆角 8 / 衬 24 / 投影 rgba(99,77,255,.06) 0 4px 16px；
+   标题 20/400 行高 25 距下 32；label 14/500 白衬下 8；
+   输入 36 高 / 圆角 6 / bg light-2 / inset 1px 环(聚焦=purple-500) / 字 14 衬 0 12；
+   按钮 36 高橙 primary 圆角 6 衬 0 16 距上 32；链接 16/400 橙无下划线距上 16 */
 .auth-page {
   flex: 1;
   min-height: 100vh;
@@ -276,63 +282,72 @@ async function submitReset() {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 64px 16px 40px;
+  padding: 35px 16px 40px;
 }
 
-/* logo：图标 + 字标，居中在卡片上方 */
-.auth-logo { display: flex; align-items: center; gap: 10px; margin-bottom: 44px; }
+/* logo：图标 + 字标，居中在卡片上方（尺寸对齐 n8n logo 块 52 高） */
+.auth-logo { display: flex; align-items: center; gap: 10px; height: 52px; margin-bottom: 19px; }
 .logo-mark { width: 58px; height: 24px; }
 .logo-word { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; color: var(--text-hi); }
 
 .auth-card {
-  width: 440px;
+  width: 352px;
   max-width: 94vw;
   background: var(--auth-card);
-  border: 1px solid var(--border);
+  border: var(--border-width) var(--border-style) var(--border-color);
   border-radius: 8px;
-  padding: 40px 32px 44px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+  padding: 24px;
+  box-shadow: 0 4px 16px rgba(99, 77, 255, 0.06);
+  box-sizing: border-box;
 }
 .card-title {
-  margin: 0 0 34px;
-  font-size: 24px;
-  font-weight: 500;
-  color: var(--text-hi);
+  margin: 0 0 32px;
+  font-size: 20px;
+  font-weight: var(--font-weight--regular);
+  line-height: 25px;
+  color: var(--color--text--shade-1);
   text-align: center;
-  letter-spacing: -0.2px;
 }
 
 .field-label {
   display: block;
-  margin: 18px 0 8px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-hi);
+  margin: 16px 0 0;
+  padding-bottom: 8px;
+  font-size: var(--font-size--sm);
+  font-weight: var(--font-weight--medium);
+  line-height: 18.9px; /* n8n 实测 label 文本行高（14px × 1.35） */
+  color: var(--color--text--shade-1);
 }
 form .field-label:first-child { margin-top: 0; }
-.req { color: var(--accent); font-weight: 600; }
+.req { color: var(--accent); font-weight: var(--font-weight--medium); }
 
 .auth-card input:not([type='checkbox']) {
   width: 100%;
-  background: var(--bg);
-  border: 1px solid var(--border);
+  height: 36px;
+  background: var(--color--background--light-2);
+  border: none;
   border-radius: 6px;
-  padding: 10px 12px;
-  font-size: 14px;
-  color: var(--text-hi);
+  box-shadow: inset 0 0 0 1px var(--border-color);
+  padding: 0 12px;
+  font-size: var(--font-size--sm);
+  color: var(--color--text--shade-1);
+  box-sizing: border-box;
 }
-/* 对标 n8n：聚焦描边用品牌渐变里的紫 */
-.auth-card input:not([type='checkbox']):focus { outline: none; border-color: #6366f1; }
+/* n8n 实测：聚焦环 = purple-500（同卡片投影紫系） */
+.auth-card input:not([type='checkbox']):focus {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--color--purple-500);
+}
 
-.field-hint { margin: 7px 0 0; font-size: 12px; color: var(--text-dim); }
+.field-hint { margin: 7px 0 0; font-size: var(--font-size--2xs); color: var(--text-dim); }
 
 .check-row {
   display: flex;
   align-items: flex-start;
   gap: 9px;
-  margin-top: 18px;
-  font-size: 14px;
-  color: var(--text-hi);
+  margin-top: 16px;
+  font-size: var(--font-size--sm);
+  color: var(--color--text--shade-1);
   cursor: pointer;
   line-height: 1.4;
 }
@@ -341,41 +356,36 @@ form .field-label:first-child { margin-top: 0; }
   accent-color: var(--accent);
 }
 
-/* 按钮：橙色、自适应宽、居中（对标 n8n 的 Next / Sign in） */
-.submit-row { display: flex; justify-content: center; margin-top: 34px; }
+/* 按钮：n8n 实测 36 高 primary、自适应宽、居中 */
+.submit-row { display: flex; justify-content: center; margin-top: 32px; }
 .submit-btn {
-  background: var(--accent);
-  color: #fff;
+  height: 36px;
+  background: var(--button--color--background--primary);
+  color: var(--button--color--text--primary);
   border: none;
   border-radius: 6px;
-  padding: 11px 24px;
-  font-size: 14px;
-  font-weight: 600;
+  padding: 0 16px;
+  font-size: var(--font-size--sm);
+  font-weight: var(--font-weight--medium);
+  box-shadow: inset 0 0 0 1px var(--button--border-color--primary), 0 1px 3px -1px var(--color--black-alpha-100);
   cursor: pointer;
 }
-.submit-btn:hover { filter: brightness(1.06); }
+.submit-btn:hover { background: var(--button--color--background--primary--hover-active-focus); }
 .submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
-.forgot-link {
-  display: block;
-  text-align: center;
-  margin-top: 22px;
-  font-size: 14px;
-  color: var(--accent);
-  text-decoration: none;
-}
-.forgot-link:hover { text-decoration: underline; }
-
+.forgot-link,
 .aux-link {
   display: block;
   text-align: center;
-  margin-top: 14px;
-  font-size: 13px;
-  color: var(--text-dim);
+  margin-top: 16px;
+  font-size: var(--font-size--md);
+  font-weight: var(--font-weight--regular);
+  line-height: 19px; /* n8n 实测链接行框 19 高 */
+  color: var(--color--primary);
   text-decoration: none;
 }
-.aux-link:hover { color: var(--text-hi); }
+.forgot-link:hover, .aux-link:hover { text-decoration: underline; }
 
-.error-text { color: #e5484d; font-size: 13px; margin: 12px 0 0; }
-.hint-text { color: var(--text-dim); font-size: 13px; margin: 0 0 14px; text-align: center; }
+.error-text { color: var(--color--danger); font-size: 13px; margin: 12px 0 0; }
+.hint-text { color: var(--color--text); font-size: var(--font-size--sm); margin: 0 0 14px; text-align: center; }
 </style>
