@@ -35,6 +35,19 @@
       "port": 5180
     },
     {
+      "name": "frontend-verify-b",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@nomops/frontend",
+        "dev",
+        "--port",
+        "5181",
+        "--strictPort"
+      ],
+      "port": 5181
+    },
+    {
       "name": "server-enterprise",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": [
