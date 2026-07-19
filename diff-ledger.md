@@ -17,7 +17,8 @@
 - ✅ **Batch 1**(6a28b35):D028 动态 title · D022 命令面板 Data tables 组(+D021 in Personal)· D077 便签 7 色 · D001 侧栏折叠态。
 - ✅ **Batch 2**(6bf761a):D152 Insights 锁态 · D047 Variables 锁态 · D128 Roles Enterprise 锁卡。
 - ✅ **Batch 3**(8cbf47c):D154 Shared 整页 · D131 MCP OAuth settings tab · D058/D059 Evaluations pill+注册锁态。
-- ⏳ **剩余 P0(12)**:D061 Workflow settings 5 字段 · D063 History 整页 · D067 节点右键 13 项 · D069 节点面板 7 分类 · D070 8 触发器 · D085 执行详情只读画布 · D088 NDV Settings · D096 Mapping\|From AI · D103-D106 参数控件引擎 · D127 Security&policies 锁墙 · D129 OTel 页 · D130 Chat 15 provider。
+- ✅ **Batch 4**(ed47b1a):D061 Workflow settings 9 字段(+D062 #ID)· D088 NDV Settings tab 6 项(INode 扩展)。
+- ⏳ **剩余 P0(11)**:D063 History 整页 · D067 节点右键 13 项 · D069 节点面板 7 分类 · D070 8 触发器 · D085 执行详情只读画布 · D096 Mapping\|From AI · D103-D106 参数控件引擎(IF/Set/resourceLocator/凭证选择器)· D127 Security&policies 锁墙 · D129 OTel 页 · D130 Chat 15 provider。
 
 ---
 
