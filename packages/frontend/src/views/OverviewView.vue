@@ -25,7 +25,8 @@ import { locale, t } from '../lib/i18n.js';
 
 /** Overview：五 Tab（Workflows/Credentials/Executions/Variables/Data tables）+ 搜索/排序/筛选 + 分页。 */
 type Tab = 'workflows' | 'credentials' | 'executions' | 'variables' | 'data-tables' | 'project-settings';
-type SortKey = 'updated' | 'name-asc' | 'name-desc';
+type SortKey = 'updated' | 'created' | 'name-asc' | 'name-desc';
+type StatusFilter = 'all' | 'published' | 'unpublished';
 
 const route = useRoute();
 const router = useRouter();
@@ -190,7 +191,8 @@ function closeMenus() {
 
 /* 筛选 / 排序 / 分页 */
 const sortKey = ref<SortKey>('updated');
-const activeOnly = ref(false);
+// D037 对标 n8n:Status 三态(All/Published/Unpublished),取代原 activeOnly 布尔
+const statusFilter = ref<StatusFilter>('all');
 const showFilter = ref(false);
 const page = ref(1);
 const pageSize = ref(50);
@@ -359,13 +361,15 @@ const q = computed(() => search.value.trim().toLowerCase());
 const sortedWorkflows = computed(() => {
   let rows = workflows.value.slice();
   if (q.value) rows = rows.filter((w) => w.name.toLowerCase().includes(q.value));
-  if (activeOnly.value) rows = rows.filter((w) => w.active);
+  if (statusFilter.value === 'published') rows = rows.filter((w) => w.active);
+  else if (statusFilter.value === 'unpublished') rows = rows.filter((w) => !w.active);
   if (tagFilterId.value) rows = rows.filter((w) => tagsOf(w.id).some((t) => t.id === tagFilterId.value));
   rows.sort((a, b) => {
     // 收藏置顶（同组内再按所选键排）
     if (Boolean(a.favorite) !== Boolean(b.favorite)) return a.favorite ? -1 : 1;
     if (sortKey.value === 'name-asc') return a.name.localeCompare(b.name);
     if (sortKey.value === 'name-desc') return b.name.localeCompare(a.name);
+    if (sortKey.value === 'created') return b.createdAt.localeCompare(a.createdAt);
     return b.updatedAt.localeCompare(a.updatedAt);
   });
   return rows;
@@ -615,7 +619,7 @@ async function deleteExec(row: ExecutionRow) {
 const sortLabel = computed(
   () =>
     t(
-      { updated: 'Sort by last updated', 'name-asc': 'Sort by name (A-Z)', 'name-desc': 'Sort by name (Z-A)' }[
+      { updated: 'Sort by last updated', created: 'Sort by last created', 'name-asc': 'Sort by name (A-Z)', 'name-desc': 'Sort by name (Z-A)' }[
         sortKey.value
       ],
     ),
@@ -798,6 +802,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
         </button>
         <div v-if="openMenu === 'sort'" class="menu sort-menu" data-test="sort-menu">
           <button class="menu-item" @click="sortKey = 'updated'; closeMenus()">{{ t('Sort by last updated') }}</button>
+          <button class="menu-item" @click="sortKey = 'created'; closeMenus()">{{ t('Sort by last created') }}</button>
           <button class="menu-item" @click="sortKey = 'name-asc'; closeMenus()">{{ t('Sort by name (A-Z)') }}</button>
           <button class="menu-item" @click="sortKey = 'name-desc'; closeMenus()">{{ t('Sort by name (Z-A)') }}</button>
         </div>
@@ -805,7 +810,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
       <div class="dropdown" @click.stop>
         <button
           class="filter-btn"
-          :class="{ on: activeOnly || showArchived || tagFilterId }"
+          :class="{ on: statusFilter !== 'all' || showArchived || tagFilterId }"
           data-test="filters-toggle"
           :title="t('Filters')"
           @click="toggleMenu('filters')"
@@ -820,9 +825,10 @@ const fmtRunTime = (row: ExecutionRow): string => {
               <option v-for="tg in allTags" :key="tg.id" :value="tg.id">{{ tg.name }}</option>
             </select>
             <div class="fp-label">{{ t('Status') }}</div>
-            <select class="fp-select" :value="activeOnly ? 'published' : 'all'" data-test="filter-status" @change="activeOnly = ($event.target as HTMLSelectElement).value === 'published'">
+            <select class="fp-select" :value="statusFilter" data-test="filter-status" @change="statusFilter = ($event.target as HTMLSelectElement).value as StatusFilter">
               <option value="all">{{ t('All') }}</option>
               <option value="published">{{ t('Published') }}</option>
+              <option value="unpublished">{{ t('Unpublished') }}</option>
             </select>
             <label class="fp-check">
               <input v-model="showArchived" type="checkbox" data-test="filter-archived" />

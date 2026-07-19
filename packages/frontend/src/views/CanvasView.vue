@@ -1051,7 +1051,7 @@ async function loadSavePolicy() {
                   v-model="chatDraft"
                   class="chat-input"
                   data-test="chat-input"
-                  placeholder="Type a message…"
+                  placeholder="Type message, or press 'up' for previous one"
                   :disabled="chatSending"
                   @keydown.enter="sendChat"
                 />

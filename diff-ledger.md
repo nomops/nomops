@@ -38,6 +38,8 @@
   - nomops 侧 live 全量验证(侧栏 6 项/201px/无拖拽/`+`4 项/Help 8 项外链/设置 15 段)。typecheck+26 tests+build 全绿。
 - ✅ **P1-B**(命令面板 CommandPalette.vue):**D023** 移除全局态多余 "Executions" 组(执行入口仅工作流上下文经 paletteContext 出现);**D024** emoji 图标(＋🔀🔑📋⌁)→单色描边 SVG(plus/workflow/key/table/command)。D021(Create … in Personal)、D025(真实行平铺)先前已做;**D026** 上下文 "Workflow · &lt;名&gt;" 徽标暂缓(需当前工作流名注入面板)。live 验证(分组无 Executions/图标为 SVG)。typecheck+26 tests+build 全绿。
 - ✅ **P1-C**(Settings 五锁页按钮 D136,n8n live 逐字取证):External Secrets/SSO/LDAP/Log Streaming 锁卡按钮 "Enter activation key"→**"See plans"**(外链 `n8n.io/pricing`);Environments 改 **[More info][See plans]** 双钮(live 实测 Environments 有两钮,ledger 原记只 More info 不全)+ 描述补 "(dev, prod, etc.)"。⚠ 锁卡仅未授权时渲染,测试实例 5 项全授权故无法 live 显示锁卡;改动经 typecheck+build 保证,n8n 真值已 live 取证(External Secrets/SSO/Environments 逐字)。
+- ✅ **P1-D**(Workflows 工具行 + Chat placeholder,n8n live 取证):**D036** Sort 加 "Sort by last created"(4 项:last updated/last created/name A-Z/name Z-A);**D037** Status 加 "Unpublished"(All/Published/Unpublished,activeOnly 布尔→statusFilter 三态);**D121** 底部 Chat placeholder 改 "Type message, or press 'up' for previous one"。live 验证(Sort 4 项/Status 3 项)。typecheck+26 tests+build 全绿。
+- ⏸ **NDV 批暂缓取证**:NDV 靠 Control_Chrome synthetic dblclick/Enter 均打不开(Vue Flow 节点→NDV 与节点创建器同类限制);待用户在 n8n 里双击开一个节点后再 live 取证 D089/D091/D092/D093/D095/D098-D123。
 - 🎉 **P0 全部完成**(便签 7 色→D067 右键→D069/D070 面板→D104/D105/D106 参数→D088 NDV Settings→D058/D059 Evaluations→D061/D062 wf settings→D131 MCP OAuth→D154 Shared→D047/D152/D128 锁态→D063 History→D085 执行详情→D127/D129/D130 B 类)。豁免:D103 resourceLocator=N/A;暂缓:D096 Mapping|From AI(待引擎 $fromAI)。
 
 ---
