@@ -40,12 +40,22 @@ watch(
 
 interface Item {
   kind: 'action' | 'workflow' | 'credential' | 'context';
-  icon: string;
+  icon: IconKey;
   label: string;
   sub: string;
   shortcut?: string;
   run: () => void;
 }
+
+/* D024 对标 n8n:命令面板用单色描边 SVG 图标(非 emoji)。 */
+type IconKey = 'plus' | 'workflow' | 'key' | 'table' | 'command';
+const ICON_PATHS: Record<IconKey, string> = {
+  plus: 'M12 5v14M5 12h14',
+  workflow: 'M6 5a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM8 7h6a2 2 0 0 1 2 2v6',
+  key: 'M7 14a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm3-2 8 8m-3-3 2-2',
+  table: 'M4 5h16v14H4zM4 10h16M4 15h16M10 5v14',
+  command: 'M6 4h4v4H6zM14 4h4v4h-4zM6 12h4v8H6zM14 12h4v4h-4z',
+};
 
 /** 分组结构对齐 n8n 命令面板：Workflows(建/开) / Credentials(建/开) 各成组，
     上下文命令(画布注入)按其组名单独成组置顶。 */
@@ -62,7 +72,7 @@ const groups = computed<Group[]>(() => {
     .filter((c) => match(c.label))
     .map((c) => ({
       kind: 'context',
-      icon: '⌁',
+      icon: 'command',
       label: c.label,
       sub: c.group,
       shortcut: c.shortcut,
@@ -73,10 +83,10 @@ const groups = computed<Group[]>(() => {
     }));
 
   const wfGroup: Item[] = [
-    ...(match('Create workflow in Personal') ? [{ kind: 'action' as const, icon: '＋', label: 'Create workflow in Personal', sub: '', run: createWorkflow }] : []),
+    ...(match('Create workflow in Personal') ? [{ kind: 'action' as const, icon: 'plus' as const, label: 'Create workflow in Personal', sub: '', run: createWorkflow }] : []),
     ...workflows.value.filter((w) => match(w.name)).map((w) => ({
       kind: 'workflow' as const,
-      icon: '🔀',
+      icon: 'workflow' as const,
       label: w.name,
       sub: `${w.nodes.length} nodes`,
       run: () => go(`/workflow/${w.id}`),
@@ -84,10 +94,10 @@ const groups = computed<Group[]>(() => {
   ];
 
   const credGroup: Item[] = [
-    ...(match('Create credential in Personal') ? [{ kind: 'action' as const, icon: '＋', label: 'Create credential in Personal', sub: '', run: () => go('/?tab=credentials') }] : []),
+    ...(match('Create credential in Personal') ? [{ kind: 'action' as const, icon: 'plus' as const, label: 'Create credential in Personal', sub: '', run: () => go('/?tab=credentials') }] : []),
     ...credentials.value.filter((c) => match(c.name)).map((c) => ({
       kind: 'credential' as const,
-      icon: '🔑',
+      icon: 'key' as const,
       label: c.name,
       sub: c.type,
       run: () => go('/?tab=credentials'),
@@ -96,26 +106,23 @@ const groups = computed<Group[]>(() => {
 
   // Data tables 组(对标 n8n 命令面板全局态第三组)
   const dataGroup: Item[] = [
-    ...(match('Create data table in Personal') ? [{ kind: 'action' as const, icon: '📋', label: 'Create data table in Personal', sub: '', run: () => go('/?tab=datatables') }] : []),
+    ...(match('Create data table in Personal') ? [{ kind: 'action' as const, icon: 'plus' as const, label: 'Create data table in Personal', sub: '', run: () => go('/?tab=datatables') }] : []),
     ...dataTables.value.filter((d) => match(d.name)).map((d) => ({
       kind: 'action' as const,
-      icon: '📋',
+      icon: 'table' as const,
       label: d.name,
       sub: 'Data table',
       run: () => go(`/datatables/${d.id}`),
     })),
   ];
 
-  const execGroup: Item[] = match('View executions')
-    ? [{ kind: 'action', icon: '📊', label: 'View executions', sub: '', run: () => go('/?tab=executions') }]
-    : [];
+  // D023 对标 n8n:全局态命令面板无 "Executions" 组(执行入口仅在工作流上下文经 paletteContext 出现)
 
   const out: Group[] = [];
   if (ctxItems.length) out.push({ label: ui.paletteContext[0]?.group ?? 'Commands', items: ctxItems });
   if (wfGroup.length) out.push({ label: 'Workflows', items: wfGroup });
   if (credGroup.length) out.push({ label: 'Credentials', items: credGroup });
   if (dataGroup.length) out.push({ label: 'Data tables', items: dataGroup });
-  if (execGroup.length) out.push({ label: 'Executions', items: execGroup });
   return out;
 });
 
@@ -177,7 +184,9 @@ function onKey(e: KeyboardEvent) {
             @mouseenter="active = results.indexOf(item)"
             @click="item.run()"
           >
-            <span class="pi-icon">{{ item.icon }}</span>
+            <span class="pi-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path :d="ICON_PATHS[item.icon]" /></svg>
+            </span>
             <span class="pi-body">
               <span class="pi-label">{{ item.label }}</span>
               <span v-if="item.sub" class="pi-sub">{{ item.sub }}</span>
@@ -232,9 +241,10 @@ function onKey(e: KeyboardEvent) {
 .palette-item.active { background: var(--command-bar-item--color--background--hover); }
 .pi-icon {
   width: 24px; height: 24px; flex-shrink: 0; border-radius: var(--radius);
-  background: none; display: flex; align-items: center; justify-content: center; font-size: 14px;
-  color: var(--color--text--shade-1);
+  background: none; display: flex; align-items: center; justify-content: center;
+  color: var(--color--text--tint-1);
 }
+.pi-icon svg { width: 16px; height: 16px; }
 .pi-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .pi-label { font-size: var(--font-size--sm); color: var(--color--text--shade-1); }
 .pi-sub { font-size: var(--font-size--2xs); color: var(--color--text--tint-1); margin-top: 1px; }
