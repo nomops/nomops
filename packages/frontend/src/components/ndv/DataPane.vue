@@ -23,7 +23,8 @@ const props = withDefaults(
 );
 
 type ViewMode = 'schema' | 'table' | 'json';
-const view = ref<ViewMode>('table');
+// D098 对标 n8n:数据窗格默认 Schema 视图
+const view = ref<ViewMode>('schema');
 
 defineEmits<{ 'empty-action': [] }>();
 

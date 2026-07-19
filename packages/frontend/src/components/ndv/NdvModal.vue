@@ -35,6 +35,59 @@ const visibleProps = computed(() => {
 /* n8n 中栏按节点型定宽(实测 IF/HTTP 640、Set 420);以可见参数数近似 */
 const centerWidth = computed(() => (visibleProps.value.length <= 4 ? 420 : 640));
 
+/* D093 对标 n8n:三栏分隔条可拖拽调中栏宽度(拖柄覆在两侧 4px 边上)。 */
+const paramsWidth = ref<number | null>(null);
+const effectiveWidth = computed(() => paramsWidth.value ?? centerWidth.value);
+let dragStartX = 0;
+let dragStartW = 0;
+let dragSign = 1;
+function onDragMove(e: MouseEvent) {
+  // 左柄向左拖变宽(sign -1),右柄向右拖变宽(sign +1)
+  const next = dragStartW + dragSign * (e.clientX - dragStartX);
+  paramsWidth.value = Math.max(320, Math.min(900, next));
+}
+function endDrag() {
+  document.body.style.userSelect = '';
+  document.body.style.cursor = '';
+  window.removeEventListener('mousemove', onDragMove);
+  window.removeEventListener('mouseup', endDrag);
+}
+function startDrag(side: 'left' | 'right', e: MouseEvent) {
+  e.preventDefault();
+  dragStartX = e.clientX;
+  dragStartW = effectiveWidth.value;
+  dragSign = side === 'left' ? -1 : 1;
+  document.body.style.userSelect = 'none';
+  document.body.style.cursor = 'col-resize';
+  window.addEventListener('mousemove', onDragMove);
+  window.addEventListener('mouseup', endDrag);
+}
+
+/* D092 对标 n8n:NDV 两侧相邻节点 chip(floating nodes),点击切到该节点。 */
+const inputNeighbors = computed<string[]>(() => {
+  const name = node.value?.name;
+  if (!name) return [];
+  const src = new Set<string>();
+  for (const [source, byType] of Object.entries(editor.connections)) {
+    for (const outputs of Object.values(byType)) {
+      for (const eps of outputs ?? []) for (const ep of eps ?? []) if (ep.node === name) src.add(source);
+    }
+  }
+  return [...src];
+});
+const outputNeighbors = computed<string[]>(() => {
+  const name = node.value?.name;
+  if (!name) return [];
+  const targets = new Set<string>();
+  for (const outputs of Object.values(editor.connections[name] ?? {})) {
+    for (const eps of outputs ?? []) for (const ep of eps ?? []) targets.add(ep.node);
+  }
+  return [...targets];
+});
+function openNeighbor(name: string) {
+  editor.openNdv(name);
+}
+
 const runData = computed(() => execution.lastRunData?.resultData.runData ?? {});
 const lastRun = computed(() => (node.value ? lastRunOf(runData.value, node.value.name) : null));
 const outputItems = computed(() => outputPorts(lastRun.value).flat());
@@ -127,6 +180,18 @@ async function executeStep() {
       </header>
 
       <div class="ndv-body">
+        <!-- D092 相邻节点 chip:左=输入侧邻居,右=输出侧邻居,点击切到该节点 -->
+        <div v-if="inputNeighbors.length" class="floating-nodes left" data-test="ndv-floating-input">
+          <button v-for="n in inputNeighbors" :key="n" class="floating-node" :title="n" @click="openNeighbor(n)">
+            <IconSvg v-bind="nodeIcon(editor.nodes.find((x) => x.name === n)?.type ?? '')" :size="18" />
+          </button>
+        </div>
+        <div v-if="outputNeighbors.length" class="floating-nodes right" data-test="ndv-floating-output">
+          <button v-for="n in outputNeighbors" :key="n" class="floating-node" :title="n" @click="openNeighbor(n)">
+            <IconSvg v-bind="nodeIcon(editor.nodes.find((x) => x.name === n)?.type ?? '')" :size="18" />
+          </button>
+        </div>
+
         <section v-if="hasInputPort" class="ndv-col side">
           <DataPane
             title="Input"
@@ -138,7 +203,10 @@ async function executeStep() {
           />
         </section>
 
-        <section class="ndv-col params" :style="{ flexBasis: centerWidth + 'px' }">
+        <section class="ndv-col params" :style="{ flexBasis: effectiveWidth + 'px' }">
+          <!-- D093 三栏可拖拽分隔条(覆在中栏两侧边上) -->
+          <div v-if="hasInputPort" class="col-drag left" data-test="ndv-drag-left" @mousedown="startDrag('left', $event)" />
+          <div class="col-drag right" data-test="ndv-drag-right" @mousedown="startDrag('right', $event)" />
           <!-- Parameters | Settings 双 tab + Execute step -->
           <div class="param-tabs">
             <button class="ptab" :class="{ active: tab === 'parameters' }" data-test="ndv-tab-params" @click="tab = 'parameters'">
@@ -284,10 +352,37 @@ async function executeStep() {
 .ndv-node-icon { display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center; flex-shrink: 0; }
 .ndv-name { font-size: var(--font-size--md); font-weight: var(--font-weight--regular); color: var(--color--text--shade-1); }
 .ndv-body {
-  flex: 1; display: flex; min-height: 0;
+  flex: 1; display: flex; min-height: 0; position: relative;
   border-radius: 0 0 var(--radius--lg) var(--radius--lg); overflow: hidden;
 }
 .ndv-col { min-width: 0; display: flex; flex-direction: column; }
+.ndv-col.params { position: relative; }
+
+/* D092 相邻节点 floating chip(两侧边缘垂直居中) */
+.floating-nodes {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 6;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.floating-nodes.left { left: 6px; }
+.floating-nodes.right { right: 6px; }
+.floating-node {
+  width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+  background: var(--color--background--light-3); border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--radius); cursor: pointer;
+}
+.floating-node:hover { border-color: var(--color--primary); }
+
+/* D093 中栏两侧拖拽分隔条(覆在 4px 边上) */
+.col-drag {
+  position: absolute; top: 0; bottom: 0; width: 8px; z-index: 7; cursor: col-resize;
+}
+.col-drag.left { left: -6px; }
+.col-drag.right { right: -6px; }
+.col-drag::after {
+  content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px;
+  background: transparent; transition: background 0.15s;
+}
+.col-drag:hover::after, .col-drag:active::after { background: var(--color--primary); }
 /* n8n 实测：侧栏弹性均分、中栏定宽(IF/HTTP 类 640;简单节点 420 —— 每节点宽度表留后续) */
 .ndv-col.side { flex: 1; min-width: 0; background: var(--color--background--light-3); }
 .ndv-col.params { flex: 0 0 640px; background: var(--ndv--header--color); border-left: 4px solid var(--color--background--light-1); border-right: 4px solid var(--color--background--light-1); }
