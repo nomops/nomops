@@ -1202,54 +1202,16 @@ const fmtRunTime = (row: ExecutionRow): string => {
       </div>
     </template>
 
-    <!-- ── Variables（项目维度键值对，$vars.KEY） ── -->
+    <!-- ── Variables:对标 n8n Community 锁态(升级墙)。后端 /api/variables 保留,仅前端呈锁态 ── -->
     <template v-else-if="tab === 'variables'">
-      <p v-if="varError" class="error-text" data-test="var-error">{{ varError }}</p>
-
-      <div v-if="variables.length === 0 && !editingVar" class="cred-empty" data-test="variable-empty">
-        <div class="lock">👋</div>
-        <h3>{{ t('{name}, let’s set up a variable', { name: ownerName }) }}</h3>
-        <p class="dim">{{ t('Variables can be used to store data that can be referenced easily across multiple workflows.') }}</p>
-        <button class="btn primary" data-test="add-first-variable" style="margin-top: 8px" @click="startNewVariable">{{ t('Add first variable') }}</button>
-      </div>
-
-      <div v-else class="card" style="padding: 0" data-test="variables-list">
-        <table class="var-table">
-          <thead>
-            <tr><th>{{ t('Name') }}</th><th>{{ t('Value') }}</th><th>{{ t('Usage') }}</th><th /></tr>
-          </thead>
-          <tbody>
-            <tr v-if="editingVar && editingVar.id === 'new'" class="var-edit-row">
-              <td><input v-model="editingVar.key" data-test="var-key" placeholder="MY_VARIABLE" /></td>
-              <td><input v-model="editingVar.value" data-test="var-value" placeholder="value" /></td>
-              <td class="dim">—</td>
-              <td class="var-actions">
-                <button class="btn primary" data-test="var-save" @click="saveVariable">{{ t('Save') }}</button>
-                <button @click="editingVar = null">{{ t('Cancel') }}</button>
-              </td>
-            </tr>
-            <tr v-for="v in variables" :key="v.id" class="var-row">
-              <template v-if="editingVar && editingVar.id === v.id">
-                <td><input v-model="editingVar.key" /></td>
-                <td><input v-model="editingVar.value" /></td>
-                <td class="dim">—</td>
-                <td class="var-actions">
-                  <button class="btn primary" @click="saveVariable">{{ t('Save') }}</button>
-                  <button @click="editingVar = null">{{ t('Cancel') }}</button>
-                </td>
-              </template>
-              <template v-else>
-                <td class="var-key">{{ v.key }}</td>
-                <td class="var-val">{{ v.value || '—' }}</td>
-                <td><code class="var-usage">{{ varUsage(v.key) }}</code></td>
-                <td class="var-actions">
-                  <button :data-test-var-edit="v.id" @click="editVariable(v)">{{ t('Edit') }}</button>
-                  <button class="danger" :data-test-var-delete="v.id" @click="deleteVariable(v.id)">{{ t('Delete') }}</button>
-                </td>
-              </template>
-            </tr>
-          </tbody>
-        </table>
+      <div class="var-lock" data-test="variables-lock">
+        <h3 class="vl-title">{{ t('Upgrade to unlock variables') }}</h3>
+        <p class="vl-desc">
+          {{ t('Variables can be used to store and access data across workflows. Reference them in nomops using the prefix') }}
+          <code>$vars</code> {{ t('(e.g.') }} <code>$vars.myVariable</code>{{ t('). Variables are immutable and cannot be modified within your workflows.') }}
+          <a class="vl-link" href="/docs" @click.prevent>{{ t('Learn more in the docs.') }}</a>
+        </p>
+        <button class="btn-viewplans" data-test="variables-viewplans" @click="router.push({ name: 'settings', query: { section: 'usage' } })">{{ t('View plans') }}</button>
       </div>
     </template>
 
@@ -1569,6 +1531,23 @@ const fmtRunTime = (row: ExecutionRow): string => {
 }
 .cred-empty .lock { font-size: 40px; opacity: 0.8; }
 .cred-empty h3 { margin: 8px 0 0; font-weight: 600; color: var(--text-hi); }
+/* Variables 升级锁态(对标 n8n Community):虚线大框 + 标题 + 说明(含 $vars)+ View plans */
+.var-lock {
+  display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center;
+  border: 2px dashed var(--border-strong); border-radius: 14px; padding: 56px 32px; margin-top: 8px;
+}
+.vl-title { margin: 0; font-size: var(--font-size--lg); font-weight: var(--font-weight--bold); color: var(--text-hi); }
+.vl-desc { margin: 0; max-width: 560px; font-size: var(--font-size--sm); line-height: 1.6; color: var(--text-dim); }
+.vl-desc code { font-family: var(--font-family--monospace); font-size: 0.9em; background: var(--bg-input); padding: 1px 5px; border-radius: 4px; color: var(--text); }
+.vl-link { color: var(--accent); text-decoration: none; }
+.vl-link:hover { text-decoration: underline; }
+.btn-viewplans {
+  margin-top: 6px; height: 36px; padding: 0 16px; border: none; border-radius: 6px;
+  background: var(--button--color--background--primary); color: var(--button--color--text--primary);
+  font-size: var(--font-size--sm); font-weight: var(--font-weight--medium); cursor: pointer;
+  box-shadow: inset 0 0 0 1px var(--button--border-color--primary), 0 1px 3px -1px var(--color--black-alpha-100);
+}
+.btn-viewplans:hover { background: var(--button--color--background--primary--hover-active-focus); }
 /* n8n 实测：凭证品牌图标 26×26 裸图，无底框无圆角 */
 .cred-row-icon {
   width: 26px; height: 26px; flex-shrink: 0;

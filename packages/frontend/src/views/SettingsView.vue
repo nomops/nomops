@@ -379,17 +379,8 @@ const filteredUsers = computed(() => {
 });
 
 /* Roles 页（固定内置角色，对标 n8n 的 Instance/Project roles 两个 tab） */
+// Roles 页现为 n8n Enterprise 锁态,仅保留 tab 切换(instance/project 描述已随锁态移除)
 const rolesTab = ref<'instance' | 'project'>('instance');
-const instanceRoles = [
-  { name: 'Owner', desc: 'Full control of the instance. Created with the first account; cannot be invited or removed.' },
-  { name: 'Admin', desc: 'Manage users, community nodes and instance settings. Cannot remove the owner.' },
-  { name: 'Member', desc: 'Use their own projects and resources. No access to instance settings.' },
-];
-const projectRoles = [
-  { name: 'Project owner', desc: 'Full control of the project, including members and deletion.' },
-  { name: 'Project editor', desc: 'Create and edit workflows, credentials and data tables in the project.' },
-  { name: 'Project viewer', desc: 'Read-only access to the project’s workflows and executions.' },
-];
 
 /** 企业功能是否已解锁（决定显示真实表单还是 n8n 式锁定卡）。 */
 const licensed = (feature: string): boolean => projects.hasFeature(feature);
@@ -1095,29 +1086,25 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           <h1 class="page-title" style="margin-bottom: 0">Roles</h1>
           <span class="nav-badge">New</span>
         </div>
-        <p class="sub" style="margin-top: 10px">
-          Roles define what members can do. nomops ships fixed instance and project roles — assign instance roles in
-          Users, and project roles per member in each project’s settings.
+        <p class="sub" style="margin-top: 10px; max-width: 760px">
+          Roles allow you to manage specific permissions tailored to your team's needs. Define granular access to
+          workflows, credentials, project resources and instance settings.
+          <a class="link" href="/docs" @click.prevent>Learn more in documentation</a>
         </p>
         <div class="tabs">
           <button class="tab" :class="{ active: rolesTab === 'instance' }" data-test="roles-tab-instance" @click="rolesTab = 'instance'">Instance roles</button>
           <button class="tab" :class="{ active: rolesTab === 'project' }" data-test="roles-tab-project" @click="rolesTab = 'project'">Project roles</button>
         </div>
-        <div class="card" style="max-width: 720px; padding: 0">
-          <table class="api-table">
-            <thead><tr><th style="width: 180px">Role</th><th>What it can do</th></tr></thead>
-            <tbody>
-              <tr v-for="r in rolesTab === 'instance' ? instanceRoles : projectRoles" :key="r.name" data-test="role-row">
-                <td><b>{{ r.name }}</b></td>
-                <td class="dim">{{ r.desc }}</td>
-              </tr>
-            </tbody>
-          </table>
+        <!-- Enterprise 锁卡(对标 n8n Community Roles):三权限卡图形 + Upgrade to Enterprise -->
+        <div class="ent-lock" data-test="roles-lock">
+          <div class="ent-cards"><span /><span /><span /></div>
+          <h2 class="ent-title">Upgrade to Enterprise</h2>
+          <p class="ent-desc">Upgrade to Enterprise to unlock custom roles. It will allow to create custom, granular permissions that let you fine-tune access.</p>
+          <div class="ent-actions">
+            <a class="btn-learn" href="/docs" @click.prevent>Learn more</a>
+            <button class="btn-upgrade" data-test="roles-upgrade">Upgrade</button>
+          </div>
         </div>
-        <p class="dim" style="font-size: 12.5px; margin-top: 14px; max-width: 720px">
-          Custom roles are not supported — the fixed roles above cover the ownership rules enforced by the server
-          (project-scoped repositories and instance-admin gates).
-        </p>
       </section>
 
       <!-- 用户管理（实例 admin，对标 n8n Users：计数副标题 + 搜索 + 右侧 Invite + 头像表格） -->
@@ -2318,6 +2305,30 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 }
 .locked-card h2 { margin: 0 0 14px; font-size: 20px; font-weight: 500; color: var(--text-hi); }
 .locked-card p { margin: 0 0 22px; color: var(--text-dim); font-size: 14px; }
+
+/* Roles Enterprise 锁卡(对标 n8n Community):三权限卡图形 + Upgrade to Enterprise */
+.ent-lock {
+  display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px;
+  max-width: 720px; border: 1px dashed var(--border); border-radius: 8px; padding: 40px 24px 36px; margin-top: 8px;
+}
+.ent-cards { display: flex; gap: 10px; margin-bottom: 6px; }
+.ent-cards span {
+  width: 54px; height: 68px; border-radius: 6px;
+  background: var(--bg-input); border: 1px solid var(--border);
+}
+.ent-cards span:nth-child(2) { transform: translateY(-6px); }
+.ent-title { margin: 0; font-size: 20px; font-weight: 500; color: var(--text-hi); }
+.ent-desc { margin: 0; max-width: 460px; font-size: 14px; line-height: 1.5; color: var(--text-dim); }
+.ent-actions { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
+.btn-learn { font-size: 14px; color: var(--text-hi); text-decoration: none; padding: 0 4px; }
+.btn-learn:hover { text-decoration: underline; }
+.ent-lock .btn-upgrade {
+  height: 36px; padding: 0 16px; border: none; border-radius: 6px;
+  background: var(--button--color--background--primary); color: var(--button--color--text--primary);
+  font-size: 14px; font-weight: var(--font-weight--medium); cursor: pointer;
+  box-shadow: inset 0 0 0 1px var(--button--border-color--primary), 0 1px 3px -1px var(--color--black-alpha-100);
+}
+.ent-lock .btn-upgrade:hover { background: var(--button--color--background--primary--hover-active-focus); }
 
 /* 设置行卡片（对标 n8n Security & policies / OpenTelemetry 的 row 布局） */
 .setting-card { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-panel); }
