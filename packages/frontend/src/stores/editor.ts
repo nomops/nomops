@@ -217,6 +217,28 @@ export const useEditorStore = defineStore('editor', {
       return copy;
     },
 
+    /** 右键菜单「Rename」:改名并重写连接(源 key + 目标 endpoint)、pins、选中态。 */
+    renameNode(oldName: string, newName: string) {
+      const node = this.nodes.find((n) => n.name === oldName);
+      const trimmed = newName.trim();
+      if (!node || !trimmed || trimmed === oldName) return;
+      const unique = uniqueNodeName(trimmed, this.nodes.filter((n) => n.name !== oldName).map((n) => n.name));
+      this.pushHistory();
+      node.name = unique;
+      const next: IConnections = {};
+      for (const [src, byType] of Object.entries(this.connections)) {
+        const rewritten: IConnections[string] = {};
+        for (const [type, outs] of Object.entries(byType)) {
+          rewritten[type] = outs.map((eps) => (eps ? eps.map((e) => (e.node === oldName ? { ...e, node: unique } : e)) : eps));
+        }
+        next[src === oldName ? unique : src] = rewritten;
+      }
+      this.connections = next;
+      this.pinnedParams = this.pinnedParams.map((p) => (p.nodeName === oldName ? { ...p, nodeName: unique } : p));
+      if (this.selectedNodeName === oldName) this.selectedNodeName = unique;
+      this.dirty = true;
+    },
+
     /** Focus panel：钉/取钉参数；钉入时自动展开面板。 */
     togglePinParam(nodeName: string, paramName: string) {
       const idx = this.pinnedParams.findIndex((p) => p.nodeName === nodeName && p.paramName === paramName);

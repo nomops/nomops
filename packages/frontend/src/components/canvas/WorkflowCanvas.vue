@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 import {
   VueFlow,
   useVueFlow,
@@ -7,15 +7,18 @@ import {
   type Edge,
   type Node,
   type NodeDragEvent,
+  type NodeMouseEvent,
 } from '@vue-flow/core';
 import { Background } from '@vue-flow/background';
 import { useEditorStore } from '../../stores/editor.js';
 import { useNodeTypesStore } from '../../stores/node-types.js';
+import { useExecutionStore } from '../../stores/execution.js';
 import { parseHandle, toFlowEdges, toFlowNodes } from '../../lib/workflow-convert.js';
 import CanvasNode from './CanvasNode.vue';
 
 const editor = useEditorStore();
 const nodeTypesStore = useNodeTypesStore();
+const execution = useExecutionStore();
 const { screenToFlowCoordinate, zoomIn, zoomOut, zoomTo, fitView } = useVueFlow();
 
 /** C8 对标 n8n Tidy up：自动分层布局后适配视口。 */
@@ -73,6 +76,43 @@ function onDrop(event: DragEvent) {
   const pos = screenToFlowCoordinate({ x: event.clientX, y: event.clientY });
   editor.addNode(desc, [pos.x, pos.y]);
 }
+
+/* ── 节点右键菜单(对标 n8n 13 项)── */
+const ctxMenu = ref<{ x: number; y: number; node: string } | null>(null);
+function onNodeContextMenu({ event, node }: NodeMouseEvent) {
+  const e = event as MouseEvent;
+  e.preventDefault();
+  editor.select(node.id);
+  ctxMenu.value = { x: e.clientX, y: e.clientY, node: node.id };
+}
+function closeCtx() {
+  ctxMenu.value = null;
+}
+const ctxNode = computed(() => editor.nodes.find((n) => n.name === ctxMenu.value?.node));
+const ctxDisabled = computed(() => Boolean(ctxNode.value?.disabled));
+async function ctxExecute() {
+  const name = ctxMenu.value?.node;
+  closeCtx();
+  if (!name || !editor.id || execution.running) return;
+  await editor.save();
+  await execution.run(editor.id, { destinationNode: name });
+}
+function ctxOpen() { const n = ctxMenu.value?.node; closeCtx(); if (n) editor.openNdv(n); }
+function ctxRename() {
+  const n = ctxMenu.value?.node; closeCtx();
+  if (!n) return;
+  const next = window.prompt('Rename node', n);
+  if (next) editor.renameNode(n, next);
+}
+function ctxDeactivate() { const n = ctxMenu.value?.node; closeCtx(); if (n) editor.toggleDisabled(n); }
+function ctxDuplicate() { const n = ctxMenu.value?.node; closeCtx(); if (n) editor.duplicateNode(n); }
+async function ctxCopy() {
+  const node = ctxNode.value; closeCtx();
+  if (node) await navigator.clipboard?.writeText(JSON.stringify(node, null, 2)).catch(() => undefined);
+}
+function ctxTidy() { closeCtx(); editor.tidyUp(); void nextTick(() => fitView({ padding: 0.2 })); }
+function ctxClearSelection() { closeCtx(); editor.select(null); }
+function ctxDelete() { const n = ctxMenu.value?.node; closeCtx(); if (n) editor.removeNode(n); }
 </script>
 
 <template>
@@ -87,7 +127,8 @@ function onDrop(event: DragEvent) {
       @node-drag-stop="onNodeDragStop"
       @node-click="(e) => editor.select(e.node.id)"
       @node-double-click="(e) => editor.openNdv(e.node.id)"
-      @pane-click="editor.select(null)"
+      @node-context-menu="onNodeContextMenu"
+      @pane-click="editor.select(null); closeCtx()"
       @nodes-delete="onNodesDelete"
       @edges-delete="onEdgesDelete"
     >
@@ -116,6 +157,28 @@ function onDrop(event: DragEvent) {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="zc-i"><path d="M15 4V2m0 4v-2m4 0h2m-4 0h2M6.5 20.5L19 8l-3-3L3.5 17.5l3 3zM13 8l3 3" /></svg>
       </button>
     </div>
+
+    <!-- 节点右键菜单(对标 n8n 13 项);暂无对应能力的项置灰(Replace/Pin/Convert/Select all) -->
+    <template v-if="ctxMenu">
+      <div class="ctx-backdrop" @click="closeCtx" @contextmenu.prevent="closeCtx" />
+      <div class="ctx-menu" data-test="node-context-menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }">
+        <button class="ctx-item" data-test="ctx-open" @click="ctxOpen">Open<span class="ctx-sc">↵</span></button>
+        <button class="ctx-item" data-test="ctx-execute" @click="ctxExecute">Execute step</button>
+        <button class="ctx-item" data-test="ctx-rename" @click="ctxRename">Rename<span class="ctx-sc">Space</span></button>
+        <button class="ctx-item" disabled>Replace<span class="ctx-sc">R</span></button>
+        <button class="ctx-item" data-test="ctx-deactivate" @click="ctxDeactivate">{{ ctxDisabled ? 'Activate' : 'Deactivate' }}<span class="ctx-sc">D</span></button>
+        <button class="ctx-item" disabled>Pin<span class="ctx-sc">P</span></button>
+        <button class="ctx-item" data-test="ctx-copy" @click="ctxCopy">Copy<span class="ctx-sc">⌘C</span></button>
+        <button class="ctx-item" data-test="ctx-duplicate" @click="ctxDuplicate">Duplicate<span class="ctx-sc">⌘D</span></button>
+        <div class="ctx-sep" />
+        <button class="ctx-item" data-test="ctx-tidy" @click="ctxTidy">Tidy up workflow<span class="ctx-sc">⇧⌥T</span></button>
+        <button class="ctx-item" disabled>Convert node to sub-workflow<span class="ctx-sc">⌥X</span></button>
+        <div class="ctx-sep" />
+        <button class="ctx-item" disabled>Select all<span class="ctx-sc">⌘A</span></button>
+        <button class="ctx-item" data-test="ctx-clear" @click="ctxClearSelection">Clear selection</button>
+        <button class="ctx-item danger" data-test="ctx-delete" @click="ctxDelete">Delete<span class="ctx-sc">Del</span></button>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -134,6 +197,26 @@ function onDrop(event: DragEvent) {
   position: absolute; left: 14px; bottom: 14px; z-index: 10;
   display: flex; gap: 6px;
 }
+
+/* 节点右键菜单 */
+.ctx-backdrop { position: fixed; inset: 0; z-index: 999; }
+.ctx-menu {
+  position: fixed; z-index: 1000; min-width: 220px; padding: 4px;
+  background: var(--color--background--light-3);
+  border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--radius); box-shadow: 0 6px 24px var(--color--black-alpha-100);
+  display: flex; flex-direction: column;
+}
+.ctx-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  height: 30px; padding: 0 10px; background: none; border: none; border-radius: var(--radius);
+  color: var(--color--text--shade-1); font-size: var(--font-size--2xs); text-align: left; cursor: pointer; white-space: nowrap;
+}
+.ctx-item:hover:not(:disabled) { background: var(--color--background--light-1); }
+.ctx-item:disabled { opacity: 0.4; cursor: default; }
+.ctx-item.danger { color: var(--color--danger); }
+.ctx-sc { color: var(--color--text--tint-1); font-size: 11px; }
+.ctx-sep { height: 1px; background: var(--border-color); margin: 4px 2px; }
 .zc-i { width: 15px; height: 15px; }
 .zoom-controls button {
   width: 32px; height: 32px; padding: 0; font-size: 15px;
