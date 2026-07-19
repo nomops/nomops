@@ -1338,7 +1338,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         <div v-if="!licensed('sso')" class="locked-card" data-test="sso-locked">
           <h2>Available on the Enterprise plan</h2>
           <p>Use Single Sign-On to consolidate authentication into a single platform to improve security and agility.</p>
-          <button class="btn primary" @click="licenseModalOpen = true">Enter activation key</button>
+          <a class="btn primary" href="https://n8n.io/pricing" target="_blank" rel="noopener">See plans</a>
         </div>
         <p v-else-if="ssoError" class="error-text" data-test="sso-error">{{ ssoError }}</p>
         <div v-else-if="!ssoLoading" class="card" style="max-width: 580px">
@@ -1366,7 +1366,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         <div v-if="!licensed('ldap')" class="locked-card" data-test="ldap-locked">
           <h2>Available on the Enterprise plan</h2>
           <p>LDAP is available as a paid feature — sign your team in with the corporate directory.</p>
-          <button class="btn primary" @click="licenseModalOpen = true">Enter activation key</button>
+          <a class="btn primary" href="https://n8n.io/pricing" target="_blank" rel="noopener">See plans</a>
         </div>
         <p v-else-if="ldapError" class="error-text" data-test="ldap-error">{{ ldapError }}</p>
         <div v-else-if="!ldapLoading" class="card" style="max-width: 580px">
@@ -1406,7 +1406,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         <div v-if="!licensed('logStreaming')" class="locked-card" data-test="ls-locked">
           <h2>Available on the Enterprise plan</h2>
           <p>Log Streaming is available as a paid feature — push execution and audit events to your SIEM.</p>
-          <button class="btn primary" @click="licenseModalOpen = true">Enter activation key</button>
+          <a class="btn primary" href="https://n8n.io/pricing" target="_blank" rel="noopener">See plans</a>
         </div>
         <p v-else-if="lsError" class="error-text" data-test="ls-error">{{ lsError }}</p>
         <template v-else>
@@ -1461,7 +1461,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         <div v-if="!licensed('externalSecrets')" class="locked-card" data-test="secrets-locked">
           <h2>Available on the Enterprise plan</h2>
           <p>Use External Secrets to keep credentials in an external vault and reference them at run time.</p>
-          <button class="btn primary" @click="licenseModalOpen = true">Enter activation key</button>
+          <a class="btn primary" href="https://n8n.io/pricing" target="_blank" rel="noopener">See plans</a>
         </div>
         <p v-else-if="secretsError" class="error-text" data-test="secrets-error">{{ secretsError }}</p>
         <div v-else-if="secretsStatus" class="card" style="max-width: 580px">
@@ -1652,8 +1652,11 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
 
         <div v-if="!licensed('sourceControl')" class="locked-card" data-test="sc-locked">
           <h2>Available on the Enterprise plan</h2>
-          <p>Use multiple instances for different environments, deploying between them via a Git repository.</p>
-          <button class="btn primary" @click="licenseModalOpen = true">Enter activation key</button>
+          <p>Use multiple instances for different environments (dev, prod, etc.), deploying between them via a Git repository.</p>
+          <div class="locked-actions">
+            <a class="btn secondary" href="https://docs.n8n.io/source-control-environments/" target="_blank" rel="noopener">More info</a>
+            <a class="btn primary" href="https://n8n.io/pricing" target="_blank" rel="noopener">See plans</a>
+          </div>
         </div>
         <p v-else-if="scError" class="error-text" data-test="sc-error">{{ scError }}</p>
 
@@ -2440,6 +2443,7 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 }
 .locked-card h2 { margin: 0 0 14px; font-size: 20px; font-weight: 500; color: var(--text-hi); }
 .locked-card p { margin: 0 0 22px; color: var(--text-dim); font-size: 14px; }
+.locked-actions { display: flex; gap: 10px; justify-content: center; }
 
 /* Roles Enterprise 锁卡(对标 n8n Community):三权限卡图形 + Upgrade to Enterprise */
 .ent-lock {
