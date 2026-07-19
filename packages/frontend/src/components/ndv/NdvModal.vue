@@ -22,6 +22,9 @@ const node = computed(() => editor.selectedNode);
 const desc = computed(() => (node.value ? nodeTypes.byType.get(node.value.type) : undefined));
 const tab = ref<'parameters' | 'settings'>('parameters');
 
+/* D091 对标 n8n:头带 Docs 外链(按"外链照抄"指向 n8n 内置节点文档)。 */
+const docsUrl = computed(() => 'https://docs.n8n.io/integrations/builtin/?utm_source=n8n_app&utm_medium=node_settings_modal-credential_link');
+
 const visibleProps = computed(() => {
   if (!desc.value || !node.value) return [];
   return desc.value.properties.filter((p) =>
@@ -113,8 +116,12 @@ async function executeStep() {
             <span v-if="lastRun?.error" style="color: var(--err)"> · {{ lastRun.error.message }}</span>
           </span>
         </div>
-        <!-- 对齐 n8n:NDV 头带无 Delete(画布 Delete/Backspace 已覆盖删除路径) -->
-        <div style="display: flex; gap: 8px">
+        <!-- 对齐 n8n:头带右侧 Docs 外链 + X(无 Delete,画布 Delete/Backspace 已覆盖) -->
+        <div class="ndv-head-actions">
+          <a class="ndv-docs" :href="docsUrl" target="_blank" rel="noopener" data-test="ndv-docs">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="ndv-docs-i"><path d="M4 5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" /><path d="M13 3v5h5" /></svg>
+            Docs
+          </a>
           <button data-test="ndv-close" @click="close">✕</button>
         </div>
       </header>
@@ -184,6 +191,11 @@ async function executeStep() {
                 :node-parameters="node.parameters"
                 @change="editor.setParam(node.name, prop.name, $event)"
               />
+            </div>
+
+            <!-- D095 对标 n8n:参数区底部居中反馈链 "I wish this node would..." -->
+            <div class="ndv-wish-row">
+              <span class="ndv-wish" data-test="ndv-wish">I wish this node would...</span>
             </div>
           </div>
 
@@ -257,6 +269,17 @@ async function executeStep() {
   color: var(--color--text--shade-1);
 }
 /* n8n 实测：头带 = 节点图标 + 名称(16px 白)，右侧 Docs/X */
+.ndv-head-actions { display: flex; align-items: center; gap: var(--spacing--xs); }
+.ndv-docs {
+  display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px;
+  font-size: var(--font-size--2xs); color: var(--color--text--tint-1); text-decoration: none;
+  border-radius: var(--radius);
+}
+.ndv-docs:hover { color: var(--color--text--shade-1); background: var(--color--background--light-1); }
+.ndv-docs-i { width: 14px; height: 14px; }
+.ndv-wish-row { display: flex; justify-content: center; padding: 18px 0 8px; }
+.ndv-wish { font-size: var(--font-size--2xs); color: var(--color--text--tint-1); cursor: pointer; }
+.ndv-wish:hover { color: var(--color--primary); text-decoration: underline; }
 .ndv-title { display: flex; align-items: center; gap: var(--spacing--2xs); min-width: 0; }
 .ndv-node-icon { display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center; flex-shrink: 0; }
 .ndv-name { font-size: var(--font-size--md); font-weight: var(--font-weight--regular); color: var(--color--text--shade-1); }
