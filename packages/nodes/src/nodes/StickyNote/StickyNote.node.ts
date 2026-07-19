@@ -25,9 +25,12 @@ export const stickyNoteDescription: INodeTypeDescription = {
       noDataExpression: true,
       options: [
         { name: 'Yellow', value: 'yellow' },
-        { name: 'Blue', value: 'blue' },
+        { name: 'Gold', value: 'gold' },
+        { name: 'Red', value: 'red' },
         { name: 'Green', value: 'green' },
+        { name: 'Blue', value: 'blue' },
         { name: 'Purple', value: 'purple' },
+        { name: 'Gray', value: 'neutral' },
       ],
     },
   ],

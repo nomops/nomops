@@ -1,0 +1,317 @@
+# nomops ⟷ n8n 1:1 复刻差异台账 (diff-ledger)
+
+> 基准真站:http://localhost:5679/(n8n 2.30.4 stable · Community · dark)
+> 复刻版:nomops http://localhost:5181/(1440×655 同视口)
+> 方法:①5 路并行代码级审计(以 manifest.md / field-specs.md / acceptance-report.md / n8n-tokens.css 里**已取证的 n8n 真值**为基准,逐行比对 nomops 源码,每行带 `file:line`);②本人在两侧运行实例上跑 **live computed-style 数值比对**(Control_Chrome 读 n8n · Browser 面板读 nomops)。
+> 日期:2026-07-18 · **本轮只审计,未改任何代码**
+> 严重等级:**P0**=功能/结构缺失(整块没做/交互不通);**P1**=明显视觉/文案错误(用户一眼可见);**P2**=数值级偏差(几 px / 色差一档 / 文案措辞 / 过渡差)。
+>
+> ⚠ **关于「截图路径」列**:本会话 n8n 侧只有 Control_Chrome 通道(能读 computed style,**不能截图**;claude-in-chrome 全功能扩展本会话断连)。因此**无法产出 n8n 侧配对截图**——每行证据改用 `真站列的具体数值/文案 + 复刻版的 file:line`。此为环境限制,已在文末「没能验证到的部分」如实登记。
+
+---
+
+## 严重度汇总
+
+| 级别 | 数量 | 代表项 |
+|---|---|---|
+| **P0** | 28 | 参数控件引擎不全(IF/Set/HTTP 退化成 JSON)、节点右键 13 项菜单整体缺、Evaluations 整块缺、节点创建面板 7 分类/8 触发器缺、NDV Settings 6 项缺、History 整页缺、执行详情只读画布缺、Shared 整页缺、Insights 应锁未锁、Variables 应锁做成可用、命令面板缺 Data tables 组、无动态 document.title、凭证选择器/资源定位器缺、AI 子节点 Mapping\|From AI 缺、Security&policies/Roles/OpenTelemetry 三页被替换、Chat provider 6≠15 |
+| **P1** | ~55 | 侧栏折叠态残缺、Publish 下拉退化、Workflow settings 缺 5 字段、便签 7 色→4 色、Focus Panel 缺 tab/▶、底部 Logs 无执行树、命令面板文案与图标、Help/Settings 菜单枚举、Sort/Status/⋮ 选项缺项、凭证字段缺、多处文案错、Chat composer 缺件 |
+| **P2** | ~50 | 侧栏宽 201→244、H1/副标行高、Tab 高、Started 日期格式、色差、圆角、硬编码回退色、措辞偏差 |
+
+---
+
+## 一、全局应用壳(侧栏 / 顶部工具 / 命令面板 / Help·Settings 菜单)
+
+| 编号 | 页面 | 组件 | 维度 | 真站表现 | 复刻版表现 | 级别 | 截图路径/证据 |
+|---|---|---|---|---|---|---|---|
+| D001 | 应用壳 | SideBar | 折叠态顶部工具 | 折叠列仍含 `+`/搜索/侧栏开关三图标 | 折叠态 `brand-tools` 整块被 `v-if="!collapsed"` 隐藏,只留展开 chevron | P0 | SideBar.vue:189,214 |
+| D002 | 应用壳 | SideBar | 侧栏宽度 | 固定 **201px**,不可拖拽 | 默认 **244px**,min220/max480,带拖拽调宽把手 | **P1**(43px 可见 + 多出拖拽) | live: n8n 201 / nomops 244;ui.ts:22, SideBar.vue:169,357 |
+| D003 | 应用壳 | SideBar | 折叠宽度 | 50px | 58px | P2 | SideBar.vue:367 |
+| D004 | 应用壳 | SideBar | 条目枚举 | 无独立 "Personal" 导航项(折叠进 Overview) | 额外渲染独立 "Personal" 行 | P1 | SideBar.vue:232 |
+| D005 | 应用壳 | SideBar | 条目枚举 | 底部无 "Admin Panel" | 底部多 "Admin Panel"(首位) | P1 | SideBar.vue:249 |
+| D006 | 应用壳 | SideBar | Insights 徽标 | Insights 图标右上有红点通知 | 无红点 | P1 | SideBar.vue:257-260 |
+| D007 | 应用壳 | SideBar | Templates 行为 | **外链** n8n.io/workflows(UTM) | 内链路由 `{name:'templates'}` → 内建页 | P1 | SideBar.vue:253, router.ts:24 |
+| D008 | 顶部工具 | SideBar | `+` Add new 项数/顺序 | 4 项:New workflow/credential/data table/project | 6 项(多 New variable、New AI chat),顺序也异 | P1 | SideBar.vue:195-204 |
+| D009 | 顶部工具 | SideBar | New project 徽章 | `Enterprise` 徽章 + 灰置禁用 | `Upgrade` 徽章 + 可点(跳 billing) | P1 | SideBar.vue:199-203 |
+| D010 | 顶部工具 | SideBar | `+` 菜单项尾 chevron | 无尾部 `›` | 每项带尾部 `›` | P2 | SideBar.vue:195-198,412 |
+| D011 | Help 菜单 | SideBar | 项枚举缺失 | Quickstart(视频图标)/Forum/Course/Full changelog/**Update(1 version behind)**(橙叹号) | 全部缺失 | P0 | SideBar.vue:272-284 |
+| D012 | Help 菜单 | SideBar | 多余项 | 无 "Run live demo" | 顶部多 "Run live demo" | P1 | SideBar.vue:273-275 |
+| D013 | Help 菜单 | SideBar | Documentation | 可点链接 "Documentation" | 灰置不可点,文案 "Documentation · docs/ (README → 01–10)" | P1 | SideBar.vue:276 |
+| D014 | Help 菜单 | SideBar | 文案 | "Report a bug" | "Report a problem" | P1 | SideBar.vue:277 |
+| D015 | Help 菜单 | SideBar | What's new 结构 | 组标题下列具体新闻标题 + Full changelog + Update | 仅一个泛化 "What's New" 项(弹模态) | P1 | SideBar.vue:279-283 |
+| D016 | Help 菜单 | SideBar | 弹层样式 | 圆角 4(--radius)/token 底 | width210/圆角10px/硬编码阴影/legacy 别名 | P2 | SideBar.vue:405-409 |
+| D017 | Settings 菜单 | settings-nav | 项枚举/顺序 | 15 段 + Sign out | 16 段(多 "Languages",插在 Personal↔Users) | P1 | settings-nav.ts:23-40,26 |
+| D018 | Settings 菜单 | settings-nav | 文案 | "OpenTelemetry" | "Observability" | P1 | settings-nav.ts:35 |
+| D019 | Settings 菜单 | SettingsMenu | Roles 徽章色 | 灰色 `New` | 蓝色 rgba(76,157,240,.18)/字#7db4f5 | P2 | SettingsMenu.vue:65 |
+| D020 | Settings 菜单 | SettingsMenu | 条目规格 | 主侧栏体系 32px/14px | 13px/pad8×10/圆角7/硬编码 --panel 底 | P2 | SettingsMenu.vue:53-59 |
+| D021 | 命令面板 | CommandPalette | 动作文案 | "Create workflow **in Personal**"/"Create credential **in Personal**" | 缺 " in Personal" 后缀 | P1 | CommandPalette.vue:73,84 |
+| D022 | 命令面板 | CommandPalette | Data tables 分组 | 有(Create data table in Personal / Open data table) | **完全缺失** | P0 | CommandPalette.vue:98-103 |
+| D023 | 命令面板 | CommandPalette | 多余分组 | 全局态无 Executions 组 | 多 "Executions" 组 | P1 | CommandPalette.vue:94-95 |
+| D024 | 命令面板 | CommandPalette | 图标来源 | 真实 SVG 节点/动作图标 | emoji(＋🔀🔑📋⌁) | P1 | CommandPalette.vue:64-95 |
+| D025 | 命令面板 | CommandPalette | 分组内容 | Workflows/Credentials 组为泛化 "Open workflow/credential" | 直接平铺真实行(带 "N nodes"/类型副行) | P1 | CommandPalette.vue:74-91 |
+| D026 | 命令面板 | CommandPalette | 上下文作用域徽标 | 工作流态 "Workflow · &lt;名&gt;" 徽标 | 无(仅注入分组名) | P1 | CommandPalette.vue:139-151 |
+| D027 | 命令面板 | CommandPalette | 输入行 esc chip | 无 esc 键位 chip | 右侧渲染 `esc` kbd 芯片 | P2 | CommandPalette.vue:150 |
+| D028 | 全局 | index.html | 文档 title | 动态:列表 "Workflows - n8n"/编辑器 "▶️ &lt;名&gt; - n8n"/兜底 "n8n.io - Workflow Automation" | 静态 `&lt;title&gt;nomops&lt;/title&gt;`,全仓无 document.title 赋值 | P0 | index.html;grep 无 document.title |
+
+---
+
+## 二、Overview 页 + 五 Tab
+
+| 编号 | 页面 | 组件 | 维度 | 真站表现 | 复刻版表现 | 级别 | 截图路径/证据 |
+|---|---|---|---|---|---|---|---|
+| D029 | Overview | H1 | 行高/位置 | "Overview" 20px/600,**lh 25px**,内容左 origin x=249 | lh **20px**,x=272(右移 23,侧栏差所致) | P2 | live n8n[249,24,431,25]/nomops[272,28,431,20] |
+| D030 | Overview | 副标题 | 行高 | 14px/400,**lh 18.9px** | lh **14px** | P2 | live |
+| D031 | Overview | KPI 条 | 深链 | 5 格分链 `/insights/total\|failed\|failureRate\|timeSaved\|averageRunTime` | 5 格全链同一 `/insights` | P1 | StatsBar.vue:64;manifest §2.1 |
+| D032 | Overview | KPI 条 | Failure rate 标签 | "Failure rate"(% 独立) | 标签 "Failure rate",% 拼数值上 | P2 | StatsBar.vue:50 |
+| D033 | Overview | KPI 条 | Time saved tooltip | ⓘ 带 tooltip | ⓘ 无 title/aria/tooltip | P2 | StatsBar.vue:67-69 |
+| D034 | Overview | KPI 格 | 格宽 | 227px | 223px | P2 | live n8n[250,101,227,99]/nomops[273,101,223,99] |
+| D035 | Overview | Tab 行 | Tab 高/基线 | 激活 Tab 高 24,pad0 16 8,底线 y≈281 | 高 32,底线 y≈259(KPI→Tab 间距 57→27) | P2 | live n8n[249,257,103,24]/nomops[272,227,103,32] |
+| D036 | Workflows | 工具行 | Sort 选项 | 4 项:last updated/**last created**/name(A-Z)/name(Z-A) | 3 项,缺 "Sort by last created" | P1 | OverviewView.vue:800-802 |
+| D037 | Workflows | Filters | Status 枚举 | All/Published/**Unpublished** | 缺 "Unpublished" | P1 | OverviewView.vue:823-826 |
+| D038 | Workflows | 分页 | 页大小 | 10/25/50/**100**(默50) | 缺 "100/page" | P2 | OverviewView.vue:981-983 |
+| D039 | Workflows | 卡片 ⋮ 菜单 | 项枚举 | Open/**Share...**/Favorite/Duplicate/Archive/Enable MCP access | 缺 "Share...";多 Activate/Manage tags/Move to(自有) | P1 | OverviewView.vue:929-951 |
+| D040 | Overview | Create caret | 菜单项 | 仅 Create credential/Create data table | 多 "Create variable" | P2 | OverviewView.vue:92-113 |
+| D041 | Workflows | 卡片 | 链条徽章语义 | 链条+数字=共享用户数(仅共享时) | 复用为"依赖资源数" | P2 | OverviewView.vue:897-919 |
+| D042 | Workflows | 卡片 | 多余状态 | 无 Active 开关(用 Publish 体系) | 卡片显 "Active" 绿点 + ⋮ Activate/Deactivate | P2 | OverviewView.vue:888,935-937 |
+| D043 | Credentials | 列表 | 分页 | 底部有分页条 | 凭证列表**无分页条**(仅 workflows 有) | P2 | OverviewView.vue:1000-1056 |
+| D044 | Executions | 工具行 | 漏斗 | Auto refresh + **漏斗 Filters** | 仅 Auto refresh + 多余 "N executions" 计数,无漏斗 | P1 | OverviewView.vue:1062-1071 |
+| D045 | Executions | 表 | Started 格式 | `Jul 16, 16:54:24`(月-日+秒) | `16 Jul, 16:54`(日-月 en-GB 无秒) | P2 | OverviewView.vue:717-720 |
+| D046 | Executions | 表 | Exec. ID | 数字自增短 ID | UUID 前 8 位 | P2 | OverviewView.vue:1121 |
+| D047 | Variables | 整 Tab | **形态** | Community **锁态**:虚线框 "Upgrade to unlock variables" + `$vars` 代码字 + "Learn more in the docs." + **View plans** | 完整可用增删改表格 + 空态 "let's set up a variable"👋 | **P0** | OverviewView.vue:1206-1254 |
+| D048 | Data tables | Create 模态 | 字段 | label "Data table name"* + 单选 From scratch/Import CSV + Cancel/Create | 标题 "Create new data table"/label "Name"/无单选组 | P1 | OverviewView.vue:1334-1351 |
+
+---
+
+## 三、凭证模态(新增 / 编辑)
+
+| 编号 | 页面 | 组件 | 维度 | 真站表现 | 复刻版表现 | 级别 | 截图路径/证据 |
+|---|---|---|---|---|---|---|---|
+| D049 | 凭证编辑 | CredentialModal | **Sharing tab** | 虚线框 "Upgrade to collaborate" + View plans | 自撰 "Share this credential"+"…Enterprise plan.",无虚线框/View plans | P1 | CredentialModal.vue:394-401 |
+| D050 | 凭证编辑 | CredentialModal | **Details tab** | 已保存:Created/Last modified/ID 三行;未存:空白 | 自撰 Type/Credential ID/Encryption "AES-256-GCM…"+安全注记 | P1 | CredentialModal.vue:404-409 |
+| D051 | 凭证编辑 | credential-types | OpenAI 字段集 | API Key* / Organization ID(optional)+帮助 / Base URL(默 `https://api.openai.com/v1`) / Add Custom Header 开关 | 仅 API Key | P1 | credential-types.ts:504-508 |
+| D052 | 凭证编辑 | credential-types | DeepSeek 字段集 | API Key* / Allowed HTTP Request Domains / Allowed Domains(=api.deepseek.com) | 仅 API Key | P2 | credential-types.ts:63-67 |
+| D053 | 凭证编辑 | CredentialModal | 必填星号 | 必填 label 带红 `*` | label 无 `*`(元数据无 required 位) | P1 | CredentialModal.vue:319 |
+| D054 | 凭证编辑 | CredentialModal | 头部动作 | 图标+可编辑名+副标+Save+**垃圾桶(已存)**+X | 缺垃圾桶/删除按钮 | P1 | CredentialModal.vue:277-287 |
+| D055 | 凭证编辑 | CredentialModal | Connection 帮助条 | "Need help…? **Read our docs**" | "…Read the **docs**."(措辞异) | P2 | CredentialModal.vue:301-304 |
+| D056 | 凭证新增 | CredentialModal | 类型列表排序 | 字母序(Action Network API…) | 数组序(HTTP Header Auth 首,非字母序);缺多数类型 | P2 | CredentialModal.vue:254-266 |
+| D057 | 凭证编辑 | CredentialModal | 默认凭证名 | "OpenAI account"(displayName "OpenAI") | "OpenAI API account" | P2 | CredentialModal.vue:73;credential-types.ts:505 |
+
+---
+
+## 四、工作流编辑器 · 顶栏 / 画布 / 节点创建 / 右键(重灾区)
+
+| 编号 | 页面 | 组件 | 维度 | 真站表现 | 复刻版表现 | 级别 | 截图路径/证据 |
+|---|---|---|---|---|---|---|---|
+| D058 | 编辑器顶栏 | CanvasView | 居中胶囊 | Editor/Executions/**Evaluations** 三格 | 只有 Editor/Executions,**Evaluations 缺** | **P0** | CanvasView.vue:700-703 |
+| D059 | 编辑器 | router | Evaluations 整块 | `/workflow/:id/evaluation` 注册锁态页 | 无路由/view/pill,整功能缺 | **P0** | router.ts:18 |
+| D060 | 顶栏 | CanvasView | Publish caret 下拉 | Publish(⇧P)/View timeline/Unpublish(⌘U) 三项 | 下拉仅 1 项 Activate/Deactivate | P1 | CanvasView.vue:726-730 |
+| D061 | 顶栏 | CanvasView | Workflow settings 字段 | 9 字段(Execution Logic/Error WF/Timezone/3×Save/Save progress/2×Redact) | 仅 4 字段,缺 5 项(Execution Logic/Timezone/Save progress/2×Redact) | **P0** | CanvasView.vue:1069-1099 |
+| D062 | 顶栏 | CanvasView | settings 模态标题 | 含 "#&lt;ID&gt;" | 无 #ID | P2 | CanvasView.vue:1065 |
+| D063 | 顶栏 | CanvasView | History 入口 | **整页** `/workflow/:id/history`(只读斜纹画布+Actions 下拉+Versions\|Timeline 双 tab+升级脚注+版本条黄点/作者/⋮) | 右侧 380px 抽屉,仅版本列表+Restore | **P0** | CanvasView.vue:734-736,1008-1037 |
+| D064 | 顶栏 | CanvasView | 面包屑 | 人形图标 + Personal/名(点击/Space 改名) | 无人形图标;名称为常驻 `&lt;input&gt;` | P1 | CanvasView.vue:650-654,1317-1321 |
+| D065 | 顶栏 | CanvasView | Add tag 下拉 | 展开 "Type to create a tag" + 底部 **Manage tags**(眼睛图标) | 仅输入时显 "Create tag";无 Manage tags | P1 | CanvasView.vue:674-689 |
+| D066 | 顶栏 | CanvasView | 发布计数 | 恒显 `0 / 1` | 仅 triggerCount>0 才渲染 | P2 | CanvasView.vue:708-710 |
+| D067 | 画布 | WorkflowCanvas/CanvasNode | 节点右键菜单 | **13 项**(Open↵/Execute/Rename Space/Replace R/Deactivate D/Pin P/Copy⌘C/Duplicate⌘D/Tidy⇧⌥T/Convert⌥X/Select all⌘A/Clear selection/Delete Del) | **无右键菜单**;仅 hover 工具条 5 项,缺 Rename/Replace/Pin/Copy/Tidy/Convert/Select all/Clear | **P0** | CanvasNode.vue:238-245 |
+| D068 | 画布 | WorkflowCanvas | 空白右键菜单 | Add node/Paste/Select all… | 无 | P1 | manifest §7.3 |
+| D069 | 画布 | NodePanel | 一级分类 | 7 语义分类(AI/Action in an app/Data transformation/Flow/Core/Human review/Add another trigger)带描述+下钻 | 平铺 5 内部 group,无描述/下钻/AI Templates 子面板 | **P0** | NodePanel.vue:30-36,78-98 |
+| D070 | 画布 | NodePanel | 空画布触发器面板 | 标题对 + **8 策展触发器卡**(带描述) | 标题对,主体仍平铺节点列表,无 8 策展卡 | **P0** | NodePanel.vue:64-98 |
+| D071 | 画布 | NodePanel | 触发器副标 | "A trigger is a step that starts your workflow" | "A trigger is the starting point of your workflow" | P2 | NodePanel.vue:66 |
+| D072 | 画布 | NodePanel | 搜索占位/图标/箭头 | "Search nodes..."(ASCII)+SVG 放大镜 + `›` | "Search nodes…"+**emoji 🔍**+`→` ASCII | P2 | NodePanel.vue:73-74,96 |
+| D073 | 节点卡 | CanvasNode | 触发器标记 | 仅左弧,无外挂图标 | 左侧多 **⚡ emoji 旗标** | P1 | CanvasNode.vue:197,308-311 |
+| D074 | 节点卡 | CanvasNode | 输出端口 | 输出圆点带 `+` 快捷加节点 | 纯圆点,无 `+` | P1 | CanvasNode.vue:277-287 |
+| D075 | 节点卡 | CanvasNode | AI 子端口标签 | "Chat Model"(红星必填)/Memory/Tool | "Model"/Memory/Tool(Chat Model 写成 Model 且无红星) | P1 | CanvasNode.vue:123-127 |
+| D076 | 连线 | WorkflowCanvas | 线中+/hover 工具条 | 线中点 `+`(插入)+hover add/delete 工具条 | 均无(静态贝塞尔) | P1 | WorkflowCanvas.vue:79-99 |
+| D077 | 便签 | CanvasNode | 调色板 | **7 色 + 彩虹自定义** | 仅 **4 色**(缺 gold/red/neutral+自定义) | **P0** | CanvasNode.vue:116,403-406;tokens variant-1..7 已定义 |
+| D078 | 便签 | CanvasNode | 拖拽调宽/高 | 可 resize | 无 resize 句柄(固定 240×160) | P1 | CanvasNode.vue:420-426 |
+| D079 | 便签 | CanvasNode | 默认内容 | markdown "I'm a note\n\n**Double click** to edit me.\n[Guide]" | "Double-click to edit",pre-wrap 不渲染 markdown | P1 | CanvasNode.vue:192,432 |
+| D080 | 便签 | CanvasNode | 右键菜单 | Edit(↵)/Change color/Copy/Duplicate/Tidy up/Select all/Clear/Delete | hover ⋯ 仅 Duplicate/Delete | P1 | CanvasNode.vue:177-181 |
+| D081 | 左下控制组 | WorkflowCanvas | 按钮集 | fit/zoom-in/zoom-out/**undo(有历史后)**/Tidy up | 用 **reset-zoom** 顶替 undo(undo 仅键盘) | P2 | WorkflowCanvas.vue:102-118 |
+| D082 | 画布 | editor store | 多选框选 | 支持框选多节点 | store 仅单 selectedNodeName,无多选模型 | P1 | stores/editor.ts:30 |
+| D083 | 画布 | WorkflowCanvas | 点阵网格 | 16px 吸附网格 | Background gap=18 | P2 | WorkflowCanvas.vue:98 |
+
+---
+
+## 五、执行历史 / 执行 Tab
+
+| 编号 | 页面 | 组件 | 维度 | 真站表现 | 复刻版表现 | 级别 | 截图路径/证据 |
+|---|---|---|---|---|---|---|---|
+| D084 | Executions Tab | router | 路由形态 | 独立路由 `/workflow/:id/executions` | `?tab=executions` query 内联 | P2 | router.ts:18 |
+| D085 | Executions Tab | CanvasView | 执行详情 | 顶条时间标题+**Copy to editor**+垃圾桶+**只读斜纹画布快照** | 逐节点列表+原始 JSON,无 Copy to editor/trash/只读画布 | **P0** | CanvasView.vue:811-835 |
+| D086 | Executions Tab | CanvasView | 工具行漏斗 | Auto refresh + 漏斗 | 无漏斗 | P2 | CanvasView.vue:773-779 |
+| D087 | Executions Tab | CanvasView | 空态 | 主区 "Nothing here yet"+折叠 "Which executions is this workflow saving?" | 主区 "Select an execution…";折叠问答挪左栏 | P2 | CanvasView.vue:797-808 |
+
+---
+
+## 六、NDV 节点详情 / 参数控件 / 表达式 / Focus Panel / 底部 Chat·Logs(重灾区)
+
+| 编号 | 页面 | 组件 | 维度 | 真站表现 | 复刻版表现 | 级别 | 截图路径/证据 |
+|---|---|---|---|---|---|---|---|
+| D088 | NDV | NdvModal | Settings tab 内容 | Always Output Data/Execute Once/Retry On Fail 三开关+On Error 下拉+Notes+Display Note 开关+版本注记 | 仅 1 裸复选框 "Continue on error"+说明,其余全无 | **P0** | NdvModal.vue:134-147 |
+| D089 | NDV | NdvModal | On Error 语义 | 下拉:Stop Workflow/Continue(error output)/Continue(regular output) | 换成布尔 "Continue on error" | P1 | NdvModal.vue:135-143 |
+| D090 | NDV | NdvModal | Settings 开关控件 | n8n switch(32×16) | 裸 checkbox(与 Parameters pswitch 不一致) | P2 | NdvModal.vue:136-142 |
+| D091 | NDV | NdvModal | 头带 Docs 链接 | 右侧 `Docs↗` + X | 仅 ✕,无 Docs | P1 | NdvModal.vue:74-77 |
+| D092 | NDV | NdvModal | 相邻节点 chip | 两侧相邻节点切换 chip | 无 | P1 | NdvModal.vue:64-78 |
+| D093 | NDV | NdvModal | 可拖拽分隔条 | 三栏可拖拽调比例(`|||` 拖柄) | 无拖柄;侧 flex/中定宽,4px 边不可拖 | P1 | NdvModal.vue:193-194 |
+| D094 | NDV | NdvModal | 头带副标题 | 只显节点名 | 额外拼 "displayName · vN · Xms · error" | P2 | NdvModal.vue:68-72 |
+| D095 | NDV | NdvModal | "I wish this node would…" | 底部居中反馈链接 | 完全缺(grep 无匹配) | P1 | manifest §7.5 |
+| D096 | NDV | NdvModal | AI 子节点 INPUT | 左上 `Mapping \| From AI` 分段 | 无 | **P0** | NdvModal.vue:81-90 |
+| D097 | NDV | NdvModal | Execute step 图标 | 试管/flask | `▶` 播放三角字符 | P2 | NdvModal.vue:108 |
+| D098 | NDV | DataPane | 默认视图 | 默认 **Schema** | 默认 table | P1 | DataPane.vue:26 |
+| D099 | NDV | DataPane | 头部搜索框 | 有数据态含搜索 | 无搜索框 | P1 | DataPane.vue:89-97 |
+| D100 | NDV | DataPane | item 计数文案 | "1 item"(单复数) | 恒 "{n} items"(会出 "1 items") | P2 | DataPane.vue:96 |
+| D101 | NDV | DataPane | OUTPUT 空态 | "No output data"+Execute step+**"or set mock data"** 橙链+铅笔 | 无 mock data 链/铅笔 | P1 | DataPane.vue:101-108 |
+| D102 | NDV | DataPane | OUTPUT 有数据态 | 绿勾ⓘ+**pin 图钉**+过时⚠+JSON 缩进导线/语法色/hover 复制 | 无 pin/过时/绿勾;JSON 裸 `&lt;pre&gt;` | P1 | DataPane.vue:89-97,149 |
+| D103 | NDV | ParamInput | **Resource Locator** | 模式下拉+值输入(Model gpt-4o-mini) | 无 resourceLocator 分支 → 只渲染 label | **P0** | ParamInput.vue:93-197 |
+| D104 | NDV | ParamInput | **凭证选择器** | "No credentials yet" 下拉 + Set up credential | 完全无(grep 无匹配) | **P0** | manifest §7.5 |
+| D105 | NDV | ParamInput | **fixedCollection**(Set 赋值区) | "Drag input fields here or Add Field" 虚线框,行=name/type/value+拖手柄+垃圾桶 | 退化成 JSON `&lt;textarea&gt;` | **P0** | ParamInput.vue:176-179 |
+| D106 | NDV | ParamInput | **filter**(IF 条件组) | Conditions(左值表达式+操作符下拉带 T 图标+右值)+Add condition+Convert types 开关+组级 Fixed\|Expression | 退化成 JSON 文本 | **P0** | ParamInput.vue:93-197 |
+| D107 | NDV | ParamInput | Import cURL(HTTP) | 顶部 Import cURL 按钮 | 无 | P1 | manifest §7.5 |
+| D108 | NDV | ParamInput | multiOptions | 多选控件 | 无分支 → 只渲染 label | P1 | ParamInput.vue:93-197 |
+| D109 | NDV | ParamInput | 表达式切换范围 | 几乎所有字段可切 Fixed\|Expression | ƒx 仅对 type==='string' | P1 | ParamInput.vue:104-113 |
+| D110 | NDV | ParamInput | Fixed\|Expression 形态 | 分段控件(字段 hover 工具条内) | 内联小 ƒx 按钮 | P2 | ParamInput.vue:104-113 |
+| D111 | NDV | ParamInput | 多行文本(rows) | System Message 等大文本域 | string 恒单行 `&lt;input&gt;` | P1 | ParamInput.vue:132-137 |
+| D112 | NDV | ParamInput | notice 形态 | AI Agent 顶部**紫色 Tip 条**(链接可关) | 只渲染灰 dim 文本 | P1 | ParamInput.vue:95-97 |
+| D113 | NDV | ParamInput | AI Agent 子节点连接条 | NDV 底 Chat Model*/Memory+/Tool+ 连接条 | 无 | P1 | manifest §7.5 |
+| D114 | NDV | ParamInput | options 下拉形态 | 自定义下拉,选项带类型图标前缀 | 原生 `&lt;select&gt;` 无图标 | P2 | ParamInput.vue:166-174 |
+| D115 | 表达式 | ParamInput | Result 预览面板 | 独立 Result 面板(Item pager ‹›/"[Execute previous nodes for preview]"/Tip "Anything inside {{ }} is JavaScript. Learn more") | 仅一行内联 "Preview: 值" chip | P1 | ParamInput.vue:140-143 |
+| D116 | 表达式 | ParamInput | 字段悬浮工具条 | 聚焦 fx→悬浮工具条(Focus Panel 图标/⋮/Fixed\|Expression) | 无(仅 label 旁 ƒx) | P1 | ParamInput.vue:99-113 |
+| D117 | 表达式 | ExpressionInput | 自动补全 $json 变量树 | `{{ $` → SUGGESTED 分组 + **成员级 `$json.` 变量树** | 仅 8 顶层 `$` 全局名,无成员树 | P1 | ExpressionInput.vue:125-150 |
+| D118 | Focus Panel | CanvasView | Setup\|参数 tab | 顶部 `Setup \| &lt;参数名&gt;` tab | 仅 "Focus panel"+×,无 tab | P1 | CanvasView.vue:917-921 |
+| D119 | Focus Panel | CanvasView | 逐参数运行 ▶ | 参数行头 +▶ 运行 + X | 有标题+×,无 ▶ | P1 | CanvasView.vue:927-931 |
+| D120 | Focus Panel | CanvasView | 自动补全提示 | "ⓘ Execute previous node for autocomplete" | 无 | P2 | CanvasView.vue:916-939 |
+| D121 | 底部 Chat | CanvasView | 输入 placeholder | "Type message, or press 'up' for previous one" | "Type a message…" | P1 | CanvasView.vue:981 |
+| D122 | 底部 Chat | CanvasView | 发送按钮 | 纸飞机图标 | 文本 "Send" 按钮 | P2 | CanvasView.vue:985-987 |
+| D123 | 底部 Logs | CanvasView | 执行后 Logs 树 | 左树(Success in 420ms 摘要+逐节点行选中高亮)+右详情(节点 Success in 60ms+Input\|Output+⋯+视图三连+1 item+数据表) | 一维扁平行 "● name Xms error",无树/摘要/右详情/Input\|Output | P1 | CanvasView.vue:991-1001 |
+| D124 | 底部 Logs | CanvasView | 收起态 popout 图标 | 收起条右侧 popout 图标+chevron | 仅 chevron | P2 | CanvasView.vue:954-961 |
+| D125 | 画布 | CanvasView | Execute workflow 按钮 | 试管图标橙分裂钮,副文案 "from &lt;触发器&gt;"(两行) | `▶ Execute workflow`;多触发器把 "from X" 拼进单行 | P2 | CanvasView.vue:856-861 |
+| D126 | 底部 Chat | CanvasView | 硬编码回退色 | 走令牌 | 多处 `var(--panel,#2a2a33)`/`#fff`/圆角 10px 气泡等非令牌 | P2 | CanvasView.vue:1130-1153 |
+
+---
+
+## 七、Settings 14 子页
+
+| 编号 | 页面 | 组件 | 维度 | 真站表现 | 复刻版表现 | 级别 | 截图路径/证据 |
+|---|---|---|---|---|---|---|---|
+| D127 | Settings/Security & policies | 分区 | **整页替换** | 三分区:2FA 强制 / Data redaction(Redact executions 下拉+Affected scope 指标)/ Personal Space(Sharing/Workflow publishing+指标) | 完全不同:Authentication(SSO)/User provisioning(SCIM)/Accounts,n8n 三区全缺 | **P0** | SettingsView.vue:1232-1279 |
+| D128 | Settings/Roles | 主体 | **整页替换** | Enterprise **锁卡**(三权限卡+Upgrade to Enterprise+Learn more↗+Upgrade) | 渲染真实角色表,无锁 | **P0** | SettingsView.vue:1093-1120 |
+| D129 | Settings/OpenTelemetry | 整页 | **页面替换** | 页名 OpenTelemetry + 全字段(Enable/OTLP endpoint/Service name n8n/Custom headers/Trace path /v1/traces/Startup 2000ms/Send test trace/Sample rate/Include node spans…)+Save/Discard | 页名 "Observability" + Prometheus /metrics 配置,OTel 字段全缺 | **P0** | SettingsView.vue:1674-1702 |
+| D130 | Settings/Chat | Providers 表 | **枚举** | **15 家**(OpenAI/Anthropic/Google/Azure×2/Ollama/AWS Bedrock/Vercel/xAI/Groq/OpenRouter/DeepSeek/Cohere/Mistral/NVIDIA)带品牌图标 | 仅 **6 家**(Anthropic/DeepSeek/Doubao/Qwen/Kimi/GLM),无品牌图标 | **P0** | assistant-service.ts:42-97;SettingsView.vue:1894 |
+| D131 | Settings/MCP | Tab 体系 | 缺 tab | 三 tab(Workflows/Connected clients/**OAuth settings**) | 仅两 tab,缺 OAuth settings | **P0** | SettingsView.vue:1759-1761 |
+| D132 | Settings 壳 | 左导航 | 多余页 | 无 Languages | 插入自有 "Languages"(导航序号后移) | P1 | settings-nav.ts:26 |
+| D133 | Settings/Personal | Personalisation | 字段缺 | 三区含 Personalisation→**Theme 下拉**(System default/Light/Dark) | 只 Basic Info+Security 两区,无 Theme | P1 | SettingsView.vue:962-1069 |
+| D134 | Settings/Users | 升级条 | 缺 | 顶部米黄 "Upgrade to unlock the ability to create additional admin users" | 无 | P1 | SettingsView.vue:1124-1135 |
+| D135 | Settings/Users | Account Type 列 | 控件错位 | 纯文本 "Owner" | 内联 `&lt;select&gt;` 角色下拉 | P1 | SettingsView.vue:1202-1209 |
+| D136 | Settings/5 锁页 | 锁卡按钮 | 文案 | External Secrets/SSO/LDAP/Log Streaming=**See plans**;Environments=**More info** | 统一 "Enter activation key" | P1 | SettingsView.vue:1291,1319,1359,1414,1606 |
+| D137 | Settings/Usage and plan | Unlock 条 | 文案 | "Unlock **selected paid features for free (forever)**" | "Unlock … Enterprise features … with an activation key" | P1 | SettingsView.vue:2009-2012 |
+| D138 | Settings/Usage and plan | 指标行 | 文案 | "**Published workflows** — 0 of unlimited" | "Executions this month — {used} of {limit}" | P1 | SettingsView.vue:2015-2018 |
+| D139 | Settings/Community nodes | Install 按钮 | 位置 | 右上常驻 Install 橙按钮 | 无右上;仅空态内+列表底右下 | P1 | SettingsView.vue:1530-1560 |
+| D140 | Settings/Community nodes | 列表形态 | 结构 | 包卡片(包名+"N node(s):节点名"+v1.0.6+更新✓+⋮) | 表格(Package/Version/Nodes 计数/Uninstall),无节点名/更新图标/⋮ | P1 | SettingsView.vue:1542-1556 |
+| D141 | Settings/API | Create API Key 弹窗 | 选项缺 | Expiration 含 **Custom**;Scopes 含 **Custom(72 scopes)** | 缺 Custom(Expiration)与 Custom(Scopes) | P1 | SettingsView.vue:205-211,1497-1508 |
+| D142 | Settings/MCP | 警示横幅 | 缺 | 棕底 OAuth redirect allowlist 横幅(可关×) | 无 | P1 | SettingsView.vue:1705-1856 |
+| D143 | Settings/MCP | Connection details | 结构 | OAuth\|Access token 分段+Server URL 只读+复制按钮 | 无分段;两块直排,无复制 | P1 | SettingsView.vue:1723-1734 |
+| D144 | Settings/MCP | Workflows 表 | 列缺 | Name/Location/**Description** | 缺 Description | P1 | SettingsView.vue:1772 |
+| D145 | Settings/Personal | Save 禁用态 | 逻辑 | 未改动时禁用 | 仅保存中禁用 | P2 | SettingsView.vue:1063 |
+| D146 | Settings/Users | Last Active 列 | 取值 | "Today" | 恒 "—"(硬编码) | P2 | SettingsView.vue:1210 |
+| D147 | Settings/SSO | 描述 | 文案 | 提 SAML 2.0/OIDC+documentation 链接 | 仅 "OpenID Connect"(无 SAML/链接) | P2 | SettingsView.vue:1284-1287 |
+| D148 | Settings/LDAP | 描述 | 文案 | 举例 Active Directory/**Okta/Jumpcloud** | Active Directory/OpenLDAP | P2 | SettingsView.vue:1312-1315 |
+| D149 | Settings/API | 空态文案 | 文案 | "Control n8n programmatically using the n8n API"(橙链) | "Control nomops … REST API(header X-Nomops-Api-Key)"(无橙链) | P2 | SettingsView.vue:1450 |
+| D150 | Settings/MCP | Connected clients 列 | 列名 | Client Name/Connected At | Client/Version/Last seen | P2 | SettingsView.vue:1805 |
+| D151 | Settings/Chat | Configure 弹窗 | 字段 | OpenAI 含 Use Responses API 开关 | 无该开关 | P2 | SettingsView.vue:1920-1990 |
+
+---
+
+## 八、Insights / Chat 壳 / Shared / 鉴权
+
+| 编号 | 页面 | 组件 | 维度 | 真站表现 | 复刻版表现 | 级别 | 截图路径/证据 |
+|---|---|---|---|---|---|---|---|
+| D152 | Insights | 整页 | **应锁未锁** | Community=锁空态(锁图标+"Upgrade to access more detailed insights"+Upgrade 橙,KPI 空白) | 全解锁:真实数值+完整堆叠柱状趋势图+日期预设,无锁/Upgrade | **P0** | InsightsView.vue:93-161 |
+| D153 | Insights | 过滤条 | 元素 | "All projects" 项目选择器+日期范围 chip | 无项目选择器;副标 "Execution analytics for {project}"+日期按钮 | P2 | InsightsView.vue:96-128 |
+| D154 | Shared with you | 整页 | **功能缺失** | `/shared/workflows`+`/shared/credentials`:H1+副标+两 tab+空态 "No workflow has been shared with you"+**Back to Personal** | 完全不存在(router 无 /shared*;grep "shared" 零命中) | **P0** | router.ts:8-29 |
+| D155 | Chat 壳 | 侧栏顶部 | 元素缺 | logo+**搜索**+**侧栏开关**(无+) | 仅 logo,无搜索/侧栏开关 | P1 | ChatView.vue:270-276 |
+| D156 | Chat 壳 | composer | 元素缺 | 左下 **+Tools**;右下 **回形针+麦克风**+橙发送 | 仅 textarea+橙发送,+Tools/回形针/麦克风 全缺 | P1 | ChatView.vue:433-445 |
+| D157 | Chat 壳 | Select model 下拉 | 结构 | provider 各带 › 二级子菜单(provider→models 级联) | 扁平平铺所有 model,无级联;仅 6 家自有 | P1 | ChatView.vue:136-170 |
+| D158 | Chat/Personal Agents | 副标 | 文案 | "Create and manage custom AI agents with specific instructions and behaviors" | 自撰 "Your own agents with a custom system prompt…" | P1 | ChatView.vue:323 |
+| D159 | Chat/Personal Agents | New Agent 入口 | 位置/文案 | 右上 **+ New Agent** 橙按钮 | 网格内虚线卡 "＋ New agent"(位置/大小写异) | P1 | ChatView.vue:339-341 |
+| D160 | Chat/Personal Agents | 空态文案 | 缺 | "No personal agents available. Create your first custom agent to get started." | 无空态文案 | P1 | ChatView.vue:321-351 |
+| D161 | Chat 壳 | 会话条目 | 元素 | 带模型图标 | 仅标题+删除×,无模型图标 | P2 | ChatView.vue:300-301 |
+| D162 | Login | Forgot 链接 | 文案 | "Forgot my password**?**"(带问号) | "Forgot my password"(无问号) | P2 | LoginView.vue:253 |
+
+---
+
+## 九、产品自有元素(1:1 视角=多余;acceptance-report §三 已"保留"裁决,登记备查,不计入 P 分)
+
+| 元素 | 位置 | n8n 有无 | 复刻版(file:line) |
+|---|---|---|---|
+| ¥99 Pro / Alipay 购买卡 | Usage and plan | 无(n8n=View plans 外链) | SettingsView.vue:2035-2047 |
+| Admin 项目配额覆盖卡 | Usage and plan | 无 | SettingsView.vue:2050-2082 |
+| Languages 设置页(i18n) | Settings 导航 | 无 | SettingsView.vue:1072-1090 |
+| SignupView 营销双栏页 | `/signup` | 无(自托管仅 /setup+邀请) | SignupView.vue 全文 |
+| Admin Panel 侧栏入口 | 主侧栏底部 | 无 | SideBar.vue:249 |
+| Personal 独立导航项 | 主侧栏 | n8n 折叠于 Overview | SideBar.vue:232 |
+| 卡片 Manage tags / Move to / Active 开关 | 工作流卡片 ⋮ | 无 | OverviewView.vue:888,935-951 |
+| 文件夹免注册可用 | 列表工具行 | n8n 注册门控 | — |
+| 执行行双 Retry "(from node with error)" 后缀 | Executions ⋮ | n8n 相同(两 Retry) | OverviewView.vue:1131-1136 |
+| 品牌命名替换 | 全站 | — | About nomops / nomops API / X-Nomops-Api-Key 等 |
+
+---
+
+## 十、覆盖率表(manifest 每节 → 已审计 / 未审计 + 原因)
+
+| manifest 节 | 主题 | 审计状态 | 说明 |
+|---|---|---|---|
+| §0 路由总表 | 110+ 路由 | **部分** | 审计了主要可达路由的实现;鉴权组(/signin etc)、demo/template、oauth/saml、404 等未逐一 live 走查(见未验证清单) |
+| §1.1 主侧栏 | 折叠/条目/Help/Settings 菜单 | **已审计**(代码级) | D001-D020;折叠态、红点、Help/Settings 枚举均已比对 |
+| §1.2 顶部工具 | +菜单/搜索命令面板/折叠开关 | **已审计** | D008-D010,D021-D027 |
+| §1.3 文档 title | 动态标题 | **已审计** | D028(P0 缺失) |
+| §2.1 页框架 | H1/副标/Create/KPI/Tab | **已审计**(含 live 数值) | D029-D035 |
+| §2.2 Workflows Tab | 工具行/卡片/⋮/分页/空态 | **部分** | D036-D042;卡片 hover 态、空态首屏引导全文未 live 取证 |
+| §2.3 Credentials Tab | 卡片/新增模态/编辑模态 | **已审计** | D043,D049-D057;连接测试区行为待 live |
+| §2.4 Executions Tab | 表/状态/批量/⋮ | **已审计** | D044-D046 |
+| §2.5 Variables Tab | Community 锁态 | **已审计** | D047(P0) |
+| §2.6 Data tables | 空态/Create 模态/详情 | **部分** | D048;详情页网格未 live 走查 |
+| §3 Insights | 锁空态 | **已审计** | D152-D153(P0 应锁未锁) |
+| §4 Chat 壳 | 侧栏/model 下拉/composer/agents | **已审计** | D155-D161;发消息/流式/工具调用会话态未 live(需 provider key) |
+| §5 Shared | 整页 | **已审计** | D154(P0 整页缺) |
+| §6 Projects | Community 重定向 | **已审计** | nomops 有 Admin Panel/Personal,重定向行为待 live 确认 |
+| §7.1 编辑器顶栏 | 面包屑/tab/Publish/⋯/settings 模态 | **已审计** | D058-D066 |
+| §7.2 画布 | 节点卡/端口/连线/便签/rail/控制组/Execute | **已审计** | D073-D083,D125;平移缩放手势/快捷键映射待 live |
+| §7.3 右键菜单 | 13 项 | **已审计** | D067-D068(P0 整体缺) |
+| §7.4 节点创建面板 | 7 分类/子面板/8 触发器 | **已审计** | D069-D072(P0) |
+| §7.5 NDV | 三栏/参数控件/表达式/Focus Panel | **已审计**(重点深挖) | D088-D120;各节点型中栏定宽、$json 成员补全树待 live |
+| §7.6 底部 Chat/Logs | 收起/展开/执行树 | **已审计** | D121-D124;执行后 Logs 树需真实执行 live |
+| §7.7 History | 整页 | **已审计** | D063(P0 降级为抽屉) |
+| §7.8 Executions Tab(编辑器内) | 空态/详情 | **已审计** | D084-D087(P0 详情无只读画布) |
+| §7.9 Evaluations | 注册锁态 | **已审计** | D058-D059(P0 整块缺) |
+| §8 Settings 14 页 | 逐页 | **已审计** | D127-D151;部分锁卡按钮文案、空态需 live 确认真值 |
+| §9 鉴权页 | signin/setup/signup/forgot | **部分** | D162;LoginView 对标已做但 /signin 未本轮 live 并排;/setup 字段顺序未取证(需登出) |
+
+---
+
+## 十一、没能验证到的部分(如实登记,不含糊)
+
+**环境限制类:**
+1. **n8n 侧无法截图**:本会话 claude-in-chrome(全功能扩展)断连,只剩 Control_Chrome(可读 computed style、不能截图)。故**所有 n8n 配对截图缺失**,数值差以 computed-style 值为证。若要补配对截图,需恢复扩展或你在真 Chrome 手动截。
+2. **nomops 画布 live 深测受限**:本会话 Browser 面板存在视口缩放错位(innerWidth 报 1440 但渲染约占屏左半),坐标点击不稳,画布内 hover 工具条/右键/NDV 的 live 逐像素并排未全部完成;上表画布/NDV 类差异**以代码级证据为主**,数值级偏差(曲率/间距/hover 变色)多数标注"待 live"。
+
+**需 live 手测(合成事件/锁态/需登出/需 provider key)才能定论的项:**
+3. 表达式**自动补全成员级 `$json.` 变量树**真实 UI(合成键盘难触发,需真 Chrome 手测)。
+4. NDV 各节点型**中栏精确定宽表**(仅知 IF/HTTP=640、Set=420,其余未逐个量);nomops 用启发式 ≤4→420 的命中率。
+5. NDV INPUT/OUTPUT 视图切换在真站是**文本 Schema\|Table\|JSON** 还是图标三连;"or set mock data"链/铅笔精确布局。
+6. 底部 **Logs 执行树**展开态(摘要行/逐节点选中高亮/右详情 Input\|Output)——需真实执行一次工作流并排。
+7. **Settings 5 张 Enterprise 锁卡按钮**真值到底是 "See plans" 还是 "Upgrade"(manifest 混用三种措辞),据以定 nomops "Enter activation key" 的偏差等级。
+8. **各页空态原文**:Credentials 空态(nomops 🔒 疑自撰)、Workflows 空态首屏引导、Executions 空态、Data tables 副说明、Community nodes 空态 —— n8n 实例有数据,空态未取证,需临时过滤/造删取证。
+9. **凭证连接测试区**:n8n 为打开已存凭证**自动运行**+红条 "Couldn't connect…"+More details;nomops 为手动 Test connection 按钮 —— 交互与文案需真站复核。
+10. **/setup 表单字段顺序**、**/signin 并排数值**:需登出 n8n 一次取证(本轮未登出,避免影响 Control_Chrome 会话)。
+11. **画布平移/缩放手势与快捷键映射**(滚轮/Ctrl+滚轮/1=fit/Space/R/D/P 等)、**节点"改动未重跑"橙三角徽章**、**AI 子节点虚线中点菱形+线上 Model 标签** —— 需 live 逐项确认。
+12. **命令面板作用域徽标 / esc chip / +菜单 chevron / KPI Failure rate 后缀 / Help 首项视频图标** —— 需 n8n live 截图逐项核对(见各 agent live 清单)。
+13. **Personal / Personal Agents 页 H1 精确大小写**(manifest 仅记 "H1",未逐字)。
+
+---
+
+## 十二、审计方法与可信度声明
+
+- **代码级差异(D001-D162 绝大多数)**:基准 = manifest/field-specs/acceptance-report 里**逐页 live 取证过的 n8n 真值**(阶段一至五,40+ 帧截图 + `/rest/*` 导出);比对 = 逐行读 nomops 源码,每条带 `file:line`。可信度高,但真值时点为 2026-07-17/18 侦察时。
+- **live 数值差(D002,D029-D030,D034-D035 等)**:本轮在两侧运行实例上用 `getComputedStyle`+`getBoundingClientRect` 实测,同视口 1440×655。
+- **未做**:本轮未修改任何代码;未产出 n8n 配对截图(环境限制);画布/NDV 的 live 逐像素并排未全覆盖(以代码级为主 + 标注待 live)。
+
+> 待你确认后,按 **P0 → P1 → P2** 分批修复。P0 集中在:参数控件引擎(IF/Set/HTTP/resourceLocator/凭证/fixedCollection/filter)、节点右键 13 项菜单、Evaluations/History/执行详情/Shared 四整块、NDV Settings 6 项、节点创建面板 7 分类/8 触发器、命令面板 Data tables 组、动态 document.title、Insights 锁态、Variables 锁态、Security&policies/Roles/OpenTelemetry/Chat 四设置页、便签 7 色。

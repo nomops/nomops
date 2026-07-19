@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { api, type CredentialView, type WorkflowRow } from '../../api/client.js';
+import { api, type CredentialView, type DataTableView, type WorkflowRow } from '../../api/client.js';
 import { useUiStore } from '../../stores/ui.js';
 
 /** 命令面板：全局搜索工作流 + 凭证 + 快捷动作。⌘K / 点搜索打开。 */
@@ -11,6 +11,7 @@ const router = useRouter();
 const query = ref('');
 const workflows = ref<WorkflowRow[]>([]);
 const credentials = ref<CredentialView[]>([]);
+const dataTables = ref<DataTableView[]>([]);
 const loaded = ref(false);
 const active = ref(0);
 const inputEl = ref<HTMLInputElement>();
@@ -24,12 +25,14 @@ watch(
     await nextTick();
     inputEl.value?.focus();
     if (!loaded.value) {
-      const [wf, cred] = await Promise.all([
+      const [wf, cred, dt] = await Promise.all([
         api.workflows.list().catch(() => []),
         api.credentials.list().catch(() => []),
+        api.dataTables.list().catch(() => []),
       ]);
       workflows.value = wf;
       credentials.value = cred;
+      dataTables.value = dt;
       loaded.value = true;
     }
   },
@@ -70,7 +73,7 @@ const groups = computed<Group[]>(() => {
     }));
 
   const wfGroup: Item[] = [
-    ...(match('Create workflow') ? [{ kind: 'action' as const, icon: '＋', label: 'Create workflow', sub: '', run: createWorkflow }] : []),
+    ...(match('Create workflow in Personal') ? [{ kind: 'action' as const, icon: '＋', label: 'Create workflow in Personal', sub: '', run: createWorkflow }] : []),
     ...workflows.value.filter((w) => match(w.name)).map((w) => ({
       kind: 'workflow' as const,
       icon: '🔀',
@@ -81,7 +84,7 @@ const groups = computed<Group[]>(() => {
   ];
 
   const credGroup: Item[] = [
-    ...(match('Create credential') ? [{ kind: 'action' as const, icon: '＋', label: 'Create credential', sub: '', run: () => go('/?tab=credentials') }] : []),
+    ...(match('Create credential in Personal') ? [{ kind: 'action' as const, icon: '＋', label: 'Create credential in Personal', sub: '', run: () => go('/?tab=credentials') }] : []),
     ...credentials.value.filter((c) => match(c.name)).map((c) => ({
       kind: 'credential' as const,
       icon: '🔑',
@@ -91,14 +94,27 @@ const groups = computed<Group[]>(() => {
     })),
   ];
 
+  // Data tables 组(对标 n8n 命令面板全局态第三组)
+  const dataGroup: Item[] = [
+    ...(match('Create data table in Personal') ? [{ kind: 'action' as const, icon: '📋', label: 'Create data table in Personal', sub: '', run: () => go('/?tab=datatables') }] : []),
+    ...dataTables.value.filter((d) => match(d.name)).map((d) => ({
+      kind: 'action' as const,
+      icon: '📋',
+      label: d.name,
+      sub: 'Data table',
+      run: () => go(`/datatables/${d.id}`),
+    })),
+  ];
+
   const execGroup: Item[] = match('View executions')
-    ? [{ kind: 'action', icon: '📋', label: 'View executions', sub: '', run: () => go('/?tab=executions') }]
+    ? [{ kind: 'action', icon: '📊', label: 'View executions', sub: '', run: () => go('/?tab=executions') }]
     : [];
 
   const out: Group[] = [];
   if (ctxItems.length) out.push({ label: ui.paletteContext[0]?.group ?? 'Commands', items: ctxItems });
   if (wfGroup.length) out.push({ label: 'Workflows', items: wfGroup });
   if (credGroup.length) out.push({ label: 'Credentials', items: credGroup });
+  if (dataGroup.length) out.push({ label: 'Data tables', items: dataGroup });
   if (execGroup.length) out.push({ label: 'Executions', items: execGroup });
   return out;
 });

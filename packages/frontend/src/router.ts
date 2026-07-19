@@ -36,3 +36,39 @@ router.beforeEach((to) => {
   if (auth.token && to.name === 'login') return { name: 'overview' };
   return true;
 });
+
+/**
+ * 动态文档标题(对标 n8n "Workflows - n8n"):按路由/Overview tab 生成
+ * `<页名> - nomops`,兜底 `nomops`。编辑器页由 CanvasView 用工作流名覆盖。
+ */
+const OVERVIEW_TAB_TITLE: Record<string, string> = {
+  workflows: 'Workflows',
+  credentials: 'Credentials',
+  executions: 'Executions',
+  variables: 'Variables',
+  datatables: 'Data tables',
+};
+const ROUTE_TITLE: Record<string, string> = {
+  chat: 'Chat',
+  insights: 'Insights',
+  settings: 'Settings',
+  admin: 'Admin Panel',
+  projects: 'Projects',
+  audit: 'Audit',
+  templates: 'Templates',
+  login: 'Sign in',
+  signup: 'Sign up',
+};
+export function titleFor(to: { name?: unknown; query?: Record<string, unknown> }): string {
+  const name = String(to.name ?? '');
+  if (name === 'overview') {
+    const tab = String(to.query?.['tab'] ?? 'workflows');
+    return OVERVIEW_TAB_TITLE[tab] ?? 'Overview';
+  }
+  if (name === 'canvas') return 'Workflow'; // CanvasView 会用工作流名覆盖
+  return ROUTE_TITLE[name] ?? '';
+}
+router.afterEach((to) => {
+  const t = titleFor(to);
+  document.title = t ? `${t} - nomops` : 'nomops';
+});

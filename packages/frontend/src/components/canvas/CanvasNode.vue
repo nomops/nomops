@@ -113,7 +113,8 @@ function onOpen() {
 
 /** 便签颜色(对标 n8n change-sticky-color;nomops 便签色模型=parameters.color)。
     stickyColorOpen 已在上方(watch 之前)声明,避免 watch getter 同步取值时命中 TDZ。 */
-const STICKY_COLORS = ['yellow', 'blue', 'green', 'purple'] as const;
+// n8n 便签调色板 7 色(按 --sticky--*--variant-1..7 顺序:黄/金/红/绿/蓝/紫/灰)
+const STICKY_COLORS = ['yellow', 'gold', 'red', 'green', 'blue', 'purple', 'neutral'] as const;
 function setStickyColor(c: string) {
   editor.setParam(props.data.node.name, 'color', c);
   stickyColorOpen.value = false;
@@ -401,9 +402,12 @@ const bottomStyle = (i: number, count: number) => ({
 .swatch { width: 18px; height: 18px; border-radius: var(--radius); border: 1px solid var(--border-color); cursor: pointer; }
 .swatch.on { box-shadow: 0 0 0 2px var(--canvas--color--selected); }
 .sw-yellow { background: var(--sticky--color--background--variant-1); }
-.sw-blue { background: var(--sticky--color--background--variant-5); }
+.sw-gold { background: var(--sticky--color--background--variant-2); }
+.sw-red { background: var(--sticky--color--background--variant-3); }
 .sw-green { background: var(--sticky--color--background--variant-4); }
+.sw-blue { background: var(--sticky--color--background--variant-5); }
 .sw-purple { background: var(--sticky--color--background--variant-6); }
+.sw-neutral { background: var(--sticky--color--background--variant-7); }
 /* ai 能力口：菱形观感 + 类型标签在卡片下方 */
 :deep(.ai-handle) {
   width: 9px; height: 9px; border-radius: 2px; transform: translate(-50%, 0) rotate(45deg);
@@ -426,9 +430,12 @@ const bottomStyle = (i: number, count: number) => ({
 }
 .sticky-note.selected { box-shadow: 0 0 0 2px var(--canvas--color--selected); }
 .sticky-yellow { background: var(--sticky--color--background--variant-1); border-color: var(--sticky--border-color--variant-1); }
-.sticky-blue { background: var(--sticky--color--background--variant-5); border-color: var(--sticky--border-color--variant-5); }
+.sticky-gold { background: var(--sticky--color--background--variant-2); border-color: var(--sticky--border-color--variant-2); }
+.sticky-red { background: var(--sticky--color--background--variant-3); border-color: var(--sticky--border-color--variant-3); }
 .sticky-green { background: var(--sticky--color--background--variant-4); border-color: var(--sticky--border-color--variant-4); }
+.sticky-blue { background: var(--sticky--color--background--variant-5); border-color: var(--sticky--border-color--variant-5); }
 .sticky-purple { background: var(--sticky--color--background--variant-6); border-color: var(--sticky--border-color--variant-6); }
+.sticky-neutral { background: var(--sticky--color--background--variant-7); border-color: var(--sticky--border-color--variant-7); }
 .sticky-content { white-space: pre-wrap; word-break: break-word; }
 .sticky-edit {
   width: 100%; min-height: 96px; background: rgba(255, 255, 255, 0.35);

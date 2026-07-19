@@ -415,6 +415,15 @@ onUnmounted(() => {
   ui.clearPaletteContext();
 });
 
+// 文档标题跟随工作流名(对标 n8n "▶️ <名> - n8n"):编辑器页覆盖 router 的兜底标题
+watch(
+  () => editor.name,
+  (name) => {
+    if (name) document.title = `${name} - nomops`;
+  },
+  { immediate: true },
+);
+
 watch(
   () => route.params['id'],
   async (id) => {

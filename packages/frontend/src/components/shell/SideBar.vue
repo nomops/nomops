@@ -186,7 +186,8 @@ async function openAbout() {
         <span v-if="!collapsed" class="brand-word">nomops</span>
       </RouterLink>
 
-      <div v-if="!collapsed" class="brand-tools" @click.stop>
+      <!-- 顶部工具:+/搜索/折叠开关。折叠态竖排(对标 n8n 折叠列仍含这三个图标) -->
+      <div class="brand-tools" @click.stop>
         <div class="flyout-anchor">
           <button class="icon-btn" data-test="quick-create" :title="t('Create')" @click.stop="quickOpen = !quickOpen; flyout = null">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14" /></svg>
@@ -207,13 +208,10 @@ async function openAbout() {
         <button class="icon-btn" data-test="sidebar-search" :title="t('Search (⌘K)')" @click.stop="ui.openPalette()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
         </button>
-        <button class="icon-btn" data-test="sidebar-collapse" :title="t('Collapse')" @click.stop="ui.toggleSidebar()">
+        <button class="icon-btn" data-test="sidebar-collapse" :title="collapsed ? t('Expand') : t('Collapse')" @click.stop="ui.toggleSidebar()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /></svg>
         </button>
       </div>
-      <button v-else class="icon-btn expand" data-test="sidebar-collapse" :title="t('Expand')" @click.stop="ui.toggleSidebar()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6" /></svg>
-      </button>
     </div>
 
     <!-- 顶部导航 -->
@@ -367,7 +365,10 @@ async function openAbout() {
 .sidebar.collapsed { width: 58px; padding: 10px 8px; align-items: center; }
 .sidebar.collapsed .lbl { display: none; }
 .sidebar.collapsed .nav-item { justify-content: center; padding: 8px 0; }
-.sidebar.collapsed .brand-row { justify-content: center; }
+/* 折叠态:logo 在上,+/搜索/折叠 三键竖排在下(对标 n8n 折叠列) */
+.sidebar.collapsed .brand-row { flex-direction: column; justify-content: center; gap: 4px; }
+.sidebar.collapsed .brand-tools { flex-direction: column; margin-left: 0; gap: 2px; }
+.sidebar.collapsed .flyout.quick { left: calc(100% + 4px); top: 0; }
 
 .brand-row { display: flex; align-items: center; gap: 6px; padding: 6px 6px 14px; }
 .brand { display: flex; align-items: center; gap: 5px; text-decoration: none; min-width: 0; flex: 1; }
