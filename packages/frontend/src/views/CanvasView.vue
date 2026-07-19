@@ -184,6 +184,12 @@ async function createAndSelectTag() {
 }
 
 /** 点击编辑器外部 → 保存并收起（同 n8n 失焦提交）。 */
+/* D065:Manage tags → 关闭 tag 编辑器并去 Overview(tag 过滤/管理在工作流列表)。 */
+function manageTags() {
+  tagEditorOpen.value = false;
+  void router.push({ name: 'overview', query: { tab: 'workflows' } });
+}
+
 async function closeTagEditor() {
   if (!tagEditorOpen.value) return;
   tagEditorOpen.value = false;
@@ -706,7 +712,11 @@ async function loadSavePolicy() {
     <!-- 画布顶栏：面包屑（项目 / 名称）+ Active 开关 + 保存 -->
     <div class="toolbar">
       <div class="breadcrumb">
-        <span class="crumb-project">{{ projects.currentName }}</span>
+        <!-- D064 对标 n8n:项目名前人形图标 -->
+        <span class="crumb-project" data-test="home-project">
+          <svg class="crumb-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c0-3.4 3-5.2 6.5-5.2s6.5 1.8 6.5 5.2" /></svg>
+          {{ projects.currentName }}
+        </span>
         <span class="crumb-sep">/</span>
         <input v-model="editor.name" data-test="workflow-name" class="name-input" @input="editor.dirty = true" />
       </div>
@@ -745,6 +755,12 @@ async function loadSavePolicy() {
               {{ tg.name }}
             </button>
             <p v-if="!canCreateTag && filteredTagOptions.length === 0" class="tag-empty dim">No tags</p>
+            <!-- D065 对标 n8n:底部 Manage tags(眼睛图标) -->
+            <div class="tag-menu-sep" />
+            <button class="tag-manage" data-test="manage-tags" @click="manageTags">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="i14"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></svg>
+              Manage tags
+            </button>
           </div>
         </div>
       </div>
@@ -1491,8 +1507,18 @@ async function loadSavePolicy() {
   padding: 0 var(--spacing--sm); background: var(--color--background--light-3);
 }
 .breadcrumb { display: flex; align-items: center; gap: 8px; }
-.crumb-project { color: var(--text-dim); font-size: 13px; }
+.crumb-project { display: inline-flex; align-items: center; gap: 5px; color: var(--text-dim); font-size: 13px; }
+.crumb-ico { width: 15px; height: 15px; flex-shrink: 0; }
 .crumb-sep { color: var(--text-dim); }
+/* D065 Manage tags */
+.tag-menu-sep { height: 1px; background: var(--border); margin: 4px 0; }
+.tag-manage {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  padding: 7px 10px; background: none; border: none; border-radius: 6px;
+  color: var(--text-dim); font-size: 13px; cursor: pointer;
+}
+.tag-manage:hover { background: var(--bg-hover); color: var(--text); }
+.tag-manage .i14 { width: 14px; height: 14px; flex-shrink: 0; }
 .name-input { width: 220px; background: transparent; border-color: transparent; font-size: 15px; font-weight: 600; }
 .name-input:hover, .name-input:focus { border-color: var(--border); background: var(--bg-input); }
 .menu-anchor { position: relative; }
