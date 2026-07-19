@@ -77,6 +77,35 @@ function onDrop(event: DragEvent) {
   editor.addNode(desc, [pos.x, pos.y]);
 }
 
+/* ── D068 空白画布右键菜单(对标 n8n:Add node / Add sticky note / Tidy up workflow / Select all / Clear selection)── */
+const paneCtx = ref<{ x: number; y: number } | null>(null);
+function onPaneContextMenu(event: MouseEvent) {
+  event.preventDefault();
+  paneCtx.value = { x: event.clientX, y: event.clientY };
+}
+function closePaneCtx() {
+  paneCtx.value = null;
+}
+function paneAddNode() {
+  closePaneCtx();
+  editor.nodePickerOpen = true;
+}
+function paneAddSticky() {
+  const pos = screenToFlowCoordinate({ x: paneCtx.value?.x ?? 200, y: paneCtx.value?.y ?? 200 });
+  closePaneCtx();
+  const desc = nodeTypesStore.byType.get('nomops.stickyNote');
+  if (desc) editor.addNode(desc, [pos.x, pos.y]);
+}
+function paneTidy() {
+  closePaneCtx();
+  editor.tidyUp();
+  void nextTick(() => fitView({ padding: 0.2 }));
+}
+function paneClearSelection() {
+  closePaneCtx();
+  editor.select(null);
+}
+
 /* ── 节点右键菜单(对标 n8n 13 项)── */
 const ctxMenu = ref<{ x: number; y: number; node: string } | null>(null);
 function onNodeContextMenu({ event, node }: NodeMouseEvent) {
@@ -128,7 +157,8 @@ function ctxDelete() { const n = ctxMenu.value?.node; closeCtx(); if (n) editor.
       @node-click="(e) => editor.select(e.node.id)"
       @node-double-click="(e) => editor.openNdv(e.node.id)"
       @node-context-menu="onNodeContextMenu"
-      @pane-click="editor.select(null); closeCtx()"
+      @pane-context-menu="onPaneContextMenu"
+      @pane-click="editor.select(null); closeCtx(); closePaneCtx()"
       @nodes-delete="onNodesDelete"
       @edges-delete="onEdgesDelete"
     >
@@ -157,6 +187,18 @@ function ctxDelete() { const n = ctxMenu.value?.node; closeCtx(); if (n) editor.
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="zc-i"><path d="M15 4V2m0 4v-2m4 0h2m-4 0h2M6.5 20.5L19 8l-3-3L3.5 17.5l3 3zM13 8l3 3" /></svg>
       </button>
     </div>
+
+    <!-- D068 空白画布右键菜单(对标 n8n) -->
+    <template v-if="paneCtx">
+      <div class="ctx-backdrop" @click="closePaneCtx" @contextmenu.prevent="closePaneCtx" />
+      <div class="ctx-menu" data-test="pane-context-menu" :style="{ left: paneCtx.x + 'px', top: paneCtx.y + 'px' }">
+        <button class="ctx-item" data-test="pane-add-node" @click="paneAddNode">Add node<span class="ctx-sc">N</span></button>
+        <button class="ctx-item" data-test="pane-add-sticky" @click="paneAddSticky">Add sticky note<span class="ctx-sc">⇧S</span></button>
+        <button class="ctx-item" data-test="pane-tidy" @click="paneTidy">Tidy up workflow<span class="ctx-sc">⇧⌥T</span></button>
+        <button class="ctx-item" disabled>Select all<span class="ctx-sc">⌘A</span></button>
+        <button class="ctx-item" data-test="pane-clear" @click="paneClearSelection">Clear selection</button>
+      </div>
+    </template>
 
     <!-- 节点右键菜单(对标 n8n 13 项);暂无对应能力的项置灰(Replace/Pin/Convert/Select all) -->
     <template v-if="ctxMenu">

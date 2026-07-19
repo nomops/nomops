@@ -127,12 +127,14 @@ function setStickyColor(c: string) {
   stickyColorOpen.value = false;
 }
 
-/** ai 连接类型的短标签（Agent 底部能力口下方显示）。 */
+/** ai 连接类型的短标签（Agent 底部能力口下方显示）。D075 对标 n8n:Chat Model(必填)/ Memory / Tool。 */
 const AI_LABELS: Record<string, string> = {
-  ai_languageModel: 'Model',
+  ai_languageModel: 'Chat Model',
   ai_tool: 'Tool',
   ai_memory: 'Memory',
 };
+/** D075:必填能力口(Chat Model)显红星。 */
+const AI_REQUIRED: Record<string, boolean> = { ai_languageModel: true };
 
 /** IF 双输出的端口标注。 */
 function outputLabel(index: number): string | null {
@@ -201,8 +203,7 @@ const bottomStyle = (i: number, count: number) => ({
   </div>
 
   <div v-else class="node-wrap" :data-test-node="data.node.name">
-    <!-- 触发器左侧闪电旗标 -->
-    <span v-if="isTrigger" class="trigger-flag">⚡</span>
+    <!-- D073 对标 n8n:触发器仅左侧圆弧,无外挂 ⚡ 旗标(已移除) -->
 
     <div
       class="nomops-node"
@@ -276,7 +277,7 @@ const bottomStyle = (i: number, count: number) => ({
           class="ai-port-label"
           :class="{ staggered: i % 2 === 1 }"
           :style="bottomStyle(i, aiInputs.length)"
-        >{{ AI_LABELS[t] ?? t }}</span>
+        >{{ AI_LABELS[t] ?? t }}<span v-if="AI_REQUIRED[t]" class="ai-req">*</span></span>
       </template>
 
       <IconSvg class="node-icon" :svg="visual.svg" :color="visual.color" :size="isSubNode ? 28 : 38" />
@@ -313,10 +314,8 @@ const bottomStyle = (i: number, count: number) => ({
 
 <style scoped>
 .node-wrap { position: relative; display: flex; flex-direction: column; align-items: center; }
-.trigger-flag {
-  position: absolute; left: -20px; top: 50%; transform: translateY(-50%);
-  font-size: 14px; filter: saturate(1.4);
-}
+/* D075 Chat Model 必填红星 */
+.ai-req { color: var(--color--danger); margin-left: 2px; }
 /* n8n 实测（2.30.4 画布 _node_）：96×96、bg --node--color--background(dark #2b2b2b)、
    border 1.5px rgba(255,255,255,.63)（实测 oklch 白/0.632）、圆角 8；图标 48；
    子节点圆 80×80；label 卡下 192px 宽白字 14px */
