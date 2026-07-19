@@ -72,6 +72,27 @@ function toggleExpression() {
   else emit('change', `=${String(current.value ?? '')}`);
 }
 
+/* D109 对标 n8n:几乎所有标量字段都可切 Fixed|Expression(原仅 string)。 */
+const EXPRESSIONABLE = ['string', 'number', 'options', 'multiOptions', 'dateTime', 'color'];
+const canExpression = computed(() => EXPRESSIONABLE.includes(props.prop.type) && !props.prop.noDataExpression);
+
+/* D111 对标 n8n:string 带 typeOptions.rows 渲染多行 textarea(如 System Message)。 */
+const textRows = computed(() => {
+  const rows = props.prop.typeOptions?.rows;
+  return typeof rows === 'number' && rows > 1 ? rows : 0;
+});
+const isMultiline = computed(() => props.prop.type === 'string' && textRows.value > 0);
+
+/* D108 对标 n8n:multiOptions 多选(值为数组)。 */
+const selectedMulti = computed<unknown[]>(() => (Array.isArray(current.value) ? (current.value as unknown[]) : []));
+function toggleMulti(optValue: unknown) {
+  const set = selectedMulti.value.slice();
+  const idx = set.findIndex((v) => v === optValue);
+  if (idx >= 0) set.splice(idx, 1);
+  else set.push(optValue);
+  emit('change', set);
+}
+
 /* json / collection：本地草稿 + 失焦解析 */
 const jsonDraft = ref(JSON.stringify(current.value ?? props.prop.default ?? {}, null, 2));
 const jsonError = ref('');
@@ -164,19 +185,20 @@ function removeField(i: number) {
         {{ prop.displayName }}
         <span v-if="prop.required" style="color: var(--err)">*</span>
         <button
-          v-if="prop.type === 'string' && !prop.noDataExpression"
+          v-if="canExpression"
           class="fx"
           :class="{ active: isExpression }"
           type="button"
           title="Toggle expression mode"
+          data-test="param-fx"
           @click="toggleExpression"
         >
           ƒx
         </button>
       </label>
 
-      <!-- string：普通 / 表达式；可接收数据窗格拖来的字段映射 -->
-      <template v-if="prop.type === 'string'">
+      <!-- D109 表达式态:任意可切字段统一渲染表达式编辑器(接收数据窗格拖来的映射) -->
+      <template v-if="isExpression && canExpression">
         <div
           class="drop-wrap"
           :class="{ over: dragOver }"
@@ -184,7 +206,7 @@ function removeField(i: number) {
           @dragover="onDragOverExpr"
           @dragleave="dragOver = false"
         >
-          <div v-if="isExpression" class="expr-row">
+          <div class="expr-row">
             <span class="expr-gutter" title="Expression">=</span>
             <ExpressionInput
               class="expr-cm"
@@ -192,6 +214,30 @@ function removeField(i: number) {
               @update:model-value="emit('change', $event)"
             />
           </div>
+        </div>
+        <p v-if="preview" class="expr-preview" :class="{ err: !preview.ok }" data-test="expr-preview">
+          <span class="pv-label">{{ preview.ok ? 'Preview' : 'Error' }}</span>
+          <span class="pv-value">{{ preview.text }}</span>
+        </p>
+      </template>
+
+      <!-- string(fixed):D111 带 rows→多行 textarea,否则单行 input;可接收拖拽映射 -->
+      <template v-else-if="prop.type === 'string'">
+        <div
+          class="drop-wrap"
+          :class="{ over: dragOver }"
+          @drop="onDropExpr"
+          @dragover="onDragOverExpr"
+          @dragleave="dragOver = false"
+        >
+          <textarea
+            v-if="isMultiline"
+            :value="String(current ?? '')"
+            :placeholder="prop.placeholder"
+            :rows="textRows"
+            data-test="param-textarea"
+            @input="emit('change', ($event.target as HTMLTextAreaElement).value)"
+          />
           <input
             v-else
             :value="String(current ?? '')"
@@ -199,11 +245,6 @@ function removeField(i: number) {
             @input="emit('change', ($event.target as HTMLInputElement).value)"
           />
         </div>
-        <!-- 表达式实时预览（按上游输入首 item 求值） -->
-        <p v-if="preview" class="expr-preview" :class="{ err: !preview.ok }" data-test="expr-preview">
-          <span class="pv-label">{{ preview.ok ? 'Preview' : 'Error' }}</span>
-          <span class="pv-value">{{ preview.text }}</span>
-        </p>
       </template>
 
       <input
@@ -235,6 +276,22 @@ function removeField(i: number) {
           {{ opt.name }}
         </option>
       </select>
+
+      <!-- D108 对标 n8n:multiOptions 多选(勾选芯片),值为数组 -->
+      <div v-else-if="prop.type === 'multiOptions'" class="multi-opts" data-test="multi-options">
+        <button
+          v-for="opt in prop.options ?? []"
+          :key="String(opt.value)"
+          type="button"
+          class="multi-chip"
+          :class="{ on: selectedMulti.includes(opt.value) }"
+          :data-test-multi="String(opt.value)"
+          @click="toggleMulti(opt.value)"
+        >
+          <span class="multi-check">{{ selectedMulti.includes(opt.value) ? '✓' : '' }}</span>
+          {{ opt.name }}
+        </button>
+      </div>
 
       <!-- IF 条件组(对标 n8n filter):左值 + 操作符下拉 + 右值 + Add condition -->
       <div v-else-if="prop.type === 'collection' && isConditions" class="cond-editor" data-test="conditions-editor">
@@ -352,6 +409,16 @@ function removeField(i: number) {
 .pswitch.on { background: var(--switch--color--background--active); border-color: transparent; }
 .pswitch.on .pswitch-knob { transform: translateX(16px); }
 .desc { font-size: 11px; margin: 4px 0 0; }
+/* D108 multiOptions 勾选芯片 */
+.multi-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.multi-chip {
+  display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px;
+  background: var(--color--background--light-2); border: none; box-shadow: inset 0 0 0 1px var(--border-color);
+  border-radius: var(--radius); color: var(--color--text--shade-1); font-size: var(--font-size--2xs); cursor: pointer;
+}
+.multi-chip:hover { box-shadow: inset 0 0 0 1px var(--border-color--strong); }
+.multi-chip.on { box-shadow: inset 0 0 0 1px var(--color--primary); color: var(--color--primary); }
+.multi-check { width: 10px; font-size: 11px; }
 /* n8n 实测：表达式态左侧 = gutter 块，与编辑框拼合(编辑框圆角 0 4 4 0) */
 .expr-row { display: flex; align-items: stretch; }
 .expr-gutter {

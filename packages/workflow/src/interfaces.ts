@@ -127,11 +127,18 @@ export type NodePropertyType =
   | 'number'
   | 'boolean'
   | 'options'
+  | 'multiOptions'
   | 'collection'
   | 'json'
   | 'dateTime'
   | 'color'
   | 'notice';
+
+/** 声明式控件微调（对标 n8n typeOptions 子集）：多行文本 rows。 */
+export interface INodePropertyTypeOptions {
+  /** string 字段渲染为多行 textarea 的行数（>1 生效）。 */
+  rows?: number;
+}
 
 /**
  * 声明式请求（routing 节点）：选中某 operation 时如何拼 HTTP 请求。
@@ -172,6 +179,7 @@ export interface INodeProperties {
   options?: INodePropertyOption[];
   displayOptions?: IDisplayOptions;
   noDataExpression?: boolean;
+  typeOptions?: INodePropertyTypeOptions;
 }
 
 export interface INodeCredentialDescription {
