@@ -258,6 +258,18 @@ export const useEditorStore = defineStore('editor', {
       this.dirty = true;
     },
 
+    /** NDV 凭证选择器:设置/清除节点某凭证类型的绑定(node.credentials[type])。 */
+    setNodeCredential(nodeName: string, credType: string, value: { id: string; name: string } | null) {
+      const node = this.nodes.find((n) => n.name === nodeName);
+      if (!node) return;
+      this.pushHistory(`cred:${nodeName}:${credType}`);
+      const creds = { ...(node.credentials ?? {}) };
+      if (value) creds[credType] = value;
+      else delete creds[credType];
+      node.credentials = creds;
+      this.dirty = true;
+    },
+
     /** 节点级设置(NDV Settings tab):onError 与引擎消费的 continueOnError 保持同步。 */
     setNodeSetting(nodeName: string, key: keyof INode, value: unknown) {
       const node = this.nodes.find((n) => n.name === nodeName);

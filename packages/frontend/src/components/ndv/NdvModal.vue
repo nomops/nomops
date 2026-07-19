@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
+import { api, type CredentialView } from '../../api/client.js';
+import { CREDENTIAL_TYPES } from '../../lib/credential-types.js';
 import { useEditorStore } from '../../stores/editor.js';
 import { useExecutionStore } from '../../stores/execution.js';
 import { useNodeTypesStore } from '../../stores/node-types.js';
@@ -36,6 +39,42 @@ const inputItems = computed(() =>
   node.value ? inputItemsFor(editor.connections, runData.value, node.value.name) : [],
 );
 const hasInputPort = computed(() => (desc.value?.inputs.length ?? 0) > 0);
+
+/* ── 凭证选择器(对标 n8n:节点声明 credentials 时,NDV 顶部出现凭证下拉) ── */
+const router = useRouter();
+const allCredentials = ref<CredentialView[]>([]);
+watch(
+  () => editor.ndvOpen,
+  async (open) => {
+    if (open && allCredentials.value.length === 0) {
+      allCredentials.value = await api.credentials.list().catch(() => []);
+    }
+  },
+  { immediate: true },
+);
+const nodeCredTypes = computed(() => desc.value?.credentials ?? []);
+function credsOfType(type: string): CredentialView[] {
+  return allCredentials.value.filter((c) => c.type === type);
+}
+function currentCred(type: string): string {
+  return node.value?.credentials?.[type]?.id ?? '';
+}
+function selectCred(type: string, id: string) {
+  if (!node.value) return;
+  if (!id) {
+    editor.setNodeCredential(node.value.name, type, null);
+    return;
+  }
+  const c = allCredentials.value.find((x) => x.id === id);
+  if (c) editor.setNodeCredential(node.value.name, type, { id: c.id, name: c.name });
+}
+function credDisplayName(type: string): string {
+  return CREDENTIAL_TYPES.find((c) => c.type === type)?.displayName ?? type;
+}
+function createCred() {
+  editor.ndvOpen = false;
+  void router.push('/?tab=credentials');
+}
 
 function close() {
   editor.ndvOpen = false;
@@ -113,7 +152,21 @@ async function executeStep() {
           </div>
 
           <div v-show="tab === 'parameters'" class="params-body" data-test="ndv-params">
-            <p v-if="visibleProps.length === 0" class="dim">This node has no parameters to configure.</p>
+            <!-- 凭证选择器(节点声明 credentials 时) -->
+            <div v-if="nodeCredTypes.length" class="cred-section" data-test="ndv-credentials">
+              <div v-for="ct in nodeCredTypes" :key="ct.name" class="cred-field">
+                <label class="cred-label">
+                  {{ credDisplayName(ct.name) }} <span v-if="ct.required" class="cred-req">*</span>
+                </label>
+                <select class="cred-select" :value="currentCred(ct.name)" :data-test-cred="ct.name" @change="selectCred(ct.name, ($event.target as HTMLSelectElement).value)">
+                  <option value="">- No credential -</option>
+                  <option v-for="c in credsOfType(ct.name)" :key="c.id" :value="c.id">{{ c.name }}</option>
+                </select>
+                <button class="cred-create" type="button" data-test="cred-create" @click="createCred">+ Create new credential</button>
+              </div>
+            </div>
+
+            <p v-if="visibleProps.length === 0 && !nodeCredTypes.length" class="dim">This node has no parameters to configure.</p>
             <div v-for="prop in visibleProps" :key="prop.name" class="param-pin-row">
               <button
                 class="param-pin"
@@ -237,6 +290,23 @@ async function executeStep() {
 .execute-step:hover { background: var(--button--color--background--primary--hover-active-focus); }
 .params-body { flex: 1; overflow-y: auto; padding: 12px var(--spacing--sm); }
 .setting-row { display: flex; align-items: center; gap: 6px; margin: 0; }
+
+/* 凭证选择器 */
+.cred-section { margin-bottom: 18px; padding-bottom: 16px; border-bottom: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 12px; }
+.cred-field { display: flex; flex-direction: column; gap: 6px; }
+.cred-label { font-size: var(--font-size--2xs); font-weight: var(--font-weight--medium); color: var(--color--text--shade-1); }
+.cred-req { color: var(--color--danger); }
+.cred-select {
+  height: 32px; background: var(--color--background--light-2); border: none;
+  box-shadow: inset 0 0 0 1px var(--border-color); border-radius: var(--radius);
+  color: var(--color--text--shade-1); font-size: var(--font-size--sm); padding: 0 10px;
+}
+.cred-select:focus { outline: none; box-shadow: inset 0 0 0 1px var(--color--primary); }
+.cred-create {
+  align-self: flex-start; background: none; border: none; padding: 2px 0;
+  color: var(--color--primary); font-size: var(--font-size--2xs); cursor: pointer;
+}
+.cred-create:hover { text-decoration: underline; }
 
 /* NDV Settings tab */
 .ndv-set { display: flex; flex-direction: column; gap: 16px; }
