@@ -32,6 +32,10 @@
   - **D129** OpenTelemetry(顺带 **D018** 导航名 Observability→OpenTelemetry):整页两区 Collector connection / Tracing,全字段(状态下拉「When disabled, no traces leave this instance.」+ OTLP endpoint / Service name / Custom headers[Add header] / Trace path / Startup connectivity timeout[ms] / Verify configuration[Send test trace] / Trace sample rate / Include node spans / Inject outbound traceparent / Track published workflows only)+ Save settings·Discard changes。原 Prometheus /metrics 后端保留。
   - **D130** Chat providers:6→**15 家逐字**(OpenAI/Anthropic/Google/Azure (API Key)/Azure (Entra ID)/Ollama/AWS Bedrock/Vercel AI Gateway/xAI Grok/Groq/OpenRouter/DeepSeek/Cohere/Mistral Cloud/NVIDIA Nemotron),表列 Provider/Models(All models)/Last edited(-)。⚠ **品牌图标不复制 n8n 的第三方厂商 logo 资源**,改用品牌色字母 monogram 芯片(视觉对等,规避第三方商标复制)。原 6 家真实 provider 后端 assistant-service 保留可回退。
   - 三页均 nomops 侧 live 全量验证(分区/徽章/字段/15 行)。typecheck+26 tests+build 全绿。
+- ✅ **P1-A**(应用壳/侧栏,基调=用户裁决"完全 1:1,n8n.io 外链照抄"):
+  - **D002** 侧栏固定 201px、移除拖拽调宽把手。**D004** 移除"Personal"侧栏项。**D005** 移除"Admin Panel"侧栏项(路由 /admin 保留)。**D007** Templates 改外链 `n8n.io/workflows`(新标签)。**D008** `+`菜单 6→4 项(去 New variable/New AI chat)。**D009** New project 非 rbac 时改 Enterprise 徽章 + 置灰。**D012–D015** Help 菜单重构:Quickstart(YouTube)/Documentation/Forum/Course/Report a bug(GitHub issues)全外链 n8n.io + About nomops(留品牌)+ What's new 分组(新闻标题 + Full changelog→release-notes)。**D017/D132** 设置左导航移除"Languages"(15 段对齐 n8n)。**D018** 已于 Batch 8 修。
+  - 🔧 **D006 经 live 纠正**:红点在 **Help**(What's new 未读,nomops 已有),**不在 Insights**——ledger 记错,不给 Insights 加红点。
+  - nomops 侧 live 全量验证(侧栏 6 项/201px/无拖拽/`+`4 项/Help 8 项外链/设置 15 段)。typecheck+26 tests+build 全绿。
 - 🎉 **P0 全部完成**(便签 7 色→D067 右键→D069/D070 面板→D104/D105/D106 参数→D088 NDV Settings→D058/D059 Evaluations→D061/D062 wf settings→D131 MCP OAuth→D154 Shared→D047/D152/D128 锁态→D063 History→D085 执行详情→D127/D129/D130 B 类)。豁免:D103 resourceLocator=N/A;暂缓:D096 Mapping|From AI(待引擎 $fromAI)。
 
 ---

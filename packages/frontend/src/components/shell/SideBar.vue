@@ -10,9 +10,9 @@ import { api } from '../../api/client.js';
 import { t } from '../../lib/i18n.js';
 
 /**
- * 左侧边栏：品牌 + 顶栏工具（新建/搜索/折叠）、
- * AI Assistant / Overview / Personal，底部 Admin Panel · Templates · Insights · Help · Settings。
- * 折叠态收为窄图标栏；快速新建下拉；搜索开命令面板；Help/Settings 弹出子菜单。
+ * 左侧边栏(对标 n8n):品牌 + 顶栏工具（新建/搜索/折叠）、Overview / Chat(Preview)、
+ * 底部 Templates(外链) · Insights · Help · Settings。固定 201px 不可拖拽。
+ * 折叠态收为窄图标栏；快速新建下拉(4 项)；搜索开命令面板；Help/Settings 弹出子菜单。
  */
 const auth = useAuthStore();
 const projects = useProjectsStore();
@@ -21,33 +21,21 @@ const route = useRoute();
 const router = useRouter();
 
 const collapsed = computed(() => ui.sidebarCollapsed);
-const personalProjects = computed(() => projects.projects.filter((p) => p.type === 'personal'));
+// D002 对标 n8n:侧栏固定 201px、不可拖拽(移除调宽把手与逻辑)。
 const teamProjects = computed(() => projects.projects.filter((p) => p.type !== 'personal'));
 
-/* 拖拽调整侧栏宽度（展开态才可拖；宽度持久化在 ui store） */
-let resizeStartX = 0;
-let resizeStartW = 0;
-function onResizeMove(e: MouseEvent) {
-  ui.setSidebarWidth(resizeStartW + (e.clientX - resizeStartX));
-}
-function endResize() {
-  document.body.style.userSelect = '';
-  document.body.style.cursor = '';
-  window.removeEventListener('mousemove', onResizeMove);
-  window.removeEventListener('mouseup', endResize);
-}
-function startResize(e: MouseEvent) {
-  if (collapsed.value) return;
-  e.preventDefault();
-  resizeStartX = e.clientX;
-  resizeStartW = ui.sidebarWidth;
-  document.body.style.userSelect = 'none';
-  document.body.style.cursor = 'col-resize';
-  window.addEventListener('mousemove', onResizeMove);
-  window.addEventListener('mouseup', endResize);
-}
-
 const flyout = ref<'settings' | 'help' | null>(null);
+
+/* D007/D012–D015 对标 n8n:外链一律照抄 n8n.io/官方资源(用户裁决"完全 1:1")。 */
+const TEMPLATES_URL = 'https://n8n.io/workflows/?utm_source=n8n_app&utm_medium=template_library';
+const HELP_LINKS = {
+  quickstart: 'https://www.youtube.com/watch?v=4cQWJViybAQ',
+  documentation: 'https://docs.n8n.io/?utm_source=n8n_app&utm_medium=app_sidebar',
+  forum: 'https://community.n8n.io/?utm_source=n8n_app&utm_medium=app_sidebar',
+  course: 'https://docs.n8n.io/courses/',
+  reportBug: 'https://github.com/n8n-io/n8n/issues/new?labels=bug-report',
+  changelog: 'https://docs.n8n.io/release-notes/',
+};
 
 /* A1 对标 n8n：Help 红点 = What's New 未读；打开即读 */
 const newsUnread = ref(hasUnreadNews());
@@ -100,17 +88,9 @@ function quickNewCredential() {
   closeAll();
   void router.push({ name: 'overview', query: { tab: 'credentials', new: 'cred' } });
 }
-function quickNewVariable() {
-  closeAll();
-  void router.push({ name: 'overview', query: { tab: 'variables' } });
-}
 function quickNewDataTable() {
   closeAll();
   void router.push({ name: 'overview', query: { tab: 'data-tables' } });
-}
-function quickNewAiChat() {
-  closeAll();
-  void router.push({ name: 'chat' });
 }
 /** 新建团队项目（低套餐显示 Upgrade；有 rbac 才可建）。 */
 async function quickNewProject() {
@@ -144,7 +124,6 @@ onMounted(() => {
 });
 onUnmounted(() => {
   window.removeEventListener('keydown', onKeydown);
-  endResize();
 });
 
 const showAbout = ref(false);
@@ -161,13 +140,9 @@ async function openAbout() {
   <aside
     class="sidebar"
     :class="{ collapsed }"
-    :style="collapsed ? undefined : { width: ui.sidebarWidth + 'px' }"
     data-test="sidebar"
     @click="closeAll"
   >
-    <!-- 拖拽调宽把手（展开态） -->
-    <div v-if="!collapsed" class="resize-handle" data-test="sidebar-resize" :title="t('Drag to resize')" @mousedown="startResize" @click.stop />
-
     <!-- 品牌 + 顶栏工具 -->
     <div class="brand-row">
       <RouterLink class="brand" :to="{ name: 'overview' }" title="nomops">
@@ -192,17 +167,18 @@ async function openAbout() {
           <button class="icon-btn" data-test="quick-create" :title="t('Create')" @click.stop="quickOpen = !quickOpen; flyout = null">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14" /></svg>
           </button>
+          <!-- D008 对标 n8n:+ 菜单 4 项(workflow/credential/data table/project) -->
           <div v-if="quickOpen" class="flyout quick" data-test="quick-menu" @click.stop>
             <button class="flyout-item qc" data-test="quick-workflow" @click="quickNewWorkflow">{{ t('New workflow') }}<span class="qc-chev">›</span></button>
             <button class="flyout-item qc" data-test="quick-credential" @click="quickNewCredential">{{ t('New credential') }}<span class="qc-chev">›</span></button>
-            <button class="flyout-item qc" data-test="quick-variable" @click="quickNewVariable">{{ t('New variable') }}<span class="qc-chev">›</span></button>
             <button class="flyout-item qc" data-test="quick-datatable" @click="quickNewDataTable">{{ t('New data table') }}<span class="qc-chev">›</span></button>
-            <button class="flyout-item qc" data-test="quick-project" @click="quickNewProject">
-              {{ t('New project') }}
-              <span v-if="!projects.hasFeature('rbac')" class="qc-upgrade">{{ t('Upgrade') }}</span>
-              <span v-else class="qc-chev">›</span>
+            <!-- D009 对标 n8n:New project 带 Enterprise 徽章且置灰不可点 -->
+            <button v-if="projects.hasFeature('rbac')" class="flyout-item qc" data-test="quick-project" @click="quickNewProject">
+              {{ t('New project') }}<span class="qc-chev">›</span>
             </button>
-            <button class="flyout-item qc" data-test="quick-aichat" @click="quickNewAiChat">{{ t('New AI chat') }}</button>
+            <span v-else class="flyout-item qc disabled" data-test="quick-project" :title="t('Available on the Enterprise plan')">
+              {{ t('New project') }}<span class="qc-enterprise">{{ t('Enterprise') }}</span>
+            </span>
           </div>
         </div>
         <button class="icon-btn" data-test="sidebar-search" :title="t('Search (⌘K)')" @click.stop="ui.openPalette()">
@@ -226,11 +202,7 @@ async function openAbout() {
       <span v-if="!collapsed" class="badge-preview">{{ t('Preview') }}</span>
     </RouterLink>
 
-    <!-- 个人空间（恒显示为 "Personal"） -->
-    <button v-for="p in personalProjects" :key="p.id" class="nav-item" :class="{ active: route.name === 'overview' && route.query.project === p.id }" :data-test-project="p.id" :title="t('Personal')" @click="switchProject(p.id)">
-      <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6" /><path d="M5 20c0-3.6 3.1-5.6 7-5.6s7 2 7 5.6" /></svg>
-      <span class="lbl">{{ t('Personal') }}</span>
-    </button>
+    <!-- D004 对标 n8n:无独立 "Personal" 项(个人空间即 Overview 默认上下文) -->
 
     <!-- 团队项目 -->
     <template v-if="teamProjects.length">
@@ -244,14 +216,12 @@ async function openAbout() {
     <div class="sb-spacer" />
 
     <div class="sidebar-bottom">
-      <RouterLink class="nav-item" :class="{ active: route.name === 'admin' }" data-test="nav-admin" :title="t('Admin Panel')" :to="{ name: 'admin' }">
-        <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16a4 4 0 0 1 .4-8A5.5 5.5 0 0 1 17 8.5 3.75 3.75 0 0 1 18 16H6z" /></svg>
-        <span class="lbl">{{ t('Admin Panel') }}</span>
-      </RouterLink>
-      <RouterLink class="nav-item" :class="{ active: route.name === 'templates' }" :to="{ name: 'templates' }" :title="t('Templates')" data-test="nav-templates">
+      <!-- D005 对标 n8n:侧栏无 "Admin Panel"(路由 /admin 保留,仅移除侧栏入口) -->
+      <!-- D007 对标 n8n:Templates 外链 n8n.io/workflows(带 UTM),新标签打开 -->
+      <a class="nav-item" :href="TEMPLATES_URL" target="_blank" rel="noopener" :title="t('Templates')" data-test="nav-templates" @click="closeAll">
         <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 7.5 12 12l9-4.5L12 3z" /><path d="M3 12l9 4.5L21 12M3 16.5 12 21l9-4.5" /></svg>
         <span class="lbl">{{ t('Templates') }}</span>
-      </RouterLink>
+      </a>
       <RouterLink class="nav-item" :class="{ active: route.name === 'insights' }" :to="{ name: 'insights' }" :title="t('Insights')" data-test="nav-insights">
         <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V4M4 20h16" /><rect x="7" y="12" width="3" height="5" /><rect x="12" y="8" width="3" height="9" /><rect x="17" y="10" width="3" height="7" /></svg>
         <span class="lbl">{{ t('Insights') }}</span>
@@ -266,19 +236,21 @@ async function openAbout() {
           <span class="lbl">{{ t('Help') }}</span>
           <svg v-if="!collapsed" class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6" /></svg>
         </button>
-        <!-- 结构对齐 n8n Help 菜单：普通条目 → About → 分组标题 "What's new" → 组内条目 -->
+        <!-- D012–D015 对标 n8n Help 菜单:Quickstart/Documentation/Forum/Course/Report a bug 外链 n8n.io;
+             About 保留 nomops 品牌;底部 What's new 分组(新闻标题 + Full changelog + Update)。 -->
         <div v-if="flyout === 'help'" class="flyout" data-test="help-flyout" @click.stop>
-          <button class="flyout-item" data-test="help-run-demo" @click="router.push({ name: 'templates' }); closeAll()">
-            {{ t('Run live demo') }}
-          </button>
-          <span class="flyout-item dim" data-test="help-docs">{{ t('Documentation') }} · docs/ (README → 01–10)</span>
-          <button class="flyout-item" data-test="help-bug" @click="showBug = true; closeAll()">{{ t('Report a problem') }}</button>
+          <a class="flyout-item" :href="HELP_LINKS.quickstart" target="_blank" rel="noopener" data-test="help-quickstart" @click="closeAll">{{ t('Quickstart') }}</a>
+          <a class="flyout-item" :href="HELP_LINKS.documentation" target="_blank" rel="noopener" data-test="help-docs" @click="closeAll">{{ t('Documentation') }}</a>
+          <a class="flyout-item" :href="HELP_LINKS.forum" target="_blank" rel="noopener" data-test="help-forum" @click="closeAll">{{ t('Forum') }}</a>
+          <a class="flyout-item" :href="HELP_LINKS.course" target="_blank" rel="noopener" data-test="help-course" @click="closeAll">{{ t('Course') }}</a>
+          <a class="flyout-item" :href="HELP_LINKS.reportBug" target="_blank" rel="noopener" data-test="help-bug" @click="closeAll">{{ t('Report a bug') }}</a>
           <button class="flyout-item" data-test="help-about" @click="openAbout">{{ t('About nomops') }}</button>
           <div class="flyout-label">{{ t("What's new") }}</div>
-          <button class="flyout-item" data-test="help-whats-new" @click="openWhatsNew">
-            {{ t("What's New") }}
-            <span v-if="newsUnread" class="news-dot inline" />
+          <button class="flyout-item wn-item" data-test="help-whats-new" @click="openWhatsNew">
+            <span class="wn-dot" />
+            <span class="wn-title">{{ WHATS_NEW[0]?.title ?? t("What's New") }}</span>
           </button>
+          <a class="flyout-item" :href="HELP_LINKS.changelog" target="_blank" rel="noopener" data-test="help-changelog" @click="closeAll">{{ t('Full changelog') }}</a>
         </div>
       </div>
 
@@ -351,16 +323,9 @@ async function openAbout() {
 </template>
 
 <style scoped>
+/* D002 对标 n8n:侧栏固定 201px、不可拖拽 */
 .sidebar { position: relative; }
-.resize-handle {
-  position: absolute; top: 0; right: -4px; width: 10px; height: 100%;
-  cursor: col-resize; z-index: 30;
-}
-.resize-handle::after {
-  content: ''; position: absolute; top: 0; right: 4px; width: 2px; height: 100%;
-  background: transparent; transition: background 0.15s;
-}
-.resize-handle:hover::after, .resize-handle:active::after { background: var(--accent); }
+.sidebar:not(.collapsed) { width: 201px; }
 
 .sidebar.collapsed { width: 58px; padding: 10px 8px; align-items: center; }
 .sidebar.collapsed .lbl { display: none; }
@@ -415,6 +380,17 @@ async function openAbout() {
   font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 8px;
   background: var(--bg-hover); color: var(--text-dim); border: 1px solid var(--border);
 }
+/* D009 New project Enterprise 徽章 + 置灰 */
+.qc-enterprise {
+  font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 8px;
+  background: var(--bg-hover); color: var(--text-dim); border: 1px solid var(--border);
+}
+.flyout-item.qc.disabled { opacity: 0.5; cursor: default; }
+.flyout-item.qc.disabled:hover { background: none; }
+/* D015 What's new 新闻标题条 */
+.wn-item { display: flex; align-items: center; gap: 8px; }
+.wn-dot { width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; background: var(--err, #e5484d); }
+.wn-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .flyout-item {
   display: block; width: 100%; text-align: left; padding: 8px 10px; border: none;
   background: none; border-radius: 6px; color: var(--text); font-size: 13px; text-decoration: none; cursor: pointer;

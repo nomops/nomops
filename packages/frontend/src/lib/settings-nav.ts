@@ -23,7 +23,7 @@ export type SettingsSection =
 export const SETTINGS_SECTIONS: Array<{ key: SettingsSection; label: string; badge?: string }> = [
   { key: 'billing', label: 'Usage and plan' },
   { key: 'personal', label: 'Personal' },
-  { key: 'languages', label: 'Languages' },
+  // D017/D132 对标 n8n:设置左导航无 "Languages"(section 渲染保留,仅移除导航入口)
   { key: 'users', label: 'Users' },
   { key: 'roles', label: 'Roles', badge: 'New' },
   { key: 'api', label: 'nomops API' },
