@@ -317,10 +317,21 @@ function chatWith(target: ChatTarget) {
 
     <!-- 主区 -->
     <div class="chat-main">
-      <!-- Personal agents 页 -->
+      <!-- Personal agents 页(对标 n8n:标题 + 副标 + 右上 New Agent 橙钮 + 空态) -->
       <div v-if="view === 'personal-agents'" class="agents-page" data-test="personal-agents-page">
-        <h1>Personal Agents</h1>
-        <p class="dim sub">Your own agents with a custom system prompt — conversations run through your Anthropic credential</p>
+        <div class="agents-head">
+          <div>
+            <h1>Personal Agents</h1>
+            <!-- D158 副标 -->
+            <p class="dim sub">Create and manage custom AI agents with specific instructions and behaviors</p>
+          </div>
+          <!-- D159 右上 New Agent 橙钮 -->
+          <button class="btn primary" data-test="agent-new" @click="agentFormOpen = true">＋ New Agent</button>
+        </div>
+        <!-- D160 空态 -->
+        <p v-if="agents.length === 0 && !agentFormOpen" class="agents-empty dim" data-test="agents-empty">
+          No personal agents available. Create your first custom agent to get started.
+        </p>
         <div class="agent-grid">
           <div v-for="a in agents" :key="a.id" class="agent-card" :data-test-agent="a.id">
             <div class="agent-head">
@@ -336,10 +347,7 @@ function chatWith(target: ChatTarget) {
               Start chat
             </button>
           </div>
-          <button v-if="!agentFormOpen" class="agent-card add" data-test="agent-new" @click="agentFormOpen = true">
-            ＋ New agent
-          </button>
-          <div v-else class="agent-card" data-test="agent-form">
+          <div v-if="agentFormOpen" class="agent-card" data-test="agent-form">
             <input v-model="agentDraftName" data-test="agent-name" placeholder="Agent name" />
             <textarea v-model="agentDraftSystem" data-test="agent-system" rows="4" placeholder="System prompt — who is this agent and how should it answer?" />
             <div style="display: flex; gap: 8px">
@@ -430,6 +438,7 @@ function chatWith(target: ChatTarget) {
             <a href="#" data-test="model-hint-link" @click.prevent.stop="modelPickerOpen = true">select a model</a>
             to start a conversation
           </div>
+          <!-- D156 对标 n8n:输入区 + 底栏(左 +Tools / 右 橙色发送) -->
           <div class="composer" :class="{ disabled: !activeSession?.target }">
             <textarea
               v-model="input"
@@ -439,9 +448,16 @@ function chatWith(target: ChatTarget) {
               :disabled="!activeSession?.target"
               @keydown.enter.exact.prevent="send()"
             />
-            <button class="send" data-test="chat-send" :disabled="!canSend || !input.trim()" @click="send()">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6" /></svg>
-            </button>
+            <div class="composer-bar">
+              <button class="composer-tools" data-test="chat-tools" :disabled="!activeSession?.target">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14" /></svg>
+                Tools
+              </button>
+              <span class="spacer" style="flex: 1" />
+              <button class="send" data-test="chat-send" :disabled="!canSend || !input.trim()" @click="send()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6" /></svg>
+              </button>
+            </div>
           </div>
         </div>
       </template>
@@ -562,13 +578,22 @@ function chatWith(target: ChatTarget) {
 .composer textarea {
   width: 100%; border: none; background: none; outline: none; resize: none; box-shadow: none;
   color: var(--color--text--shade-1); font-size: var(--font-size--md); font-family: inherit; line-height: 1.6;
-  padding: 6px; padding-right: 40px; max-height: 200px;
+  padding: 6px; max-height: 200px;
 }
 .composer textarea::placeholder { color: var(--color--text--tint-1); }
 .composer textarea:disabled { cursor: not-allowed; }
+/* D156 composer 底栏:左 +Tools / 右 发送 */
+.composer-bar { display: flex; align-items: center; gap: 8px; padding: 2px 4px 2px 2px; }
+.composer-tools {
+  display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 10px;
+  background: none; border: var(--border-width) var(--border-style) var(--border-color); border-radius: var(--radius);
+  color: var(--color--text--shade-1); font-size: var(--font-size--2xs); cursor: pointer;
+}
+.composer-tools svg { width: 14px; height: 14px; }
+.composer-tools:hover:not(:disabled) { background: var(--color--background--light-1); }
+.composer-tools:disabled { opacity: 0.5; cursor: not-allowed; }
 .send {
-  position: absolute; right: 12px; bottom: 12px;
-  width: 32px; height: 32px; border: none; border-radius: 6px; cursor: pointer;
+  width: 32px; height: 32px; border: none; border-radius: 6px; cursor: pointer; flex-shrink: 0;
   background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center;
 }
 .send svg { width: 16px; height: 16px; }
@@ -579,6 +604,11 @@ function chatWith(target: ChatTarget) {
 .agents-page { padding: 26px 30px; overflow-y: auto; }
 .agents-page h1 { margin: 0 0 4px; font-size: 22px; }
 .agents-page .sub { margin: 0 0 18px; font-size: 13px; }
+/* D159 头部行:标题/副标 + 右上 New Agent 橙钮 */
+.agents-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.agents-head .sub { margin: 0; }
+/* D160 空态 */
+.agents-empty { margin: 22px 0 0; font-size: 14px; }
 .agent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
 .agent-card {
   background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
