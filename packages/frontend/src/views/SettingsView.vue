@@ -1605,36 +1605,32 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
 
       <!-- 社区节点（对标 n8n：空态虚线卡） -->
       <section v-else-if="section === 'community'" data-test="settings-community">
-        <h1 class="page-title">Community nodes</h1>
+        <!-- D139 对标 n8n:标题行右上常驻 Install 橙钮 -->
+        <div class="page-head" style="max-width: 720px; display: flex; align-items: center; justify-content: space-between">
+          <h1 class="page-title" style="margin-bottom: 0">Community nodes</h1>
+          <button v-if="communityNodes.length" class="btn primary" data-test="community-install-open" @click="openCommunityModal">Install</button>
+        </div>
 
         <!-- 空态：n8n 式虚线卡 -->
-        <div v-if="!communityNodes.length" class="locked-card" data-test="community-empty">
+        <div v-if="!communityNodes.length" class="locked-card" data-test="community-empty" style="margin-top: 16px">
           <h2 style="font-weight: 400">Supercharge your workflows with community nodes</h2>
           <p>Install node packages contributed by the community (npm packages exporting a <code>nomopsNodes</code> array).</p>
           <button class="btn primary" data-test="community-empty-install" @click="openCommunityModal">Install a community node</button>
         </div>
 
-        <!-- 列表 + 右下安装按钮 -->
-        <template v-else>
-          <div class="card" style="max-width: 720px; margin-top: 4px; padding: 0">
-            <table class="api-table">
-              <thead><tr><th>Package</th><th>Version</th><th>Nodes</th><th></th></tr></thead>
-              <tbody>
-                <tr v-for="p in communityNodes" :key="p.packageName" data-test="community-row">
-                  <td>{{ p.packageName }}</td>
-                  <td class="mono dim">{{ p.version }}</td>
-                  <td class="dim">{{ p.nodeTypes.length }}</td>
-                  <td style="text-align: right">
-                    <button class="btn secondary btn-sm" data-test="community-uninstall" @click="uninstallCommunityNode(p.packageName)">Uninstall</button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+        <!-- D140 对标 n8n:包卡片(包名 + "N node(s): 节点名" + 版本 + Uninstall) -->
+        <div v-else class="cn-list" style="max-width: 720px">
+          <div v-for="p in communityNodes" :key="p.packageName" class="cn-card" data-test="community-row">
+            <div class="cn-main">
+              <b>{{ p.packageName }}</b>
+              <span class="dim cn-nodes">
+                {{ p.nodeTypes.length }} node{{ p.nodeTypes.length === 1 ? '' : 's' }}: {{ p.nodeTypes.map((t) => t.split('.').pop()).join(', ') }}
+                <span class="mono"> · {{ p.version }}</span>
+              </span>
+            </div>
+            <button class="btn secondary btn-sm" data-test="community-uninstall" @click="uninstallCommunityNode(p.packageName)">Uninstall</button>
           </div>
-          <div style="max-width: 720px; margin-top: 12px; display: flex; justify-content: flex-end">
-            <button class="btn primary" data-test="community-install-open" @click="openCommunityModal">Install a community node</button>
-          </div>
-        </template>
+        </div>
 
         <!-- 弹窗：Install community nodes（对标 n8n：说明卡 + 包名 + 风险确认） -->
         <div v-if="communityModalOpen" class="modal-mask" data-test="community-modal" @click.self="communityModalOpen = false">
@@ -2539,6 +2535,16 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 }
 
 /* Users 工具条（搜索 + Invite） */
+/* D140 Community nodes 包卡片 */
+.cn-list { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+.cn-card {
+  display: flex; align-items: center; gap: 16px; padding: 14px 16px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--bg-panel);
+}
+.cn-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.cn-main b { font-size: 14px; color: var(--text-hi); }
+.cn-nodes { font-size: 12.5px; }
+
 /* D134 Users 米黄升级条 */
 .users-upgrade {
   max-width: 880px; margin: 0 0 16px; padding: 12px 16px; border-radius: 8px;
