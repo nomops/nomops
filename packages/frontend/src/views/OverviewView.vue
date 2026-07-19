@@ -145,6 +145,7 @@ const dtError = ref('');
 const showDataTableModal = ref(false);
 const newTableName = ref('');
 const creatingTable = ref(false);
+const dtSource = ref<'scratch' | 'csv'>('scratch'); // D048:From scratch / Import CSV
 
 async function loadDataTables() {
   dtError.value = '';
@@ -152,6 +153,7 @@ async function loadDataTables() {
 }
 function openCreateDataTable() {
   newTableName.value = '';
+  dtSource.value = 'scratch';
   dtError.value = '';
   showDataTableModal.value = true;
 }
@@ -558,6 +560,13 @@ function openExecution(row: ExecutionRow) {
 
 /* Auto refresh（同 n8n 默认开，5s；仅 executions tab 时轮询） */
 const execAutoRefresh = ref(true);
+/* D044:漏斗 Status 过滤(all/success/error/running/waiting/canceled) */
+const execStatusFilter = ref('all');
+const filteredExecutions = computed(() =>
+  execStatusFilter.value === 'all'
+    ? executions.value
+    : executions.value.filter((e) => e.status === execStatusFilter.value),
+);
 let execPollTimer: ReturnType<typeof setInterval> | null = null;
 watch(
   tab,
@@ -1060,15 +1069,35 @@ const fmtRunTime = (row: ExecutionRow): string => {
 
     <!-- ── Executions（B5 对标 n8n：Auto refresh / 多选 / 红色错误行 / Retry） ── -->
     <template v-else-if="tab === 'executions'">
+      <!-- D044 对标 n8n:Auto refresh + 漏斗 Filters(Status),移除多余 "N executions" 计数 -->
       <div class="exec-tools">
         <label class="exec-autorefresh">
           <input v-model="execAutoRefresh" type="checkbox" data-test="exec-autorefresh" />
           {{ t('Auto refresh') }}
         </label>
         <span style="flex: 1" />
-        <span class="exec-sublabel dim">
-          {{ t(executions.length === 1 ? '{n} execution' : '{n} executions', { n: executions.length }) }}
-        </span>
+        <div class="dropdown" @click.stop>
+          <button
+            class="filter-btn"
+            :class="{ on: execStatusFilter !== 'all' }"
+            data-test="exec-filters-toggle"
+            :title="t('Filters')"
+            @click="toggleMenu('exec-filters')"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="i16"><path d="M3 5h18l-7 8v6l-4-2v-4L3 5z" /></svg>
+          </button>
+          <div v-if="openMenu === 'exec-filters'" class="menu filter-pop" data-test="exec-filters-menu">
+            <div class="fp-label">{{ t('Status') }}</div>
+            <select class="fp-select" :value="execStatusFilter" data-test="exec-filter-status" @change="execStatusFilter = ($event.target as HTMLSelectElement).value">
+              <option value="all">{{ t('All') }}</option>
+              <option value="success">{{ t('Success') }}</option>
+              <option value="error">{{ t('Error') }}</option>
+              <option value="running">{{ t('Running') }}</option>
+              <option value="waiting">{{ t('Waiting') }}</option>
+              <option value="canceled">{{ t('Canceled') }}</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       <div class="card" style="padding: 0; overflow: visible" data-test="executions-list">
@@ -1088,11 +1117,11 @@ const fmtRunTime = (row: ExecutionRow): string => {
             </tr>
           </thead>
           <tbody>
-            <tr v-if="executions.length === 0">
+            <tr v-if="filteredExecutions.length === 0">
               <td colspan="8" class="exec-empty">{{ t('No executions') }}</td>
             </tr>
             <tr
-              v-for="row in executions"
+              v-for="row in filteredExecutions"
               :key="row.id"
               class="exec-row"
               :class="{ 'exec-error': row.status === 'error' }"
@@ -1294,17 +1323,22 @@ const fmtRunTime = (row: ExecutionRow): string => {
     />
 
     <!-- ── Create data table 弹窗 ── -->
+    <!-- D048 对标 n8n:label "Data table name"* + 单选 From scratch/Import CSV + Cancel/Create -->
     <div v-if="showDataTableModal" class="modal-mask" data-test="data-table-modal" @click.self="showDataTableModal = false">
       <div class="modal-card">
         <h2 class="modal-title">{{ t('Create new data table') }}</h2>
-        <label class="modal-label">{{ t('Name') }}</label>
+        <label class="modal-label">{{ t('Data table name') }} <span style="color: var(--err)">*</span></label>
         <input
           v-model="newTableName"
           class="modal-input"
           data-test="data-table-name"
-          :placeholder="t('e.g. customers')"
+          :placeholder="t('Enter data table name')"
           @keyup.enter="createDataTable"
         />
+        <div class="dt-source" data-test="data-table-source">
+          <label class="dt-radio"><input v-model="dtSource" type="radio" value="scratch" /> {{ t('From scratch') }}</label>
+          <label class="dt-radio"><input v-model="dtSource" type="radio" value="csv" /> {{ t('Import CSV') }}</label>
+        </div>
         <p v-if="dtError" class="error-text">{{ dtError }}</p>
         <div class="modal-actions">
           <button class="btn secondary" @click="showDataTableModal = false">{{ t('Cancel') }}</button>
@@ -1727,6 +1761,10 @@ const fmtRunTime = (row: ExecutionRow): string => {
   border-radius: var(--radius); color: var(--text); font-size: 14px; font-family: inherit;
 }
 .modal-input:focus { outline: none; border-color: var(--accent); }
+/* D048 data table 来源单选 */
+.dt-source { display: flex; gap: 18px; margin-top: 14px; }
+.dt-radio { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); cursor: pointer; }
+.dt-radio input { width: auto; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
 .modal-actions .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
