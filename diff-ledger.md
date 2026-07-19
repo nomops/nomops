@@ -25,7 +25,9 @@
 - ✅ **Batch 6a**(d3adeb1):D067 节点右键 13 项菜单(+ 新增 editor.renameNode 重写连接)。
 - ✅ **Batch 6b**(2074736):D069 节点面板 7 分类 + D070 8 策展触发器(+ 顺带 D071/D072)。
 - ✅ **描述 live 逐字复验**(2026-07-19):经 Control_Chrome 按 **N 键**打开 n8n 节点创建器,读取 7 分类 + 8 触发器**逐字真值**并逐条订正(改 4 处:Action in an app 品牌名 `Slack,GitHub`→`Google Sheets, Telegram`;Core 补 `set webhooks`;Human review 全文改 `Request approval via services like Slack and Telegram before making tool calls`;Add another trigger 补句末句号)。nomops 侧 live 截图两张确认渲染一致(触发器根「What triggers this workflow?」/ 分类根「What happens next?」)。n8n 配对截图仍缺(claude-in-chrome 全程掉线),仅描述文本 live 取证。
-- ⏳ **剩余 P0(3 组)**:D063 History 整页 · D085 执行详情只读画布 · D127 Security&policies 锁墙 · D129 OTel 页 · D130 Chat 15 provider。
+- ✅ **Batch 7a**(ee5f94c):D063 版本历史整页 + 只读斜纹画布(新增 ReadOnlyCanvas.vue;n8n History 页经 N 键全量 live 取证:Versions|Publish Timeline 双 tab、Current changes 置顶→N versions 分组头、Actions 4 项 Publish version/Clone to new workflow/Open version in new tab/Download、升级脚注)。
+- ✅ **Batch 7b**(D085):执行详情只读画布——顶条 Copy to editor + 垃圾桶 + 只读斜纹画布快照(节点带执行态 status-ok/error)+ 底部 Execution data 折叠。⚠ **两点受限**:①n8n 全实例 0 执行记录,本项 n8n 侧无法 live 复验(沿用先前审计真值 + n8n 执行详情通用结构);②nomops 执行 API 不返回执行时工作流快照,只读画布用「当前工作流」定义近似渲染,Copy to editor 退化为切回 Editor tab。nomops 侧 live 全量验证(造执行→顶条/斜纹画布/3 节点 status-ok/Execution data 折叠)。
+- ⏳ **剩余 P0(B 类锁墙,1 组)**:D127 Security&policies 锁墙 · D129 OTel 页 · D130 Chat 15 provider。
 
 ---
 

@@ -8,6 +8,7 @@ import { useNodeTypesStore } from '../stores/node-types.js';
 import { useExecutionStore } from '../stores/execution.js';
 import { useProjectsStore } from '../stores/projects.js';
 import WorkflowCanvas from '../components/canvas/WorkflowCanvas.vue';
+import ReadOnlyCanvas from '../components/canvas/ReadOnlyCanvas.vue';
 import ParamInput from '../components/node-view/ParamInput.vue';
 import { useUiStore, type PaletteCommand } from '../stores/ui.js';
 import NodePanel from '../components/canvas/NodePanel.vue';
@@ -620,6 +621,45 @@ const execNodeRows = computed(() => {
   });
 });
 
+/* 只读画布的每节点执行态：run 里有报错→error,否则→ok;未跑到的节点无态。
+   注:执行 API 不返回执行时的工作流快照,只读画布用「当前工作流」定义近似渲染。 */
+const execRunStatus = computed<Record<string, 'ok' | 'error'>>(() => {
+  const runData = execDetail.value?.data?.resultData?.runData ?? {};
+  const map: Record<string, 'ok' | 'error'> = {};
+  for (const [name, runs] of Object.entries(runData)) {
+    const last = runs[runs.length - 1];
+    map[name] = last?.error ? 'error' : 'ok';
+  }
+  return map;
+});
+
+/* 执行详情底部「Execution data」折叠(保留逐节点 JSON 检视,默认收起) */
+const execDataOpen = ref(false);
+
+/* Copy to editor(对标 n8n):切回 Editor tab 从当前工作流继续编辑。
+   n8n 是把执行时快照拷进编辑器;nomops 执行 API 无快照,退化为切到编辑器。 */
+function copyExecToEditor() {
+  canvasTab.value = 'editor';
+}
+
+/* 删除该执行(垃圾桶):移除后刷新列表并清空详情 */
+const execDeleting = ref(false);
+async function deleteExecution() {
+  const id = selectedExecId.value;
+  if (!id || execDeleting.value) return;
+  execDeleting.value = true;
+  try {
+    await api.executions.remove(id);
+    execDetail.value = null;
+    selectedExecId.value = null;
+    await loadExecList();
+  } catch {
+    /* 忽略:列表刷新失败不阻塞 */
+  } finally {
+    execDeleting.value = false;
+  }
+}
+
 /* 底部折叠：该工作流的执行保存策略（联动 Workflow settings） */
 const savePolicyOpen = ref(false);
 const savePolicy = ref({ failed: true, success: true, manual: true });
@@ -807,22 +847,48 @@ async function loadSavePolicy() {
           <p class="dim">Select an execution on the left, or run the workflow to see executions.</p>
         </div>
         <template v-else>
-          <div class="exec-detail-head">
+          <!-- 顶条:执行时间/状态标题 + Copy to editor + 垃圾桶(对标 n8n 执行详情) -->
+          <div class="exec-detail-head" data-test="exec-detail-head">
             <span class="exec-dot" :style="{ background: statusColor[execDetail.execution.status] ?? 'var(--text-dim)' }" />
             <b style="text-transform: capitalize">{{ execDetail.execution.status }}</b>
             <span class="dim">{{ execDetail.execution.mode }} · started {{ fmtWhen(execDetail.execution.startedAt) }} · {{ fmtRunTime(execDetail.execution) }}</span>
+            <span class="spacer" style="flex: 1" />
+            <button class="exec-copy-btn" data-test="exec-copy-editor" title="Copy this execution's workflow to the editor" @click="copyExecToEditor">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg>
+              Copy to editor
+            </button>
+            <button class="exec-trash-btn" data-test="exec-delete" title="Delete execution" :disabled="execDeleting" @click="deleteExecution">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /></svg>
+            </button>
           </div>
-          <div class="exec-nodes">
-            <div v-for="r in execNodeRows" :key="r.name" class="exec-node">
-              <button class="exec-node-row" @click="expandedNode = expandedNode === r.name ? null : r.name">
-                <span class="exec-dot" :style="{ background: r.error ? 'var(--err)' : 'var(--ok)' }" />
-                <b>{{ r.name }}</b>
-                <span class="dim" style="margin-left: auto">{{ r.time }}ms · {{ r.output.length }} item{{ r.output.length === 1 ? '' : 's' }}</span>
-              </button>
-              <p v-if="r.error" class="error-text" style="margin: 4px 0 8px 22px">{{ r.error }}</p>
-              <pre v-if="expandedNode === r.name" class="exec-json">{{ JSON.stringify(r.output, null, 2) }}</pre>
+
+          <!-- 只读斜纹画布快照(节点带执行态);执行 API 无快照,用当前工作流定义近似 -->
+          <ReadOnlyCanvas
+            class="exec-ro-canvas"
+            data-test="exec-readonly-canvas"
+            :nodes="editor.nodes"
+            :connections="editor.connections"
+            :status="execRunStatus"
+          />
+
+          <!-- 底部折叠:逐节点执行数据(JSON 检视,默认收起) -->
+          <div class="exec-data-panel">
+            <button class="exec-data-toggle" data-test="exec-data-toggle" @click="execDataOpen = !execDataOpen">
+              Execution data
+              <span>{{ execDataOpen ? '▾' : '▸' }}</span>
+            </button>
+            <div v-if="execDataOpen" class="exec-nodes">
+              <div v-for="r in execNodeRows" :key="r.name" class="exec-node">
+                <button class="exec-node-row" @click="expandedNode = expandedNode === r.name ? null : r.name">
+                  <span class="exec-dot" :style="{ background: r.error ? 'var(--err)' : 'var(--ok)' }" />
+                  <b>{{ r.name }}</b>
+                  <span class="dim" style="margin-left: auto">{{ r.time }}ms · {{ r.output.length }} item{{ r.output.length === 1 ? '' : 's' }}</span>
+                </button>
+                <p v-if="r.error" class="error-text" style="margin: 4px 0 8px 22px">{{ r.error }}</p>
+                <pre v-if="expandedNode === r.name" class="exec-json">{{ JSON.stringify(r.output, null, 2) }}</pre>
+              </div>
+              <p v-if="!execNodeRows.length" class="dim" style="font-size: 13px">No node data recorded for this execution.</p>
             </div>
-            <p v-if="!execNodeRows.length" class="dim" style="font-size: 13px">No node data recorded for this execution.</p>
           </div>
         </template>
       </section>
@@ -1284,11 +1350,31 @@ async function loadSavePolicy() {
   color: var(--text-dim); cursor: pointer; text-align: left;
 }
 .exec-policy-body { padding: 0 16px 14px; font-size: 12.5px; display: flex; flex-direction: column; gap: 5px; }
-.exec-detail { flex: 1; overflow-y: auto; padding: 22px 28px; }
-.exec-empty { text-align: center; margin-top: 16vh; }
+.exec-detail { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+.exec-empty { text-align: center; margin-top: 16vh; padding: 0 28px; }
 .exec-empty h2 { font-size: 20px; font-weight: 500; color: var(--text-hi); margin: 0 0 10px; }
-.exec-detail-head { display: flex; align-items: center; gap: 10px; font-size: 14px; margin-bottom: 18px; }
-.exec-nodes { max-width: 860px; }
+.exec-detail-head { display: flex; align-items: center; gap: 10px; font-size: 14px; padding: 14px 20px; border-bottom: var(--border-width) var(--border-style) var(--border-color); }
+.exec-copy-btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px;
+  background: var(--color--background--light-3); border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--radius); color: var(--color--text--shade-1); font-size: var(--font-size--2xs); cursor: pointer;
+}
+.exec-copy-btn:hover { border-color: var(--border-color--strong); }
+.exec-trash-btn {
+  display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px;
+  background: var(--color--background--light-3); border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--radius); color: var(--color--text--shade-1); cursor: pointer;
+}
+.exec-trash-btn:hover:not(:disabled) { border-color: var(--color--danger); color: var(--color--danger); }
+.exec-trash-btn:disabled { opacity: 0.5; cursor: default; }
+.exec-ro-canvas { flex: 1; min-height: 0; }
+.exec-data-panel { border-top: var(--border-width) var(--border-style) var(--border-color); flex-shrink: 0; max-height: 45%; display: flex; flex-direction: column; }
+.exec-data-toggle {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
+  padding: 10px 20px; background: var(--color--background--light-3); border: none;
+  color: var(--color--text--shade-1); font-size: var(--font-size--2xs); font-weight: 600; text-align: left; cursor: pointer;
+}
+.exec-nodes { overflow-y: auto; padding: 6px 20px 16px; }
 .exec-node { border-bottom: 1px solid var(--border); }
 .exec-node-row {
   display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 2px;
