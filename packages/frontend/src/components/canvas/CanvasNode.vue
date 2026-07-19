@@ -39,6 +39,22 @@ const isSticky = computed(() => props.data.node.type === 'nomops.stickyNote');
 const stickyColor = computed(() => String(props.data.node.parameters['color'] ?? 'yellow'));
 const stickyEditing = ref(false);
 
+/** D079 对标 n8n:便签内容按 markdown 渲染(先转义防 XSS,再做标题/粗斜体/链接/列表变换)。 */
+const stickyHtml = computed(() => {
+  const raw = String(props.data.node.parameters['content'] ?? '');
+  const esc = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return esc
+    .replace(/^### (.*)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.*)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.*)$/gm, '<h1>$1</h1>')
+    .replace(/^\s*[-*] (.*)$/gm, '<li>$1</li>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*(?!\*)(.+?)\*(?!\*)/g, '$1<em>$2</em>')
+    .replace(/`(.+?)`/g, '<code>$1</code>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/\n/g, '<br>');
+});
+
 const editor = useEditorStore();
 function commitSticky(event: Event) {
   editor.setParam(props.data.node.name, 'content', (event.target as HTMLTextAreaElement).value);
@@ -199,7 +215,8 @@ const bottomStyle = (i: number, count: number) => ({
       @keydown.escape="stickyEditing = false"
       @mousedown.stop
     />
-    <div v-else class="sticky-content">{{ data.node.parameters['content'] || 'Double-click to edit' }}</div>
+    <!-- eslint-disable-next-line vue/no-v-html — 内容已在 stickyHtml 转义,仅放行受控 markdown 标签 -->
+    <div v-else class="sticky-content" v-html="stickyHtml" />
   </div>
 
   <div v-else class="node-wrap" :data-test-node="data.node.name">
@@ -442,7 +459,14 @@ const bottomStyle = (i: number, count: number) => ({
 .sticky-blue { background: var(--sticky--color--background--variant-5); border-color: var(--sticky--border-color--variant-5); }
 .sticky-purple { background: var(--sticky--color--background--variant-6); border-color: var(--sticky--border-color--variant-6); }
 .sticky-neutral { background: var(--sticky--color--background--variant-7); border-color: var(--sticky--border-color--variant-7); }
-.sticky-content { white-space: pre-wrap; word-break: break-word; }
+.sticky-content { word-break: break-word; line-height: 1.5; }
+.sticky-content :deep(h1) { font-size: 1.5em; font-weight: 700; margin: 0 0 4px; }
+.sticky-content :deep(h2) { font-size: 1.25em; font-weight: 700; margin: 0 0 4px; }
+.sticky-content :deep(h3) { font-size: 1.1em; font-weight: 700; margin: 0 0 3px; }
+.sticky-content :deep(strong) { font-weight: 700; }
+.sticky-content :deep(code) { background: rgba(0, 0, 0, 0.12); padding: 0 3px; border-radius: 3px; font-size: 0.9em; }
+.sticky-content :deep(a) { color: inherit; text-decoration: underline; }
+.sticky-content :deep(li) { margin-left: 1.1em; }
 .sticky-edit {
   width: 100%; min-height: 96px; background: rgba(255, 255, 255, 0.35);
   border: 1px solid rgba(0, 0, 0, 0.2); border-radius: 6px; padding: 6px;

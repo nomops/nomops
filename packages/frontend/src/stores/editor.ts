@@ -160,13 +160,18 @@ export const useEditorStore = defineStore('editor', {
     addNode(desc: NodeTypeInfo, position?: [number, number]) {
       this.pushHistory();
       const name = uniqueNodeName(desc.defaults.name, this.nodes.map((n) => n.name));
+      // D079 对标 n8n:创建时填入各属性的 default(如便签默认 markdown 内容)
+      const parameters: Record<string, unknown> = {};
+      for (const p of desc.properties ?? []) {
+        if (p.default !== undefined) parameters[p.name] = p.default;
+      }
       const node: INode = {
         id: crypto.randomUUID(),
         name,
         type: desc.type,
         typeVersion: Array.isArray(desc.version) ? desc.version[desc.version.length - 1]! : desc.version,
         position: position ?? [80 + this.nodes.length * 220, 120 + (this.nodes.length % 3) * 40],
-        parameters: {},
+        parameters,
       };
       this.nodes.push(node);
       // 便捷连线：若当前有选中节点且新节点有输入口，自动从选中节点接一条
