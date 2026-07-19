@@ -322,6 +322,15 @@ async function uninstallCommunityNode(name: string) {
 
 /* 计费 */
 const usage = ref<{ used: number; limit: number | null; plan: string } | null>(null);
+const publishedWfCount = ref(0); // D138:已发布工作流数
+
+/* D133 Personalisation → Theme 偏好(存 localStorage;nomops 暗色优先,
+   偏好写到根 data-theme,浅色主题令牌为后续)。 */
+const themePref = ref<string>(localStorage.getItem('nomops.theme') ?? 'system');
+function applyTheme() {
+  localStorage.setItem('nomops.theme', themePref.value);
+  document.documentElement.setAttribute('data-theme', themePref.value);
+}
 const months = ref(1);
 const billingError = ref('');
 
@@ -673,6 +682,9 @@ async function loadSection() {
   } else if (section.value === 'billing') {
     const current = projects.current;
     if (current) usage.value = await api.projects.usage(current.id).catch(() => null);
+    // D138:已发布(active)工作流数,用于 "Published workflows — N of Unlimited"
+    const wfs = await api.workflows.list().catch(() => []);
+    publishedWfCount.value = wfs.filter((w) => w.active).length;
     // 用当前生效套餐预置配额下拉
     const p = usage.value?.plan;
     if (p && ['free', 'pro', 'unlimited', 'custom'].includes(p)) {
@@ -1082,6 +1094,19 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
             </div>
 
             <p v-if="mfaError" class="error-text" data-test="mfa-error">{{ mfaError }}</p>
+          </div>
+        </div>
+
+        <!-- D133 Personalisation:Theme 下拉(对标 n8n:System default/Light theme/Dark theme) -->
+        <h3 class="sec-title">{{ t('Personalisation') }}</h3>
+        <div class="setting-card" style="max-width: 880px">
+          <div class="setting-row">
+            <div class="setting-text"><b>{{ t('Theme') }}</b></div>
+            <select class="sec-select" v-model="themePref" data-test="theme-select" @change="applyTheme">
+              <option value="system">{{ t('System default') }}</option>
+              <option value="light">{{ t('Light theme') }}</option>
+              <option value="dark">{{ t('Dark theme') }}</option>
+            </select>
           </div>
         </div>
 
@@ -2123,19 +2148,19 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         <h1 class="page-title">Usage and plan</h1>
         <h3 class="sec-title" style="margin-top: 0" data-test="plan-line">You’re on the {{ planLabel }} Edition</h3>
 
-        <!-- Unlock 横幅（未激活时，对标 n8n 的 Unlock banner） -->
+        <!-- D137 Unlock 横幅(对标 n8n 逐字) -->
         <button v-if="!isActivated" class="unlock-banner" data-test="license-open" @click="licenseModalOpen = true">
           <b>Unlock</b>
-          <span>Enterprise features (SSO, SCIM, LDAP, audit logs, environments, external secrets) with an activation key</span>
+          <span>selected paid features for free (forever)</span>
         </button>
 
-        <!-- 用量行（对标 Published workflows 计量行） -->
+        <!-- D138 用量行:Published workflows — N of Unlimited(对标 n8n) -->
         <div class="usage-row" data-test="usage-row">
-          <span class="dim">Executions this month</span>
-          <span>{{ usage?.used ?? 0 }} of {{ usage?.limit === null || usage?.limit === undefined ? 'unlimited' : usage?.limit }}</span>
+          <span class="dim">Published workflows</span>
+          <span>{{ publishedWfCount }} of Unlimited</span>
         </div>
         <p class="dim" style="font-size: 12.5px; max-width: 880px; margin-top: 8px">
-          Executions are counted per project when a workflow runs (manual or production). Quota is enforced at run time.
+          Published workflows with multiple triggers count multiple times. Error and Sub-workflow triggers are excluded.
         </p>
 
         <!-- 底部按钮行：Enter activation key + View plans（右对齐，对标 n8n） -->
