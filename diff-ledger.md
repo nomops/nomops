@@ -23,7 +23,8 @@
 - 🚫 **D103 resourceLocator = N/A**:无任何 nomops 节点使用(n8n 特有资源定位器),简化 schema 不需要 → 豁免。
 - ⏸ **D096 Mapping\|From AI 暂缓**:AI Agent "让 AI 填参数" 运行时特性,需引擎 $fromAI 支持,纯 UI 假控件无意义 → 待引擎支持。
 - ✅ **Batch 6a**(d3adeb1):D067 节点右键 13 项菜单(+ 新增 editor.renameNode 重写连接)。
-- ⏳ **剩余 P0(5)**:D069/D070 节点面板 7 分类+8 触发器 · D063 History 整页 · D085 执行详情只读画布 · D127 Security&policies 锁墙 · D129 OTel 页 · D130 Chat 15 provider。
+- ✅ **Batch 6b**(2074736):D069 节点面板 7 分类 + D070 8 策展触发器(+ 顺带 D071/D072;描述待 live 复验)。
+- ⏳ **剩余 P0(3 组)**:D063 History 整页 · D085 执行详情只读画布 · D127 Security&policies 锁墙 · D129 OTel 页 · D130 Chat 15 provider。
 
 ---
 
