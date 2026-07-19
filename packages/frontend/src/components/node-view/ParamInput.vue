@@ -88,6 +88,69 @@ function commitJson() {
     jsonError.value = 'Invalid JSON — not saved';
   }
 }
+
+/* ── collection 富控件 ──
+   nomops 的 IF/Set 都用 type:'collection',但形态不同:
+   - IF conditions = 数组 [{left,op,right}] → 条件行编辑器(对标 n8n filter)
+   - Set fields = 键值对象 {k:v} → 名/值行编辑器(对标 n8n Set assignments)
+   据 name/值形态分流,替代原来退化的 JSON 文本框。 */
+const OPERATORS = [
+  { value: 'eq', label: 'is equal to' },
+  { value: 'ne', label: 'is not equal to' },
+  { value: 'gt', label: 'is greater than' },
+  { value: 'gte', label: 'is greater than or equal to' },
+  { value: 'lt', label: 'is less than' },
+  { value: 'lte', label: 'is less than or equal to' },
+  { value: 'contains', label: 'contains' },
+  { value: 'isEmpty', label: 'is empty' },
+  { value: 'isNotEmpty', label: 'is not empty' },
+] as const;
+const UNARY_OPS = ['isEmpty', 'isNotEmpty'];
+
+interface Cond { left?: unknown; op: string; right?: unknown }
+const isConditions = computed(
+  () => props.prop.name === 'conditions' || Array.isArray(current.value) || Array.isArray(props.prop.default),
+);
+const conditions = computed<Cond[]>(() => (Array.isArray(current.value) ? (current.value as Cond[]) : []));
+function addCondition() {
+  emit('change', [...conditions.value, { left: '', op: 'eq', right: '' }]);
+}
+function updateCondition(i: number, key: 'left' | 'op' | 'right', v: unknown) {
+  emit('change', conditions.value.map((c, idx) => (idx === i ? { ...c, [key]: v } : c)));
+}
+function removeCondition(i: number) {
+  emit('change', conditions.value.filter((_, idx) => idx !== i));
+}
+
+interface KV { k: string; v: unknown }
+const fieldRows = ref<KV[]>([]);
+function localToObj(rows: KV[]): Record<string, unknown> {
+  const o: Record<string, unknown> = {};
+  for (const r of rows) if (r.k) o[r.k] = r.v;
+  return o;
+}
+watch(
+  current,
+  (v) => {
+    const incoming = v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+    // 仅在外部值确实变了(切节点等)时重建行,避免输入空 key 时行被抹掉
+    if (JSON.stringify(incoming) !== JSON.stringify(localToObj(fieldRows.value))) {
+      fieldRows.value = Object.entries(incoming).map(([k, val]) => ({ k, v: val }));
+    }
+  },
+  { immediate: true },
+);
+function addField() {
+  fieldRows.value = [...fieldRows.value, { k: '', v: '' }];
+}
+function updateField(i: number, patch: Partial<KV>) {
+  fieldRows.value = fieldRows.value.map((r, idx) => (idx === i ? { ...r, ...patch } : r));
+  emit('change', localToObj(fieldRows.value));
+}
+function removeField(i: number) {
+  fieldRows.value = fieldRows.value.filter((_, idx) => idx !== i);
+  emit('change', localToObj(fieldRows.value));
+}
 </script>
 
 <template>
@@ -173,7 +236,35 @@ function commitJson() {
         </option>
       </select>
 
-      <template v-else-if="prop.type === 'json' || prop.type === 'collection'">
+      <!-- IF 条件组(对标 n8n filter):左值 + 操作符下拉 + 右值 + Add condition -->
+      <div v-else-if="prop.type === 'collection' && isConditions" class="cond-editor" data-test="conditions-editor">
+        <div v-for="(c, i) in conditions" :key="i" class="cond-row" data-test="condition-row">
+          <input class="cond-left" :value="String(c.left ?? '')" placeholder="value1" @input="updateCondition(i, 'left', ($event.target as HTMLInputElement).value)" />
+          <select class="cond-op" :value="c.op" @change="updateCondition(i, 'op', ($event.target as HTMLSelectElement).value)">
+            <option v-for="o in OPERATORS" :key="o.value" :value="o.value">{{ o.label }}</option>
+          </select>
+          <input v-if="!UNARY_OPS.includes(c.op)" class="cond-right" :value="String(c.right ?? '')" placeholder="value2" @input="updateCondition(i, 'right', ($event.target as HTMLInputElement).value)" />
+          <span v-else class="cond-right-fill" />
+          <button class="row-del" type="button" title="Remove" @click="removeCondition(i)">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M21 6a1 1 0 1 1 0 2h-1v12.1c0 1.6-1.3 2.9-2.9 2.9H7c-1.6 0-2.9-1.3-2.9-2.9V8H3a1 1 0 0 1 0-2zm-7-5a3 3 0 0 1 3 3H7a3 3 0 0 1 3-3z" /></svg>
+          </button>
+        </div>
+        <button class="add-btn" type="button" data-test="add-condition" @click="addCondition">+ Add condition</button>
+      </div>
+
+      <!-- Set 赋值区(对标 n8n Set assignments):名/值行 + Add Field -->
+      <div v-else-if="prop.type === 'collection'" class="kv-editor" data-test="fields-editor">
+        <div v-for="(r, i) in fieldRows" :key="i" class="kv-row" data-test="field-row">
+          <input class="kv-k" :value="r.k" placeholder="Name" @input="updateField(i, { k: ($event.target as HTMLInputElement).value })" />
+          <input class="kv-v" :value="String(r.v ?? '')" placeholder="Value" @input="updateField(i, { v: ($event.target as HTMLInputElement).value })" />
+          <button class="row-del" type="button" title="Remove" @click="removeField(i)">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M21 6a1 1 0 1 1 0 2h-1v12.1c0 1.6-1.3 2.9-2.9 2.9H7c-1.6 0-2.9-1.3-2.9-2.9V8H3a1 1 0 0 1 0-2zm-7-5a3 3 0 0 1 3 3H7a3 3 0 0 1 3-3z" /></svg>
+          </button>
+        </div>
+        <button class="add-btn" type="button" data-test="add-field" @click="addField">+ Add Field</button>
+      </div>
+
+      <template v-else-if="prop.type === 'json'">
         <textarea v-model="jsonDraft" rows="5" spellcheck="false" @blur="commitJson" />
         <p v-if="jsonError" class="error-text">{{ jsonError }}</p>
       </template>
@@ -216,6 +307,30 @@ function commitJson() {
 .param :deep(input[type='text']), .param :deep(input:not([type])), .param :deep(input[type='number']) { height: 32px; }
 .param :deep(textarea) { padding: 8px var(--spacing--xs); }
 .param :deep(input:focus), .param :deep(textarea:focus) { outline: none; box-shadow: inset 0 0 0 1px var(--color--primary); }
+
+/* collection 富控件:IF 条件行 / Set 键值行 */
+.cond-editor, .kv-editor { display: flex; flex-direction: column; gap: 8px; }
+.cond-row, .kv-row { display: flex; align-items: center; gap: 6px; }
+.cond-left, .cond-right, .kv-k, .kv-v { flex: 1; min-width: 0; height: 32px; }
+.cond-op {
+  flex: 1.2; min-width: 0; height: 32px; background: var(--color--background--light-2);
+  border: none; box-shadow: inset 0 0 0 1px var(--border-color); border-radius: var(--radius);
+  color: var(--color--text--shade-1); font-size: var(--font-size--2xs); padding: 0 8px;
+}
+.cond-op:focus { outline: none; box-shadow: inset 0 0 0 1px var(--color--primary); }
+.cond-right-fill { flex: 1; }
+.row-del {
+  flex-shrink: 0; width: 28px; height: 28px; display: grid; place-items: center;
+  background: none; border: none; border-radius: var(--radius); color: var(--color--text--tint-1); cursor: pointer;
+}
+.row-del:hover { background: var(--color--background--light-1); color: var(--color--danger); }
+.add-btn {
+  align-self: flex-start; height: 30px; padding: 0 12px; margin-top: 2px;
+  background: var(--button--color--background--secondary); color: var(--button--color--text--secondary);
+  border: var(--border-width) var(--border-style) var(--button--border-color--secondary);
+  border-radius: var(--radius); font-size: var(--font-size--2xs); font-weight: var(--font-weight--medium); cursor: pointer;
+}
+.add-btn:hover { background: var(--button--color--background--secondary--hover); color: var(--button--color--text--secondary--hover-active-focus); }
 .param :deep(select) {
   height: 30px; background: var(--color--background--light-2);
   border: var(--border-width) var(--border-style) var(--border-color);
