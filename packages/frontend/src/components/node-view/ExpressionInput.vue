@@ -14,7 +14,12 @@ import {
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { autocompletion, type Completion, type CompletionContext } from '@codemirror/autocomplete';
 
-const props = defineProps<{ modelValue: string; placeholder?: string }>();
+const props = defineProps<{
+  modelValue: string;
+  placeholder?: string;
+  /** D117:上游输入首 item 的 $json 成员路径(如 user.name),用于 `$json.` 变量树补全。 */
+  jsonFields?: string[];
+}>();
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
 
 const host = ref<HTMLElement>();
@@ -139,14 +144,33 @@ const DOLLAR_COMPLETIONS: Completion[] = (
   info: () => makeInfo(label, desc),
 }));
 
-function dollarCompletions(context: CompletionContext) {
-  // 仅在 {{ }} 内部触发（最近一个 "{{" 之后且未被 "}}" 关闭）
+/** 是否处在 {{ }} 表达式内部（最近一个 "{{" 之后且未被 "}}" 关闭）。 */
+function insideExpression(context: CompletionContext): boolean {
   const before = context.state.sliceDoc(0, context.pos);
   const open = before.lastIndexOf('{{');
-  if (open === -1 || before.indexOf('}}', open) !== -1) return null;
+  return open !== -1 && before.indexOf('}}', open) === -1;
+}
+
+function dollarCompletions(context: CompletionContext) {
+  if (!insideExpression(context)) return null;
   const word = context.matchBefore(/\$\w*/);
   if (!word || (word.from === word.to && !context.explicit)) return null;
   return { from: word.from, options: DOLLAR_COMPLETIONS };
+}
+
+/** D117:`$json.` → 成员级变量树(上游输入字段路径)。 */
+function jsonMemberCompletions(context: CompletionContext) {
+  if (!insideExpression(context)) return null;
+  const m = context.matchBefore(/\$json\.[\w.$[\]]*/);
+  if (!m) return null;
+  const from = m.from + '$json.'.length;
+  const options: Completion[] = (props.jsonFields ?? []).map((f) => ({
+    label: f,
+    section: 'Fields',
+    info: () => makeInfo(`$json.${f}`, 'Field from the input data of the current item.'),
+  }));
+  if (!options.length) return null;
+  return { from, options };
 }
 
 onMounted(() => {
@@ -158,7 +182,7 @@ onMounted(() => {
         history(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
         placeholder(props.placeholder ?? 'Supports {{ $json.field }} expressions'),
-        autocompletion({ override: [dollarCompletions], icons: false }),
+        autocompletion({ override: [jsonMemberCompletions, dollarCompletions], icons: false }),
         autocompleteTheme,
         expressionHighlighter,
         EditorView.lineWrapping,

@@ -22,14 +22,22 @@ const emit = defineEmits<{ change: [value: unknown] }>();
 
 const current = computed(() => props.value ?? props.prop.default);
 
+/* 字面量 "{{ }}"(不能直接写进模板插值,会被 Vue 当嵌套 mustache)。 */
+const CURLY = '{{ }}';
+
+/* D115:Result 预览面板可翻页浏览各输入 item。 */
+const previewIndex = ref(0);
+const previewCount = computed(() => (props.previewItems ?? []).length);
+
 /* ── 表达式实时预览（沙箱与引擎同一实现；$node/$vars 前端没有则留空） ── */
 const preview = computed<{ ok: boolean; text: string } | null>(() => {
   if (!isExpression.value) return null;
   const items = props.previewItems ?? [];
+  const idx = Math.min(previewIndex.value, Math.max(0, items.length - 1));
   try {
     const resolved = resolveParameterValue(String(current.value), {
-      json: items[0]?.json ?? {},
-      itemIndex: 0,
+      json: items[idx]?.json ?? {},
+      itemIndex: idx,
       items,
       runData: {},
       workflow: {},
@@ -82,6 +90,23 @@ const textRows = computed(() => {
   return typeof rows === 'number' && rows > 1 ? rows : 0;
 });
 const isMultiline = computed(() => props.prop.type === 'string' && textRows.value > 0);
+
+/* D117 对标 n8n:上游输入首 item 的 $json 成员路径,喂给表达式编辑器做 `$json.` 变量树补全。 */
+const jsonFields = computed<string[]>(() => {
+  const first = props.previewItems?.[0]?.json;
+  if (!first || typeof first !== 'object') return [];
+  const out: string[] = [];
+  const walk = (val: unknown, prefix: string, depth: number) => {
+    if (depth > 3 || val === null || typeof val !== 'object' || Array.isArray(val)) return;
+    for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
+      const path = prefix ? `${prefix}.${k}` : k;
+      out.push(path);
+      walk(v, path, depth + 1);
+    }
+  };
+  walk(first, '', 0);
+  return out;
+});
 
 /* D108 对标 n8n:multiOptions 多选(值为数组)。 */
 const selectedMulti = computed<unknown[]>(() => (Array.isArray(current.value) ? (current.value as unknown[]) : []));
@@ -176,8 +201,12 @@ function removeField(i: number) {
 
 <template>
   <div class="param" :data-test-param="prop.name">
+    <!-- D112 对标 n8n:notice 渲染为紫色 Tip 提示条(非灰文本) -->
     <template v-if="prop.type === 'notice'">
-      <p class="dim" style="font-size: 12px">{{ prop.description ?? prop.displayName }}</p>
+      <div class="param-notice" data-test="param-notice">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="pn-icon"><circle cx="12" cy="12" r="9" /><path d="M12 8h.01M11 12h1v4h1" /></svg>
+        <span class="pn-text">{{ prop.description ?? prop.displayName }}</span>
+      </div>
     </template>
 
     <template v-else>
@@ -211,14 +240,30 @@ function removeField(i: number) {
             <ExpressionInput
               class="expr-cm"
               :model-value="String(current ?? '')"
+              :json-fields="jsonFields"
               @update:model-value="emit('change', $event)"
             />
           </div>
         </div>
-        <p v-if="preview" class="expr-preview" :class="{ err: !preview.ok }" data-test="expr-preview">
-          <span class="pv-label">{{ preview.ok ? 'Preview' : 'Error' }}</span>
-          <span class="pv-value">{{ preview.text }}</span>
-        </p>
+        <!-- D115 Result 预览面板:标题 + item 翻页 + 值/空态提示 + JS 提示 -->
+        <div class="expr-result" data-test="expr-result">
+          <div class="er-head">
+            <span class="er-label">Result</span>
+            <span class="spacer" style="flex: 1" />
+            <div v-if="previewCount > 1" class="er-pager" data-test="expr-pager">
+              <button type="button" :disabled="previewIndex <= 0" @click="previewIndex = Math.max(0, previewIndex - 1)">‹</button>
+              <span class="er-page">Item {{ previewIndex + 1 }} of {{ previewCount }}</span>
+              <button type="button" :disabled="previewIndex >= previewCount - 1" @click="previewIndex = Math.min(previewCount - 1, previewIndex + 1)">›</button>
+            </div>
+          </div>
+          <div class="er-body">
+            <span v-if="previewCount === 0" class="er-hint">[Execute previous nodes for preview]</span>
+            <span v-else class="er-value" :class="{ err: preview && !preview.ok }">{{ preview?.text }}</span>
+          </div>
+          <div class="er-tip">
+            Anything inside <code>{{ CURLY }}</code> is JavaScript. <a class="link" href="https://docs.n8n.io/code/expressions/" target="_blank" rel="noopener">Learn more</a>
+          </div>
+        </div>
       </template>
 
       <!-- string(fixed):D111 带 rows→多行 textarea,否则单行 input;可接收拖拽映射 -->
@@ -438,16 +483,40 @@ textarea { font-family: ui-monospace, monospace; }
 /* 拖拽映射落点高亮 */
 .drop-wrap { border-radius: var(--radius); }
 .drop-wrap.over { outline: 2px dashed var(--accent); outline-offset: 1px; }
-/* 表达式实时预览条 */
-.expr-preview {
-  display: flex; gap: 8px; align-items: baseline; margin: 4px 0 0;
-  padding: 5px 8px; border-radius: 6px; background: var(--bg-input);
-  font-size: 11.5px; overflow: hidden;
+/* D115 Result 预览面板 */
+.expr-result {
+  margin: 6px 0 0; border-radius: var(--radius); background: var(--bg-input);
+  border: 1px solid var(--border); overflow: hidden;
 }
-.expr-preview .pv-label { flex-shrink: 0; font-size: 10px; text-transform: uppercase; color: var(--text-faint); }
-.expr-preview .pv-value {
-  color: var(--ok); font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+.er-head { display: flex; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+.er-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-faint); }
+.er-pager { display: flex; align-items: center; gap: 6px; }
+.er-pager button {
+  width: 20px; height: 20px; padding: 0; background: none; border: none; border-radius: 4px;
+  color: var(--text-dim); font-size: 14px; cursor: pointer;
 }
-.expr-preview.err .pv-value { color: var(--err); }
+.er-pager button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
+.er-pager button:disabled { opacity: 0.4; cursor: default; }
+.er-page { font-size: 11px; color: var(--text-dim); }
+.er-body { padding: 8px 10px; min-height: 20px; }
+.er-value {
+  color: var(--ok); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+  word-break: break-word; white-space: pre-wrap;
+}
+.er-value.err { color: var(--err); }
+.er-hint { color: var(--text-faint); font-size: 12px; font-style: italic; }
+.er-tip { padding: 6px 10px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-dim); }
+.er-tip code { background: var(--bg-hover); padding: 0 3px; border-radius: 3px; font-size: 10.5px; }
+.er-tip .link { color: var(--accent); text-decoration: none; }
+.er-tip .link:hover { text-decoration: underline; }
+
+/* D112 notice 紫色 Tip 提示条(对标 n8n) */
+.param-notice {
+  display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border-radius: var(--radius);
+  background: var(--color--purple-100, rgba(124, 58, 237, 0.1));
+  border: 1px solid var(--color--purple-300, rgba(124, 58, 237, 0.35));
+  color: var(--color--text--shade-1); font-size: 12px; line-height: 1.5;
+}
+.pn-icon { width: 15px; height: 15px; flex-shrink: 0; margin-top: 1px; color: var(--color--purple-500, #8b5cf6); }
+.pn-text :deep(a), .pn-text a { color: var(--color--purple-500, #8b5cf6); }
 </style>
