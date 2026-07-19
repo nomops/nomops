@@ -13,6 +13,8 @@ import ParamInput from '../components/node-view/ParamInput.vue';
 import { useUiStore, type PaletteCommand } from '../stores/ui.js';
 import NodePanel from '../components/canvas/NodePanel.vue';
 import NdvModal from '../components/ndv/NdvModal.vue';
+import DataPane from '../components/ndv/DataPane.vue';
+import { inputItemsFor, lastRunOf, outputPorts } from '../lib/run-data.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -431,6 +433,30 @@ const logRows = computed(() => {
     };
   });
 });
+
+/* D123 对标 n8n:底部 Logs = 左树(摘要 + 逐节点行,可选中高亮)+ 右详情(选中节点 Input|Output + DataPane)。 */
+const logSummary = computed(() => {
+  const total = logRows.value.reduce((s, r) => s + r.time, 0);
+  const failed = logRows.value.some((r) => r.status === 'error');
+  return { status: failed ? 'error' : 'success', label: failed ? 'Error' : 'Success', total };
+});
+const selectedLogNode = ref<string | null>(null);
+/* 运行结束/切换执行时,默认选中最后执行的节点(有错则选出错节点)。 */
+watch(logRows, (rows) => {
+  if (!rows.length) { selectedLogNode.value = null; return; }
+  if (!selectedLogNode.value || !rows.some((r) => r.name === selectedLogNode.value)) {
+    selectedLogNode.value = (rows.find((r) => r.status === 'error') ?? rows[rows.length - 1])?.name ?? null;
+  }
+});
+const logDetailTab = ref<'input' | 'output'>('output');
+const selectedLogRow = computed(() => logRows.value.find((r) => r.name === selectedLogNode.value) ?? null);
+const logRunData = computed(() => execution.lastRunData?.resultData.runData ?? {});
+const selectedLogOutput = computed(() =>
+  selectedLogNode.value ? outputPorts(lastRunOf(logRunData.value, selectedLogNode.value)).flat() : [],
+);
+const selectedLogInput = computed(() =>
+  selectedLogNode.value ? inputItemsFor(editor.connections, logRunData.value, selectedLogNode.value) : [],
+);
 
 // 运行结束自动展开日志
 watch(
@@ -1060,16 +1086,54 @@ async function loadSavePolicy() {
                 </button>
               </div>
             </div>
-            <!-- Logs 面板 -->
+            <!-- Logs 面板(对标 n8n:左树 + 右详情) -->
             <div class="logs-body" :class="{ half: hasChatTrigger }">
               <p v-if="logRows.length === 0" class="dim" style="font-size: 12px; text-align: center; padding: 14px 0">
                 Nothing to display yet. Execute the workflow to see execution logs.
               </p>
-              <div v-for="row in logRows" :key="row.name" class="log-row">
-                <span :style="{ color: statusColor[row.status] ?? 'inherit' }">●</span>
-                <span class="log-name">{{ row.name }}</span>
-                <span class="dim" style="font-size: 11px">{{ row.time }}ms</span>
-                <span v-if="row.error" class="error-text" style="font-size: 11px; margin-left: 8px">{{ row.error }}</span>
+              <div v-else class="logs-split" data-test="logs-tree">
+                <!-- 左:执行树(摘要行 + 逐节点行) -->
+                <div class="logs-tree-col">
+                  <div class="log-summary" :class="logSummary.status">
+                    <span class="log-dot" :style="{ background: statusColor[logSummary.status] ?? 'var(--text-dim)' }" />
+                    <b>{{ logSummary.label }} in {{ logSummary.total }}ms</b>
+                  </div>
+                  <button
+                    v-for="row in logRows"
+                    :key="row.name"
+                    class="log-node-row"
+                    :class="{ sel: selectedLogNode === row.name, iserr: row.status === 'error' }"
+                    :data-test-log-node="row.name"
+                    @click="selectedLogNode = row.name"
+                  >
+                    <span class="log-dot" :style="{ background: statusColor[row.status] ?? 'var(--text-dim)' }" />
+                    <span class="log-name">{{ row.name }}</span>
+                    <span class="dim log-time">{{ row.time }}ms</span>
+                  </button>
+                </div>
+                <!-- 右:选中节点详情(状态 + Input|Output + DataPane) -->
+                <div class="logs-detail-col">
+                  <div v-if="selectedLogRow" class="log-detail-head">
+                    <span class="log-dot" :style="{ background: statusColor[selectedLogRow.status] ?? 'var(--text-dim)' }" />
+                    <b style="text-transform: capitalize">{{ selectedLogRow.status }}</b>
+                    <span class="dim">in {{ selectedLogRow.time }}ms</span>
+                    <span class="spacer" style="flex: 1" />
+                    <div class="log-io-tabs">
+                      <button :class="{ on: logDetailTab === 'input' }" data-test="log-tab-input" @click="logDetailTab = 'input'">Input</button>
+                      <button :class="{ on: logDetailTab === 'output' }" data-test="log-tab-output" @click="logDetailTab = 'output'">Output</button>
+                    </div>
+                  </div>
+                  <p v-if="selectedLogRow?.error" class="error-text" style="font-size: 11px; padding: 0 12px 6px">{{ selectedLogRow.error }}</p>
+                  <div class="log-detail-data">
+                    <DataPane
+                      :key="selectedLogNode + logDetailTab"
+                      :title="logDetailTab === 'input' ? 'Input' : 'Output'"
+                      :items="logDetailTab === 'input' ? selectedLogInput : selectedLogOutput"
+                      :draggable="false"
+                      empty-hint="No data for this node"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1487,7 +1551,34 @@ async function loadSavePolicy() {
   padding: 8px 8px 8px 16px; background: none; border: none; border-radius: 0; height: auto;
   font-size: var(--font-size--2xs); font-weight: var(--font-weight--medium); color: var(--color--text--shade-1);
 }
-.logs-body { max-height: 180px; overflow-y: auto; padding: 4px 16px 12px; }
-.log-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: 13px; }
-.log-name { flex: 1; }
+.logs-body { max-height: 300px; overflow: hidden; padding: 0; display: flex; flex-direction: column; }
+.log-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* D123 Logs 执行树:左树 + 右详情 */
+.logs-split { flex: 1; min-height: 0; display: flex; }
+.logs-tree-col {
+  width: 300px; flex-shrink: 0; overflow-y: auto; padding: 8px;
+  border-right: var(--border-width) var(--border-style) var(--border-color);
+}
+.log-summary { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: 13px; }
+.log-summary.error b { color: var(--color--danger); }
+.log-dot { width: 8px; height: 8px; flex-shrink: 0; border-radius: 50%; }
+.log-node-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  padding: 7px 10px 7px 22px; background: none; border: none; border-radius: var(--radius);
+  color: var(--color--text--shade-1); font-size: 13px; cursor: pointer;
+}
+.log-node-row:hover { background: var(--color--background--light-1); }
+.log-node-row.sel { background: var(--color--background--light-1); }
+.log-node-row.iserr .log-name { color: var(--color--danger); }
+.log-time { font-size: 11px; }
+.logs-detail-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.log-detail-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; font-size: 13px; border-bottom: var(--border-width) var(--border-style) var(--border-color); }
+.log-io-tabs { display: flex; gap: 2px; background: var(--bg-input); border-radius: 6px; padding: 2px; }
+.log-io-tabs button {
+  padding: 3px 12px; font-size: 11px; border: none; background: none; border-radius: 5px;
+  color: var(--text-dim); cursor: pointer;
+}
+.log-io-tabs button.on { background: var(--bg-panel); color: var(--text); }
+.log-detail-data { flex: 1; min-height: 0; overflow: hidden; }
 </style>
