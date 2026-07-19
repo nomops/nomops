@@ -44,12 +44,13 @@ const cards = computed(() => {
   const d = data.value;
   const runtime = fmtRuntime(d?.avgRuntimeMs ?? 0);
   const saved = fmtSaved(d?.estSavedMinutes ?? 0);
+  // D031 对标 n8n:5 格各深链到自己的 /insights/<metric>
   return [
-    { label: 'Prod. executions', value: d ? String(d.total) : '0', unit: '', dim: false, saved: false },
-    { label: 'Failed prod. executions', value: d ? String(d.error) : '0', unit: '', dim: false, saved: false },
-    { label: 'Failure rate', value: d ? `${Math.round(d.failureRate * 100)}%` : '0%', unit: '', dim: false, saved: false },
-    { label: 'Time saved', value: saved.value, unit: saved.unit, dim: saved.dim, saved: true },
-    { label: 'Run time (avg.)', value: runtime.value, unit: runtime.unit, dim: false, saved: false },
+    { label: 'Prod. executions', value: d ? String(d.total) : '0', unit: '', dim: false, saved: false, to: '/insights/total' },
+    { label: 'Failed prod. executions', value: d ? String(d.error) : '0', unit: '', dim: false, saved: false, to: '/insights/failed' },
+    { label: 'Failure rate', value: d ? `${Math.round(d.failureRate * 100)}%` : '0%', unit: '', dim: false, saved: false, to: '/insights/failureRate' },
+    { label: 'Time saved', value: saved.value, unit: saved.unit, dim: saved.dim, saved: true, to: '/insights/timeSaved' },
+    { label: 'Run time (avg.)', value: runtime.value, unit: runtime.unit, dim: false, saved: false, to: '/insights/averageRunTime' },
   ];
 });
 </script>
@@ -61,7 +62,7 @@ const cards = computed(() => {
        label <strong> 14px/400 白；数值 <em> 24px/600 白；整格可点跳 /insights/<type> -->
   <ul class="stats-bar" data-test="stats-bar">
     <li v-for="c in cards" :key="c.label">
-      <router-link class="stat-cell" :to="{ path: '/insights' }">
+      <router-link class="stat-cell" :to="{ path: c.to }">
         <strong class="stat-label">
           {{ t(c.label) }}
           <svg v-if="c.saved" class="info-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">

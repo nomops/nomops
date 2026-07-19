@@ -477,9 +477,16 @@ async function removeWorkflow(id: string) {
   workflows.value = workflows.value.filter((w) => w.id !== id);
 }
 
-/* ── B2 对标 n8n 卡片菜单：Favorite / Duplicate / Archive / Enable MCP access ── */
+/* ── B2 对标 n8n 卡片菜单：Open / Share... / Favorite / Duplicate / Archive / Enable MCP access ── */
 const showArchived = ref(false); // 归档视图切换（默认列表隐藏 archived）
 watch(showArchived, () => void reload());
+
+/* D039:Share... = Enterprise 锁(Community 不能共享工作流,对标 n8n)。 */
+const shareLockOpen = ref(false);
+function openShareLock() {
+  closeMenus();
+  shareLockOpen.value = true;
+}
 
 async function toggleFavorite(row: WorkflowRow) {
   closeMenus();
@@ -931,30 +938,18 @@ const fmtRunTime = (row: ExecutionRow): string => {
             <button class="row-menu" :data-test-menu="row.id" @click="toggleMenu(row.id)">
               <svg viewBox="0 0 24 24" fill="currentColor" class="i18"><circle cx="12" cy="5" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="12" cy="19" r="1.7" /></svg>
             </button>
+            <!-- D039 对标 n8n 卡菜单 6 项:Open / Share... / Favorite / Duplicate / Archive / Enable MCP access。
+                 移除自有 Activate/Manage tags/Move to(方法保留可回退);Share... = Enterprise 锁。 -->
             <div v-if="openMenu === row.id" class="menu row-menu-pop" :data-test-menu-pop="row.id">
               <button class="menu-item" @click="openWorkflow(row.id)">{{ t('Open') }}</button>
               <template v-if="!row.archived">
+                <button class="menu-item" :data-test-share="row.id" @click="openShareLock()">{{ t('Share...') }}</button>
                 <button class="menu-item" :data-test-favorite="row.id" @click="toggleFavorite(row)">
                   {{ row.favorite ? t('Unfavorite') : t('Favorite') }}
                 </button>
                 <button class="menu-item" :data-test-duplicate="row.id" @click="duplicateWorkflow(row)">{{ t('Duplicate') }}</button>
-                <button class="menu-item" :data-test-activate="row.id" @click="toggleActive(row)">
-                  {{ row.active ? t('Deactivate') : t('Activate') }}
-                </button>
-                <button class="menu-item" :data-test-manage-tags="row.id" @click="openManageTags(row)">{{ t('Manage tags') }}</button>
-                <button class="menu-item" :data-test-mcp-access="row.id" @click="enableMcpAccess(row)">{{ t('Enable MCP access') }}</button>
-                <template v-if="folders.length || row.folderId !== null">
-                  <div class="menu-sep" />
-                  <div class="menu-label">{{ t('Move to') }}</div>
-                  <button v-if="row.folderId !== null" class="menu-item" :data-test-move-root="row.id" @click="moveWorkflowToFolder(row.id, null)">
-                    {{ t('All workflows (root)') }}
-                  </button>
-                  <template v-for="f in folders" :key="f.id">
-                    <button v-if="f.id !== row.folderId" class="menu-item" @click="moveWorkflowToFolder(row.id, f.id)">{{ f.name }}</button>
-                  </template>
-                </template>
-                <div class="menu-sep" />
                 <button class="menu-item danger" :data-test-archive="row.id" @click="archiveWorkflow(row)">{{ t('Archive') }}</button>
+                <button class="menu-item" :data-test-mcp-access="row.id" @click="enableMcpAccess(row)">{{ t('Enable MCP access') }}</button>
               </template>
               <template v-else>
                 <button class="menu-item" :data-test-unarchive="row.id" @click="unarchiveWorkflow(row)">{{ t('Unarchive') }}</button>
@@ -1345,6 +1340,20 @@ const fmtRunTime = (row: ExecutionRow): string => {
         <div class="modal-actions">
           <button class="btn secondary" @click="managingTagsFor = null">{{ t('Cancel') }}</button>
           <button class="btn primary" data-test="save-workflow-tags" @click="saveWorkflowTags">{{ t('Save') }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- D039 Share... Enterprise 锁(对标 n8n Community:工作流共享需升级) -->
+    <div v-if="shareLockOpen" class="modal-mask" data-test="share-lock-modal" @click.self="shareLockOpen = false">
+      <div class="modal-card" style="max-width: 460px; text-align: center">
+        <h2 style="margin: 0 0 10px">{{ t('Available on the Enterprise plan') }}</h2>
+        <p class="dim" style="margin: 0 0 20px; font-size: 14px">
+          {{ t('Share workflows with other users and projects to collaborate.') }}
+        </p>
+        <div style="display: flex; gap: 10px; justify-content: center">
+          <button class="btn secondary" @click="shareLockOpen = false">{{ t('Close') }}</button>
+          <a class="btn primary" href="https://n8n.io/pricing" target="_blank" rel="noopener">{{ t('See plans') }}</a>
         </div>
       </div>
     </div>
