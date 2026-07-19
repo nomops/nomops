@@ -19,6 +19,8 @@ export const router = createRouter({
     { path: '/shared/credentials', name: 'sharedCredentials', component: () => import('./views/SharedView.vue') },
     { path: '/assistant', redirect: '/chat' },
     { path: '/workflow/:id', name: 'canvas', component: () => import('./views/CanvasView.vue') },
+    // 版本历史整页(对标 n8n /workflow/:id/history/:versionId):只读斜纹画布 + 版本面板
+    { path: '/workflow/:id/history/:versionId?', name: 'workflowHistory', component: () => import('./views/WorkflowHistoryView.vue') },
     { path: '/datatables/:id', name: 'datatable', component: () => import('./views/DataTableView.vue') },
     { path: '/admin', name: 'admin', component: () => import('./views/AdminView.vue') },
     { path: '/projects', name: 'projects', component: () => import('./views/ProjectsView.vue') },
@@ -71,6 +73,7 @@ export function titleFor(to: { name?: unknown; query?: Record<string, unknown> }
     return OVERVIEW_TAB_TITLE[tab] ?? 'Overview';
   }
   if (name === 'canvas') return 'Workflow'; // CanvasView 会用工作流名覆盖
+  if (name === 'workflowHistory') return 'Version history';
   return ROUTE_TITLE[name] ?? '';
 }
 router.afterEach((to) => {

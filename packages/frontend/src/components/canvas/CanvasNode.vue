@@ -8,7 +8,14 @@ import { useEditorStore } from '../../stores/editor.js';
 import { nodeIcon } from '../../lib/icons.js';
 import IconSvg from '../IconSvg.vue';
 
-const props = defineProps<{ data: { node: INode }; selected?: boolean }>();
+const props = defineProps<{
+  data: { node: INode };
+  selected?: boolean;
+  /** 只读画布（版本历史/执行详情快照）：隐藏悬停工具条，禁用编辑动作。 */
+  readonly?: boolean;
+  /** 只读画布下的节点执行态覆盖（不走实时 execution store）。 */
+  runStatus?: 'ok' | 'error' | 'disabled';
+}>();
 
 const nodeTypes = useNodeTypesStore();
 const execution = useExecutionStore();
@@ -16,7 +23,7 @@ const execution = useExecutionStore();
 const desc = computed(() => nodeTypes.byType.get(props.data.node.type));
 const inputs = computed(() => desc.value?.inputs ?? ['main']);
 const outputs = computed(() => desc.value?.outputs ?? ['main']);
-const status = computed(() => execution.statusByNode[props.data.node.name]);
+const status = computed(() => props.runStatus ?? execution.statusByNode[props.data.node.name]);
 
 /** 端口按连接类型分组：main 走左右，ai_* 能力口走上下。 */
 const mainInputs = computed(() => inputs.value.filter((t) => t === 'main'));
@@ -152,7 +159,7 @@ const bottomStyle = (i: number, count: number) => ({
     @dblclick.stop="stickyEditing = true"
   >
     <!-- 便签悬停工具条(对标 n8n:🗑 Delete · 🎨 颜色 · ⋯ More;无执行/无禁用) -->
-    <div ref="toolbarRef" class="node-toolbar sticky-toolbar" :class="{ pinned: overflowOpen || stickyColorOpen }" @mousedown.stop @dblclick.stop>
+    <div v-if="!readonly" ref="toolbarRef" class="node-toolbar sticky-toolbar" :class="{ pinned: overflowOpen || stickyColorOpen }" @mousedown.stop @dblclick.stop>
       <div class="node-toolbar-items" data-test="canvas-node-toolbar">
         <button class="tb-btn" title="Delete" data-test-node-tb="delete" @click.stop="onDelete">
           <svg viewBox="0 0 24 24" class="tb-i"><path fill="currentColor" d="M21 6a1 1 0 1 1 0 2h-1v12.125c0 .817-.424 1.534-.941 2.019-.522.488-1.256.856-2.059.856H7c-.803 0-1.537-.368-2.059-.856C4.424 21.659 4 20.943 4 20.125V8H3a1 1 0 0 1 0-2zm-7-5a3 3 0 0 1 3 3H7a3 3 0 0 1 3-3z" /></svg>
@@ -202,7 +209,7 @@ const bottomStyle = (i: number, count: number) => ({
       :class="[{ selected, trigger: isTrigger, subnode: isSubNode, disabled: isDisabled }, status ? `status-${status}` : '']"
     >
       <!-- 悬停工具条(对标 n8n canvas-node-toolbar):默认 opacity 0,悬停/聚焦/菜单打开时浮出 -->
-      <div ref="toolbarRef" class="node-toolbar" :class="{ pinned: overflowOpen }" @mousedown.stop @dblclick.stop>
+      <div v-if="!readonly" ref="toolbarRef" class="node-toolbar" :class="{ pinned: overflowOpen }" @mousedown.stop @dblclick.stop>
         <div class="node-toolbar-items" data-test="canvas-node-toolbar">
           <button
             v-if="canExecute"

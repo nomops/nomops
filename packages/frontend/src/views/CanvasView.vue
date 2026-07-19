@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { IConnections, INode, IRunExecutionData } from '@nomops/workflow';
-import { api, type ExecutionRow, type TagRow, type WorkflowVersionMeta } from '../api/client.js';
+import { api, type ExecutionRow, type TagRow } from '../api/client.js';
 import { useEditorStore } from '../stores/editor.js';
 import { useNodeTypesStore } from '../stores/node-types.js';
 import { useExecutionStore } from '../stores/execution.js';
@@ -285,41 +285,11 @@ async function archiveFromCanvas() {
   void router.push({ name: 'overview' });
 }
 
-/* 版本历史抽屉（查看历次保存、回滚） */
-const historyOpen = ref(false);
-const versions = ref<WorkflowVersionMeta[]>([]);
-const versionsLoading = ref(false);
-const restoreError = ref('');
-const restoringId = ref<string | null>(null);
-
-async function openHistory() {
+/* 版本历史:对标 n8n 跳转整页 /workflow/:id/history(只读斜纹画布 + 版本面板) */
+function openHistory() {
   closeMenu();
   if (!editor.id) return;
-  historyOpen.value = true;
-  restoreError.value = '';
-  versionsLoading.value = true;
-  try {
-    versions.value = await api.workflows.versions(editor.id);
-  } catch (e) {
-    restoreError.value = (e as Error).message;
-  } finally {
-    versionsLoading.value = false;
-  }
-}
-
-async function restoreVersion(versionId: string) {
-  if (!editor.id) return;
-  restoreError.value = '';
-  restoringId.value = versionId;
-  try {
-    await api.workflows.restore(editor.id, versionId);
-    await editor.load(editor.id); // 重新拉取，画布反映回滚后的定义
-    versions.value = await api.workflows.versions(editor.id); // 回滚本身新增一版
-  } catch (e) {
-    restoreError.value = (e as Error).message;
-  } finally {
-    restoringId.value = null;
-  }
+  void router.push(`/workflow/${editor.id}/history`);
 }
 
 const isEmpty = computed(() => editor.nodes.length === 0);
@@ -1041,38 +1011,6 @@ async function loadSavePolicy() {
       </div>
     </div>
 
-    <!-- 版本历史抽屉 -->
-    <div v-if="historyOpen" class="history-overlay" data-test="history-overlay" @click.self="historyOpen = false">
-      <aside class="history-drawer" data-test="history-drawer">
-        <div class="history-head">
-          <strong>Version history</strong>
-          <button class="history-close" data-test="history-close" @click="historyOpen = false">✕</button>
-        </div>
-        <p v-if="restoreError" class="error-text" style="padding: 0 16px; font-size: 12px">{{ restoreError }}</p>
-        <p v-if="versionsLoading" class="dim" style="padding: 16px; font-size: 12px">Loading…</p>
-        <p v-else-if="versions.length === 0" class="dim" style="padding: 16px; font-size: 12px">No versions yet.</p>
-        <ul v-else class="history-list">
-          <li v-for="(v, i) in versions" :key="v.id" class="history-item" data-test="history-item">
-            <div class="history-meta">
-              <span class="history-ver">v{{ v.versionNumber }}</span>
-              <span v-if="i === 0" class="history-latest">Latest</span>
-              <span class="history-name">{{ v.name }}</span>
-              <span class="dim history-date">{{ new Date(v.createdAt).toLocaleString() }}</span>
-            </div>
-            <button
-              v-if="i !== 0"
-              class="history-restore"
-              data-test="history-restore"
-              :disabled="restoringId === v.id"
-              @click="restoreVersion(v.id)"
-            >
-              {{ restoringId === v.id ? 'Restoring…' : 'Restore' }}
-            </button>
-          </li>
-        </ul>
-      </aside>
-    </div>
-
     <!-- Edit description 弹窗（对标 n8n） -->
     <div v-if="descModalOpen" class="wfs-mask" data-test="desc-modal" @click.self="descModalOpen = false">
       <div class="wfs-card" style="width: 560px">
@@ -1466,28 +1404,4 @@ async function loadSavePolicy() {
 .logs-body { max-height: 180px; overflow-y: auto; padding: 4px 16px 12px; }
 .log-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: 13px; }
 .log-name { flex: 1; }
-
-/* 版本历史抽屉 */
-.history-overlay { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.4); display: flex; justify-content: flex-end; }
-.history-drawer {
-  width: 380px; max-width: 90vw; height: 100%; background: var(--bg-panel);
-  border-left: 1px solid var(--border-strong); display: flex; flex-direction: column;
-  box-shadow: -12px 0 34px rgba(0, 0, 0, 0.4);
-}
-.history-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--border); }
-.history-close { background: none; border: none; color: var(--text-dim); font-size: 15px; cursor: pointer; }
-.history-close:hover { color: var(--text); }
-.history-list { list-style: none; margin: 0; padding: 8px; overflow-y: auto; }
-.history-item { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 8px; }
-.history-item:hover { background: var(--bg-hover); }
-.history-meta { flex: 1; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
-.history-ver { font-weight: 600; font-size: 13px; }
-.history-latest { font-size: 10.5px; color: var(--accent); border: 1px solid var(--accent); border-radius: 10px; padding: 0 6px; }
-.history-name { font-size: 13px; }
-.history-date { font-size: 11px; width: 100%; }
-.history-restore {
-  background: var(--bg-input); border: 1px solid var(--border); border-radius: 6px;
-  color: var(--text); font-size: 12.5px; padding: 5px 12px; cursor: pointer; flex-shrink: 0;
-}
-.history-restore:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 </style>
