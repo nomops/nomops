@@ -10,6 +10,16 @@
 
 ---
 
+## 修复进度(P0 分批)
+
+> 决定:B 类 6 项(Variables/Insights/Roles/Security&policies/Observability/Chat providers)按用户裁决**全部 1:1 阉割成 n8n 锁墙**(前端换锁态,后端接口保留可回退)。
+
+- ✅ **Batch 1**(6a28b35):D028 动态 title · D022 命令面板 Data tables 组(+D021 in Personal)· D077 便签 7 色 · D001 侧栏折叠态。
+- ✅ **Batch 2**(6bf761a):D152 Insights 锁态 · D047 Variables 锁态 · D128 Roles Enterprise 锁卡。
+- ⏳ **剩余 P0**:D058/D059 Evaluations · D061 Workflow settings 5 字段 · D063 History 整页 · D067 节点右键 13 项 · D069 节点面板 7 分类 · D070 8 触发器 · D085 执行详情只读画布 · D088 NDV Settings · D096 Mapping\|From AI · D103-D106 参数控件引擎 · D127 Security&policies 锁墙 · D129 OTel 页 · D130 Chat 15 provider · D131 MCP OAuth tab · D154 Shared 整页。
+
+---
+
 ## 严重度汇总
 
 | 级别 | 数量 | 代表项 |
