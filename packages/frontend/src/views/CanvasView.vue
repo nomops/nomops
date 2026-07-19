@@ -31,6 +31,13 @@ const wfErrorWorkflow = ref(''); // '' = - No Workflow -
 const wfSaveFailed = ref(true);
 const wfSaveSuccess = ref(true);
 const wfSaveManual = ref(true);
+// n8n Workflow settings 补齐字段
+const wfExecutionOrder = ref('v1'); // Execution Logic
+const wfTimezone = ref(''); // '' = Default - America/New York
+const wfSaveProgress = ref(false); // Save execution progress:默认 Do not save
+const TIMEZONES: string[] = (() => {
+  try { return (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.('timeZone') ?? []; } catch { return []; }
+})();
 const wfSettingsSaving = ref(false);
 const wfSettingsError = ref('');
 const wfOtherWorkflows = ref<Array<{ id: string; name: string }>>([]);
@@ -46,6 +53,9 @@ async function openWfSettings() {
     wfSaveFailed.value = s['saveFailedExecutions'] !== false;
     wfSaveSuccess.value = s['saveSuccessfulExecutions'] !== false;
     wfSaveManual.value = s['saveManualExecutions'] !== false;
+    wfExecutionOrder.value = typeof s['executionOrder'] === 'string' ? (s['executionOrder'] as string) : 'v1';
+    wfTimezone.value = typeof s['timezone'] === 'string' ? (s['timezone'] as string) : '';
+    wfSaveProgress.value = s['saveExecutionProgress'] === true;
     wfOtherWorkflows.value = all.filter((w) => w.id !== editor.id).map((w) => ({ id: w.id, name: w.name }));
   } catch (e) {
     wfSettingsError.value = (e as Error).message;
@@ -61,6 +71,9 @@ async function saveWfSettings() {
     if (!wfSaveFailed.value) settings['saveFailedExecutions'] = false;
     if (!wfSaveSuccess.value) settings['saveSuccessfulExecutions'] = false;
     if (!wfSaveManual.value) settings['saveManualExecutions'] = false;
+    if (wfExecutionOrder.value !== 'v1') settings['executionOrder'] = wfExecutionOrder.value;
+    if (wfTimezone.value) settings['timezone'] = wfTimezone.value;
+    if (wfSaveProgress.value) settings['saveExecutionProgress'] = true;
     await api.workflows.update(editor.id!, { settings } as never);
     wfSettingsOpen.value = false;
   } catch (e) {
@@ -1086,8 +1099,16 @@ async function loadSavePolicy() {
     <div v-if="wfSettingsOpen" class="wfs-mask" data-test="wf-settings-modal" @click.self="wfSettingsOpen = false">
       <div class="wfs-card">
         <div style="display: flex; align-items: flex-start; justify-content: space-between">
-          <h2 class="wfs-title">Workflow settings for {{ editor.name }}</h2>
+          <h2 class="wfs-title">Workflow settings for {{ editor.name }} <span class="wfs-id">#{{ editor.id }}</span></h2>
           <button class="wfs-x" @click="wfSettingsOpen = false">×</button>
+        </div>
+
+        <div class="wfs-row">
+          <label>Execution Logic</label>
+          <select v-model="wfExecutionOrder" data-test="wfs-execution-order">
+            <option value="v1">v1 (recommended)</option>
+            <option value="v0">v0 (legacy)</option>
+          </select>
         </div>
 
         <div class="wfs-row">
@@ -1095,6 +1116,14 @@ async function loadSavePolicy() {
           <select v-model="wfErrorWorkflow" data-test="wfs-error-workflow">
             <option value="">- No Workflow -</option>
             <option v-for="w in wfOtherWorkflows" :key="w.id" :value="w.id">{{ w.name }}</option>
+          </select>
+        </div>
+
+        <div class="wfs-row">
+          <label>Timezone</label>
+          <select v-model="wfTimezone" data-test="wfs-timezone">
+            <option value="">Default - America/New York</option>
+            <option v-for="tz in TIMEZONES" :key="tz" :value="tz">{{ tz }}</option>
           </select>
         </div>
 
@@ -1120,6 +1149,24 @@ async function loadSavePolicy() {
             <option :value="true">Default - Save</option>
             <option :value="false">Do not save</option>
           </select>
+        </div>
+
+        <div class="wfs-row">
+          <label>Save execution progress</label>
+          <select v-model="wfSaveProgress" data-test="wfs-save-progress">
+            <option :value="false">Default - Do not save</option>
+            <option :value="true">Save</option>
+          </select>
+        </div>
+
+        <!-- Redact:Enterprise 锁(对标 n8n:灰置 + Upgrade 徽章) -->
+        <div class="wfs-row">
+          <label>Redact production execution data <span class="wfs-upgrade">Upgrade</span></label>
+          <select disabled data-test="wfs-redact-prod"><option>Default - Do not redact</option></select>
+        </div>
+        <div class="wfs-row">
+          <label>Redact manual execution data <span class="wfs-upgrade">Upgrade</span></label>
+          <select disabled data-test="wfs-redact-manual"><option>Default - Do not redact</option></select>
         </div>
 
         <p v-if="wfSettingsError" class="error-text" data-test="wfs-error">{{ wfSettingsError }}</p>
@@ -1343,6 +1390,8 @@ async function loadSavePolicy() {
   padding: 24px 28px 26px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }
 .wfs-title { margin: 0 0 20px; font-size: 19px; font-weight: 500; color: var(--text-hi); }
+.wfs-id { color: var(--text-faint); font-weight: 400; font-size: 14px; }
+.wfs-upgrade { font-size: 11px; font-weight: 400; padding: 1px 8px; margin-left: 6px; border: 1px solid var(--border); border-radius: 6px; color: var(--text-dim); }
 .wfs-x { background: none; border: none; color: var(--text-dim); font-size: 20px; cursor: pointer; padding: 0 6px; line-height: 1; }
 .wfs-x:hover { color: var(--text-hi); }
 .wfs-row { display: flex; align-items: center; gap: 20px; margin-bottom: 14px; }

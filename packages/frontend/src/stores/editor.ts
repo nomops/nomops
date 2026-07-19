@@ -258,6 +258,16 @@ export const useEditorStore = defineStore('editor', {
       this.dirty = true;
     },
 
+    /** 节点级设置(NDV Settings tab):onError 与引擎消费的 continueOnError 保持同步。 */
+    setNodeSetting(nodeName: string, key: keyof INode, value: unknown) {
+      const node = this.nodes.find((n) => n.name === nodeName);
+      if (!node) return;
+      this.pushHistory(`setting:${nodeName}:${String(key)}`);
+      (node as Record<string, unknown>)[key as string] = value;
+      if (key === 'onError') node.continueOnError = value === 'continueErrorOutput';
+      this.dirty = true;
+    },
+
     select(name: string | null) {
       this.selectedNodeName = name;
     },

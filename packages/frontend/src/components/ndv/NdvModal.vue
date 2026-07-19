@@ -41,14 +41,17 @@ function close() {
   editor.ndvOpen = false;
 }
 
-function setContinueOnError(event: Event) {
-  if (!node.value) return;
-  const target = editor.nodes.find((n) => n.name === node.value!.name);
-  if (target) {
-    target.continueOnError = (event.target as HTMLInputElement).checked;
-    editor.dirty = true;
-  }
+/** NDV Settings tab:节点级设置写入(经 editor.setNodeSetting,onError 会同步 continueOnError)。 */
+function setg(key: string, value: unknown) {
+  if (node.value) editor.setNodeSetting(node.value.name, key as never, value);
 }
+const latestVersion = computed(() => {
+  const v = desc.value?.version;
+  return Array.isArray(v) ? Math.max(...v) : typeof v === 'number' ? v : undefined;
+});
+const showVersionNote = computed(
+  () => latestVersion.value !== undefined && !!node.value && node.value.typeVersion < latestVersion.value,
+);
 
 /** Execute step = 部分执行到本节点（destinationNode）。 */
 async function executeStep() {
@@ -131,18 +134,38 @@ async function executeStep() {
             </div>
           </div>
 
-          <div v-show="tab === 'settings'" class="params-body" data-test="ndv-settings">
-            <label class="setting-row">
-              <input
-                type="checkbox"
-                style="width: auto"
-                :checked="Boolean(node.continueOnError)"
-                @change="setContinueOnError"
-              />
-              Continue on error (use the error output)
-            </label>
-            <p class="dim" style="font-size: 11.5px; margin-top: 4px">
-              When on, an error here won't stop the run; failed items continue from the error output port.
+          <!-- NDV Settings tab(对标 n8n:3 开关 + On Error 下拉 + Notes + Display note 开关 + 版本注记) -->
+          <div v-show="tab === 'settings'" class="params-body ndv-set" data-test="ndv-settings">
+            <div class="set-row">
+              <span class="set-label">Always Output Data</span>
+              <button class="pswitch" :class="{ on: node.alwaysOutputData }" type="button" role="switch" :aria-checked="Boolean(node.alwaysOutputData)" data-test="ndv-set-always-output" @click="setg('alwaysOutputData', !node.alwaysOutputData)"><span class="pk" /></button>
+            </div>
+            <div class="set-row">
+              <span class="set-label">Execute Once</span>
+              <button class="pswitch" :class="{ on: node.executeOnce }" type="button" role="switch" :aria-checked="Boolean(node.executeOnce)" data-test="ndv-set-execute-once" @click="setg('executeOnce', !node.executeOnce)"><span class="pk" /></button>
+            </div>
+            <div class="set-row">
+              <span class="set-label">Retry On Fail</span>
+              <button class="pswitch" :class="{ on: node.retryOnFail }" type="button" role="switch" :aria-checked="Boolean(node.retryOnFail)" data-test="ndv-set-retry" @click="setg('retryOnFail', !node.retryOnFail)"><span class="pk" /></button>
+            </div>
+            <div class="set-field">
+              <label class="set-label">On Error</label>
+              <select :value="node.onError ?? 'stopWorkflow'" data-test="ndv-set-onerror" @change="setg('onError', ($event.target as HTMLSelectElement).value)">
+                <option value="stopWorkflow">Stop Workflow</option>
+                <option value="continueRegularOutput">Continue (using regular output)</option>
+                <option value="continueErrorOutput">Continue (using error output)</option>
+              </select>
+            </div>
+            <div class="set-field">
+              <label class="set-label">Notes</label>
+              <textarea class="set-notes" :value="node.notes ?? ''" rows="3" placeholder="Optional note to save with the node" data-test="ndv-set-notes" @input="setg('notes', ($event.target as HTMLTextAreaElement).value)" />
+            </div>
+            <div class="set-row">
+              <span class="set-label">Display note in flow?</span>
+              <button class="pswitch" :class="{ on: node.notesInFlow }" type="button" role="switch" :aria-checked="Boolean(node.notesInFlow)" data-test="ndv-set-noteflow" @click="setg('notesInFlow', !node.notesInFlow)"><span class="pk" /></button>
+            </div>
+            <p v-if="showVersionNote" class="set-version" data-test="ndv-version-note">
+              This node is version {{ node.typeVersion }} (Latest version: {{ latestVersion }})
             </p>
           </div>
         </section>
@@ -214,6 +237,33 @@ async function executeStep() {
 .execute-step:hover { background: var(--button--color--background--primary--hover-active-focus); }
 .params-body { flex: 1; overflow-y: auto; padding: 12px var(--spacing--sm); }
 .setting-row { display: flex; align-items: center; gap: 6px; margin: 0; }
+
+/* NDV Settings tab */
+.ndv-set { display: flex; flex-direction: column; gap: 16px; }
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.set-field { display: flex; flex-direction: column; gap: 6px; }
+.set-label { font-size: var(--font-size--2xs); font-weight: var(--font-weight--medium); color: var(--color--text--shade-1); }
+.set-field select {
+  height: 30px; background: var(--color--background--light-2); border: 1px solid var(--border-color);
+  border-radius: var(--radius); padding: 0 10px; font-size: var(--font-size--2xs); color: var(--color--text--shade-1);
+}
+.set-notes {
+  background: var(--color--background--light-2); border: 1px solid var(--border-color); border-radius: var(--radius);
+  padding: 6px 8px; font-size: var(--font-size--2xs); color: var(--color--text--shade-1); resize: vertical; font-family: inherit;
+}
+.set-notes:focus, .set-field select:focus { outline: none; border-color: var(--color--primary); }
+.set-version { margin: 0; font-size: 11px; color: var(--color--text--tint-1); }
+/* n8n 开关 32×16(与 ParamInput 一致) */
+.pswitch {
+  position: relative; width: 32px; height: 16px; flex-shrink: 0; padding: 0; cursor: pointer;
+  border-radius: 8px; border: 1px solid var(--switch--border-color); background: var(--switch--color--background); transition: background 0.15s, border-color 0.15s;
+}
+.pswitch .pk {
+  position: absolute; top: 1px; left: 1px; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--switch--toggle--color); transition: transform 0.15s;
+}
+.pswitch.on { background: var(--switch--color--background--active); border-color: var(--switch--color--background--active); }
+.pswitch.on .pk { transform: translateX(16px); }
 
 /* Focus panel 钉按钮：悬浮参数行右上，hover 显现 */
 .param-pin-row { position: relative; }

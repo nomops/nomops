@@ -64,6 +64,16 @@ export interface INode {
    * false/缺省 = 终止整个执行。
    */
   continueOnError?: boolean;
+  /** 节点级设置(对标 n8n NDV Settings tab)。onError 是 continueOnError 的多态版本;
+   *  引擎当前仅消费 continueOnError,其余字段先做存储 + UI(行为深化后续)。 */
+  onError?: 'stopWorkflow' | 'continueRegularOutput' | 'continueErrorOutput';
+  alwaysOutputData?: boolean;
+  executeOnce?: boolean;
+  retryOnFail?: boolean;
+  maxTries?: number;
+  waitBetweenTries?: number;
+  notes?: string;
+  notesInFlow?: boolean;
 }
 
 /**
