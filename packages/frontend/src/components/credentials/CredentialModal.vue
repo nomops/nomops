@@ -37,6 +37,37 @@ const copied = ref(false);
 /* OAuth 状态 */
 const credId = ref<string | null>(null);
 const createdView = ref<CredentialView | null>(null);
+
+/* D050 Details tab:已保存凭证的 Created / Last modified / ID(编辑态用 props.edit,新建后用 createdView)。 */
+const credInfo = computed<CredentialView | null>(() => props.edit ?? createdView.value);
+
+/* D054:头部垃圾桶删除已存凭证。 */
+const deleting = ref(false);
+async function deleteCredential() {
+  const id = credInfo.value?.id;
+  if (!id || deleting.value) return;
+  if (!window.confirm('Delete this credential? Workflows using it will stop working.')) return;
+  deleting.value = true;
+  try {
+    await api.credentials.remove(id);
+    emit('close');
+  } catch {
+    deleting.value = false;
+  }
+}
+/* n8n 式相对时间(粗粒度:秒/分/时/天,再退化为日期)。 */
+function fmtWhen(iso: string): string {
+  const then = new Date(iso).getTime();
+  const diff = Math.max(0, Date.now() - then);
+  const min = Math.floor(diff / 60000);
+  const hr = Math.floor(min / 60);
+  const day = Math.floor(hr / 24);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min} minute${min === 1 ? '' : 's'} ago`;
+  if (hr < 24) return `${hr} hour${hr === 1 ? '' : 's'} ago`;
+  if (day < 30) return `${day} day${day === 1 ? '' : 's'} ago`;
+  return new Date(iso).toLocaleDateString();
+}
 const connected = ref(false);
 const connecting = ref(false);
 let msgHandler: ((e: MessageEvent) => void) | null = null;
@@ -283,6 +314,10 @@ onUnmounted(() => {
           <button class="btn neutral head-save" data-test="cred-save" :disabled="busy" @click="save">
             {{ busy ? 'Saving…' : 'Save' }}
           </button>
+          <!-- D054 对标 n8n:已存凭证头部有垃圾桶(删除) -->
+          <button v-if="credInfo" class="icon-trash" data-test="cred-delete" title="Delete credential" :disabled="deleting" @click="deleteCredential">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /></svg>
+          </button>
           <button class="icon-x" data-test="cred-close" @click="emit('close')">✕</button>
         </header>
 
@@ -316,7 +351,7 @@ onUnmounted(() => {
 
               <!-- 字段：文本 / 密码 / 下拉 / 开关 -->
               <div v-for="f in meta?.fields ?? []" :key="f.name" class="field">
-                <label :for="`fld-${f.name}`">{{ f.label }}</label>
+                <label :for="`fld-${f.name}`">{{ f.label }} <span v-if="f.required" class="req-star">*</span></label>
 
                 <button
                   v-if="f.type === 'toggle'"
@@ -390,22 +425,23 @@ onUnmounted(() => {
               </p>
             </template>
 
-            <!-- Sharing -->
+            <!-- D049 Sharing:对标 n8n Community 的虚线升级卡 -->
             <template v-else-if="tab === 'sharing'">
-              <div class="sharing-empty">
-                <div class="sharing-ic">👥</div>
-                <h4>Share this credential</h4>
-                <p>Give other users permission to use this credential in their workflows — without ever exposing its secret values.</p>
-                <p class="sharing-plan">Credential sharing is available on the Enterprise plan.</p>
+              <div class="sharing-lock" data-test="cred-sharing-lock">
+                <h4>Upgrade to collaborate</h4>
+                <p>You can share credentials with others when you upgrade your plan.</p>
+                <a class="btn primary" href="https://n8n.io/pricing" target="_blank" rel="noopener">View plans</a>
               </div>
             </template>
 
-            <!-- Details -->
+            <!-- D050 Details:对标 n8n:已存 = Created / Last modified / ID 三行;未存 = 空白 -->
             <template v-else>
-              <div class="detail-row"><span class="k">Type</span><span class="v">{{ meta?.displayName }}</span></div>
-              <div v-if="credId" class="detail-row"><span class="k">Credential ID</span><span class="v mono">{{ credId }}</span></div>
-              <div class="detail-row"><span class="k">Encryption</span><span class="v">AES-256-GCM at rest</span></div>
-              <p class="detail-note">The decrypted secret is never returned by the API or written to logs.</p>
+              <template v-if="credInfo">
+                <div class="detail-row"><span class="k">Created</span><span class="v">{{ fmtWhen(credInfo.createdAt) }}</span></div>
+                <div class="detail-row"><span class="k">Last modified</span><span class="v">{{ fmtWhen(credInfo.updatedAt) }}</span></div>
+                <div class="detail-row"><span class="k">ID</span><span class="v mono">{{ credInfo.id }}</span></div>
+              </template>
+              <p v-else class="detail-note">Save the credential to see its details.</p>
             </template>
           </div>
         </div>
@@ -576,11 +612,23 @@ onUnmounted(() => {
 .vault-note a:hover { text-decoration: underline; }
 
 /* Sharing tab */
-.sharing-empty { text-align: center; padding: 34px 20px; }
-.sharing-ic { font-size: 34px; }
-.sharing-empty h4 { margin: 12px 0 8px; font-size: 16px; font-weight: 600; color: var(--text-hi); }
-.sharing-empty p { margin: 0 auto; max-width: 34em; font-size: 13.5px; color: var(--text-dim); line-height: 1.55; }
-.sharing-plan { margin-top: 14px !important; color: var(--text-faint) !important; font-size: 12.5px !important; }
+/* D049 Sharing 虚线升级卡(对标 n8n) */
+.sharing-lock {
+  text-align: center; padding: 40px 24px; margin: 8px 0;
+  border: 1px dashed var(--border-strong); border-radius: 10px;
+}
+.sharing-lock h4 { margin: 0 0 10px; font-size: 16px; font-weight: 600; color: var(--text-hi); }
+.sharing-lock p { margin: 0 auto 20px; max-width: 34em; font-size: 13.5px; color: var(--text-dim); line-height: 1.55; }
+/* D053 必填星号 */
+.req-star { color: var(--err); }
+/* D054 头部垃圾桶 */
+.icon-trash {
+  flex-shrink: 0; width: 34px; height: 34px; display: grid; place-items: center;
+  background: none; border: none; border-radius: var(--radius); color: var(--text-dim); cursor: pointer;
+}
+.icon-trash svg { width: 17px; height: 17px; }
+.icon-trash:hover:not(:disabled) { background: var(--bg-hover); color: var(--err); }
+.icon-trash:disabled { opacity: 0.5; cursor: default; }
 
 /* Details tab */
 .detail-row { display: flex; justify-content: space-between; gap: 16px; padding: 13px 0; border-bottom: 1px solid var(--border); font-size: 13px; }

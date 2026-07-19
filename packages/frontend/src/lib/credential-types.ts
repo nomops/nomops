@@ -17,6 +17,7 @@ export interface CredentialField {
   hint?: string; // 字段下方灰色说明
   options?: CredentialFieldOption[]; // type=select 用
   default?: string | boolean; // 初始值（select 字符串 / toggle 布尔）
+  required?: boolean; // D053:必填字段 label 显红 *
 }
 
 export interface CredentialTypeMeta {
@@ -501,11 +502,17 @@ export const CREDENTIAL_TYPES: CredentialTypeMeta[] = [
     ],
   },
   {
+    // D051 对标 n8n OpenAI 凭证字段集:API Key* / Organization ID(optional) / Base URL / Add Custom Header
     type: 'openAiApi',
     displayName: 'OpenAI API',
     icon: '🤖',
     description: 'OpenAI API key',
-    fields: [{ name: 'apiKey', label: 'API Key', type: 'password', placeholder: 'sk-…' }],
+    fields: [
+      { name: 'apiKey', label: 'API Key', type: 'password', placeholder: 'sk-…', required: true },
+      { name: 'organizationId', label: 'Organization ID (optional)', type: 'text', hint: 'The organization ID under which requests are billed. Leave blank to use the default.' },
+      { name: 'baseUrl', label: 'Base URL', type: 'text', default: 'https://api.openai.com/v1' },
+      { name: 'allowCustomHeader', label: 'Add Custom Header', type: 'toggle', default: false },
+    ],
   },
   {
     type: 'pipedriveApi',
