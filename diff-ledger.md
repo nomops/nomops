@@ -18,7 +18,9 @@
 - ✅ **Batch 2**(6bf761a):D152 Insights 锁态 · D047 Variables 锁态 · D128 Roles Enterprise 锁卡。
 - ✅ **Batch 3**(8cbf47c):D154 Shared 整页 · D131 MCP OAuth settings tab · D058/D059 Evaluations pill+注册锁态。
 - ✅ **Batch 4**(ed47b1a):D061 Workflow settings 9 字段(+D062 #ID)· D088 NDV Settings tab 6 项(INode 扩展)。
-- ⏳ **剩余 P0(11)**:D063 History 整页 · D067 节点右键 13 项 · D069 节点面板 7 分类 · D070 8 触发器 · D085 执行详情只读画布 · D096 Mapping\|From AI · D103-D106 参数控件引擎(IF/Set/resourceLocator/凭证选择器)· D127 Security&policies 锁墙 · D129 OTel 页 · D130 Chat 15 provider。
+- ✅ **Batch 5a**(f9da5f5):D106 IF 条件组 · D105 Set 赋值区(告别 JSON 文本框)。
+- 🚫 **D103 resourceLocator = N/A**:无任何 nomops 节点使用 resourceLocator(n8n 特有的资源定位器),nomops 简化 schema 不需要 → 判定豁免。
+- ⏳ **剩余 P0(9)**:D096 Mapping\|From AI · D104 凭证选择器(已确认 nomops 节点声明 credentials,真缺口)· D063 History 整页 · D067 节点右键 13 项 · D069 节点面板 7 分类 · D070 8 触发器 · D085 执行详情只读画布 · D127 Security&policies 锁墙 · D129 OTel 页 · D130 Chat 15 provider。
 
 ---
 
