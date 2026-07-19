@@ -1172,6 +1172,11 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         <h1 class="page-title" style="margin-bottom: 4px">Users</h1>
         <p class="dim" style="margin: 0 0 18px; font-size: 13.5px">{{ users.length }} user{{ users.length === 1 ? '' : 's' }}</p>
 
+        <!-- D134 对标 n8n Community:顶部米黄升级条 -->
+        <div v-if="!isActivated" class="users-upgrade" data-test="users-upgrade">
+          Upgrade to unlock the ability to create additional admin users
+        </div>
+
         <div class="users-toolbar" style="max-width: 880px">
           <div class="search-box">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="i15"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
@@ -1246,13 +1251,10 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                     </div>
                   </div>
                 </td>
+                <!-- D135 对标 n8n:Account Type 纯文本(角色变更移到 ⋮ 菜单,changeUserRole 保留) -->
                 <td style="width: 140px">
-                  <select v-if="!u.pending" :value="u.role" :data-test-user-role="u.id" @change="changeUserRole(u.id, $event)">
-                    <option value="owner">Owner</option>
-                    <option value="admin">Admin</option>
-                    <option value="member">Member</option>
-                  </select>
-                  <span v-else class="dim" style="text-transform: capitalize">{{ u.role }}</span>
+                  <span :data-test-user-role="u.id" style="text-transform: capitalize">{{ u.role }}</span>
+                  <span v-if="u.pending" class="dim"> (Pending)</span>
                 </td>
                 <td class="dim">—</td>
                 <td class="dim">{{ u.pending ? '—' : u.mfaEnabled ? 'Enabled' : 'Disabled' }}</td>
@@ -2537,6 +2539,12 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 }
 
 /* Users 工具条（搜索 + Invite） */
+/* D134 Users 米黄升级条 */
+.users-upgrade {
+  max-width: 880px; margin: 0 0 16px; padding: 12px 16px; border-radius: 8px;
+  background: rgba(245, 166, 35, 0.12); border: 1px solid rgba(245, 166, 35, 0.32);
+  color: var(--running, #f5a623); font-size: 13.5px;
+}
 .users-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
 .search-box {
   display: flex; align-items: center; gap: 8px; width: 320px;
