@@ -200,16 +200,22 @@ const apiError = ref('');
 const apiBusy = ref(false);
 const apiModalOpen = ref(false);
 /* 对标 n8n Create API Key：Expiration 下拉 + Scopes 单选（真实生效：过期拒绝、readonly 拦写） */
-const apiExpireDays = ref<number | null>(30);
-const apiScope = ref<'all' | 'readonly'>('all');
-const API_EXPIRATIONS: Array<{ label: string; value: number | null }> = [
+const apiExpireDays = ref<number | null | 'custom'>(30);
+const apiExpireCustom = ref(''); // D141:Custom 过期日期(YYYY-MM-DD)
+const apiScope = ref<'all' | 'readonly' | 'custom'>('all'); // D141:加 Custom scope
+/* D141 对标 n8n:Expiration = 7/30/60/90 days + Custom(No expiration 为 nomops 保留项) */
+const API_EXPIRATIONS: Array<{ label: string; value: number | null | 'custom' }> = [
   { label: '7 days', value: 7 },
   { label: '30 days', value: 30 },
   { label: '60 days', value: 60 },
   { label: '90 days', value: 90 },
+  { label: 'Custom', value: 'custom' },
   { label: 'No expiration', value: null },
 ];
 const apiExpireText = computed(() => {
+  if (apiExpireDays.value === 'custom') {
+    return apiExpireCustom.value ? `The API key will expire on ${new Date(apiExpireCustom.value).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}` : 'Pick an expiration date';
+  }
   if (apiExpireDays.value == null) return 'The API key will never expire';
   const d = new Date(Date.now() + apiExpireDays.value * 24 * 60 * 60 * 1000);
   return `The API key will expire on ${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}`;
@@ -240,10 +246,15 @@ async function createApiKey() {
   }
   apiBusy.value = true;
   try {
-    const res = await api.apiKeys.create(newKeyLabel.value.trim(), {
-      expiresInDays: apiExpireDays.value,
-      scope: apiScope.value,
-    });
+    // D141:Custom 过期→按所选日期换算天数;Custom scope 后端未支持,提交按 all
+    const expiresInDays =
+      apiExpireDays.value === 'custom'
+        ? apiExpireCustom.value
+          ? Math.max(1, Math.ceil((new Date(apiExpireCustom.value).getTime() - Date.now()) / 86_400_000))
+          : null
+        : apiExpireDays.value;
+    const scope = apiScope.value === 'custom' ? 'all' : apiScope.value;
+    const res = await api.apiKeys.create(newKeyLabel.value.trim(), { expiresInDays, scope });
     createdToken.value = res.token; // 明文只此一次
     newKeyLabel.value = '';
     await loadApiKeys();
@@ -1568,6 +1579,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                 <select v-model="apiExpireDays" data-test="api-expiration" style="width: 160px">
                   <option v-for="o in API_EXPIRATIONS" :key="o.label" :value="o.value">{{ o.label }}</option>
                 </select>
+                <input v-if="apiExpireDays === 'custom'" v-model="apiExpireCustom" type="date" data-test="api-expiration-custom" style="width: 170px" />
                 <span class="dim" style="font-size: 13.5px" data-test="api-expire-text">{{ apiExpireText }}</span>
               </div>
 
@@ -1580,8 +1592,13 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                 <input v-model="apiScope" type="radio" value="readonly" data-test="api-scope-readonly" />
                 <span>Read only</span>
               </label>
+              <!-- D141 对标 n8n:Custom scope 单选 -->
+              <label class="radio-row">
+                <input v-model="apiScope" type="radio" value="custom" data-test="api-scope-custom" />
+                <span>Custom</span>
+              </label>
               <p class="dim" style="font-size: 12px; margin: 6px 0 0">
-                Read-only keys can call GET endpoints only — write requests are rejected with 403.
+                {{ apiScope === 'custom' ? 'Custom keys grant a specific subset of scopes.' : 'Read-only keys can call GET endpoints only — write requests are rejected with 403.' }}
               </p>
               <p v-if="apiError" class="error-text" data-test="api-error">{{ apiError }}</p>
               <div class="modal-actions">
