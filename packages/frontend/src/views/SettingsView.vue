@@ -392,7 +392,8 @@ const promScrape = `- job_name: nomops\n  static_configs:\n    - targets: ['your
 const mcpStatus = ref<import('../api/client.js').McpStatus | null>(null);
 const mcpError = ref('');
 const mcpToken = ref(''); // 明文仅签发时显示一次
-const mcpTab = ref<'workflows' | 'clients'>('workflows');
+const mcpTab = ref<'workflows' | 'clients' | 'oauth'>('workflows');
+const mcpRedirectUrls = ref(''); // MCP OAuth redirect URL allowlist(前端表单;后端持久化留后续)
 const mcpShowDetails = ref(false);
 const mcpBusy = ref(false);
 /* Enable workflows 弹窗（对标 n8n：搜索 + 多选，仅限已发布的工作流） */
@@ -1746,6 +1747,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           <div class="tabs" style="max-width: 1000px">
             <button class="tab" :class="{ active: mcpTab === 'workflows' }" data-test="mcp-tab-workflows" @click="mcpTab = 'workflows'">Workflows</button>
             <button class="tab" :class="{ active: mcpTab === 'clients' }" data-test="mcp-tab-clients" @click="mcpTab = 'clients'">Connected clients</button>
+            <button class="tab" :class="{ active: mcpTab === 'oauth' }" data-test="mcp-tab-oauth" @click="mcpTab = 'oauth'">OAuth settings</button>
             <span style="flex: 1" />
             <button class="icon-refresh" data-test="mcp-refresh" title="Refresh" @click="loadMcp">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="i15"><path d="M21 12a9 9 0 1 1-2.6-6.3M21 4v5h-5" /></svg>
@@ -1786,7 +1788,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
             </p>
           </template>
 
-          <template v-else>
+          <template v-else-if="mcpTab === 'clients'">
             <div class="card" style="max-width: 1000px; padding: 0">
               <table class="api-table">
                 <thead><tr><th>Client</th><th>Version</th><th>Last seen</th></tr></thead>
@@ -1806,6 +1808,29 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                   </tr>
                 </tbody>
               </table>
+            </div>
+          </template>
+
+          <!-- OAuth settings：redirect URL 允许清单(对标 n8n MCP OAuth settings tab) -->
+          <template v-else>
+            <div class="card" style="max-width: 1000px; padding: 16px">
+              <label class="oauth-label" for="mcp-oauth-urls">Allowed OAuth Redirect URLs</label>
+              <p class="dim" style="font-size: 12.5px; margin: 4px 0 10px">
+                Configure a redirect URL allowlist to control which applications can complete the OAuth consent flow.
+                Without one, a malicious application could register an OAuth client with an attacker-controlled redirect URL
+                and use it to obtain access tokens for your nomops instance.
+              </p>
+              <textarea
+                id="mcp-oauth-urls"
+                v-model="mcpRedirectUrls"
+                class="oauth-input"
+                data-test="mcp-oauth-urls"
+                rows="4"
+                placeholder="https://example.com/callback"
+              />
+              <div style="margin-top: 12px">
+                <button class="btn primary" data-test="mcp-oauth-save">Save Redirect URLs</button>
+              </div>
             </div>
           </template>
         </template>
@@ -2210,6 +2235,13 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 
 /* 表格内空态（对标 n8n 表格容器内居中空态） */
 .table-empty { text-align: center; padding: 48px 24px 52px; }
+/* MCP OAuth settings tab */
+.oauth-label { display: block; font-size: 14px; font-weight: 600; color: var(--text-hi); }
+.oauth-input {
+  width: 100%; background: var(--bg-input); border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 12px; font-size: 13px; color: var(--text); font-family: var(--font-family--monospace); resize: vertical;
+}
+.oauth-input:focus { outline: none; border-color: var(--accent); }
 .table-empty h3 { margin: 0 0 10px; font-size: 17px; font-weight: 500; color: var(--text-hi); }
 .table-empty p { margin: 0 0 20px; font-size: 13.5px; color: var(--text-dim); }
 

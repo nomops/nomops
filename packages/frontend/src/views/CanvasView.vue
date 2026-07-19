@@ -572,7 +572,7 @@ const statusColor: Record<string, string> = {
 };
 
 /* ── C2 对标 n8n：画布内 Editor / Executions tabs ── */
-const canvasTab = ref<'editor' | 'executions'>('editor');
+const canvasTab = ref<'editor' | 'executions' | 'evaluations'>('editor');
 const execList = ref<ExecutionRow[]>([]);
 const execAutoRefresh = ref(true);
 const selectedExecId = ref<string | null>(null);
@@ -709,6 +709,7 @@ async function loadSavePolicy() {
       <div class="canvas-tabs" data-test="canvas-tabs">
         <button class="canvas-tab" :class="{ active: canvasTab === 'editor' }" data-test="tab-editor" @click="canvasTab = 'editor'">Editor</button>
         <button class="canvas-tab" :class="{ active: canvasTab === 'executions' }" data-test="tab-executions" @click="canvasTab = 'executions'">Executions</button>
+        <button class="canvas-tab" :class="{ active: canvasTab === 'evaluations' }" data-test="tab-evaluations" @click="canvasTab = 'evaluations'">Evaluations</button>
       </div>
       <span class="spacer" style="flex: 1" />
       <span v-if="activateError" class="error-text" data-test="activate-error">{{ activateError }}</span>
@@ -842,6 +843,20 @@ async function loadSavePolicy() {
           </div>
         </template>
       </section>
+    </div>
+
+    <!-- Evaluations Tab：Community 未注册锁态(对标 n8n) -->
+    <div v-else-if="canvasTab === 'evaluations'" class="eval-view" data-test="eval-view">
+      <div class="eval-left">
+        <h2 class="eval-h">Test your AI workflow over multiple inputs</h2>
+        <p class="eval-desc">Evaluations measure performance against a test dataset. <a class="link" href="/docs" @click.prevent>More info</a></p>
+        <div class="eval-video" />
+      </div>
+      <div class="eval-right" data-test="eval-register">
+        <h3 class="eval-reg-title">Register to enable evaluation</h3>
+        <p class="eval-reg-desc">Register your Community instance to unlock the evaluation feature</p>
+        <button class="btn primary" data-test="eval-register-btn">Register instance</button>
+      </div>
     </div>
 
     <div v-else class="body">
@@ -1242,6 +1257,21 @@ async function loadSavePolicy() {
 
 /* Executions 视图 */
 .exec-body { flex: 1; display: flex; min-height: 0; }
+
+/* Evaluations 注册锁态(对标 n8n Community):左说明+视频位 / 右虚线框 Register */
+.eval-view { flex: 1; display: flex; gap: 40px; padding: 56px 64px; align-items: center; justify-content: center; min-height: 0; }
+.eval-left { flex: 1; max-width: 440px; }
+.eval-h { margin: 0; font-size: 22px; font-weight: var(--font-weight--bold); color: var(--color--text--shade-1); }
+.eval-desc { margin: 12px 0 0; font-size: var(--font-size--sm); color: var(--text-dim); }
+.eval-video { margin-top: 20px; aspect-ratio: 16/9; border-radius: 8px; background: var(--bg-panel); border: 1px solid var(--border); }
+.eval-right {
+  flex: 1; max-width: 380px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px;
+  border: 2px dashed var(--border-strong); border-radius: 12px; padding: 48px 28px;
+}
+.eval-reg-title { margin: 0; font-size: var(--font-size--md); font-weight: var(--font-weight--bold); color: var(--color--text--shade-1); }
+.eval-reg-desc { margin: 0; font-size: var(--font-size--sm); color: var(--text-dim); }
+.eval-view .link { color: var(--accent); text-decoration: none; }
+.eval-view .link:hover { text-decoration: underline; }
 .exec-list {
   width: 340px; flex-shrink: 0; border-right: 1px solid var(--border);
   display: flex; flex-direction: column; overflow-y: auto; background: var(--bg);

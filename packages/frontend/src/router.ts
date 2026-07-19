@@ -14,6 +14,9 @@ export const router = createRouter({
     { path: '/credentials', redirect: { path: '/', query: { tab: 'credentials' } } },
     { path: '/executions', redirect: { path: '/', query: { tab: 'executions' } } },
     { path: '/chat', name: 'chat', component: () => import('./views/ChatView.vue') },
+    // Shared with you(对标 n8n /shared/workflows | /shared/credentials)
+    { path: '/shared/workflows', name: 'shared', component: () => import('./views/SharedView.vue') },
+    { path: '/shared/credentials', name: 'sharedCredentials', component: () => import('./views/SharedView.vue') },
     { path: '/assistant', redirect: '/chat' },
     { path: '/workflow/:id', name: 'canvas', component: () => import('./views/CanvasView.vue') },
     { path: '/datatables/:id', name: 'datatable', component: () => import('./views/DataTableView.vue') },
@@ -50,6 +53,8 @@ const OVERVIEW_TAB_TITLE: Record<string, string> = {
 };
 const ROUTE_TITLE: Record<string, string> = {
   chat: 'Chat',
+  shared: 'Workflows',
+  sharedCredentials: 'Credentials',
   insights: 'Insights',
   settings: 'Settings',
   admin: 'Admin Panel',
