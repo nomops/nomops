@@ -23,7 +23,8 @@
 - 🚫 **D103 resourceLocator = N/A**:无任何 nomops 节点使用(n8n 特有资源定位器),简化 schema 不需要 → 豁免。
 - ⏸ **D096 Mapping\|From AI 暂缓**:AI Agent "让 AI 填参数" 运行时特性,需引擎 $fromAI 支持,纯 UI 假控件无意义 → 待引擎支持。
 - ✅ **Batch 6a**(d3adeb1):D067 节点右键 13 项菜单(+ 新增 editor.renameNode 重写连接)。
-- ✅ **Batch 6b**(2074736):D069 节点面板 7 分类 + D070 8 策展触发器(+ 顺带 D071/D072;描述待 live 复验)。
+- ✅ **Batch 6b**(2074736):D069 节点面板 7 分类 + D070 8 策展触发器(+ 顺带 D071/D072)。
+- ✅ **描述 live 逐字复验**(2026-07-19):经 Control_Chrome 按 **N 键**打开 n8n 节点创建器,读取 7 分类 + 8 触发器**逐字真值**并逐条订正(改 4 处:Action in an app 品牌名 `Slack,GitHub`→`Google Sheets, Telegram`;Core 补 `set webhooks`;Human review 全文改 `Request approval via services like Slack and Telegram before making tool calls`;Add another trigger 补句末句号)。nomops 侧 live 截图两张确认渲染一致(触发器根「What triggers this workflow?」/ 分类根「What happens next?」)。n8n 配对截图仍缺(claude-in-chrome 全程掉线),仅描述文本 live 取证。
 - ⏳ **剩余 P0(3 组)**:D063 History 整页 · D085 执行详情只读画布 · D127 Security&policies 锁墙 · D129 OTel 页 · D130 Chat 15 provider。
 
 ---

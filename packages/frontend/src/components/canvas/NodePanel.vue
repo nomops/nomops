@@ -11,8 +11,8 @@ import IconSvg from '../IconSvg.vue';
  * - 空画布 → "What triggers this workflow?" + 8 张策展触发器卡(D070)
  * - 有触发器 → "What happens next?" + 7 张语义分类卡(D069),点卡下钻该类节点列表
  * - 输入搜索 → 回退平铺过滤列表(跨所有节点)
- * 说明:分类/触发器标题为已取证真值;描述取自 n8n 公开文案(canvas-plus 面板合成事件打不开,
- *       描述待全功能扩展恢复后 live 逐字复验)。
+ * 说明:分类/触发器标题与描述均为 n8n live 逐字取证(2026-07-19 经 N 键打开节点创建器读取),
+ *       其中 "in n8n" 品牌名按 nomops 替换。
  */
 const nodeTypes = useNodeTypesStore();
 const editor = useEditorStore();
@@ -25,26 +25,26 @@ const searching = computed(() => search.value.trim().length > 0);
 
 /** 8 张策展触发器(D070)。addType 有值=直接加该节点;否则下钻触发器全表。 */
 const CURATED_TRIGGERS: Array<{ key: string; title: string; desc: string; addType?: string }> = [
-  { key: 'manual', title: 'Trigger manually', desc: 'Runs the flow on clicking a button. Good for getting started quickly', addType: 'nomops.manualTrigger' },
-  { key: 'app', title: 'On app event', desc: 'Runs the flow when something happens in an app like Slack, GitHub or Notion', addType: 'nomops.pollingTrigger' },
+  { key: 'manual', title: 'Trigger manually', desc: 'Runs the flow on clicking a button in nomops. Good for getting started quickly', addType: 'nomops.manualTrigger' },
+  { key: 'app', title: 'On app event', desc: 'Runs the flow when something happens in an app like Telegram, Notion or Airtable', addType: 'nomops.pollingTrigger' },
   { key: 'schedule', title: 'On a schedule', desc: 'Runs the flow every day, hour, or custom interval', addType: 'nomops.schedule' },
   { key: 'webhook', title: 'On webhook call', desc: 'Runs the flow on receiving an HTTP request', addType: 'nomops.webhook' },
-  { key: 'form', title: 'On form submission', desc: 'Generate webforms and pass their responses to the workflow', addType: 'nomops.webhook' },
+  { key: 'form', title: 'On form submission', desc: 'Generate webforms in nomops and pass their responses to the workflow', addType: 'nomops.webhook' },
   { key: 'subflow', title: 'When executed by another workflow', desc: 'Runs the flow when called by the Execute Workflow node from a different workflow', addType: 'nomops.executeWorkflow' },
   { key: 'chat', title: 'On chat message', desc: 'Runs the flow when a user sends a chat message. For use with AI nodes', addType: 'nomops.chatTrigger' },
-  { key: 'other', title: 'Other ways to trigger', desc: 'Runs the flow on workflow errors, file changes, etc.' },
+  { key: 'other', title: 'Other ways...', desc: 'Runs the flow on workflow errors, file changes, etc.' },
 ];
 
 /** 7 张语义分类(D069)。match 决定该类包含哪些 nomops 节点。 */
 const APP_TYPES = ['nomops.slack', 'nomops.github', 'nomops.sendGrid', 'nomops.stripe', 'nomops.notion', 'nomops.hackerNews'];
 const CATEGORIES: Array<{ key: string; title: string; desc: string; match: (d: NodeTypeInfo) => boolean }> = [
   { key: 'ai', title: 'AI', desc: 'Build autonomous agents, summarize or search documents, etc.', match: (d) => (d.group ?? []).includes('ai') },
-  { key: 'app', title: 'Action in an app', desc: 'Do something in an app or service like Slack, GitHub or Notion', match: (d) => APP_TYPES.includes(d.type) },
+  { key: 'app', title: 'Action in an app', desc: 'Do something in an app or service like Google Sheets, Telegram or Notion', match: (d) => APP_TYPES.includes(d.type) },
   { key: 'transform', title: 'Data transformation', desc: 'Manipulate, filter or convert data', match: (d) => ['nomops.set', 'nomops.code', 'nomops.noOp'].includes(d.type) },
   { key: 'flow', title: 'Flow', desc: 'Branch, merge or loop the flow, etc.', match: (d) => ['nomops.if', 'nomops.merge', 'nomops.executeWorkflow'].includes(d.type) },
-  { key: 'core', title: 'Core', desc: 'Run code, make HTTP requests, etc.', match: (d) => d.type === 'nomops.httpRequest' },
-  { key: 'human', title: 'Human review', desc: 'Add pauses so a human can review or continue the flow', match: (d) => d.type === 'nomops.wait' },
-  { key: 'trigger', title: 'Add another trigger', desc: 'Triggers start your workflow. Workflows can have multiple triggers', match: (d) => (d.group ?? []).includes('trigger') },
+  { key: 'core', title: 'Core', desc: 'Run code, make HTTP requests, set webhooks, etc.', match: (d) => d.type === 'nomops.httpRequest' },
+  { key: 'human', title: 'Human review', desc: 'Request approval via services like Slack and Telegram before making tool calls', match: (d) => d.type === 'nomops.wait' },
+  { key: 'trigger', title: 'Add another trigger', desc: 'Triggers start your workflow. Workflows can have multiple triggers.', match: (d) => (d.group ?? []).includes('trigger') },
 ];
 
 const allNodes = computed(() => nodeTypes.descriptions.filter((d) => d.type !== 'nomops.stickyNote'));
