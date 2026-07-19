@@ -15,7 +15,7 @@ export type SettingsSection =
   | 'security'
   | 'ldap'
   | 'logstream'
-  | 'observability'
+  | 'opentelemetry'
   | 'community'
   | 'mcp'
   | 'chat';
@@ -33,7 +33,7 @@ export const SETTINGS_SECTIONS: Array<{ key: SettingsSection; label: string; bad
   { key: 'security', label: 'Security & policies' },
   { key: 'ldap', label: 'LDAP' },
   { key: 'logstream', label: 'Log Streaming' },
-  { key: 'observability', label: 'Observability' },
+  { key: 'opentelemetry', label: 'OpenTelemetry' },
   { key: 'community', label: 'Community nodes' },
   { key: 'mcp', label: 'Instance-level MCP', badge: 'Preview' },
   { key: 'chat', label: 'Chat', badge: 'Preview' },
@@ -53,7 +53,7 @@ export const SETTINGS_ICONS: Record<SettingsSection, string> = {
   security: '<path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6l7-3z"/>',
   ldap: '<rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v3M6 16v-2.5h12V16"/>',
   logstream: '<path d="M4 12h11M11 8l4 4-4 4M20 5v14"/>',
-  observability: '<path d="M4 4l4 5 4-2.5 4 5.5 4-3.5"/><path d="M4 20h16M6 20v-4M11 20v-6.5M16 20v-3.5M21 20v-6"/>',
+  opentelemetry: '<path d="M4 4l4 5 4-2.5 4 5.5 4-3.5"/><path d="M4 20h16M6 20v-4M11 20v-6.5M16 20v-3.5M21 20v-6"/>',
   community: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M17.5 14v7M14 17.5h7"/>',
   mcp: '<path d="M5 15c-1.7 0-3-1.3-3-3s1.3-3 3-3M5 9c0-3 2.5-5 5.5-5 2 0 3.7 1 4.6 2.6M19 9c1.7 0 3 1.3 3 3s-1.3 3-3 3M19 15c0 3-2.5 5-5.5 5-2 0-3.7-1-4.6-2.6"/>',
   chat: '<path d="M21 12a8 8 0 0 1-8 8H4l2.2-2.6A8 8 0 1 1 21 12z"/>',

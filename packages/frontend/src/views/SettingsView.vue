@@ -24,7 +24,7 @@ type Section =
   | 'security'
   | 'ldap'
   | 'logstream'
-  | 'observability'
+  | 'opentelemetry'
   | 'community'
   | 'mcp'
   | 'chat';
@@ -385,7 +385,20 @@ const rolesTab = ref<'instance' | 'project'>('instance');
 /** 企业功能是否已解锁（决定显示真实表单还是 n8n 式锁定卡）。 */
 const licensed = (feature: string): boolean => projects.hasFeature(feature);
 
-/* Observability：Prometheus 抓取配置示例（模板会合并空白，用常量保换行） */
+/* OpenTelemetry 表单本地态(对标 n8n /settings/opentelemetry;后端持久化留后续)。
+   默认值取自 n8n 页面 live 真值(Disabled / :4318 / /v1/traces / 2000ms / 1.00)。 */
+const otel = ref({
+  status: 'Disabled',
+  endpoint: 'http://localhost:4318',
+  serviceName: 'nomops',
+  tracePath: '/v1/traces',
+  startupTimeout: 2000,
+  sampleRate: 1.0,
+  includeNodeSpans: false,
+  injectTraceparent: false,
+  publishedOnly: false,
+});
+/* 原自有 Prometheus 抓取配置示例留档(后端 /metrics 端点保留,便于回退) */
 const promScrape = `- job_name: nomops\n  static_configs:\n    - targets: ['your-host:5678']`;
 
 /* ── 实例级 MCP（Preview） ── */
@@ -474,9 +487,30 @@ async function mcpToggleEnabled() {
 const chatSettings = ref<{ enabled: boolean; model: string } | null>(null);
 const chatError = ref('');
 const chatSaving = ref(false);
-/* Chat providers（服务端注册表 + 各家配置：Anthropic / DeepSeek / 豆包 / 千问 / Kimi / GLM） */
+/* Chat providers（服务端注册表 + 各家配置：Anthropic / DeepSeek / 豆包 / 千问 / Kimi / GLM）。
+   注:后端 assistant-service 6 家真实 provider 接口保留(chatProviders/loadChatProviders),便于回退。 */
 type ProviderRow = Awaited<ReturnType<typeof api.assistant.providers>>[number];
 const chatProviders = ref<ProviderRow[]>([]);
+
+/* B 类锁墙:Chat 页 provider 表 1:1 镜像 n8n 的 15 家(2026-07-19 /settings/chat live 逐字取证)。
+   品牌图标不复制 n8n 的第三方厂商 logo 资源,改用品牌色字母 monogram 芯片(视觉对等)。 */
+const N8N_CHAT_PROVIDERS: Array<{ name: string; mark: string; color: string }> = [
+  { name: 'OpenAI', mark: 'O', color: '#10a37f' },
+  { name: 'Anthropic', mark: 'A', color: '#d97757' },
+  { name: 'Google', mark: 'G', color: '#4285f4' },
+  { name: 'Azure (API Key)', mark: 'Az', color: '#0078d4' },
+  { name: 'Azure (Entra ID)', mark: 'Az', color: '#0078d4' },
+  { name: 'Ollama', mark: 'Ol', color: '#5a5a5a' },
+  { name: 'AWS Bedrock', mark: 'aws', color: '#ff9900' },
+  { name: 'Vercel AI Gateway', mark: 'V', color: '#111111' },
+  { name: 'xAI Grok', mark: 'X', color: '#111111' },
+  { name: 'Groq', mark: 'Gq', color: '#f55036' },
+  { name: 'OpenRouter', mark: 'OR', color: '#6566f1' },
+  { name: 'DeepSeek', mark: 'DS', color: '#4d6bfe' },
+  { name: 'Cohere', mark: 'Co', color: '#39594d' },
+  { name: 'Mistral Cloud', mark: 'M', color: '#ff7000' },
+  { name: 'NVIDIA Nemotron', mark: 'N', color: '#76b900' },
+];
 const credentials = ref<Awaited<ReturnType<typeof api.credentials.list>>>([]);
 async function loadChatProviders() {
   chatProviders.value = await api.assistant.providers().catch(() => []);
@@ -1219,51 +1253,79 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
       <!-- 安全（实例 admin，对标 n8n Security & policies 的设置行卡片） -->
       <section v-else-if="section === 'security'" data-test="settings-security">
         <h1 class="page-title">Security &amp; policies</h1>
-        <p class="sub">
-          Manage instance security requirements — single sign-on status, IdP user provisioning and account overview.
-        </p>
-        <p v-if="securityError" class="error-text" data-test="security-error">{{ securityError }}</p>
-        <template v-else-if="security">
-          <h3 class="sec-title" style="margin-top: 6px">Authentication</h3>
-          <div class="setting-card" style="max-width: 880px">
-            <div class="setting-row">
-              <div class="setting-text">
-                <b>SSO login <span v-if="!security.sso.enabled" class="chip-upgrade">{{ licensed('sso') ? 'Off' : 'Upgrade' }}</span></b>
-                <p>OpenID Connect single sign-on for everyone on this instance.</p>
-              </div>
-              <span class="switch" title="Configure under SSO" style="cursor: default">
-                <input type="checkbox" :checked="security.sso.enabled" disabled />
-                <span class="slider" />
-              </span>
+        <!-- B 类锁墙:对标 n8n Community 的 Security & policies 三分区(全 Enterprise 锁,Upgrade 徽章)。
+             注:安全数据 loader(loadSecurity/rotateScimToken)后端接口保留,便于回退到自有实现。 -->
+        <!-- 1) Enforce two-factor authentication -->
+        <h3 class="sec-title" style="margin-top: 6px">Enforce two-factor authentication</h3>
+        <div class="setting-card" style="max-width: 880px">
+          <div class="setting-row">
+            <div class="setting-text">
+              <b>Enforce two-factor authentication <span class="chip-upgrade">Upgrade</span></b>
+              <p>Enforces 2FA for all users on this instance authenticating with email and password logins.</p>
             </div>
+            <span class="switch" title="Available on the Enterprise plan" style="cursor: default">
+              <input type="checkbox" disabled /><span class="slider" />
+            </span>
           </div>
+        </div>
 
-          <h3 class="sec-title">User provisioning</h3>
-          <div class="setting-card" style="max-width: 880px">
-            <div class="setting-row">
-              <div class="setting-text">
-                <b>SCIM provisioning <span v-if="!security.scim.enabled" class="chip-upgrade">Upgrade</span></b>
-                <p>Let your identity provider create, update and deactivate users automatically ({{ security.scim.tokenConfigured ? 'token configured' : 'not configured' }}).</p>
-              </div>
-              <button v-if="security.scim.enabled" class="btn secondary btn-sm" data-test="rotate-scim" @click="rotateScimToken">
-                {{ security.scim.tokenConfigured ? 'Rotate token' : 'Generate token' }}
-              </button>
-              <span v-else class="badge">Enterprise</span>
+        <!-- 2) Data redaction -->
+        <h3 class="sec-title">Data redaction</h3>
+        <div class="setting-card" style="max-width: 880px">
+          <div class="setting-row">
+            <div class="setting-text">
+              <b>Enforce data redaction <span class="chip-upgrade">Upgrade</span></b>
+              <p>Override workflow-level settings and enforce data redaction on all executions across the instance. <a class="link" href="/docs" @click.prevent>Learn more</a></p>
             </div>
-            <div v-if="newScimToken" class="token-box" data-test="scim-token" style="margin: 0 16px 14px">
-              <div class="dim" style="font-size: 12px; margin-bottom: 4px">New SCIM token (shown once — save it now)</div>
-              <code>{{ newScimToken }}</code>
-            </div>
+            <span class="switch" title="Available on the Enterprise plan" style="cursor: default">
+              <input type="checkbox" disabled /><span class="slider" />
+            </span>
           </div>
+          <div class="setting-row">
+            <div class="setting-text">
+              <b>Redact executions <span class="chip-upgrade">Upgrade</span></b>
+              <p>Select whether to redact production executions, or manual and production executions.</p>
+            </div>
+            <select class="sec-select" disabled title="Available on the Enterprise plan">
+              <option>Production executions (Recommended)</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <div class="setting-text"><b>Affected scope</b></div>
+            <span class="dim">No executions</span>
+          </div>
+        </div>
 
-          <h3 class="sec-title">Accounts</h3>
-          <div class="setting-card" style="max-width: 880px">
-            <div class="setting-row">
-              <div class="setting-text"><b>Instance users</b><p>Total accounts on this instance, including pending invitations.</p></div>
-              <span class="dim">{{ security.userCount }}</span>
+        <!-- 3) Personal Space -->
+        <h3 class="sec-title">Personal Space</h3>
+        <div class="setting-card" style="max-width: 880px">
+          <div class="setting-row">
+            <div class="setting-text">
+              <b>Sharing <span class="chip-upgrade">Upgrade</span></b>
+              <p>Sharing of workflows, credentials and other resources from personal space. Changing the setting doesn't revoke existing shares.</p>
             </div>
+            <span class="switch" title="Available on the Enterprise plan" style="cursor: default">
+              <input type="checkbox" disabled /><span class="slider" />
+            </span>
           </div>
-        </template>
+          <div class="setting-row">
+            <div class="setting-text"><b>Existing shares</b></div>
+            <span class="dim">0 workflows, 0 credentials</span>
+          </div>
+          <div class="setting-row">
+            <div class="setting-text">
+              <b>Workflow publishing <span class="chip-upgrade">Upgrade</span></b>
+              <p>Publishing workflows in personal space. Changing the setting doesn't unpublish existing workflows.</p>
+            </div>
+            <span class="switch" title="Available on the Enterprise plan" style="cursor: default">
+              <input type="checkbox" disabled /><span class="slider" />
+            </span>
+          </div>
+          <div class="setting-row">
+            <div class="setting-text"><b>Existing published workflows</b></div>
+            <span class="dim">0 workflows</span>
+          </div>
+        </div>
       </section>
 
       <!-- SSO 配置 -->
@@ -1659,33 +1721,85 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
       </section>
 
       <!-- Observability（Prometheus /metrics，对应 n8n 的 OpenTelemetry 观测位） -->
-      <section v-else-if="section === 'observability'" data-test="settings-observability">
-        <h1 class="page-title">Observability</h1>
-        <p class="sub">
-          Export instance metrics in Prometheus text format. Only instance-level aggregates are exposed — never
-          project data or credentials.
-        </p>
+      <!-- OpenTelemetry(对标 n8n /settings/opentelemetry:Collector connection + Tracing 两区)。
+           注:原自有 Prometheus /metrics 端点后端保留(promScrape 常量留档),便于回退。 -->
+      <section v-else-if="section === 'opentelemetry'" data-test="settings-opentelemetry">
+        <h1 class="page-title" style="margin-bottom: 6px">OpenTelemetry</h1>
+        <div class="otel-status">
+          <select class="sec-select" v-model="otel.status" data-test="otel-status">
+            <option value="Disabled">Disabled</option>
+            <option value="Enabled">Enabled</option>
+          </select>
+          <span class="dim otel-status-hint">When disabled, no traces leave this instance.</span>
+        </div>
+
+        <h3 class="sec-title">Collector connection</h3>
         <div class="setting-card" style="max-width: 880px">
-          <div class="setting-row">
-            <div class="setting-text">
-              <b>Metrics endpoint</b>
-              <p>Scrape <code>GET /metrics</code> — executions by status, workflow and user counts, uptime and memory.</p>
-            </div>
-            <a class="btn secondary btn-sm" href="/metrics" target="_blank" rel="noopener" data-test="metrics-open">Open /metrics</a>
+          <div class="otel-field">
+            <label>OTLP endpoint</label>
+            <input v-model="otel.endpoint" placeholder="https://collector.example.com" data-test="otel-endpoint" />
+            <p class="otel-hint">The base URL of your OTLP collector (e.g. https://collector.example.com).</p>
+          </div>
+          <div class="otel-field">
+            <label>Service name</label>
+            <input v-model="otel.serviceName" placeholder="nomops-production" data-test="otel-service" />
+            <p class="otel-hint">How this instance appears in your collector.</p>
+          </div>
+          <div class="otel-field">
+            <label>Custom headers</label>
+            <button class="btn secondary btn-sm" data-test="otel-add-header">Add header</button>
+            <p class="otel-hint">Sent with every OTLP export. Use for Bearer tokens or tenant IDs.</p>
+          </div>
+          <div class="otel-field">
+            <label>Trace path</label>
+            <input v-model="otel.tracePath" placeholder="/v1/traces" data-test="otel-trace-path" />
+            <p class="otel-hint">Appended to the endpoint. /v1/traces is the OTLP default.</p>
+          </div>
+          <div class="otel-field">
+            <label>Startup connectivity timeout</label>
+            <div class="otel-inline"><input v-model.number="otel.startupTimeout" type="number" data-test="otel-startup" /><span class="dim">ms</span></div>
+            <p class="otel-hint">Reachability check at startup. nomops boots regardless.</p>
+          </div>
+          <div class="otel-field">
+            <label>Verify configuration</label>
+            <button class="btn secondary btn-sm" data-test="otel-test-trace">Send test trace</button>
+            <p class="otel-hint">Send a test span to check nomops can reach your collector.</p>
+          </div>
+        </div>
+
+        <h3 class="sec-title">Tracing</h3>
+        <div class="setting-card" style="max-width: 880px">
+          <div class="otel-field">
+            <label>Trace sample rate</label>
+            <div class="otel-inline"><input v-model.number="otel.sampleRate" type="number" step="0.01" min="0" max="1" data-test="otel-sample" /><span class="dim">of 1.00</span></div>
+            <p class="otel-hint">Fraction of traces exported. 1.00 = all traces.</p>
           </div>
           <div class="setting-row">
             <div class="setting-text">
-              <b>Disable</b>
-              <p>Set the environment variable <code>NOMOPS_METRICS=false</code> and restart to turn the endpoint off (returns 404).</p>
+              <b>Include node spans</b>
+              <p>One span per node, or workflow-level spans only.</p>
             </div>
+            <span class="switch"><input v-model="otel.includeNodeSpans" type="checkbox" data-test="otel-node-spans" /><span class="slider" /></span>
           </div>
           <div class="setting-row">
             <div class="setting-text">
-              <b>Prometheus scrape config</b>
-              <p style="margin-bottom: 8px">Add this job to your <code>prometheus.yml</code>:</p>
-              <code class="api-token pre" style="margin-top: 0">{{ promScrape }}</code>
+              <b>Inject outbound traceparent</b>
+              <p>Add a W3C traceparent header to outbound HTTP so downstream services join the same trace.</p>
             </div>
+            <span class="switch"><input v-model="otel.injectTraceparent" type="checkbox" data-test="otel-traceparent" /><span class="slider" /></span>
           </div>
+          <div class="setting-row">
+            <div class="setting-text">
+              <b>Track published workflows only</b>
+              <p>Skip manual canvas runs. Less noise in production.</p>
+            </div>
+            <span class="switch"><input v-model="otel.publishedOnly" type="checkbox" data-test="otel-published-only" /><span class="slider" /></span>
+          </div>
+        </div>
+
+        <div class="otel-actions">
+          <button class="btn primary" data-test="otel-save">Save settings</button>
+          <button class="btn secondary" data-test="otel-discard">Discard changes</button>
         </div>
       </section>
 
@@ -1899,35 +2013,24 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="i15"><path d="M21 12a9 9 0 1 1-2.6-6.3M21 4v5h-5" /></svg>
             </button>
           </div>
+          <!-- Provider 表:1:1 镜像 n8n 15 家(品牌色 monogram 芯片代替第三方 logo) -->
           <div v-if="chatSettings.enabled" class="card" style="max-width: 1000px; padding: 0; margin-top: 10px">
             <table class="api-table">
-              <thead><tr><th>Provider</th><th>Models</th><th>Last edited</th><th style="width: 44px"></th></tr></thead>
+              <thead><tr><th>Provider</th><th>Models</th><th>Last edited</th></tr></thead>
               <tbody>
-                <tr v-for="p in chatProviders" :key="p.id" :data-test="`chat-provider-${p.id}`" :style="p.enabled ? '' : 'opacity: 0.5'">
+                <tr v-for="p in N8N_CHAT_PROVIDERS" :key="p.name" :data-test="`chat-provider-${p.name}`">
                   <td>
-                    <span style="display: inline-flex; align-items: center; gap: 9px">
-                      <b>{{ p.label }}</b>
-                      <span v-if="!p.enabled" class="badge" data-test="chat-disabled-badge">disabled</span>
+                    <span style="display: inline-flex; align-items: center; gap: 10px">
+                      <span class="prov-mark" :style="{ background: p.color }">{{ p.mark }}</span>
+                      <b>{{ p.name }}</b>
                     </span>
                   </td>
                   <td class="dim">All models</td>
-                  <td class="dim">{{ p.lastEditedAt ? new Date(p.lastEditedAt).toLocaleDateString() : '—' }}</td>
-                  <td style="text-align: right; position: relative" @click.stop>
-                    <button class="row-dots" :data-test="`chat-provider-menu-${p.id}`" @click="providerMenuFor = providerMenuFor === p.id ? null : p.id">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" class="i16"><circle cx="12" cy="5" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="12" cy="19" r="1.6" /></svg>
-                    </button>
-                    <div v-if="providerMenuFor === p.id" class="row-menu-pop" :data-test="`chat-provider-pop-${p.id}`">
-                      <button class="menu-item" :data-test="`chat-provider-edit-${p.id}`" @click="openProviderModal(p)">Edit provider</button>
-                    </div>
-                  </td>
+                  <td class="dim">-</td>
                 </tr>
               </tbody>
             </table>
           </div>
-          <p v-if="chatSettings.enabled" class="dim" style="font-size: 12.5px; margin-top: 10px; max-width: 1000px">
-            Each provider uses the project’s own credential of the listed type (add it under Credentials).
-            Decrypted keys never leave the request — never stored, returned or logged.
-          </p>
 
           <!-- Configure Anthropic 弹窗（对标 n8n Configure provider） -->
           <div v-if="providerModalOpen" class="modal-mask" data-test="chat-provider-modal" @click.self="providerModalOpen = false">
@@ -2375,6 +2478,33 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 .chip-upgrade {
   font-size: 11px; font-weight: 400; padding: 1px 8px; margin-left: 6px;
   border: 1px solid var(--border); border-radius: 6px; color: var(--text-dim);
+}
+/* 通用只读/表单下拉(Security 的 Redact executions、OTel 的状态) */
+.sec-select {
+  width: 260px; flex-shrink: 0; height: 34px; padding: 0 10px; font-size: 13px;
+  background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--text); cursor: pointer;
+}
+.sec-select:disabled { opacity: 0.65; cursor: default; }
+
+/* OpenTelemetry 页 */
+.otel-status { display: flex; align-items: center; gap: 12px; margin: 8px 0 4px; }
+.otel-status-hint { font-size: 13px; }
+.otel-field { padding: 16px; border-bottom: 1px solid var(--border); }
+.otel-field:last-child { border-bottom: none; }
+.otel-field > label { display: block; font-size: 13px; font-weight: 500; color: var(--text-hi); margin-bottom: 7px; }
+.otel-field input { width: 100%; max-width: 480px; }
+.otel-hint { margin: 7px 0 0; font-size: 12.5px; color: var(--text-dim); }
+.otel-inline { display: flex; align-items: center; gap: 8px; }
+.otel-inline input { width: 140px; }
+.otel-actions { display: flex; gap: 10px; margin-top: 20px; }
+
+/* Chat provider 品牌色 monogram 芯片(代替第三方 logo) */
+.prov-mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; flex-shrink: 0; border-radius: 5px;
+  font-size: 10px; font-weight: 700; letter-spacing: -0.02em; color: #fff;
+  text-transform: none; line-height: 1;
 }
 
 /* Users 工具条（搜索 + Invite） */

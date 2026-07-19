@@ -27,7 +27,12 @@
 - ✅ **描述 live 逐字复验**(2026-07-19):经 Control_Chrome 按 **N 键**打开 n8n 节点创建器,读取 7 分类 + 8 触发器**逐字真值**并逐条订正(改 4 处:Action in an app 品牌名 `Slack,GitHub`→`Google Sheets, Telegram`;Core 补 `set webhooks`;Human review 全文改 `Request approval via services like Slack and Telegram before making tool calls`;Add another trigger 补句末句号)。nomops 侧 live 截图两张确认渲染一致(触发器根「What triggers this workflow?」/ 分类根「What happens next?」)。n8n 配对截图仍缺(claude-in-chrome 全程掉线),仅描述文本 live 取证。
 - ✅ **Batch 7a**(ee5f94c):D063 版本历史整页 + 只读斜纹画布(新增 ReadOnlyCanvas.vue;n8n History 页经 N 键全量 live 取证:Versions|Publish Timeline 双 tab、Current changes 置顶→N versions 分组头、Actions 4 项 Publish version/Clone to new workflow/Open version in new tab/Download、升级脚注)。
 - ✅ **Batch 7b**(D085):执行详情只读画布——顶条 Copy to editor + 垃圾桶 + 只读斜纹画布快照(节点带执行态 status-ok/error)+ 底部 Execution data 折叠。⚠ **两点受限**:①n8n 全实例 0 执行记录,本项 n8n 侧无法 live 复验(沿用先前审计真值 + n8n 执行详情通用结构);②nomops 执行 API 不返回执行时工作流快照,只读画布用「当前工作流」定义近似渲染,Copy to editor 退化为切回 Editor tab。nomops 侧 live 全量验证(造执行→顶条/斜纹画布/3 节点 status-ok/Execution data 折叠)。
-- ⏳ **剩余 P0(B 类锁墙,1 组)**:D127 Security&policies 锁墙 · D129 OTel 页 · D130 Chat 15 provider。
+- ✅ **Batch 8**(B 类锁墙收尾,三页经 n8n /settings live 逐字取证):
+  - **D127** Security & policies:换成 n8n 三分区(Enforce 2FA / Data redaction / Personal Space),**5 处 Enterprise Upgrade 徽章** + Redact executions 下拉「Production executions (Recommended)」+ Affected scope「No executions」+ Existing shares「0 workflows, 0 credentials」+ Existing published workflows「0 workflows」。原 SSO/SCIM loader 后端保留可回退。
+  - **D129** OpenTelemetry(顺带 **D018** 导航名 Observability→OpenTelemetry):整页两区 Collector connection / Tracing,全字段(状态下拉「When disabled, no traces leave this instance.」+ OTLP endpoint / Service name / Custom headers[Add header] / Trace path / Startup connectivity timeout[ms] / Verify configuration[Send test trace] / Trace sample rate / Include node spans / Inject outbound traceparent / Track published workflows only)+ Save settings·Discard changes。原 Prometheus /metrics 后端保留。
+  - **D130** Chat providers:6→**15 家逐字**(OpenAI/Anthropic/Google/Azure (API Key)/Azure (Entra ID)/Ollama/AWS Bedrock/Vercel AI Gateway/xAI Grok/Groq/OpenRouter/DeepSeek/Cohere/Mistral Cloud/NVIDIA Nemotron),表列 Provider/Models(All models)/Last edited(-)。⚠ **品牌图标不复制 n8n 的第三方厂商 logo 资源**,改用品牌色字母 monogram 芯片(视觉对等,规避第三方商标复制)。原 6 家真实 provider 后端 assistant-service 保留可回退。
+  - 三页均 nomops 侧 live 全量验证(分区/徽章/字段/15 行)。typecheck+26 tests+build 全绿。
+- 🎉 **P0 全部完成**(便签 7 色→D067 右键→D069/D070 面板→D104/D105/D106 参数→D088 NDV Settings→D058/D059 Evaluations→D061/D062 wf settings→D131 MCP OAuth→D154 Shared→D047/D152/D128 锁态→D063 History→D085 执行详情→D127/D129/D130 B 类)。豁免:D103 resourceLocator=N/A;暂缓:D096 Mapping|From AI(待引擎 $fromAI)。
 
 ---
 
