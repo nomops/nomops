@@ -19,6 +19,7 @@ import { ActiveWorkflowManager } from './triggers/active-workflow-manager.js';
 import { LicenseService } from './license/license-service.js';
 import { AuditService } from './services/audit-service.js';
 import { OidcService } from './sso/oidc-service.js';
+import { SamlService } from './sso/saml-service.js';
 import { OAuth2Service } from './services/oauth2-service.js';
 import { VariableService } from './services/variable-service.js';
 import { DataTableService } from './services/data-table-service.js';
@@ -256,6 +257,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   if (role === 'main') executionPruner.start();
   const baseUrl = process.env['NOMOPS_BASE_URL'] ?? 'http://localhost:5678';
   const sso = new OidcService(repos, credentials, auth, baseUrl);
+  const saml = new SamlService(repos, credentials, auth, baseUrl);
   const oauth2 = new OAuth2Service(credentialService, baseUrl);
   const variables = new VariableService(repos);
   const dataTables = new DataTableService(repos);
@@ -289,6 +291,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     license,
     audit,
     sso,
+    saml,
     scim,
     quota,
     payments,

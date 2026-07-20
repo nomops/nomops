@@ -24,6 +24,7 @@ export const LICENSE_FEATURES = [
   'rbac',
   'auditLogs',
   'sso',
+  'saml',
   'scim',
   'quotas',
   'logStreaming',
