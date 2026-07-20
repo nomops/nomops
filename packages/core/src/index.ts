@@ -23,7 +23,9 @@ export { executeRoutingNode, hasRoutingDeclarations } from './execution-engine/r
 export { createExecuteContext, createSupplyContext, defaultHttpRequest } from './execution-engine/node-execution-context.js';
 export type { INodeTypeResolver, IWorkflowExecuteAdditionalData } from './execution-engine/node-execution-context.js';
 
-export { FileSystemBinaryStore, InMemoryBinaryStore } from './binary-data/binary-store.js';
+export { FileSystemBinaryStore, InMemoryBinaryStore, assertValidBinaryId } from './binary-data/binary-store.js';
+export { S3BinaryStore, s3StoreOptionsFromEnv } from './binary-data/s3-binary-store.js';
+export type { IS3StoreOptions } from './binary-data/s3-binary-store.js';
 export type { IBinaryDataStore, IBinaryMeta } from './binary-data/binary-store.js';
 export { Cipher } from './encryption/cipher.js';
 export { StaticKeyProvider } from './encryption/key-provider.js';
