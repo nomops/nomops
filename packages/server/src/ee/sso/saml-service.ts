@@ -2,7 +2,7 @@ import { SAML, ValidateInResponseTo, generateServiceProviderMetadata } from '@no
 import { OperationalError } from '@nomops/workflow';
 import type { Repositories } from '@nomops/db';
 import type { Credentials } from '@nomops/core';
-import type { AuthService, IAuthResult } from '../auth/auth-service.js';
+import type { AuthService, IAuthResult } from '../../auth/auth-service.js';
 
 /**
  * SAML 2.0 单点登录（B2）。

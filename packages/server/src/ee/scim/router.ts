@@ -1,6 +1,6 @@
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import { OperationalError } from '@nomops/workflow';
-import type { AppServices } from '../app-services.js';
+import type { AppServices } from '../../app-services.js';
 import { toScimUser } from './scim-service.js';
 
 /** SCIM 错误响应（RFC 7644 §3.12）。 */

@@ -5,7 +5,7 @@ import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
 import { inviteUser, setupOwner, licensedBoot } from './helpers.js';
-import { LICENSE_FEATURES } from '../license/license-service.js';
+import { LICENSE_FEATURES } from '../ee/license/license-service.js';
 
 /** Phase 6a（docs/06）验收：RBAC 权限矩阵、项目切换、License 门、审计日志。 */
 

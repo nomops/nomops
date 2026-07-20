@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import type { Repositories } from '@nomops/db';
 import type { IConnections, INode, IWorkflowSettings } from '@nomops/workflow';
 import { OperationalError } from '@nomops/workflow';
-import type { WorkflowService } from './workflow-service.js';
+import type { WorkflowService } from '../../services/workflow-service.js';
 
 const execFileAsync = promisify(execFile);
 

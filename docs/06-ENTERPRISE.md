@@ -308,3 +308,51 @@ Wasabi 等任何讲 S3 协议的后端——所以不单独做 MinIO 实现。
 - **multipart 上传接口**：需要新端点 + 节点 helper 契约扩展。
 - **预签名下载接线**：`S3BinaryStore.presignedUrl()` 已实现，但下载路由仍走
   流式回传。接上它需要决定「何时重定向、何时代理」（跨域、审计留痕都受影响）。
+
+---
+
+## 十、C1 — 企业代码迁入 `packages/server/src/ee/`
+
+### 为什么这不只是整理目录
+
+`ee/` 是**授权边界**：LICENSE_EE 按这条路径划定商业授权范围。文件移进移出就
+换了适用的许可证——移出去，那部分代码落回 Sustainable Use License，而 SUL
+明文允许自托管者为自身业务目的修改软件，也就等于允许改掉验签解锁付费功能。
+
+收益兑现：LICENSE_EE 第 2 节从**九条手工维护的路径**收成**一条 glob**
+（`packages/server/src/ee/**`）。原先那份清单靠测试守着，但终究会随重构漂移。
+
+### 迁入的模块
+
+```
+ee/license/{license-cert,license-service}.ts
+ee/sso/{oidc-service,saml-service,router}.ts
+ee/scim/{scim-service,router}.ts
+ee/ldap/ldap-service.ts
+ee/services/{audit,quota,secrets,log-streaming,git}-service.ts
+```
+
+### ★迁移暴露的结构性纠缠（未解，已登记）
+
+C1 原计划「反转依赖方向：社区侧只留一个 registerEeRoutes 钩子」。实际做下来
+发现问题比路由更深——**三个企业服务被社区核心代码直接依赖**：
+
+| 社区文件 | 依赖的 ee 服务 | 为什么 |
+|---|---|---|
+| `services/execution-service.ts` | QuotaService | 计数是社区行为，只有**限额**是付费 |
+| `services/credential-service.ts` | SecretsService | `{{ $secrets.X }}` 解析在凭证注入路径上 |
+| `triggers/active-workflow-manager.ts` | AuditService | 写入始终进行，只有**查询**门控 |
+| `billing/billing-service.ts` | AuditService | 同上 |
+
+这不是疏忽，是这三个服务本身**半社区半企业**。正确解法是依赖倒置：社区侧定义
+端口（接口 + 空实现），ee 侧提供适配器——与本仓库已有的
+`IEncryptionKeyProvider` / `ISecretsProvider` 同一手法。
+
+在还清之前，这四条边被显式钉在 `__tests__/ee-boundary.test.ts` 的待偿清单里：
+**只减不增**，加新的一条测试就红；还清了却忘记从清单删除，另一条测试也会红。
+
+### 仍未做
+
+- **企业路由抽取**：`controllers/index.ts` 仍是 1901 行，27 个门控点散在其中。
+  抽进 `ee/routes.ts` 是 C1 的下半场。
+- **C2 lint 规则**：目前靠测试守边界。测试能覆盖，但 lint 报错更早。

@@ -1,5 +1,5 @@
 import { Router, urlencoded, type NextFunction, type Request, type Response } from 'express';
-import type { AppServices } from '../app-services.js';
+import type { AppServices } from '../../app-services.js';
 
 const h =
   (fn: (req: Request, res: Response) => Promise<void>) =>

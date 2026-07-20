@@ -11,7 +11,7 @@ import type {
 } from '@nomops/workflow';
 import { OperationalError } from '@nomops/workflow';
 import type { ExecutionService } from '../services/execution-service.js';
-import type { AuditService } from '../services/audit-service.js';
+import type { AuditService } from '../ee/services/audit-service.js';
 
 /** 解析声明式 webhook 值（字面量 或 { parameter } 引用节点参数）。 */
 function resolveWebhookValue(
