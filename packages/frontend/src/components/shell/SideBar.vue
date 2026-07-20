@@ -169,14 +169,14 @@ async function openAbout() {
           <button class="icon-btn" data-test="quick-create" :title="t('Create')" @click.stop="quickOpen = !quickOpen; flyout = null">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14" /></svg>
           </button>
-          <!-- D008 对标基线:+ 菜单 4 项(workflow/credential/data table/project) -->
+          <!-- D008/D010 对标基线:+ 菜单项**无尾部 ›**(live 实测基线 5 项、宽 198,均无 chevron) -->
           <div v-if="quickOpen" class="flyout quick" data-test="quick-menu" @click.stop>
-            <button class="flyout-item qc" data-test="quick-workflow" @click="quickNewWorkflow">{{ t('New workflow') }}<span class="qc-chev">›</span></button>
-            <button class="flyout-item qc" data-test="quick-credential" @click="quickNewCredential">{{ t('New credential') }}<span class="qc-chev">›</span></button>
-            <button class="flyout-item qc" data-test="quick-datatable" @click="quickNewDataTable">{{ t('New data table') }}<span class="qc-chev">›</span></button>
+            <button class="flyout-item qc" data-test="quick-workflow" @click="quickNewWorkflow">{{ t('New workflow') }}</button>
+            <button class="flyout-item qc" data-test="quick-credential" @click="quickNewCredential">{{ t('New credential') }}</button>
+            <button class="flyout-item qc" data-test="quick-datatable" @click="quickNewDataTable">{{ t('New data table') }}</button>
             <!-- D009 对标基线:New project 带 Enterprise 徽章且置灰不可点 -->
             <button v-if="projects.hasFeature('rbac')" class="flyout-item qc" data-test="quick-project" @click="quickNewProject">
-              {{ t('New project') }}<span class="qc-chev">›</span>
+              {{ t('New project') }}
             </button>
             <span v-else class="flyout-item qc disabled" data-test="quick-project" :title="t('Available on the Enterprise plan')">
               {{ t('New project') }}<span class="qc-enterprise">{{ t('Enterprise') }}</span>
@@ -384,14 +384,16 @@ async function openAbout() {
 
 .flyout-anchor { position: relative; }
 .chev { width: 15px; height: 15px; flex-shrink: 0; margin-left: auto; color: var(--text-faint); }
+/* D016 live 实测基线 Help 弹层：宽 250、圆角 8、底色 --color--background--light-3、
+   阴影 0 10px 15px -3px + 0 4px 6px -4px、padding 0、无边框 */
 .flyout {
   position: absolute; left: calc(100% + 4px); bottom: 0; z-index: 40;
-  width: 210px; background: var(--bg-panel); border: 1px solid var(--border-strong);
-  border-radius: 10px; padding: 6px; box-shadow: 6px 6px 24px rgba(0, 0, 0, 0.45);
+  width: 250px; background: var(--color--background--light-3); border: none;
+  border-radius: 8px; padding: 0;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
 }
 .flyout.quick { top: 100%; left: 0; bottom: auto; width: 212px; margin-top: 4px; }
 .flyout-item.qc { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.qc-chev { color: var(--text-faint); font-size: 16px; line-height: 1; }
 .qc-upgrade {
   font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 8px;
   background: var(--bg-hover); color: var(--text-dim); border: 1px solid var(--border);
