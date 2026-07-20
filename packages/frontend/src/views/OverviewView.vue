@@ -991,6 +991,8 @@ const fmtRunTime = (row: ExecutionRow): string => {
             <option :value="10">{{ t('10/page') }}</option>
             <option :value="25">{{ t('25/page') }}</option>
             <option :value="50">{{ t('50/page') }}</option>
+            <!-- D038 live 实测基线页大小选项含 100/page -->
+            <option :value="100">{{ t('100/page') }}</option>
           </select>
         </div>
       </div>

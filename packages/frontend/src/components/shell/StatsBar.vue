@@ -40,6 +40,10 @@ function fmtSaved(min: number): { value: string; unit: string; dim: boolean } {
   return { value: `${Math.floor(min / 60)}h ${min % 60}`, unit: 'm', dim: false };
 }
 
+/* D033 live 实测基线 Time saved ⓘ 的 tooltip 文案 */
+const TIME_SAVED_TIP =
+  'No estimate available yet. To see potential time savings, add time estimates to each workflow from workflow settings.';
+
 const cards = computed(() => {
   const d = data.value;
   const runtime = fmtRuntime(d?.avgRuntimeMs ?? 0);
@@ -66,7 +70,17 @@ const cards = computed(() => {
       <router-link class="stat-cell" :to="{ path: c.to }">
         <strong class="stat-label">
           {{ t(c.label) }}
-          <svg v-if="c.saved" class="info-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <!-- D033 live 实测基线 ⓘ tooltip(无估算时的文案) -->
+          <svg
+            v-if="c.saved"
+            class="info-i"
+            :aria-label="TIME_SAVED_TIP"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+          >
+            <title>{{ TIME_SAVED_TIP }}</title>
             <circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" stroke-linecap="round" />
           </svg>
         </strong>
@@ -134,8 +148,9 @@ const cards = computed(() => {
   margin-left: 1px;
 }
 .info-i {
-  width: 15px;
-  height: 15px;
+  /* D033 live 实测基线 ⓘ 为 14×14 */
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
   color: var(--color--text--tint-1);
 }
