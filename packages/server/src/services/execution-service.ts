@@ -244,22 +244,28 @@ export class ExecutionService {
     const state = createRunExecutionData();
     seedTriggerOutput(workflow, state, startNode, [seedData]);
 
-    await this.quota.consume(projectId); // ★配额网关：超额 429（webhook）/由 AWM 静默跳过（cron）
-    const execution = await this.createExecutionRow(row, mode, state as unknown as JsonObject);
+    // queue 模式不过闸门：并发由 worker 的 BullMQ 并发度管，两层会互相打架
+    const gated = this.queue === null;
 
-    if (this.queue) {
-      // queue 模式不过闸门：并发由 worker 的 BullMQ 并发度管，两层会互相打架
-      await this.queue.enqueue({ executionId: execution.id });
-      return { executionId: execution.id, status: 'queued' };
-    }
-
-    // ★并发闸门：超限时在此排队等待(不拒绝)，避免洪峰把进程打挂
-    await this.concurrency.acquire(mode);
+    /**
+     * ★闸门必须在建执行记录**之前**：队列满时 acquire 抛 503，
+     * 若记录已经建好，就会留下一条永远不会跑的 'new' 状态记录——
+     * 而 'new' 是非终态，执行历史清理器不会碰它，洪峰下即成永久垃圾。
+     * 被拒的请求也不该吃配额：它压根没执行。
+     */
+    if (gated) await this.concurrency.acquire(mode);
     try {
+      await this.quota.consume(projectId); // ★配额网关：超额 429（webhook）/由 AWM 静默跳过（cron）
+      const execution = await this.createExecutionRow(row, mode, state as unknown as JsonObject);
+
+      if (this.queue) {
+        await this.queue.enqueue({ executionId: execution.id });
+        return { executionId: execution.id, status: 'queued' };
+      }
       const run = await this.executeStored(execution.id);
       return this.toSummary(execution.id, run);
     } finally {
-      this.concurrency.release(mode);
+      if (gated) this.concurrency.release(mode);
     }
   }
 

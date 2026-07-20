@@ -32,7 +32,11 @@ import { VariableService } from './services/variable-service.js';
 import { DataTableService } from './services/data-table-service.js';
 import { WaitTracker } from './services/wait-tracker.js';
 import { ExecutionPruner, prunerOptionsFromEnv } from './services/execution-pruner.js';
-import { ConcurrencyGate, concurrencyLimitFromEnv } from './services/concurrency-gate.js';
+import {
+  ConcurrencyGate,
+  concurrencyLimitFromEnv,
+  queueDepthFromEnv,
+} from './services/concurrency-gate.js';
 import { CountingUsageGate } from './services/usage-gate.js';
 import type { IExecutionPrunerOptions } from './services/execution-pruner.js';
 import { ScimService } from './ee/scim/scim-service.js';
@@ -123,6 +127,8 @@ export interface BootstrapOptions {
   pruner?: IExecutionPrunerOptions;
   /** 生产执行并发上限；-1 = 不限。缺省走 NOMOPS_CONCURRENCY_PRODUCTION_LIMIT。 */
   concurrencyLimit?: number;
+  /** 等待队列深度上限；缺省 2× 并发上限。超出即 503。 */
+  concurrencyQueueDepth?: number;
   /** S3 二进制存储配置（测试注入假客户端；生产走 NOMOPS_S3_* 环境变量）。 */
   s3?: import('@nomops/core').IS3StoreOptions | null;
 }
@@ -240,7 +246,10 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     queue,
     (evt) => logStreaming.dispatch({ type: 'execution', at: new Date().toISOString(), ...evt }),
     binaryStore,
-    new ConcurrencyGate(opts.concurrencyLimit ?? concurrencyLimitFromEnv(process.env)),
+    new ConcurrencyGate(
+      opts.concurrencyLimit ?? concurrencyLimitFromEnv(process.env),
+      opts.concurrencyQueueDepth ?? queueDepthFromEnv(process.env),
+    ),
   );
 
   const leader = new LeaderElection(lockStore);

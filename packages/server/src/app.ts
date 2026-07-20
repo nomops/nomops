@@ -63,7 +63,9 @@ export function createApp(services?: AppServices): Express {
   app.use((error: Error, _req: Request, res: Response, _next: NextFunction) => {
     if (error instanceof OperationalError) {
       const status = typeof error.context['status'] === 'number' ? error.context['status'] : 400;
-      const { status: _s, ...context } = error.context;
+      const { status: _s, retryAfter, ...context } = error.context;
+      // 过载/限流类错误要告诉调用方等多久再试,否则它只会立刻重试、把洪峰放大
+      if (typeof retryAfter === 'number') res.setHeader('Retry-After', String(retryAfter));
       res.status(status).json({ error: error.message, ...(Object.keys(context).length ? { context } : {}) });
       return;
     }
