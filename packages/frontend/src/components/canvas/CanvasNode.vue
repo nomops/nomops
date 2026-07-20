@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { Handle, Position } from '@vue-flow/core';
+import { NodeResizer } from '@vue-flow/node-resizer';
+import '@vue-flow/node-resizer/dist/style.css';
 import type { INode } from '@nomops/workflow';
 import { useNodeTypesStore } from '../../stores/node-types.js';
 import { useExecutionStore } from '../../stores/execution.js';
@@ -38,6 +40,16 @@ const isSubNode = computed(() => mainOutputs.value.length === 0 && aiOutputs.val
 const isSticky = computed(() => props.data.node.type === 'nomops.stickyNote');
 const stickyColor = computed(() => String(props.data.node.parameters['color'] ?? 'yellow'));
 const stickyEditing = ref(false);
+
+/* D078 对标 n8n:便签可拖拽调宽高(尺寸存进 node.parameters.width/height)。 */
+const STICKY_W = 240;
+const STICKY_H = 160;
+const stickyW = computed(() => Number(props.data.node.parameters['width'] ?? STICKY_W) || STICKY_W);
+const stickyH = computed(() => Number(props.data.node.parameters['height'] ?? STICKY_H) || STICKY_H);
+function onStickyResize(event: { params: { width: number; height: number } }) {
+  editor.setParam(props.data.node.name, 'width', Math.round(event.params.width));
+  editor.setParam(props.data.node.name, 'height', Math.round(event.params.height));
+}
 
 /** D079 对标 n8n:便签内容按 markdown 渲染(先转义防 XSS,再做标题/粗斜体/链接/列表变换)。 */
 const stickyHtml = computed(() => {
@@ -179,9 +191,18 @@ const bottomStyle = (i: number, count: number) => ({
     v-if="isSticky"
     class="sticky-note"
     :class="[`sticky-${stickyColor}`, { selected }]"
+    :style="{ width: stickyW + 'px', height: stickyH + 'px' }"
     :data-test-node="data.node.name"
     @dblclick.stop="stickyEditing = true"
   >
+    <!-- D078 对标 n8n:便签可拖拽调宽高(选中时显八向把手) -->
+    <NodeResizer
+      v-if="!readonly"
+      :min-width="150"
+      :min-height="80"
+      :is-visible="Boolean(selected)"
+      @resize-end="onStickyResize"
+    />
     <!-- 便签悬停工具条(对标 n8n:🗑 Delete · 🎨 颜色 · ⋯ More;无执行/无禁用) -->
     <div v-if="!readonly" ref="toolbarRef" class="node-toolbar sticky-toolbar" :class="{ pinned: overflowOpen || stickyColorOpen }" @mousedown.stop @dblclick.stop>
       <div class="node-toolbar-items" data-test="canvas-node-toolbar">
@@ -476,7 +497,8 @@ const bottomStyle = (i: number, count: number) => ({
    蓝=blue-900/800; 绿=green-950/900; 紫=purple-950/800）、圆角 4、1px 边 */
 .sticky-note {
   position: relative;
-  width: 240px; min-height: 160px; border-radius: var(--radius); padding: 12px;
+  /* D078:宽高改由 node.parameters.width/height 驱动(内联 style),这里只保留下限 */
+  min-width: 150px; min-height: 80px; overflow: hidden; border-radius: var(--radius); padding: 12px;
   font-size: var(--font-size--xs); line-height: 1.5; cursor: default;
   border: var(--border-width) var(--border-style) var(--sticky--border-color);
   background: var(--sticky--color--background); color: var(--sticky--color--text);
