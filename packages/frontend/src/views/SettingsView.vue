@@ -112,6 +112,12 @@ async function refreshMe() {
   profileFirst.value = me.value?.firstName ?? '';
   profileLast.value = me.value?.lastName ?? '';
 }
+/* D145 对标基线：Save 在「未改动」时也禁用（原先只在保存中禁用） */
+const profileDirty = computed(
+  () =>
+    profileFirst.value.trim() !== (me.value?.firstName ?? '') ||
+    profileLast.value.trim() !== (me.value?.lastName ?? ''),
+);
 async function startMfaSetup() {
   mfaError.value = '';
   mfaCode.value = '';
@@ -1142,7 +1148,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         </div>
 
         <div style="margin-top: 30px; display: flex; align-items: center; gap: 12px">
-          <button class="btn primary" data-test="profile-save" :disabled="profileSaving" @click="saveProfile">
+          <button class="btn primary" data-test="profile-save" :disabled="profileSaving || !profileDirty" @click="saveProfile">
             {{ profileSaving ? t('Saving…') : t('Save') }}
           </button>
           <span v-if="profileSaved" class="saved-hint" style="margin: 0">{{ t('Saved ✓') }}</span>
