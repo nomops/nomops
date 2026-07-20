@@ -28,6 +28,8 @@ export const useEditorStore = defineStore('editor', {
     nodes: [] as INode[],
     connections: {} as IConnections,
     selectedNodeName: null as string | null,
+    /** D082:多选集(框选 / Shift 点选);单选时等于 [selectedNodeName]。 */
+    selectedNames: [] as string[],
     /** NDV 模态开关（双击节点打开）。 */
     ndvOpen: false,
     /** 节点选择器抽屉开关（右侧，点「+」或空态打开）。 */
@@ -69,6 +71,7 @@ export const useEditorStore = defineStore('editor', {
         this.publishedAt = wf.publishedAt ?? null;
         this.publishedDirty = wf.publishedDirty ?? true;
         this.selectedNodeName = null;
+        this.selectedNames = [];
         this.ndvOpen = false;
         this.dirty = false;
         this.undoStack = [];
@@ -140,6 +143,8 @@ export const useEditorStore = defineStore('editor', {
         this.selectedNodeName = null;
         this.ndvOpen = false;
       }
+      // D082:撤销/重做后多选集只保留仍存在的节点
+      this.selectedNames = this.selectedNames.filter((n) => this.nodes.some((x) => x.name === n));
       this.dirty = true;
     },
 
@@ -192,6 +197,7 @@ export const useEditorStore = defineStore('editor', {
       this.nodes = this.nodes.filter((n) => n.name !== name);
       this.connections = removeNodeFromConnections(this.connections, name);
       if (this.selectedNodeName === name) this.selectedNodeName = null;
+      this.selectedNames = this.selectedNames.filter((n) => n !== name);
       this.pinnedParams = this.pinnedParams.filter((p) => p.nodeName !== name);
       this.dirty = true;
     },
@@ -241,6 +247,7 @@ export const useEditorStore = defineStore('editor', {
       this.connections = next;
       this.pinnedParams = this.pinnedParams.map((p) => (p.nodeName === oldName ? { ...p, nodeName: unique } : p));
       if (this.selectedNodeName === oldName) this.selectedNodeName = unique;
+      this.selectedNames = this.selectedNames.map((n) => (n === oldName ? unique : n));
       this.dirty = true;
     },
 
@@ -309,6 +316,30 @@ export const useEditorStore = defineStore('editor', {
 
     select(name: string | null) {
       this.selectedNodeName = name;
+      this.selectedNames = name ? [name] : [];
+    },
+
+    /* ── D082 对标 n8n:多选(框选 / Shift 点选)── */
+    /** 画布选择变化 → 同步多选集;主选中取最后一个(NDV / 自动接线用)。 */
+    setSelection(names: string[]) {
+      this.selectedNames = [...names];
+      this.selectedNodeName = names.length ? names[names.length - 1]! : null;
+    },
+    selectAll() {
+      this.setSelection(this.nodes.map((n) => n.name));
+    },
+    /** 删除全部选中节点(连带清理其连接);无多选时退化为删主选中。 */
+    removeSelected() {
+      const names = this.selectedNames.length ? [...this.selectedNames] : this.selectedNodeName ? [this.selectedNodeName] : [];
+      if (!names.length) return;
+      this.pushHistory();
+      for (const name of names) {
+        this.nodes = this.nodes.filter((n) => n.name !== name);
+        this.connections = removeNodeFromConnections(this.connections, name);
+      }
+      this.selectedNames = [];
+      this.selectedNodeName = null;
+      this.dirty = true;
     },
 
     /** 双击节点：选中并打开 NDV。 */

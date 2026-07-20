@@ -19,7 +19,21 @@ import CanvasNode from './CanvasNode.vue';
 const editor = useEditorStore();
 const nodeTypesStore = useNodeTypesStore();
 const execution = useExecutionStore();
-const { screenToFlowCoordinate, zoomIn, zoomOut, zoomTo, fitView } = useVueFlow();
+const { screenToFlowCoordinate, zoomIn, zoomOut, zoomTo, fitView, addSelectedNodes, removeSelectedNodes, getNodes } =
+  useVueFlow();
+
+/* ── D082 对标 n8n:多选(Shift 框选 / ⌘·Ctrl 点选)── */
+function onSelectionChange({ nodes }: { nodes: Node[] }) {
+  editor.setSelection(nodes.map((n) => n.id));
+}
+function selectAllNodes() {
+  addSelectedNodes(getNodes.value);
+  editor.selectAll();
+}
+function clearSelection() {
+  removeSelectedNodes(getNodes.value);
+  editor.select(null);
+}
 
 /** C8 对标 n8n Tidy up：自动分层布局后适配视口。 */
 function onTidyUp() {
@@ -152,6 +166,9 @@ function ctxDelete() { const n = ctxMenu.value?.node; closeCtx(); if (n) editor.
       :apply-default="true"
       fit-view-on-init
       :delete-key-code="['Backspace', 'Delete']"
+      :selection-key-code="'Shift'"
+      :multi-selection-key-code="['Meta', 'Control']"
+      @selection-change="onSelectionChange"
       @connect="onConnect"
       @node-drag-stop="onNodeDragStop"
       @node-click="(e) => editor.select(e.node.id)"
@@ -195,8 +212,8 @@ function ctxDelete() { const n = ctxMenu.value?.node; closeCtx(); if (n) editor.
         <button class="ctx-item" data-test="pane-add-node" @click="paneAddNode">Add node<span class="ctx-sc">N</span></button>
         <button class="ctx-item" data-test="pane-add-sticky" @click="paneAddSticky">Add sticky note<span class="ctx-sc">⇧S</span></button>
         <button class="ctx-item" data-test="pane-tidy" @click="paneTidy">Tidy up workflow<span class="ctx-sc">⇧⌥T</span></button>
-        <button class="ctx-item" disabled>Select all<span class="ctx-sc">⌘A</span></button>
-        <button class="ctx-item" data-test="pane-clear" @click="paneClearSelection">Clear selection</button>
+        <button class="ctx-item" data-test="pane-select-all" @click="closePaneCtx(); selectAllNodes()">Select all<span class="ctx-sc">⌘A</span></button>
+        <button class="ctx-item" data-test="pane-clear" @click="closePaneCtx(); clearSelection()">Clear selection</button>
       </div>
     </template>
 
@@ -216,8 +233,8 @@ function ctxDelete() { const n = ctxMenu.value?.node; closeCtx(); if (n) editor.
         <button class="ctx-item" data-test="ctx-tidy" @click="ctxTidy">Tidy up workflow<span class="ctx-sc">⇧⌥T</span></button>
         <button class="ctx-item" disabled>Convert node to sub-workflow<span class="ctx-sc">⌥X</span></button>
         <div class="ctx-sep" />
-        <button class="ctx-item" disabled>Select all<span class="ctx-sc">⌘A</span></button>
-        <button class="ctx-item" data-test="ctx-clear" @click="ctxClearSelection">Clear selection</button>
+        <button class="ctx-item" data-test="ctx-select-all" @click="closeCtx(); selectAllNodes()">Select all<span class="ctx-sc">⌘A</span></button>
+        <button class="ctx-item" data-test="ctx-clear" @click="closeCtx(); clearSelection()">Clear selection</button>
         <button class="ctx-item danger" data-test="ctx-delete" @click="ctxDelete">Delete<span class="ctx-sc">Del</span></button>
       </div>
     </template>
