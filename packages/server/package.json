@@ -26,6 +26,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@node-saml/node-saml": "^5.1.0",
     "@nomops/core": "workspace:*",
     "@nomops/db": "workspace:*",
     "@nomops/nodes": "workspace:*",
@@ -44,6 +45,7 @@
   "devDependencies": {
     "@types/express-serve-static-core": "^5.1.2",
     "@types/jsonwebtoken": "^9.0.7",
-    "@types/ws": "^8.5.13"
+    "@types/ws": "^8.5.13",
+    "xml-crypto": "^6.1.2"
   }
 }

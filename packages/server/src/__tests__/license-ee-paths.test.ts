@@ -53,6 +53,7 @@ describe('LICENSE_EE 路径清单', () => {
     // 功能位 → 实现该功能的路径。加新功能位时这里会红,提醒同步法务文本。
     const featureHomes: Record<string, string> = {
       sso: 'packages/server/src/sso',
+      saml: 'packages/server/src/sso',
       scim: 'packages/server/src/scim',
       ldap: 'packages/server/src/ldap',
       auditLogs: 'packages/server/src/services/audit-service.ts',

@@ -9,6 +9,7 @@ import type { ActiveWorkflowManager } from './triggers/active-workflow-manager.j
 import type { LicenseService } from './license/license-service.js';
 import type { AuditService } from './services/audit-service.js';
 import type { OidcService } from './sso/oidc-service.js';
+import type { SamlService } from './sso/saml-service.js';
 import type { ScimService } from './scim/scim-service.js';
 import type { QuotaService } from './services/quota-service.js';
 import type { IPaymentProvider } from './billing/payment-provider.js';
@@ -46,6 +47,7 @@ export interface AppServices {
   license: LicenseService;
   audit: AuditService;
   sso: OidcService;
+  saml: SamlService;
   scim: ScimService;
   quota: QuotaService;
   payments: IPaymentProvider;
