@@ -4,7 +4,7 @@ import type { Express } from 'express';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
-import { inviteUser, setupOwner } from './helpers.js';
+import { inviteUser, setupOwner, licensedBoot } from './helpers.js';
 
 /** Phase 6c（docs/08）验收：执行配额网关 + 套餐 + 用量。 */
 
@@ -35,7 +35,7 @@ describe('企业版配额', () => {
   const admin = () => ({ Authorization: `Bearer ${adminToken}` });
 
   beforeAll(async () => {
-    boot = await bootstrap({ dbConfig: { type: 'sqlite' }, licenseKey: 'test-ent' });
+    boot = await bootstrap({ dbConfig: { type: 'sqlite' }, ...licensedBoot() });
     await boot.leader.start();
     app = createApp(boot.services);
     const owner = await setupOwner(app, 'quota-admin@corp.dev');

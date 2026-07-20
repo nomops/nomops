@@ -5,6 +5,7 @@ import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
 import type { PostFn } from '../services/log-streaming-service.js';
+import { licensedBoot } from './helpers.js';
 
 /**
  * B3 验收：日志流目的地管理 + 执行/审计事件推送 + HMAC 签名 + license 门 + 密钥不出 API。
@@ -33,7 +34,7 @@ let token: string;
 async function setup(opts: { enterprise: boolean; post?: PostFn }) {
   boot = await bootstrap({
     dbConfig: { type: 'sqlite' },
-    licenseKey: opts.enterprise ? 'test-enterprise-key' : null,
+    ...(opts.enterprise ? licensedBoot() : { licenseKey: null }),
     ...(opts.post ? { logStreamPost: opts.post } : {}),
   });
   app = createApp(boot.services);

@@ -5,6 +5,7 @@ import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
 import type { ILdapAuthenticator, ILdapConfig, ILdapProfile } from '../ldap/ldap-service.js';
+import { licensedBoot } from './helpers.js';
 
 /**
  * B5 验收：LDAP 配置（bindPassword 不出 API）+ bind 登录 + JIT 预配 + license 门。
@@ -36,7 +37,7 @@ async function setup(enterprise: boolean) {
   authr = new FakeAuthenticator(directory);
   boot = await bootstrap({
     dbConfig: { type: 'sqlite' },
-    licenseKey: enterprise ? 'test-enterprise-key' : null,
+    ...(enterprise ? licensedBoot() : { licenseKey: null }),
     ldapAuthenticator: authr,
   });
   app = createApp(boot.services);

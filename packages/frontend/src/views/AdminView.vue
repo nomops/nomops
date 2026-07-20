@@ -36,8 +36,10 @@ onMounted(async () => {
   if (current) usage.value = await api.projects.usage(current.id).catch(() => null);
 });
 
-const isEnterprise = computed(() => (about.value?.plan ?? projects.license?.plan) === 'enterprise');
-const planLabel = computed(() => (isEnterprise.value ? 'Enterprise' : 'Community'));
+// 社区版是唯一的「未授权」态;其余套餐名(Business/Enterprise/…)都算已授权
+const rawPlan = computed(() => about.value?.plan ?? projects.license?.plan ?? 'community');
+const isEnterprise = computed(() => rawPlan.value !== 'community');
+const planLabel = computed(() => (isEnterprise.value ? rawPlan.value : 'Community'));
 const memberCount = computed<string>(() => {
   if (security.value) return String(security.value.userCount);
   if (users.value.length) return String(users.value.length);

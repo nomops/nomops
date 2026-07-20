@@ -863,13 +863,26 @@ async function upgrade() {
   }
 }
 
-const planLabel = computed(() => (projects.license?.plan === 'enterprise' ? 'Enterprise' : 'Community'));
+// 套餐名直接取证书里的显示名;未激活/失效时后端已回落为 'community'
+const planLabel = computed(() => {
+  const plan = projects.license?.plan;
+  return !plan || plan === 'community' ? 'Community' : plan;
+});
+/** 填了 key 但没生效(过期/验签不过)——要让用户看见原因,不能静默当社区版。 */
+const licenseProblem = computed(() => {
+  const info = projects.license;
+  return info && info.activated && info.status !== 'active' ? (info.message ?? 'License is not active') : '';
+});
+const licenseValidTo = computed(() => {
+  const iso = projects.license?.validTo;
+  return iso ? new Date(iso).toLocaleDateString() : '';
+});
 
 /* 许可证激活弹窗 */
 const licenseModalOpen = ref(false);
 const licenseBusy = ref(false);
 const licenseError = ref('');
-const isActivated = computed(() => projects.license?.activated ?? projects.license?.plan === 'enterprise');
+const isActivated = computed(() => projects.license?.activated ?? false);
 
 function onLicenseActivated(info: LicenseInfo) {
   projects.license = info; // 立即反映解锁的功能
@@ -2195,6 +2208,12 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         <h1 class="page-title">Usage and plan</h1>
         <h3 class="sec-title" style="margin-top: 0" data-test="plan-line">You’re on the {{ planLabel }} Edition</h3>
 
+        <!-- 填了 key 但未生效(过期/验签不过):必须显式告知,否则用户以为还在付费档 -->
+        <p v-if="licenseProblem" class="license-problem" data-test="license-problem">
+          ⚠ {{ licenseProblem }} — paid features are currently disabled.
+          <template v-if="licenseValidTo"> Valid until {{ licenseValidTo }}.</template>
+        </p>
+
         <!-- D137 Unlock 横幅(对标基线逐字) -->
         <button v-if="!isActivated" class="unlock-banner" data-test="license-open" @click="licenseModalOpen = true">
           <b>Unlock</b>
@@ -2279,6 +2298,9 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
 </template>
 
 <style scoped>
+/* 证书失效提示：填了 key 却没生效时必须显式告知,不能静默当社区版 */
+.license-problem { margin: 8px 0 0; font-size: 12.5px; color: var(--color--warning-text, #e0a34a); }
+
 /* ── API 令牌 ── */
 .api-new { border-color: var(--accent); }
 .api-token {

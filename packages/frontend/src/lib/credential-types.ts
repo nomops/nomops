@@ -62,10 +62,12 @@ export const CREDENTIAL_TYPES: CredentialTypeMeta[] = [
   },
   {
     type: 'deepseekApi',
-    displayName: 'DeepSeek API',
+    // D057 对标基线：凭证 displayName 无 " API" 后缀（默认名 = `${displayName} account`）
+    displayName: 'DeepSeek',
     icon: '🐋',
     description: 'DeepSeek API key (deepseek-chat / deepseek-reasoner, used by Chat)',
-    fields: [{ name: 'apiKey', label: 'API Key', type: 'password', placeholder: 'sk-…' }],
+    // D052 对标基线 DeepSeekApi.credentials.ts：API Key 为必填；Base URL 是 hidden 字段（不渲染）
+    fields: [{ name: 'apiKey', label: 'API Key', type: 'password', placeholder: 'sk-…', required: true }],
   },
   {
     type: 'doubaoApi',
@@ -504,7 +506,8 @@ export const CREDENTIAL_TYPES: CredentialTypeMeta[] = [
   {
     // D051 对标基线 OpenAI 凭证字段集:API Key* / Organization ID(optional) / Base URL / Add Custom Header
     type: 'openAiApi',
-    displayName: 'OpenAI API',
+    // D057 对标基线：基线 OpenAiApi.credentials.ts 的 displayName = 'OpenAI'
+    displayName: 'OpenAI',
     icon: '🤖',
     description: 'OpenAI API key',
     fields: [

@@ -456,6 +456,19 @@ const filteredCredentials = computed(() => {
   });
 });
 
+/* D043 对标基线：凭证列表与工作流共用 ResourcesListLayout，同样带分页 */
+const credPage = ref(1);
+const credPageSize = ref(50);
+const credTotalPages = computed(() =>
+  Math.max(1, Math.ceil(filteredCredentials.value.length / credPageSize.value)),
+);
+const pagedCredentials = computed(() =>
+  filteredCredentials.value.slice((credPage.value - 1) * credPageSize.value, credPage.value * credPageSize.value),
+);
+watch([filteredCredentials, credPageSize], () => {
+  if (credPage.value > credTotalPages.value) credPage.value = 1;
+});
+
 async function createWorkflow() {
   closeMenus();
   const wf = await api.workflows.create({ name: 'My workflow', nodes: [], connections: {}, folderId: currentFolderId.value });
@@ -1012,7 +1025,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
       <template v-else>
         <div class="wf-list">
           <p v-if="filteredCredentials.length === 0" class="dim" style="padding: 24px; text-align: center">{{ t('No matching credentials.') }}</p>
-          <div v-for="row in filteredCredentials" :key="row.id" class="wf-card" :data-test-cred-card="row.id">
+          <div v-for="row in pagedCredentials" :key="row.id" class="wf-card" :data-test-cred-card="row.id">
             <span class="cred-row-icon"><IconSvg v-bind="credentialIcon(row.type)" :size="22" /></span>
             <div class="wf-main">
               <a class="wf-name" href="#" @click.prevent="openCredential(row)">{{ row.name }}</a>
@@ -1063,6 +1076,26 @@ const fmtRunTime = (row: ExecutionRow): string => {
                 <button class="menu-item danger" :data-test-cred-delete="row.id" @click="closeMenus(); removeCredential(row.id)">{{ t('Delete') }}</button>
               </div>
             </div>
+          </div>
+
+          <!-- D043 对标基线：凭证列表同样有分页条（与工作流同构） -->
+          <div class="pager" data-test="cred-pager">
+            <span class="pg-total">{{ t('Total {n}', { n: filteredCredentials.length }) }}</span>
+            <button class="pg-arrow" :disabled="credPage <= 1" @click="credPage--">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="i15"><path d="M15 6l-6 6 6 6" /></svg>
+            </button>
+            <button v-for="n in credTotalPages" :key="n" class="pg-num" :class="{ active: n === credPage }" @click="credPage = n">
+              {{ n }}
+            </button>
+            <button class="pg-arrow" :disabled="credPage >= credTotalPages" @click="credPage++">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="i15"><path d="M9 6l6 6-6 6" /></svg>
+            </button>
+            <select v-model.number="credPageSize" class="pg-size" @change="credPage = 1">
+              <option :value="10">{{ t('10/page') }}</option>
+              <option :value="25">{{ t('25/page') }}</option>
+              <option :value="50">{{ t('50/page') }}</option>
+              <option :value="100">{{ t('100/page') }}</option>
+            </select>
           </div>
         </div>
       </template>

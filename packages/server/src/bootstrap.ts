@@ -87,6 +87,8 @@ export interface BootstrapOptions {
   role?: ProcessRole;
   /** License key（缺省读 LICENSE_KEY 环境变量）。测试显式注入。 */
   licenseKey?: string | null;
+  /** License 验签公钥（base64 DER/SPKI）。缺省用内置公钥；测试注入自己那副。 */
+  licensePublicKey?: string;
   /** billing webhook 共享密钥（缺省读 BILLING_SECRET；测试显式注入）。 */
   billingSecret?: string;
   /** 支付宝 provider（缺省从 ALIPAY_* 环境变量构造；测试注入假密钥实例）。 */
@@ -177,6 +179,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   const storedLicenseKey = (await repos.settings.get('license.activationKey')) || null;
   const license = new LicenseService(
     opts.licenseKey ?? storedLicenseKey ?? process.env['LICENSE_KEY'] ?? null,
+    opts.licensePublicKey,
   );
   const mfa = new MfaService(repos);
   const auth = new AuthService(repos, jwtSecret, mfa);

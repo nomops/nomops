@@ -7,7 +7,7 @@ import { exportJWK, generateKeyPair, SignJWT } from 'jose';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
-import { inviteUser, setupOwner } from './helpers.js';
+import { inviteUser, setupOwner, licensedBoot } from './helpers.js';
 
 /** Phase 6b（docs/07）验收：OIDC 全流程（mock IdP）、SCIM Users、license/admin 门。 */
 
@@ -87,7 +87,7 @@ describe('企业版 SSO + SCIM', () => {
 
   beforeAll(async () => {
     idp = await startMockIdp();
-    boot = await bootstrap({ dbConfig: { type: 'sqlite' }, licenseKey: 'test-ent' });
+    boot = await bootstrap({ dbConfig: { type: 'sqlite' }, ...licensedBoot() });
     app = createApp(boot.services);
 
     // 第一个注册用户 = 实例 owner；member 经邀请（公开注册在 owner 后关闭）

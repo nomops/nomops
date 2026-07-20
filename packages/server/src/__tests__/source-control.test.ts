@@ -9,7 +9,7 @@ import type { Express } from 'express';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
-import { setupOwner, inviteUser } from './helpers.js';
+import { setupOwner, inviteUser, licensedBoot } from './helpers.js';
 
 /**
  * 源码同步：连接 → push → 另一实例 pull 往返，走真实 git
@@ -31,7 +31,7 @@ beforeAll(async () => {
   bareRepo = join(root, 'remote.git');
   await exec('git', ['init', '--bare', '-b', 'main', bareRepo]);
 
-  bootA = await bootstrap({ dbConfig: { type: 'sqlite' }, licenseKey: 'test-ent', sourceControlDir: join(root, 'workA') });
+  bootA = await bootstrap({ dbConfig: { type: 'sqlite' }, ...licensedBoot(), sourceControlDir: join(root, 'workA') });
   appA = createApp(bootA.services);
   ownerA = (await setupOwner(appA, 'owner@sc.dev')).token;
 });
@@ -93,7 +93,7 @@ describe('连接 → push → pull 往返', () => {
   });
 
   it('另一实例连同一远端 → pull 导入两个工作流（保持同一 id）', async () => {
-    const bootB = await bootstrap({ dbConfig: { type: 'sqlite' }, licenseKey: 'test-ent', sourceControlDir: join(root, 'workB') });
+    const bootB = await bootstrap({ dbConfig: { type: 'sqlite' }, ...licensedBoot(), sourceControlDir: join(root, 'workB') });
     const appB = createApp(bootB.services);
     const ownerB = (await setupOwner(appB, 'owner-b@sc.dev')).token;
     await request(appB).put('/api/source-control').set(bearer(ownerB)).send({ repoUrl: bareRepo, branch: 'main' }).expect(200);
@@ -119,7 +119,7 @@ describe('连接 → push → pull 往返', () => {
     await request(appA).patch(`/api/workflows/${wf1}`).set(bearer(ownerA)).send({ name: 'Alpha v2' }).expect(200);
     await request(appA).post('/api/source-control/push').set(bearer(ownerA)).send({ message: 'rename alpha' }).expect(200);
 
-    const bootB = await bootstrap({ dbConfig: { type: 'sqlite' }, licenseKey: 'test-ent', sourceControlDir: join(root, 'workB2') });
+    const bootB = await bootstrap({ dbConfig: { type: 'sqlite' }, ...licensedBoot(), sourceControlDir: join(root, 'workB2') });
     const appB = createApp(bootB.services);
     const ownerB = (await setupOwner(appB, 'owner-b2@sc.dev')).token;
     await request(appB).put('/api/source-control').set(bearer(ownerB)).send({ repoUrl: bareRepo, branch: 'main' }).expect(200);

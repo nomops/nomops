@@ -5,6 +5,7 @@ import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
 import type { ISecretsProvider } from '../services/secrets-service.js';
+import { licensedBoot } from './helpers.js';
 
 /**
  * B4 验收：外部密钥 provider 状态 + 凭证内 {{ $secrets.KEY }} 引用在注入时物化 +
@@ -28,7 +29,7 @@ let projectId: string;
 async function setup(opts: { enterprise: boolean; secrets?: Record<string, string> }) {
   boot = await bootstrap({
     dbConfig: { type: 'sqlite' },
-    licenseKey: opts.enterprise ? 'test-enterprise-key' : null,
+    ...(opts.enterprise ? licensedBoot() : { licenseKey: null }),
     secretsProvider: fakeProvider(opts.secrets ?? {}),
   });
   app = createApp(boot.services);

@@ -1,5 +1,7 @@
 import request from 'supertest';
 import type { Express } from 'express';
+import { generateKeyPairSync } from 'node:crypto';
+import { signLicenseCert } from '../license/license-cert.js';
 
 /**
  * 测试用户创建助手（自托管：首个用户 = owner，其余经邀请）。
@@ -54,11 +56,10 @@ export async function inviteUser(
 /* ────────────── License 证书（B1：验签生效，假 key 不再解锁任何东西） ────────────── */
 
 /**
- * 测试专用签发密钥对。与生产内置公钥无关——测试自带一副，
- * 生产私钥不在仓库里（也不该在），因此测试必须自签自验。
+ * 测试专用签发密钥对。生产私钥不在仓库里（也不该在），
+ * 所以测试自带一副自签自验，并把配套公钥经 bootstrap 注入实例。
  */
-const TEST_LICENSE_KEYS = (() => {
-  const { generateKeyPairSync } = require('node:crypto') as typeof import('node:crypto');
+const TEST_KEYS = (() => {
   const { publicKey, privateKey } = generateKeyPairSync('ed25519');
   return {
     publicKey: publicKey.export({ type: 'spki', format: 'der' }).toString('base64'),
@@ -66,9 +67,9 @@ const TEST_LICENSE_KEYS = (() => {
   };
 })();
 
-export const TEST_LICENSE_PUBLIC_KEY = TEST_LICENSE_KEYS.publicKey;
+export const TEST_LICENSE_PUBLIC_KEY = TEST_KEYS.publicKey;
 
-/** 全功能证书里包含的功能位（等于当前 LICENSE_FEATURES 全集）。 */
+/** 全功能证书的功能位（= 当前 LICENSE_FEATURES 全集）。 */
 export const ALL_TEST_FEATURES = [
   'rbac',
   'auditLogs',
@@ -82,8 +83,8 @@ export const ALL_TEST_FEATURES = [
 ];
 
 /**
- * 签发一张测试证书。缺省：全功能、无配额上限、当前起一年有效。
- * 传 `validFrom`/`validTo` 可造过期或未生效的证书。
+ * 签发一张测试证书。缺省：全功能、无配额上限、昨天起一年有效。
+ * 传 validFrom/validTo 可造过期或尚未生效的证书。
  */
 export function testLicense(
   overrides: {
@@ -95,9 +96,6 @@ export function testLicense(
     issuedTo?: string;
   } = {},
 ): string {
-  // 延迟 require：helpers 被非 license 用例导入时不必拉起这条链路
-  const { signLicenseCert } =
-    require('../license/license-cert.js') as typeof import('../license/license-cert.js');
   const now = Date.now();
   return signLicenseCert(
     {
@@ -109,6 +107,11 @@ export function testLicense(
       validFrom: (overrides.validFrom ?? new Date(now - 86_400_000)).toISOString(),
       validTo: (overrides.validTo ?? new Date(now + 365 * 86_400_000)).toISOString(),
     },
-    TEST_LICENSE_KEYS.privateKey,
+    TEST_KEYS.privateKey,
   );
+}
+
+/** 起测试实例常用的 license 三件套（全功能证书 + 配套公钥）。 */
+export function licensedBoot(overrides?: Parameters<typeof testLicense>[0]) {
+  return { licenseKey: testLicense(overrides), licensePublicKey: TEST_LICENSE_PUBLIC_KEY };
 }

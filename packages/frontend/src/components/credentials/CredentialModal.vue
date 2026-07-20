@@ -73,16 +73,20 @@ const connecting = ref(false);
 let msgHandler: ((e: MessageEvent) => void) | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
+/* D056 对标基线 credentials.store：类型列表按 displayName 字母序，不用数组序 */
+const sortedTypes = computed(() =>
+  [...CREDENTIAL_TYPES].sort((a, b) => a.displayName.localeCompare(b.displayName)),
+);
 const filteredTypes = computed(() => {
   const q = search.value.trim().toLowerCase();
   if (pendingType.value && search.value === (credentialTypeMeta(pendingType.value)?.displayName ?? '')) {
-    return CREDENTIAL_TYPES;
+    return sortedTypes.value;
   }
   return q
-    ? CREDENTIAL_TYPES.filter(
+    ? sortedTypes.value.filter(
         (t) => t.displayName.toLowerCase().includes(q) || t.type.toLowerCase().includes(q),
       )
-    : CREDENTIAL_TYPES;
+    : sortedTypes.value;
 });
 
 const meta = computed(() => credentialTypeMeta(selectedType.value));
@@ -334,8 +338,9 @@ onUnmounted(() => {
             <!-- Connection -->
             <template v-if="tab === 'connection'">
               <p class="setup-help">
-                Need help filling out these fields? Read the
-                <a href="#docs" @click.prevent>docs</a>.
+                <!-- D055 基线原文：Need help filling out these fields? / Read our docs -->
+                Need help filling out these fields?
+                <a href="#docs" @click.prevent>Read our docs</a>
               </p>
 
               <template v-if="meta?.oauth">

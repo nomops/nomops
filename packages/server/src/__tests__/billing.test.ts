@@ -5,7 +5,7 @@ import type { Express } from 'express';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
-import { inviteUser } from './helpers.js';
+import { inviteUser, licensedBoot } from './helpers.js';
 import { AlipayProvider, buildSignContent, signRsa2 } from '../billing/alipay-provider.js';
 import { orderAmount } from '../billing/billing-service.js';
 
@@ -51,7 +51,7 @@ let projectId: string;
 const authed = () => ({ Authorization: `Bearer ${token}` });
 
 beforeAll(async () => {
-  boot = await bootstrap({ dbConfig: { type: 'sqlite' }, licenseKey: 'test-ent', alipay });
+  boot = await bootstrap({ dbConfig: { type: 'sqlite' }, ...licensedBoot(), alipay });
   app = createApp(boot.services);
   const reg = await request(app)
     .post('/auth/register')

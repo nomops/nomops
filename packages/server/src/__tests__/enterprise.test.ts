@@ -4,8 +4,8 @@ import type { Express } from 'express';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
-import { inviteUser, setupOwner } from './helpers.js';
-import { ENTERPRISE_FEATURES } from '../license/license-service.js';
+import { inviteUser, setupOwner, licensedBoot } from './helpers.js';
+import { LICENSE_FEATURES } from '../license/license-service.js';
 
 /** Phase 6a（docs/06）验收：RBAC 权限矩阵、项目切换、License 门、审计日志。 */
 
@@ -32,7 +32,7 @@ describe('企业版（LICENSE_KEY 注入）', () => {
   });
 
   beforeAll(async () => {
-    boot = await bootstrap({ dbConfig: { type: 'sqlite' }, licenseKey: 'test-enterprise-key' });
+    boot = await bootstrap({ dbConfig: { type: 'sqlite' }, ...licensedBoot() });
     app = createApp(boot.services);
 
     // owner = 首个注册用户；其余经邀请（公开注册在 owner 后即关闭）
@@ -68,9 +68,16 @@ describe('企业版（LICENSE_KEY 注入）', () => {
     await boot.shutdown();
   });
 
-  it('license 端点返回 enterprise + features', async () => {
+  it('license 端点返回套餐 + features + 有效期', async () => {
     const res = await request(app).get('/api/license').set(as('owner')).expect(200);
-    expect(res.body).toEqual({ plan: 'enterprise', features: [...ENTERPRISE_FEATURES], activated: true });
+    expect(res.body).toMatchObject({
+      plan: 'Enterprise',
+      features: [...LICENSE_FEATURES],
+      activated: true,
+      status: 'active',
+      quotas: {},
+    });
+    expect(Date.parse(res.body.validTo as string)).toBeGreaterThan(Date.now());
   });
 
   describe('权限矩阵（验收项：逐格生效）', () => {
@@ -250,7 +257,13 @@ describe('社区版（无 LICENSE_KEY，零回归）', () => {
 
   it('license = community，features 空', async () => {
     const res = await request(app).get('/api/license').set({ Authorization: `Bearer ${token}` }).expect(200);
-    expect(res.body).toEqual({ plan: 'community', features: [], activated: false });
+    expect(res.body).toEqual({
+      plan: 'community',
+      features: [],
+      quotas: {},
+      activated: false,
+      status: 'inactive',
+    });
   });
 
   it('企业端点 403 且带 feature 标识（验收项）', async () => {

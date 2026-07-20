@@ -211,9 +211,19 @@ export interface AuditLogRow {
 }
 
 export interface LicenseInfo {
-  plan: 'community' | 'enterprise';
+  /** 套餐显示名，来自证书（社区版为 'community'）。 */
+  plan: string;
   features: string[];
-  activated?: boolean;
+  /** 配额上限；-1 或缺项 = 不限。 */
+  quotas: Record<string, number>;
+  activated: boolean;
+  /** inactive=没填 / active=生效 / expired=过期 / notYetValid=未到期 / invalid=验签不过。 */
+  status: 'inactive' | 'active' | 'expired' | 'notYetValid' | 'invalid';
+  validFrom?: string;
+  validTo?: string;
+  issuedTo?: string;
+  /** status 非 active 时的原因，供设置页提示。 */
+  message?: string;
 }
 
 export interface SourceControlConfig {
