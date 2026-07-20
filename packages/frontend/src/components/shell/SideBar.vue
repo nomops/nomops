@@ -8,6 +8,7 @@ import SettingsMenu from './SettingsMenu.vue';
 import { WHATS_NEW, hasUnreadNews, markNewsRead } from '../../lib/whats-new.js';
 import { api } from '../../api/client.js';
 import { t } from '../../lib/i18n.js';
+import { LINKS } from '../../lib/links.js';
 
 /**
  * 左侧边栏(对标基线):品牌 + 顶栏工具（新建/搜索/折叠）、Overview / Chat(Preview)、
@@ -29,14 +30,13 @@ const personalProject = computed(() => projects.projects.find((p) => p.type === 
 const flyout = ref<'settings' | 'help' | null>(null);
 
 /* D007/D012–D015:侧栏外链一律指向项目自有资源。Templates 走站内 /templates 路由。 */
-const REPO_URL = 'https://github.com/nomops/nomops';
 const HELP_LINKS = {
-  quickstart: `${REPO_URL}#quick-start`,
-  documentation: `${REPO_URL}/tree/main/docs`,
-  forum: `${REPO_URL}/discussions`,
-  course: `${REPO_URL}/tree/main/docs/README.md`,
-  reportBug: `${REPO_URL}/issues/new?labels=bug-report`,
-  changelog: `${REPO_URL}/releases`,
+  quickstart: LINKS.quickstart,
+  documentation: LINKS.docs,
+  forum: LINKS.forum,
+  course: LINKS.course,
+  reportBug: LINKS.reportBug,
+  changelog: LINKS.changelog,
 };
 
 /* A1 对标基线：Help 红点 = What's New 未读；打开即读 */
@@ -251,7 +251,7 @@ async function openAbout() {
           <span class="lbl">{{ t('Help') }}</span>
           <svg v-if="!collapsed" class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6" /></svg>
         </button>
-        <!-- D012–D015 对标基线 Help 菜单:Quickstart/Documentation/Forum/Course/Report a bug 外链基线.io;
+        <!-- D012–D015 对标基线 Help 菜单:Quickstart/Documentation/Forum/Course/Report a bug 外链自有仓库(见 lib/links.ts);
              About 保留 nomops 品牌;底部 What's new 分组(新闻标题 + Full changelog + Update)。 -->
         <div v-if="flyout === 'help'" class="flyout" data-test="help-flyout" @click.stop>
           <a class="flyout-item" :href="HELP_LINKS.quickstart" target="_blank" rel="noopener" data-test="help-quickstart" @click="closeAll">{{ t('Quickstart') }}</a>

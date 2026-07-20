@@ -4,6 +4,7 @@ import { api, type CredentialView } from '../../api/client.js';
 import { CREDENTIAL_TYPES, credentialTypeMeta } from '../../lib/credential-types.js';
 import { credentialIcon } from '../../lib/icons.js';
 import IconSvg from '../IconSvg.vue';
+import { LINKS } from '../../lib/links.js';
 
 /**
  * 「Add new credential」弹窗：
@@ -435,7 +436,7 @@ onUnmounted(() => {
               <div class="sharing-lock" data-test="cred-sharing-lock">
                 <h4>Upgrade to collaborate</h4>
                 <p>You can share credentials with others when you upgrade your plan.</p>
-                <a class="btn primary" href="https://基线.io/pricing" target="_blank" rel="noopener">View plans</a>
+                <a class="btn primary" :href="LINKS.pricing" target="_blank" rel="noopener">View plans</a>
               </div>
             </template>
 

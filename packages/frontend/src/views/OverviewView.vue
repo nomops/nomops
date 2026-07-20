@@ -22,6 +22,7 @@ import IconSvg from '../components/IconSvg.vue';
 import { credentialTypeMeta } from '../lib/credential-types.js';
 import { credentialIcon } from '../lib/icons.js';
 import { locale, t } from '../lib/i18n.js';
+import { LINKS } from '../lib/links.js';
 
 /** Overview：五 Tab（Workflows/Credentials/Executions/Variables/Data tables）+ 搜索/排序/筛选 + 分页。 */
 type Tab = 'workflows' | 'credentials' | 'executions' | 'variables' | 'data-tables' | 'project-settings';
@@ -1422,7 +1423,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
         </p>
         <div style="display: flex; gap: 10px; justify-content: center">
           <button class="btn secondary" @click="shareLockOpen = false">{{ t('Close') }}</button>
-          <a class="btn primary" href="https://基线.io/pricing" target="_blank" rel="noopener">{{ t('See plans') }}</a>
+          <a class="btn primary" :href="LINKS.pricing" target="_blank" rel="noopener">{{ t('See plans') }}</a>
         </div>
       </div>
     </div>

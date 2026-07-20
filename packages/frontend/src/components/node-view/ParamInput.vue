@@ -4,6 +4,7 @@ import type { INodeExecutionData, INodeProperties } from '@nomops/workflow';
 import { resolveParameterValue } from '@nomops/workflow';
 import ExpressionInput from './ExpressionInput.vue';
 import { t } from '../../lib/i18n.js';
+import { LINKS } from '../../lib/links.js';
 
 /**
  * schema 驱动的单参数控件：按 INodeProperties.type 分发。
@@ -283,7 +284,7 @@ function removeField(i: number) {
             <span v-else class="er-value" :class="{ err: preview && !preview.ok }">{{ preview?.text }}</span>
           </div>
           <div class="er-tip">
-            Anything inside <code>{{ CURLY }}</code> is JavaScript. <a class="link" href="https://docs.基线.io/code/expressions/" target="_blank" rel="noopener">Learn more</a>
+            Anything inside <code>{{ CURLY }}</code> is JavaScript. <a class="link" :href="LINKS.docsExpressions" target="_blank" rel="noopener">Learn more</a>
           </div>
         </div>
       </template>

@@ -9,6 +9,7 @@ import CredentialModal from '../components/credentials/CredentialModal.vue';
 import { credentialTypeMeta } from '../lib/credential-types.js';
 import LicenseModal from '../components/LicenseModal.vue';
 import { LOCALES, locale, setLocale, t, type Locale } from '../lib/i18n.js';
+import { LINKS } from '../lib/links.js';
 
 /** Settings：左二级导航（← Settings + 图标项 + 版本号）+ 右内容。结构对标基线 Settings。 */
 type Section =
@@ -404,6 +405,8 @@ const rolesTab = ref<'instance' | 'project'>('instance');
 
 /** 企业功能是否已解锁（决定显示真实表单还是基线式锁定卡）。 */
 const licensed = (feature: string): boolean => projects.hasFeature(feature);
+/** 源码控制:锁卡与真实 UI 曾是两条独立 v-if 链,未授权时同时渲染(锁形同虚设)。 */
+const scUnlocked = computed(() => licensed('sourceControl'));
 
 /* OpenTelemetry 表单本地态(对标基线 /settings/opentelemetry;后端持久化留后续)。
    默认值取自基线页面 live 真值(Disabled / :4318 / /v1/traces / 2000ms / 1.00)。 */
@@ -1395,7 +1398,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         <div v-if="!licensed('sso')" class="locked-card" data-test="sso-locked">
           <h2>Available on the Enterprise plan</h2>
           <p>Use Single Sign-On to consolidate authentication into a single platform to improve security and agility.</p>
-          <a class="btn primary" href="https://基线.io/pricing" target="_blank" rel="noopener">See plans</a>
+          <a class="btn primary" :href="LINKS.pricing" target="_blank" rel="noopener">See plans</a>
         </div>
         <p v-else-if="ssoError" class="error-text" data-test="sso-error">{{ ssoError }}</p>
         <div v-else-if="!ssoLoading" class="card" style="max-width: 580px">
@@ -1423,7 +1426,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         <div v-if="!licensed('ldap')" class="locked-card" data-test="ldap-locked">
           <h2>Available on the Enterprise plan</h2>
           <p>LDAP is available as a paid feature — sign your team in with the corporate directory.</p>
-          <a class="btn primary" href="https://基线.io/pricing" target="_blank" rel="noopener">See plans</a>
+          <a class="btn primary" :href="LINKS.pricing" target="_blank" rel="noopener">See plans</a>
         </div>
         <p v-else-if="ldapError" class="error-text" data-test="ldap-error">{{ ldapError }}</p>
         <div v-else-if="!ldapLoading" class="card" style="max-width: 580px">
@@ -1463,7 +1466,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         <div v-if="!licensed('logStreaming')" class="locked-card" data-test="ls-locked">
           <h2>Available on the Enterprise plan</h2>
           <p>Log Streaming is available as a paid feature — push execution and audit events to your SIEM.</p>
-          <a class="btn primary" href="https://基线.io/pricing" target="_blank" rel="noopener">See plans</a>
+          <a class="btn primary" :href="LINKS.pricing" target="_blank" rel="noopener">See plans</a>
         </div>
         <p v-else-if="lsError" class="error-text" data-test="ls-error">{{ lsError }}</p>
         <template v-else>
@@ -1518,7 +1521,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         <div v-if="!licensed('externalSecrets')" class="locked-card" data-test="secrets-locked">
           <h2>Available on the Enterprise plan</h2>
           <p>Use External Secrets to keep credentials in an external vault and reference them at run time.</p>
-          <a class="btn primary" href="https://基线.io/pricing" target="_blank" rel="noopener">See plans</a>
+          <a class="btn primary" :href="LINKS.pricing" target="_blank" rel="noopener">See plans</a>
         </div>
         <p v-else-if="secretsError" class="error-text" data-test="secrets-error">{{ secretsError }}</p>
         <div v-else-if="secretsStatus" class="card" style="max-width: 580px">
@@ -1717,14 +1720,14 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           <h2>Available on the Enterprise plan</h2>
           <p>Use multiple instances for different environments (dev, prod, etc.), deploying between them via a Git repository.</p>
           <div class="locked-actions">
-            <a class="btn secondary" href="https://docs.基线.io/source-control-environments/" target="_blank" rel="noopener">More info</a>
-            <a class="btn primary" href="https://基线.io/pricing" target="_blank" rel="noopener">See plans</a>
+            <a class="btn secondary" :href="LINKS.docsSourceControl" target="_blank" rel="noopener">More info</a>
+            <a class="btn primary" :href="LINKS.pricing" target="_blank" rel="noopener">See plans</a>
           </div>
         </div>
         <p v-else-if="scError" class="error-text" data-test="sc-error">{{ scError }}</p>
 
         <!-- 未连接：连接表单 -->
-        <div v-if="scConfig && !scConfig.connected" class="card" style="max-width: 620px; margin-top: 16px">
+        <div v-if="scUnlocked && scConfig && !scConfig.connected" class="card" style="max-width: 620px; margin-top: 16px">
           <label style="font-size: 12px; color: var(--dim)">Repository URL</label>
           <input v-model="scRepoUrl" data-test="sc-repo" placeholder="git@github.com:org/workflows.git" style="width: 100%; margin-bottom: 12px" />
           <div style="display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap">
@@ -1739,7 +1742,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         </div>
 
         <!-- 已连接：状态 + push/pull -->
-        <template v-else-if="scConfig && scConfig.connected">
+        <template v-else-if="scUnlocked && scConfig && scConfig.connected">
           <div class="card" style="max-width: 620px; margin-top: 16px">
             <div style="display: flex; align-items: center; gap: 12px">
               <div style="min-width: 0">
