@@ -14,10 +14,17 @@ import { createPublicKey, createPrivateKey, sign, verify } from 'node:crypto';
 const PREFIX = 'NOMOPS1';
 
 /**
- * 内置签发公钥（公钥可公开，进仓库无风险）。
- * 自托管者若自行签发，用 NOMOPS_LICENSE_PUBLIC_KEY 覆盖（base64 DER/SPKI）。
+ * 签发公钥（公钥可公开，进仓库无风险）。
+ *
+ * ★**刻意不提供运行时覆盖**（没有 NOMOPS_LICENSE_PUBLIC_KEY 之类的环境变量）。
+ * 若公钥可由环境变量替换，任何人都能自签一张 Enterprise 证书再把公钥指向自己，
+ * 验签就形同虚设——绕过成本会低到「设一个环境变量」。钉死在编译产物里，
+ * 绕过至少需要改源码 + 重新构建。
+ *
+ * 这拦不住有动机的人（开源产品做不到），但它把「顺手绕过」挡在门外，
+ * 并让绕过成为可举证的改动行为，而非一次合法配置。
  */
-export const DEFAULT_LICENSE_PUBLIC_KEY =
+export const LICENSE_PUBLIC_KEY =
   'MCowBQYDK2VwAyEAeB0eukxQtAJFR0QcYKL/cAQiFfHOzbvd5qH5bl0+UmI=';
 
 /** 证书载荷。quotas 里 -1 表示不限。 */

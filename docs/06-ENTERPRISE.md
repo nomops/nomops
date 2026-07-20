@@ -148,10 +148,14 @@ payload：
 
 ### 密钥
 
-- 公钥内置于 `license-cert.ts` 的 `DEFAULT_LICENSE_PUBLIC_KEY`，可由
-  `NOMOPS_LICENSE_PUBLIC_KEY`（base64 DER/SPKI）覆盖。
-- **私钥只在签发方**。实例只验不签，仓库里没有也不该有私钥。
-- 工具：`scripts/license-keygen.mjs` 生成密钥对，`scripts/license-sign.mjs` 签发。
+- 公钥**编译进产物**（`license-cert.ts` 的 `LICENSE_PUBLIC_KEY`），
+  ★**刻意不提供环境变量覆盖**——若公钥可由配置替换，任何人都能自签一张
+  Enterprise 证书再把公钥指向自己，验签就形同虚设。钉死在产物里，绕过至少
+  需要改源码 + 重新构建。
+- **私钥与签发脚本都不在本仓库**（见 `docs/LICENSE-ISSUING.md`）。留在仓库里
+  会明示证书格式、降低伪造门槛。
+- `LicenseService` 构造函数的 `publicKeyBase64` 参数仅供测试注入自签密钥对；
+  生产路径（bootstrap）不传。它是构造参数而非配置项，改它必须改源码。
 
 ### 状态机
 

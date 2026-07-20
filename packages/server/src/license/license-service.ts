@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { OperationalError } from '@nomops/workflow';
-import { DEFAULT_LICENSE_PUBLIC_KEY, verifyLicenseCert } from './license-cert.js';
+import { LICENSE_PUBLIC_KEY, verifyLicenseCert } from './license-cert.js';
 import type { CertFailureReason, ILicensePayload } from './license-cert.js';
 
 /**
@@ -77,9 +77,13 @@ export class LicenseService {
 
   private readonly publicKey: string;
 
+  /**
+   * @param publicKeyBase64 仅供**测试**注入自签密钥对。
+   *   生产路径（bootstrap）不传，一律用编译进产物的 LICENSE_PUBLIC_KEY——
+   *   这是构造参数而非环境变量，改它必须改源码 + 重新构建，不能靠配置绕过。
+   */
   constructor(licenseKey: string | null, publicKeyBase64?: string) {
-    this.publicKey =
-      publicKeyBase64 ?? process.env['NOMOPS_LICENSE_PUBLIC_KEY'] ?? DEFAULT_LICENSE_PUBLIC_KEY;
+    this.publicKey = publicKeyBase64 ?? LICENSE_PUBLIC_KEY;
     this.setKey(licenseKey);
   }
 

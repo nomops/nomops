@@ -91,6 +91,32 @@ describe('证书验签', () => {
   });
 });
 
+/* ────────────── 自签绕过通道（A1） ────────────── */
+
+describe('★公钥不可经配置覆盖', () => {
+  it('设了环境变量也不改变验签用的公钥（否则自签即可解锁）', () => {
+    const attacker = keypair();
+    const forged = issue({ plan: 'Enterprise', features: ['rbac'] }, attacker.privateKey);
+    const saved = process.env['NOMOPS_LICENSE_PUBLIC_KEY'];
+
+    process.env['NOMOPS_LICENSE_PUBLIC_KEY'] = attacker.publicKey;
+    try {
+      // 不传构造参数 = 走生产路径，必须用编译进产物的公钥
+      const s = new LicenseService(forged);
+      expect(s.status()).toBe('invalid');
+      expect(s.plan()).toBe('community');
+      expect(s.isFeatureEnabled('rbac')).toBe(false);
+    } finally {
+      if (saved === undefined) delete process.env['NOMOPS_LICENSE_PUBLIC_KEY'];
+      else process.env['NOMOPS_LICENSE_PUBLIC_KEY'] = saved;
+    }
+  });
+
+  it('生产路径用内置公钥，认不出测试密钥签的证书', () => {
+    expect(new LicenseService(issue()).status()).toBe('invalid');
+  });
+});
+
 /* ────────────── 状态与降级 ────────────── */
 
 describe('LicenseService 状态机', () => {
