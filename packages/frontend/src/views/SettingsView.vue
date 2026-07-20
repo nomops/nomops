@@ -160,6 +160,22 @@ const ssoError = ref('');
 const ssoSaved = ref(false);
 const ssoLoading = ref(true);
 
+/* B2:SSO 两协议并存,各自独立启用。分段只切表单,不影响对方的启用状态。 */
+const ssoProtocol = ref<'oidc' | 'saml'>('oidc');
+const saml = ref({
+  enabled: false,
+  idpEntityId: '',
+  idpSsoUrl: '',
+  /** 证书在 UI 上是多行文本(一份一行),提交前拆成数组。 */
+  certsText: '',
+  spPrivateKey: '',
+  spCertificate: '',
+});
+const samlError = ref('');
+const samlSaved = ref(false);
+/** SP 元数据地址:交给 IdP 导入,比手抄 EntityID/回调地址可靠。 */
+const samlMetadataUrl = computed(() => `${location.origin}/sso/saml/metadata`);
+
 /* 用户管理 */
 const users = ref<Awaited<ReturnType<typeof api.instanceUsers.list>>>([]);
 const usersError = ref('');
@@ -651,6 +667,23 @@ async function loadSection() {
     } finally {
       ssoLoading.value = false;
     }
+    // SAML 是独立功能位,可能单独未授权——失败不影响 OIDC 那半
+    if (licensed('saml')) {
+      samlError.value = '';
+      try {
+        const cfg = await api.saml.config();
+        saml.value = {
+          enabled: cfg.enabled,
+          idpEntityId: cfg.idpEntityId,
+          idpSsoUrl: cfg.idpSsoUrl,
+          certsText: (cfg.idpCertificates ?? []).join('\n'),
+          spPrivateKey: '', // 掩码不回填,留空 = 不改
+          spCertificate: cfg.spCertificate ?? '',
+        };
+      } catch (e) {
+        samlError.value = (e as Error).message;
+      }
+    }
   } else if (section.value === 'users') {
     usersError.value = '';
     try {
@@ -820,6 +853,36 @@ async function rotateScimToken() {
     security.value = await api.security();
   } catch (e) {
     securityError.value = (e as Error).message;
+  }
+}
+
+async function saveSaml() {
+  samlError.value = '';
+  samlSaved.value = false;
+  const certs = saml.value.certsText
+    .split(/\r?\n/)
+    .map((c) => c.trim())
+    .filter(Boolean);
+  if (saml.value.enabled && certs.length === 0) {
+    samlError.value = 'At least one IdP signing certificate is required to enable SAML';
+    return;
+  }
+  try {
+    const body: import('../api/client.js').SamlConfigInput = {
+      enabled: saml.value.enabled,
+      idpEntityId: saml.value.idpEntityId.trim(),
+      idpSsoUrl: saml.value.idpSsoUrl.trim(),
+      idpCertificates: certs,
+      ...(saml.value.spCertificate.trim() ? { spCertificate: saml.value.spCertificate.trim() } : {}),
+      // 私钥留空 = 保留旧值,前端因此不必持有明文
+      ...(saml.value.spPrivateKey ? { spPrivateKey: saml.value.spPrivateKey } : {}),
+    };
+    const saved = await api.saml.save(body);
+    saml.value.spPrivateKey = '';
+    saml.value.certsText = (saved.idpCertificates ?? []).join('\n');
+    samlSaved.value = true;
+  } catch (e) {
+    samlError.value = (e as Error).message;
   }
 }
 
@@ -1406,20 +1469,85 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           <p>Use Single Sign-On to consolidate authentication into a single platform to improve security and agility.</p>
           <a class="btn primary" :href="LINKS.pricing" target="_blank" rel="noopener">See plans</a>
         </div>
-        <p v-else-if="ssoError" class="error-text" data-test="sso-error">{{ ssoError }}</p>
-        <div v-else-if="!ssoLoading" class="card" style="max-width: 580px">
-          <label class="inline-check"><input type="checkbox" v-model="sso.enabled" /> Enable SSO login</label>
-          <label>Issuer (discovery URL)</label>
-          <input v-model="sso.issuer" placeholder="https://idp.example.com" />
-          <label>Client ID</label>
-          <input v-model="sso.clientId" placeholder="nomops-client" />
-          <label>Client Secret (leave blank to keep)</label>
-          <input v-model="sso.clientSecret" type="password" placeholder="••••••••" />
-          <p v-if="ssoSaved" class="saved-hint">Saved ✓</p>
-          <div style="margin-top: 14px">
-            <button class="btn primary" data-test="sso-save" @click="saveSso">Save</button>
+        <!-- B2:两协议独立启用,分段只切表单,不影响对方的启用状态 -->
+        <template v-else>
+          <div class="proto-tabs" role="tablist" aria-label="SSO protocol" data-test="sso-protocol">
+            <button
+              class="proto-tab" :class="{ on: ssoProtocol === 'oidc' }" role="tab"
+              :aria-selected="ssoProtocol === 'oidc'" data-test="sso-tab-oidc"
+              @click="ssoProtocol = 'oidc'"
+            >
+              OpenID Connect
+              <span v-if="sso.enabled" class="proto-on" title="Enabled">●</span>
+            </button>
+            <button
+              class="proto-tab" :class="{ on: ssoProtocol === 'saml' }" role="tab"
+              :aria-selected="ssoProtocol === 'saml'" data-test="sso-tab-saml"
+              @click="ssoProtocol = 'saml'"
+            >
+              SAML 2.0
+              <span v-if="saml.enabled" class="proto-on" title="Enabled">●</span>
+            </button>
           </div>
-        </div>
+
+          <!-- OpenID Connect -->
+          <template v-if="ssoProtocol === 'oidc'">
+            <p v-if="ssoError" class="error-text" data-test="sso-error">{{ ssoError }}</p>
+            <div v-else-if="!ssoLoading" class="card" style="max-width: 580px">
+              <label class="inline-check"><input type="checkbox" v-model="sso.enabled" /> Enable SSO login</label>
+              <label>Issuer (discovery URL)</label>
+              <input v-model="sso.issuer" placeholder="https://idp.example.com" />
+              <label>Client ID</label>
+              <input v-model="sso.clientId" placeholder="nomops-client" />
+              <label>Client Secret (leave blank to keep)</label>
+              <input v-model="sso.clientSecret" type="password" placeholder="••••••••" />
+              <p v-if="ssoSaved" class="saved-hint">Saved ✓</p>
+              <div style="margin-top: 14px">
+                <button class="btn primary" data-test="sso-save" @click="saveSso">Save</button>
+              </div>
+            </div>
+          </template>
+
+          <!-- SAML 2.0：独立功能位，可能单独未授权 -->
+          <template v-else>
+            <div v-if="!licensed('saml')" class="locked-card" data-test="saml-locked">
+              <h2>Available on the Enterprise plan</h2>
+              <p>Connect a SAML 2.0 identity provider such as Okta, Entra ID or OneLogin.</p>
+              <a class="btn primary" :href="LINKS.pricing" target="_blank" rel="noopener">See plans</a>
+            </div>
+            <template v-else>
+              <p v-if="samlError" class="error-text" data-test="saml-error">{{ samlError }}</p>
+              <div class="card" style="max-width: 580px" data-test="saml-form">
+                <label class="inline-check"><input type="checkbox" v-model="saml.enabled" /> Enable SAML login</label>
+
+                <label>IdP Entity ID (Issuer)</label>
+                <input v-model="saml.idpEntityId" placeholder="https://idp.example.com/entity" data-test="saml-entity" />
+
+                <label>IdP SSO URL</label>
+                <input v-model="saml.idpSsoUrl" placeholder="https://idp.example.com/sso/saml" data-test="saml-sso-url" />
+
+                <label>IdP signing certificate — one per line to support rotation</label>
+                <textarea
+                  v-model="saml.certsText" class="set-mono" rows="5" data-test="saml-certs"
+                  placeholder="MIIDBzCCAe+gAwIBAgIU..."
+                />
+
+                <label>SP private key (leave blank to keep) — only needed to sign requests</label>
+                <input v-model="saml.spPrivateKey" type="password" placeholder="••••••••" data-test="saml-key" />
+
+                <p class="sub" style="margin-top: 14px">
+                  Give your IdP this metadata URL instead of copying values by hand:
+                  <a class="link" :href="samlMetadataUrl" target="_blank" rel="noopener" data-test="saml-metadata">{{ samlMetadataUrl }}</a>
+                </p>
+
+                <p v-if="samlSaved" class="saved-hint">Saved ✓</p>
+                <div style="margin-top: 14px">
+                  <button class="btn primary" data-test="saml-save" @click="saveSaml">Save</button>
+                </div>
+              </div>
+            </template>
+          </template>
+        </template>
       </section>
 
       <!-- LDAP 配置（企业） -->
@@ -2307,6 +2435,16 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
 </template>
 
 <style scoped>
+/* B2:SSO 协议分段 */
+.proto-tabs { display: flex; gap: 4px; margin: 4px 0 16px; }
+.proto-tab {
+  height: auto; padding: 7px 14px; font-size: 13px; border-radius: 6px;
+  background: transparent; border: 1px solid var(--border); color: var(--text-dim);
+}
+.proto-tab.on { background: var(--bg-input); color: var(--text-hi); border-color: var(--accent); }
+.proto-on { margin-left: 6px; font-size: 9px; color: var(--accent); vertical-align: middle; }
+.set-mono { font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 12px; resize: vertical; }
+
 /* 证书失效提示：填了 key 却没生效时必须显式告知,不能静默当社区版 */
 .license-problem { margin: 8px 0 0; font-size: 12.5px; color: var(--color--warning-text, #e0a34a); }
 
