@@ -428,6 +428,7 @@ const mcpToken = ref(''); // 明文仅签发时显示一次
 const mcpTab = ref<'workflows' | 'clients' | 'oauth'>('workflows');
 const mcpRedirectUrls = ref(''); // MCP OAuth redirect URL allowlist(前端表单;后端持久化留后续)
 const mcpShowDetails = ref(false);
+const mcpConnMode = ref<'oauth' | 'token'>('oauth'); // D143 连接详情里的认证方式分段
 const mcpBusy = ref(false);
 /* Enable workflows 弹窗（对标基线：搜索 + 多选，仅限已发布的工作流） */
 const mcpModalOpen = ref(false);
@@ -470,7 +471,10 @@ async function removeMcpWorkflow(id: string) {
     mcpError.value = (e as Error).message;
   }
 }
-const mcpServerUrl = computed(() => `${location.origin.replace(':5173', ':5678').replace(':5180', ':5678')}${mcpStatus.value?.serverPath ?? '/mcp-server/http'}`);
+// dev 下前端与后端不同端口，展示给 MCP 客户端的必须是后端地址（5680；5678 被基线实例占用）
+const mcpServerUrl = computed(
+  () => `${location.origin.replace(/:(5173|5180|5181)$/, ':5680')}${mcpStatus.value?.serverPath ?? '/mcp-server/http'}`,
+);
 
 async function loadMcp() {
   mcpError.value = '';
@@ -1866,15 +1870,26 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                 Connection details
               </button>
               <div v-if="mcpShowDetails" class="mcp-pop" data-test="mcp-pop">
-                <label style="font-size: 12px; color: var(--dim)">Server URL</label>
+                <!-- D143 对标基线：认证方式是 OAuth | Access token 分段控件，Server URL 两种模式都显示 -->
+                <div class="seg" data-test="mcp-conn-seg">
+                  <button class="seg-btn" :class="{ active: mcpConnMode === 'oauth' }" data-test="mcp-conn-oauth" @click="mcpConnMode = 'oauth'">OAuth</button>
+                  <button class="seg-btn" :class="{ active: mcpConnMode === 'token' }" data-test="mcp-conn-token" @click="mcpConnMode = 'token'">Access token</button>
+                </div>
+                <label style="font-size: 12px; color: var(--dim); display: block; margin-top: 12px">Server URL</label>
                 <code class="api-token" style="margin-top: 4px">{{ mcpServerUrl }}</code>
-                <label style="font-size: 12px; color: var(--dim); display: block; margin-top: 12px">Access token</label>
-                <code v-if="mcpToken" class="api-token" data-test="mcp-token" style="margin-top: 4px">{{ mcpToken }}</code>
-                <p v-else class="dim" style="font-size: 12px; margin: 4px 0 0">
-                  Shown once when MCP access is enabled. Toggle off and on again to rotate the token.
-                </p>
-                <p class="dim" style="font-size: 12px; margin: 10px 0 0">
-                  Send requests as <code>Authorization: Bearer &lt;token&gt;</code> (MCP Streamable HTTP, JSON-RPC 2.0).
+                <template v-if="mcpConnMode === 'token'">
+                  <label style="font-size: 12px; color: var(--dim); display: block; margin-top: 12px">Access token</label>
+                  <code v-if="mcpToken" class="api-token" data-test="mcp-token" style="margin-top: 4px">{{ mcpToken }}</code>
+                  <p v-else class="dim" style="font-size: 12px; margin: 4px 0 0">
+                    Shown once when MCP access is enabled. Toggle off and on again to rotate the token.
+                  </p>
+                  <p class="dim" style="font-size: 12px; margin: 10px 0 0">
+                    Send requests as <code>Authorization: Bearer &lt;token&gt;</code> (MCP Streamable HTTP, JSON-RPC 2.0).
+                  </p>
+                </template>
+                <p v-else class="dim" style="font-size: 12px; margin: 10px 0 0">
+                  The client runs the OAuth consent flow against this URL — no token to copy. Add its callback to the
+                  allowlist under <b>OAuth settings</b> first.
                 </p>
               </div>
             </div>
@@ -1915,17 +1930,19 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           <template v-if="mcpTab === 'workflows'">
             <div class="card" style="max-width: 1000px; padding: 0">
               <table class="api-table">
-                <thead><tr><th>Name</th><th>Location</th><th></th></tr></thead>
+                <!-- D144 对标基线:Workflows 表列 = Name / Location / Description -->
+                <thead><tr><th>Name</th><th>Location</th><th>Description</th><th></th></tr></thead>
                 <tbody>
                   <tr v-for="w in mcpEnabledWorkflows" :key="w.id" data-test="mcp-wf-row">
                     <td>{{ w.name }}</td>
                     <td class="dim">{{ w.projectName }}</td>
+                    <td class="dim" data-test="mcp-wf-desc">{{ w.description || '—' }}</td>
                     <td style="text-align: right">
                       <button class="btn secondary btn-sm" :data-test-mcp-remove="w.id" @click="removeMcpWorkflow(w.id)">Remove</button>
                     </td>
                   </tr>
                   <tr v-if="!mcpEnabledWorkflows.length">
-                    <td colspan="3">
+                    <td colspan="4">
                       <div class="table-empty" data-test="mcp-wf-empty">
                         <h3>No workflows enabled</h3>
                         <p>Add published workflows so MCP clients can discover and execute them</p>
@@ -1972,11 +1989,17 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           <template v-else>
             <div class="card" style="max-width: 1000px; padding: 16px">
               <label class="oauth-label" for="mcp-oauth-urls">Allowed OAuth Redirect URLs</label>
-              <p class="dim" style="font-size: 12.5px; margin: 4px 0 10px">
-                Configure a redirect URL allowlist to control which applications can complete the OAuth consent flow.
-                Without one, a malicious application could register an OAuth client with an attacker-controlled redirect URL
-                and use it to obtain access tokens for your nomops instance.
-              </p>
+              <!-- D142 对标基线：这段是 warning 主题的告示条，且不可关闭（无 × 按钮） -->
+              <div class="warn-callout" data-test="mcp-oauth-warning">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="i15">
+                  <path d="M12 9v4M12 17h.01" /><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+                </svg>
+                <span>
+                  Configure a redirect URL allowlist to control which applications can complete the OAuth consent flow.
+                  Without one, a malicious application could register an OAuth client with an attacker-controlled redirect URL
+                  and use it to obtain access tokens for your instance.
+                </span>
+              </div>
               <textarea
                 id="mcp-oauth-urls"
                 v-model="mcpRedirectUrls"
@@ -2407,6 +2430,23 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
 
 /* 弹窗顶部提示卡（左竖条，对标基线 callout） */
+.warn-callout {
+  display: flex; gap: 9px; align-items: flex-start;
+  border: 1px solid #7a5b12; border-left: 3px solid var(--accent);
+  border-radius: 6px; padding: 11px 13px; margin: 6px 0 12px;
+  font-size: 12.5px; line-height: 1.55; color: var(--text-hi);
+  background: rgba(255, 105, 0, 0.07);
+}
+.warn-callout svg { flex: 0 0 auto; margin-top: 1px; color: var(--accent); }
+
+/* 分段控件（MCP 连接详情：OAuth | Access token） */
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.seg-btn {
+  border: 0; background: transparent; cursor: pointer;
+  padding: 5px 12px; font-size: 12.5px; color: var(--text-dim);
+}
+.seg-btn.active { background: var(--surface-3, rgba(255, 255, 255, 0.07)); color: var(--text-hi); }
+
 .info-callout {
   border: 1px solid var(--border); border-left: 3px solid var(--text-dim);
   border-radius: 6px; padding: 12px 14px; margin-bottom: 14px;

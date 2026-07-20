@@ -152,7 +152,14 @@ export interface McpStatus {
   tokenConfigured: boolean;
   serverPath: string;
   workflowIds: string[];
-  workflows: Array<{ id: string; name: string; projectName: string; published: boolean; enabled: boolean }>;
+  workflows: Array<{
+    id: string;
+    name: string;
+    description: string | null;
+    projectName: string;
+    published: boolean;
+    enabled: boolean;
+  }>;
   clients: Array<{ name: string; version: string; lastSeen: string }>;
 }
 

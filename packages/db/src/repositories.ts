@@ -453,20 +453,30 @@ export class WorkflowRepository extends BaseRepository {
   }
 
   /** 实例级列表（仅 MCP 管理页等系统路径；admin 已由路由把关）：id/name/项目名/是否已发布。 */
-  async listAllUnscoped(): Promise<Array<{ id: string; name: string; projectName: string; published: boolean }>> {
+  async listAllUnscoped(): Promise<
+    Array<{ id: string; name: string; description: string | null; projectName: string; published: boolean }>
+  > {
     const rows = await this.db
       .select({
         id: this.schema.workflows.id,
         name: this.schema.workflows.name,
+        // D144：MCP Workflows 表要展示 Description 列
+        description: this.schema.workflows.description,
         projectName: this.schema.projects.name,
         publishedVersionId: this.schema.workflows.publishedVersionId,
       })
       .from(this.schema.workflows)
       .innerJoin(this.schema.sharedWorkflows, eq(this.schema.sharedWorkflows.workflowId, this.schema.workflows.id))
       .innerJoin(this.schema.projects, eq(this.schema.projects.id, this.schema.sharedWorkflows.projectId));
-    return (rows as Array<{ id: string; name: string; projectName: string; publishedVersionId: string | null }>).map(
-      ({ publishedVersionId, ...rest }) => ({ ...rest, published: Boolean(publishedVersionId) }),
-    );
+    return (
+      rows as Array<{
+        id: string;
+        name: string;
+        description: string | null;
+        projectName: string;
+        publishedVersionId: string | null;
+      }>
+    ).map(({ publishedVersionId, ...rest }) => ({ ...rest, published: Boolean(publishedVersionId) }));
   }
 
   /** 发布：把生产指针指向某个版本快照（不 bump updatedAt——发布不是编辑）。 */
