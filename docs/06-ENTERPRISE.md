@@ -264,3 +264,47 @@ regular 模式此前**没有任何并发上限**。webhook 洪峰会让单个 No
 - [x] 洪峰过后槽位全部归还，无泄漏
 - [x] `-1` 时不计数不排队，行为与 B7 之前一致
 - [x] 端到端：真实 webhook 路径上闸门确实生效
+
+---
+
+## 九、B3 — S3 兼容二进制存储（部分落地）
+
+### 已做
+
+`S3BinaryStore` 实现 `IBinaryDataStore`，覆盖 AWS S3、MinIO、Cloudflare R2、
+Wasabi 等任何讲 S3 协议的后端——所以不单独做 MinIO 实现。
+
+| 环境变量 | 说明 |
+|---|---|
+| `NOMOPS_S3_BUCKET` | 配了就启用 S3；不配走文件系统 |
+| `NOMOPS_S3_REGION` / `_ENDPOINT` | AWS 用 region，自建服务用 endpoint |
+| `NOMOPS_S3_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` | **留空更好**：走 SDK 默认凭证链（IAM role 比长期密钥安全） |
+| `NOMOPS_S3_FORCE_PATH_STYLE` | MinIO 通常需要 `true` |
+| `NOMOPS_S3_PREFIX` | 对象键前缀，与桶内其他数据分区 |
+| `NOMOPS_S3_PRESIGN_EXPIRY_SECONDS` | 预签名链接有效期，缺省 300 |
+
+**AWS SDK 全部动态 import**：它体积很大，而绝大多数自托管实例用文件系统。
+不配 S3 就永远不加载——与 BullMQ 的处理同一思路。
+
+**对象键恒为 `<prefix>/<uuid>.bin`**，文件名进 S3 元数据而不进键。文件名是
+任意用户输入，让它参与构造键就是自找路径注入。
+
+### 三后端共用契约
+
+`store-contract.test.ts` 让文件系统 / 内存 / S3 跑**同一组断言**。加后端最容易
+出的事，是它在某个边角上和别人不一致，而那种差异要到生产才暴露。
+
+这套契约当场就抓到一个：内存实现**不校验 id 格式**，把 `../../etc/passwd`
+当成普通「找不到」返回 404，而文件系统实现把它识别为非法 id。校验松紧不一致的
+后端，会让路径穿越在某一种部署形态下悄悄可行。现已统一到 `assertValidBinaryId`。
+
+### 未做（明确留给后续切片，不半途而废）
+
+- **Azure Blob**：又一个重量级 SDK，而 S3 协议已覆盖 MinIO/R2/Wasabi 等自建
+  与云端方案。收益边际，单列。
+- **执行数据外置**（`execution_data.data` → 对象存储指针）：这是数据模型改动，
+  牵涉 pruning、worker 反序列化、归属校验多处，风险和工作量都远超一个 store 实现，
+  必须独立切片。
+- **multipart 上传接口**：需要新端点 + 节点 helper 契约扩展。
+- **预签名下载接线**：`S3BinaryStore.presignedUrl()` 已实现，但下载路由仍走
+  流式回传。接上它需要决定「何时重定向、何时代理」（跨域、审计留痕都受影响）。

@@ -18,6 +18,18 @@ export interface IBinaryDataStore {
   get(id: string): Promise<Buffer>;
 }
 
+/**
+ * id 必须是 uuid。各实现共用同一把尺子——校验松紧不一致的后端，
+ * 会让「路径穿越 / 键注入」在某一种部署形态下悄悄可行。
+ */
+const ID_PATTERN = /^[0-9a-f-]{36}$/i;
+
+export function assertValidBinaryId(id: string): void {
+  if (!ID_PATTERN.test(id)) {
+    throw new OperationalError('Invalid binary data id', { id });
+  }
+}
+
 /** 文件系统实现：<rootDir>/<uuid>.bin。id 即文件名主干（uuid，杜绝路径穿越）。 */
 export class FileSystemBinaryStore implements IBinaryDataStore {
   constructor(private readonly rootDir: string) {}
@@ -35,9 +47,7 @@ export class FileSystemBinaryStore implements IBinaryDataStore {
   }
 
   async get(id: string): Promise<Buffer> {
-    if (!/^[0-9a-f-]{36}$/i.test(id)) {
-      throw new OperationalError('Invalid binary data id', { id });
-    }
+    assertValidBinaryId(id);
     try {
       return await readFile(join(this.rootDir, `${id}.bin`));
     } catch {
@@ -57,6 +67,7 @@ export class InMemoryBinaryStore implements IBinaryDataStore {
   }
 
   async get(id: string): Promise<Buffer> {
+    assertValidBinaryId(id); // 与其他后端同一把尺子:格式非法 ≠ 不存在
     const blob = this.blobs.get(id);
     if (!blob) throw new OperationalError('Binary data not found', { id, status: 404 });
     return blob;

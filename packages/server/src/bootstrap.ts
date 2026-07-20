@@ -1,6 +1,13 @@
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
-import { Cipher, Credentials, FileSystemBinaryStore, NodeLoader } from '@nomops/core';
+import {
+  Cipher,
+  Credentials,
+  FileSystemBinaryStore,
+  NodeLoader,
+  S3BinaryStore,
+  s3StoreOptionsFromEnv,
+} from '@nomops/core';
 import type { IEncryptionKeyProvider } from '@nomops/core';
 import { createDatabase, createRepositories, runMigrations } from '@nomops/db';
 import type { DatabaseConfig, DatabaseHandle, Repositories, SettingsRepository } from '@nomops/db';
@@ -115,6 +122,8 @@ export interface BootstrapOptions {
   pruner?: IExecutionPrunerOptions;
   /** 生产执行并发上限；-1 = 不限。缺省走 NOMOPS_CONCURRENCY_PRODUCTION_LIMIT。 */
   concurrencyLimit?: number;
+  /** S3 二进制存储配置（测试注入假客户端；生产走 NOMOPS_S3_* 环境变量）。 */
+  s3?: import('@nomops/core').IS3StoreOptions | null;
 }
 
 export interface BootstrapResult {
@@ -210,10 +219,14 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   const quota = new QuotaService(repos, license);
   // 日志流（docs/10 B3）：先于 executions/audit 建好，两者把事件旁路到它
   const logStreaming = new LogStreamingService(repos, opts.logStreamPost);
-  // 二进制存储：执行状态里只留引用，字节流落文件系统（Cloud 可换 S3 实现）
-  const binaryStore = new FileSystemBinaryStore(
-    process.env['NOMOPS_BINARY_DATA_DIR'] ?? join('.nomops', 'binary-data'),
-  );
+  // 二进制存储：执行状态里只留引用，字节流落 store。
+  // 配了 NOMOPS_S3_BUCKET 走 S3 兼容后端（AWS/MinIO/R2），否则文件系统。
+  const s3Options = opts.s3 ?? s3StoreOptionsFromEnv(process.env);
+  const binaryStore = s3Options
+    ? new S3BinaryStore(s3Options)
+    : new FileSystemBinaryStore(
+        process.env['NOMOPS_BINARY_DATA_DIR'] ?? join('.nomops', 'binary-data'),
+      );
   const executions = new ExecutionService(
     repos,
     workflows,
