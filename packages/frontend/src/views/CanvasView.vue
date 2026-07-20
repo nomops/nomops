@@ -1096,6 +1096,10 @@ async function loadSavePolicy() {
                 {{ logRows.length }} nodes
               </span>
               <span style="flex: 1" />
+              <!-- D124 对标基线：收起条右侧是 popout 图标 + chevron -->
+              <span class="logs-popout" title="Open logs in a separate view" @click.stop="logsOpen = true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6" /><path d="M10 14 21 3" /><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" /></svg>
+              </span>
               <span class="dim">{{ logsOpen ? '▾' : '▴' }}</span>
             </button>
           </div>
@@ -1121,8 +1125,9 @@ async function loadSavePolicy() {
                   :disabled="chatSending"
                   @keydown.enter="sendChat"
                 />
-                <button class="chat-send" data-test="chat-send" :disabled="chatSending || !chatDraft.trim()" @click="sendChat">
-                  Send
+                <!-- D122 对标基线：发送是纸飞机图标按钮，非文字按钮 -->
+                <button class="chat-send" data-test="chat-send" :title="'Send'" :aria-label="'Send'" :disabled="chatSending || !chatDraft.trim()" @click="sendChat">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" /></svg>
                 </button>
               </div>
             </div>
@@ -1313,7 +1318,16 @@ async function loadSavePolicy() {
 .chat-inputrow { display: flex; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--border); }
 .chat-input { flex: 1; padding: 7px 11px; font-size: 12.5px; background: transparent; border: 1px solid var(--border); border-radius: 8px; color: var(--text); outline: none; }
 .chat-input:focus { border-color: var(--accent); }
-.chat-send { padding: 6px 16px; font-size: 12.5px; background: var(--accent); color: #fff; border: none; border-radius: 8px; cursor: pointer; }
+.chat-send {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; padding: 0; flex: none;
+  background: var(--accent); color: var(--button--color--text--primary);
+  border: none; border-radius: 8px; cursor: pointer;
+}
+.chat-send svg { width: 15px; height: 15px; }
+.logs-popout { display: inline-flex; align-items: center; margin-right: 8px; color: var(--text-dim); }
+.logs-popout:hover { color: var(--text); }
+.logs-popout svg { width: 13px; height: 13px; }
 .chat-send:disabled { opacity: 0.55; cursor: default; }
 .logs-body.half { flex: 1; max-width: 50%; }
 .open-chat-btn {

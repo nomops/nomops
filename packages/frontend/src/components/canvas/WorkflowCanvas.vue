@@ -20,7 +20,7 @@ import CanvasEdge from './CanvasEdge.vue';
 const editor = useEditorStore();
 const nodeTypesStore = useNodeTypesStore();
 const execution = useExecutionStore();
-const { screenToFlowCoordinate, zoomIn, zoomOut, zoomTo, fitView, addSelectedNodes, removeSelectedNodes, getNodes } =
+const { screenToFlowCoordinate, zoomIn, zoomOut, zoomTo, fitView, addSelectedNodes, removeSelectedNodes, getNodes, viewport } =
   useVueFlow();
 
 /* ── D076:连线中点工具条 —— 由 edge id 反解出连接四元组 ── */
@@ -231,7 +231,8 @@ function ctxDelete() { const n = ctxMenu.value?.node; closeCtx(); if (n) editor.
       <template #edge-nomops="edgeProps">
         <CanvasEdge v-bind="edgeProps" @insert="onEdgeInsert" @remove="onEdgeRemove" />
       </template>
-      <Background :gap="18" />
+      <!-- D083 对标基线 nodeViewUtils.ts：GRID_SIZE = 16 -->
+      <Background :gap="16" />
     </VueFlow>
 
     <!-- 左下缩放控件 -->
@@ -245,8 +246,9 @@ function ctxDelete() { const n = ctxMenu.value?.node; closeCtx(); if (n) editor.
       <button title="Zoom out" data-test="zoom-out" @click="zoomOut()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" class="zc-i"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3M8 11h6" /></svg>
       </button>
-      <button title="Reset zoom" data-test="zoom-reset" @click="zoomTo(1)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="zc-i"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /></svg>
+      <!-- D081 对标基线 CanvasControlButtons：reset zoom 用 lucide undo-2 图标，且 zoom !== 1 才出现 -->
+      <button v-if="viewport.zoom !== 1" title="Reset zoom" data-test="zoom-reset" @click="zoomTo(1)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="zc-i"><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5 5.5 5.5 0 0 1-5.5 5.5H11" /></svg>
       </button>
       <button title="Tidy up (Shift+Alt+T)" data-test="tidy-up" @click="onTidyUp">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="zc-i"><path d="M15 4V2m0 4v-2m4 0h2m-4 0h2M6.5 20.5L19 8l-3-3L3.5 17.5l3 3zM13 8l3 3" /></svg>
