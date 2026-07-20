@@ -1,15 +1,21 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { api, type AuditLogRow } from '../api/client.js';
+import { LINKS } from '../lib/links.js';
 import { useProjectsStore } from '../stores/projects.js';
 
 const projects = useProjectsStore();
 const logs = ref<AuditLogRow[]>([]);
 const error = ref('');
+const ready = ref(false);
+
+/** 未授权时不发请求、不显示裸 403 文案，改出锁卡（与设置页各企业分区一致）。 */
+const unlocked = computed(() => projects.hasFeature('auditLogs'));
 
 onMounted(async () => {
   await projects.fetch();
-  await load();
+  ready.value = true;
+  if (unlocked.value) await load();
 });
 
 async function load() {
@@ -19,7 +25,7 @@ async function load() {
   try {
     logs.value = await api.auditLogs.list(current.id);
   } catch (e) {
-    error.value = (e as Error).message; // 非 owner / 社区版 → 403
+    error.value = (e as Error).message; // 非项目 owner → 403
   }
 }
 </script>
@@ -32,12 +38,21 @@ async function load() {
         Project: {{ projects.current?.name ?? '-' }} (visible to owners)
       </span>
       <span style="flex: 1" />
-      <button @click="load">Refresh</button>
+      <button v-if="unlocked" @click="load">Refresh</button>
     </div>
 
-    <p v-if="error" class="error-text" data-test="audit-error">{{ error }}</p>
+    <div v-if="ready && !unlocked" class="locked-card" data-test="audit-locked">
+      <h2>Available on the Enterprise plan</h2>
+      <p>
+        Track who changed what and when across your projects — workflow edits, credential changes,
+        executions, and member management.
+      </p>
+      <a class="btn primary" :href="LINKS.pricing" target="_blank" rel="noopener">See plans</a>
+    </div>
 
-    <div v-else class="card" style="padding: 0">
+    <p v-else-if="error" class="error-text" data-test="audit-error">{{ error }}</p>
+
+    <div v-else-if="unlocked" class="card" style="padding: 0">
       <p v-if="logs.length === 0" class="dim" style="padding: 20px">No entries yet.</p>
       <table v-else data-test="audit-table">
         <thead>

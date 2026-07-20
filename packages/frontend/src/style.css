@@ -218,3 +218,13 @@ th { color: var(--text-dim); font-weight: 500; }
   background: var(--expression-editor--resolvable--color--background--valid);
   border-radius: 2px;
 }
+
+/* 企业功能锁卡（未授权时替代真实 UI 的统一形态）。
+   SettingsView 里另有一份同名 scoped 规则——那个文件正被另一条工作线频繁改动，
+   此刻抽走会制造大面积合并冲突，故暂留重复，待其稳定后合并到这里。 */
+.locked-card {
+  max-width: 880px; border: 1px dashed var(--border); border-radius: 8px;
+  padding: 56px 40px; text-align: center; margin-top: 8px;
+}
+.locked-card h2 { margin: 0 0 14px; font-size: 20px; font-weight: 500; color: var(--text-hi); }
+.locked-card p { margin: 0 0 22px; color: var(--text-dim); font-size: 14px; }
