@@ -171,11 +171,8 @@ async function executeStep() {
         <div class="ndv-title">
           <span class="ndv-node-icon"><IconSvg v-bind="nodeIcon(node.type)" :size="20" /></span>
           <span class="ndv-name">{{ node.name }}</span>
-          <span class="dim" style="margin-left: 8px; font-size: 12px">
-            {{ desc?.displayName }} · v{{ node.typeVersion }}
-            <template v-if="lastRun"> · {{ lastRun.executionTime }}ms</template>
-            <span v-if="lastRun?.error" style="color: var(--err)"> · {{ lastRun.error.message }}</span>
-          </span>
+          <!-- D094 对标基线 NodeTitle.vue：头带只有节点图标 + 节点名，
+               不拼 displayName / typeVersion / 耗时 / 错误(这些在输出面板另有呈现) -->
         </div>
         <!-- 对齐基线:头带右侧 Docs 外链 + X(无 Delete,画布 Delete/Backspace 已覆盖) -->
         <div class="ndv-head-actions">
@@ -230,7 +227,10 @@ async function executeStep() {
               :disabled="execution.running"
               @click="executeStep"
             >
-              ▶ Execute step
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="i15">
+                <path d="M10 2v6.5L4.6 18a2 2 0 0 0 1.8 3h11.2a2 2 0 0 0 1.8-3L14 8.5V2M8.5 2h7M7 15h10" />
+              </svg>
+              Execute step
             </button>
           </div>
 

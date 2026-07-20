@@ -1069,6 +1069,11 @@ async function loadSavePolicy() {
               :node-parameters="entry.node.parameters"
               @change="editor.setParam(entry.nodeName, entry.paramName, $event)"
             />
+            <!-- D120 对标基线 nodeView.focusPanel.noExecutionData -->
+            <p v-if="!execution.lastExecutionId" class="focus-hint dim" data-test="focus-no-exec-data">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="i13"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4m0-4h.01" /></svg>
+              Execute previous node for autocomplete
+            </p>
           </div>
         </aside>
 
@@ -1451,6 +1456,8 @@ async function loadSavePolicy() {
 .exec-policy-body { padding: 0 16px 14px; font-size: 12.5px; display: flex; flex-direction: column; gap: 5px; }
 .exec-detail { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
 /* D087 执行页空态折叠块（对标基线 accordion） */
+.focus-hint { display: flex; align-items: center; gap: 5px; font-size: 11.5px; margin: 6px 0 0; }
+.focus-hint svg { flex: none; }
 .exec-empty-acc { margin-top: 18px; max-width: 420px; text-align: left; }
 .eea-head {
   display: flex; align-items: center; gap: 6px; width: 100%; height: auto;
