@@ -10,7 +10,12 @@ import {
   parseBody,
   recordAudit,
 } from '../http/route-helpers.js';
-import { sourceControlConnectSchema, sourceControlPushSchema, ssoConfigSchema } from '../schemas.js';
+import {
+  samlConfigSchema,
+  sourceControlConnectSchema,
+  sourceControlPushSchema,
+  ssoConfigSchema,
+} from '../schemas.js';
 import { requireFeature } from './license/license-service.js';
 
 /**
@@ -196,6 +201,42 @@ export function registerEeRoutes(router: Router, services: AppServices): void {
       await services.sso.setConfig({ ...body, clientSecret });
       recordAudit(services, req, 'sso.config.update', undefined, { issuer: body.issuer, enabled: body.enabled });
       res.json(await services.sso.getMaskedConfig());
+    }),
+  );
+
+  /* ── SAML 2.0 配置（B2：实例 admin + saml 功能位） ── */
+  router.get(
+    '/sso/saml/config',
+    requireFeature(services.license, 'saml'),
+    h(async (req, res) => {
+      await assertInstanceAdmin(services, req);
+      res.json(
+        (await services.saml.getMaskedConfig()) ?? {
+          enabled: false,
+          idpEntityId: '',
+          idpSsoUrl: '',
+          idpCertificates: [],
+          spPrivateKey: '',
+        },
+      );
+    }),
+  );
+
+  router.put(
+    '/sso/saml/config',
+    requireFeature(services.license, 'saml'),
+    h(async (req, res) => {
+      await assertInstanceAdmin(services, req);
+      const body = parseBody(samlConfigSchema, req);
+      // 私钥省略 = 保留旧值（与 OIDC 的 clientSecret 同一约定）
+      const existing = await services.saml.getConfig();
+      const spPrivateKey = body.spPrivateKey ?? existing?.spPrivateKey;
+      await services.saml.setConfig({ ...body, ...(spPrivateKey ? { spPrivateKey } : {}) });
+      recordAudit(services, req, 'sso.saml.config.update', undefined, {
+        idpEntityId: body.idpEntityId,
+        enabled: body.enabled,
+      });
+      res.json(await services.saml.getMaskedConfig());
     }),
   );
 

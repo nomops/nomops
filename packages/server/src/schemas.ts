@@ -184,6 +184,27 @@ export const quotaBodySchema = z
     message: 'The custom plan requires monthlyExecutions',
   });
 
+/**
+ * SAML 2.0 配置（B2）。与 OIDC 并存,两者是独立的 IdP 接入方式。
+ * spPrivateKey 省略 = 保留旧值(与 OIDC 的 clientSecret 同一约定)。
+ */
+export const samlConfigSchema = z.object({
+  enabled: z.boolean(),
+  idpEntityId: z.string().min(1),
+  idpSsoUrl: z.string().url(),
+  /** IdP 签名证书(裸 base64 或 PEM,可多份以支持轮换)。 */
+  idpCertificates: z.array(z.string().min(1)).min(1),
+  attributeMapping: z
+    .object({
+      email: z.string().optional(),
+      firstName: z.string().optional(),
+      lastName: z.string().optional(),
+    })
+    .optional(),
+  spPrivateKey: z.string().optional(),
+  spCertificate: z.string().optional(),
+});
+
 export const ssoConfigSchema = z.object({
   enabled: z.boolean(),
   issuer: z.string().url(),

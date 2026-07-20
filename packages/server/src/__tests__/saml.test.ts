@@ -5,7 +5,7 @@ import type { Express } from 'express';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
-import { setupOwner, licensedBoot } from './helpers.js';
+import { inviteUser, setupOwner, licensedBoot } from './helpers.js';
 import { TEST_IDP_CERT_BODY } from './fixtures/saml-idp.js';
 import { buildSamlResponse } from './fixtures/saml-responder.js';
 
@@ -206,6 +206,77 @@ describe('★安全性质', () => {
     const second = await post(assertion);
 
     expect(second.status).toBe(400);
+  });
+});
+
+describe('配置接口（前端设置页用）', () => {
+  const admin = () => ({ Authorization: `Bearer ${owner}` });
+
+  it('读回掩码后的配置，私钥不出 API', async () => {
+    await request(app)
+      .put('/api/sso/saml/config')
+      .set(admin())
+      .send({
+        enabled: true,
+        idpEntityId: 'https://idp.test/entity',
+        idpSsoUrl: 'https://idp.test/sso',
+        idpCertificates: [TEST_IDP_CERT_BODY],
+        spPrivateKey: 'PRIVATE-KEY-MUST-NOT-LEAK',
+      })
+      .expect(200);
+
+    const res = await request(app).get('/api/sso/saml/config').set(admin()).expect(200);
+
+    expect(res.body.spPrivateKey).toBe('••••••••');
+    expect(JSON.stringify(res.body)).not.toContain('PRIVATE-KEY-MUST-NOT-LEAK');
+  });
+
+  it('★私钥省略 = 保留旧值（前端不必回传它，也就不必先拿到明文）', async () => {
+    await request(app)
+      .put('/api/sso/saml/config')
+      .set(admin())
+      .send({
+        enabled: false, // 只改这一项，不传私钥
+        idpEntityId: 'https://idp.test/entity',
+        idpSsoUrl: 'https://idp.test/sso',
+        idpCertificates: [TEST_IDP_CERT_BODY],
+      })
+      .expect(200);
+
+    const config = await boot.services.saml.getConfig();
+    expect(config?.enabled).toBe(false);
+    expect(config?.spPrivateKey).toBe('PRIVATE-KEY-MUST-NOT-LEAK'); // 没被清掉
+  });
+
+  it('缺证书的配置被拒（启用了却验不了签是最坏的情况）', async () => {
+    await request(app)
+      .put('/api/sso/saml/config')
+      .set(admin())
+      .send({
+        enabled: true,
+        idpEntityId: 'https://idp.test/entity',
+        idpSsoUrl: 'https://idp.test/sso',
+        idpCertificates: [],
+      })
+      .expect(400);
+  });
+
+  it('非实例 admin 读不到也改不了', async () => {
+    const member = await inviteUser(app, owner, 'member@saml.dev');
+    const asMember = { Authorization: `Bearer ${member.token}` };
+
+    await request(app).get('/api/sso/saml/config').set(asMember).expect(403);
+    await request(app).put('/api/sso/saml/config').set(asMember).send({}).expect(403);
+  });
+
+  it('复原配置供后续用例', async () => {
+    await boot.services.saml.setConfig({
+      enabled: true,
+      idpEntityId: 'https://idp.test/entity',
+      idpSsoUrl: 'https://idp.test/sso',
+      idpCertificates: [TEST_IDP_CERT_BODY],
+    });
+    expect(await boot.services.saml.isEnabled()).toBe(true);
   });
 });
 

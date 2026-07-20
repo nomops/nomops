@@ -226,6 +226,21 @@ export interface LicenseInfo {
   message?: string;
 }
 
+export interface SamlConfigInput {
+  enabled: boolean;
+  idpEntityId: string;
+  idpSsoUrl: string;
+  idpCertificates: string[];
+  /** 省略 = 保留旧值（前端因此不必持有明文私钥）。 */
+  spPrivateKey?: string;
+  spCertificate?: string;
+}
+
+/** 读回的配置：私钥已掩码。 */
+export interface SamlConfig extends Omit<SamlConfigInput, 'spPrivateKey'> {
+  spPrivateKey: string;
+}
+
 export interface SourceControlConfig {
   connected: boolean;
   repoUrl: string; // 已掩码
@@ -530,6 +545,12 @@ export const api = {
       http<{ enabled: boolean; issuer: string; clientId: string; clientSecret: string }>('GET', '/api/sso/config'),
     save: (body: { enabled: boolean; issuer: string; clientId: string; clientSecret?: string }) =>
       http<{ enabled: boolean; issuer: string; clientId: string; clientSecret: string }>('PUT', '/api/sso/config', body),
+  },
+
+  /** SAML 2.0（与 OIDC 并存，各自独立启用）。私钥省略 = 保留旧值。 */
+  saml: {
+    config: () => http<SamlConfig>('GET', '/api/sso/saml/config'),
+    save: (body: SamlConfigInput) => http<SamlConfig>('PUT', '/api/sso/saml/config', body),
   },
 
   billing: {
