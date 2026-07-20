@@ -76,6 +76,8 @@
 - ⏸️ **P2-D**(凭证 5 项)**未开工**:开工即遇基线会话过期(连续两次停在 `/signin`),D043/D052/D055/D056/D057 全部依赖基线取证,无一可做。✅ 但登出态的 `/signin` 页仍可读,顺手清掉一项:❌ **D162 判定为误报** —— ledger 称基线 Forgot 链接带问号(`Forgot my password?`)、nomops 无问号,live 实测基线文案是 **`Forgot my password`(无问号)**,`href=/forgot-password`、16px、橙色无下划线;nomops(LoginView.vue:253)本就是同一文案。**第 11 处纠错**,无需改动。
   🔧 **同时修复一个自引入的 TDZ 崩溃**:`watch(() => editor.editingSticky)` 被放在 `const editor = useEditorStore()` **之前**,setup 抛错导致**整块画布节点不渲染**(本会话第二次踩同类坑,已在代码里加注释警示)。
   📌 **注**:本条改动**未单独成 commit**,与仓库去品牌化清理(n→「基线」措辞统一、tokens 文件更名)**混在同一个 commit** 里提交。
+- ✅ **B0**(引擎节点级设置落地,非 ledger 条目但影响 D088/D089):NDV Settings tab 的 5 个字段此前**只存不用**——引擎只消费布尔 `continueOnError`,`retryOnFail`/`maxTries`/`waitBetweenTries`/`executionTimeout`/`alwaysOutputData`/`executeOnce` 全无运行时行为。本批在引擎侧全部实现(`workflow/node-settings.ts` 归一化 + `core/workflow-execute.ts` 主循环),并补执行历史清理。前端侧:**D089 经查早在 Batch 4(ed47b1a)随 D088 一并做完**,ledger 第 220 行"换成布尔"是**过期记录**(第 14 处纠错);真正缺的是 Retry On Fail 打开后的 **`Max. Tries` / `Wait Between Tries (ms)`** 两个条件字段(标签取自本地 n8n 源码 i18n `nodeSettings.maxTries.displayName` / `waitBetweenTries.displayName` 逐字印证),已补,取值域与引擎 `resolveRetry` 的钳制共用同一组常量。测试:引擎 22 项 + db 双方言 14 项 + server 11 项 + 前端 store 9 项,全仓 424→456 测绿。
+
 - 🎉 **P0 全部完成**(便签 7 色→D067 右键→D069/D070 面板→D104/D105/D106 参数→D088 NDV Settings→D058/D059 Evaluations→D061/D062 wf settings→D131 MCP OAuth→D154 Shared→D047/D152/D128 锁态→D063 History→D085 执行详情→D127/D129/D130 B 类)。豁免:D103 resourceLocator=N/A;暂缓:D096 Mapping|From AI(待引擎 $fromAI)。
 
 ---
@@ -217,7 +219,7 @@
 | 编号 | 页面 | 组件 | 维度 | 真站表现 | 复刻版表现 | 级别 | 截图路径/证据 |
 |---|---|---|---|---|---|---|---|
 | D088 | NDV | NdvModal | Settings tab 内容 | Always Output Data/Execute Once/Retry On Fail 三开关+On Error 下拉+Notes+Display Note 开关+版本注记 | 仅 1 裸复选框 "Continue on error"+说明,其余全无 | **P0** | NdvModal.vue:134-147 |
-| D089 | NDV | NdvModal | On Error 语义 | 下拉:Stop Workflow/Continue(error output)/Continue(regular output) | 换成布尔 "Continue on error" | P1 | NdvModal.vue:135-143 |
+| D089 | NDV | NdvModal | On Error 语义 | 下拉:Stop Workflow/Continue(error output)/Continue(regular output) | ✅ 已修(Batch 4 随 D088 一并完成;原记"换成布尔"为过期记录) | P1 | NdvModal.vue:285-291 |
 | D090 | NDV | NdvModal | Settings 开关控件 | 基线 switch(32×16) | 裸 checkbox(与 Parameters pswitch 不一致) | P2 | NdvModal.vue:136-142 |
 | D091 | NDV | NdvModal | 头带 Docs 链接 | 右侧 `Docs↗` + X | 仅 ✕,无 Docs | P1 | NdvModal.vue:74-77 |
 | D092 | NDV | NdvModal | 相邻节点 chip | 两侧相邻节点切换 chip | 无 | P1 | NdvModal.vue:64-78 |

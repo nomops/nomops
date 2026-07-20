@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
+import {
+  RETRY_MAX_TRIES_DEFAULT,
+  RETRY_MAX_TRIES_MAX,
+  RETRY_MAX_TRIES_MIN,
+  RETRY_WAIT_MS_DEFAULT,
+  RETRY_WAIT_MS_MAX,
+  RETRY_WAIT_MS_MIN,
+} from '@nomops/workflow';
 import { api, type CredentialView } from '../../api/client.js';
 import { CREDENTIAL_TYPES } from '../../lib/credential-types.js';
 import { useEditorStore } from '../../stores/editor.js';
@@ -281,6 +289,19 @@ async function executeStep() {
               <span class="set-label">Retry On Fail</span>
               <button class="pswitch" :class="{ on: node.retryOnFail }" type="button" role="switch" :aria-checked="Boolean(node.retryOnFail)" data-test="ndv-set-retry" @click="setg('retryOnFail', !node.retryOnFail)"><span class="pk" /></button>
             </div>
+            <!-- 重试细项仅在 Retry On Fail 打开时出现;取值域与引擎 resolveRetry 的钳制一致 -->
+            <template v-if="node.retryOnFail">
+              <div class="set-field">
+                <label class="set-label">Max. Tries</label>
+                <input class="set-num" type="number" :min="RETRY_MAX_TRIES_MIN" :max="RETRY_MAX_TRIES_MAX" :value="node.maxTries ?? RETRY_MAX_TRIES_DEFAULT" data-test="ndv-set-max-tries" @change="setg('maxTries', Number(($event.target as HTMLInputElement).value))" />
+                <p class="set-hint">Number of times to attempt to execute the node before failing the execution</p>
+              </div>
+              <div class="set-field">
+                <label class="set-label">Wait Between Tries (ms)</label>
+                <input class="set-num" type="number" :min="RETRY_WAIT_MS_MIN" :max="RETRY_WAIT_MS_MAX" :value="node.waitBetweenTries ?? RETRY_WAIT_MS_DEFAULT" data-test="ndv-set-wait-between" @change="setg('waitBetweenTries', Number(($event.target as HTMLInputElement).value))" />
+                <p class="set-hint">How long to wait between each attempt (in milliseconds)</p>
+              </div>
+            </template>
             <div class="set-field">
               <label class="set-label">On Error</label>
               <select :value="node.onError ?? 'stopWorkflow'" data-test="ndv-set-onerror" @change="setg('onError', ($event.target as HTMLSelectElement).value)">
@@ -439,7 +460,12 @@ async function executeStep() {
   background: var(--color--background--light-2); border: 1px solid var(--border-color); border-radius: var(--radius);
   padding: 6px 8px; font-size: var(--font-size--2xs); color: var(--color--text--shade-1); resize: vertical; font-family: inherit;
 }
-.set-notes:focus, .set-field select:focus { outline: none; border-color: var(--color--primary); }
+.set-notes:focus, .set-field select:focus, .set-num:focus { outline: none; border-color: var(--color--primary); }
+.set-num {
+  height: 30px; background: var(--color--background--light-2); border: 1px solid var(--border-color);
+  border-radius: var(--radius); padding: 0 10px; font-size: var(--font-size--2xs); color: var(--color--text--shade-1);
+}
+.set-hint { margin: 0; font-size: var(--font-size--3xs); color: var(--color--text--tint-1); }
 .set-version { margin: 0; font-size: 11px; color: var(--color--text--tint-1); }
 /* 基线开关 32×16(与 ParamInput 一致) */
 .pswitch {
