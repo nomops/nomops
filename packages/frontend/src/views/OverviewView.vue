@@ -907,7 +907,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
                 <span class="sep">|</span>
                 <span data-test="wf-stats">{{ statsLabel(row.id) }}</span>
               </template>
-              <span v-if="row.active" class="active-dot" :title="t('Active')">{{ t('Active') }}</span>
+              <!-- D042 对标基线:卡片无 "Active" 绿点(激活状态走 Publish 体系,不在列表页露出) -->
               <span v-if="row.archived" class="badge" style="margin-left: 4px">{{ t('Archived') }}</span>
             </div>
             <div v-if="tagsOf(row.id).length" class="wf-tags" data-test="wf-tags">
@@ -1529,8 +1529,6 @@ const fmtRunTime = (row: ExecutionRow): string => {
   margin-top: 5px; display: flex; align-items: center; gap: 10px;
 }
 .wf-meta .sep { color: var(--color--text--tint-1); }
-.wf-meta .active-dot { color: var(--ok); font-size: 12px; }
-.wf-meta .active-dot::before { content: '● '; }
 /* 基线实测：Personal 徽章 25px 高 / bg light-3 / 1px border / 圆角 4 / 文字 12px */
 .chip {
   display: inline-flex; align-items: center; gap: var(--spacing--3xs); background: var(--color--background--light-3);
