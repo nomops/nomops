@@ -24,7 +24,7 @@ import { GitService } from './ee/services/git-service.js';
 import { PushHub } from './ws/push-hub.js';
 import { ActiveWorkflowManager } from './triggers/active-workflow-manager.js';
 import { LicenseService } from './ee/license/license-service.js';
-import { AuditService } from './ee/services/audit-service.js';
+import { AuditService } from './services/audit-service.js';
 import { OidcService } from './ee/sso/oidc-service.js';
 import { SamlService } from './ee/sso/saml-service.js';
 import { OAuth2Service } from './services/oauth2-service.js';
@@ -33,6 +33,7 @@ import { DataTableService } from './services/data-table-service.js';
 import { WaitTracker } from './services/wait-tracker.js';
 import { ExecutionPruner, prunerOptionsFromEnv } from './services/execution-pruner.js';
 import { ConcurrencyGate, concurrencyLimitFromEnv } from './services/concurrency-gate.js';
+import { CountingUsageGate } from './services/usage-gate.js';
 import type { IExecutionPrunerOptions } from './services/execution-pruner.js';
 import { ScimService } from './ee/scim/scim-service.js';
 import { QuotaService } from './ee/services/quota-service.js';
@@ -216,7 +217,9 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   // 外部密钥（docs/10 B4）：凭证解密后物化 {{ $secrets.KEY }} 引用
   const secrets = new SecretsService(opts.secretsProvider ?? new EnvSecretsProvider(), license);
   const credentialService = new CredentialService(repos, credentials, secrets, opts.credentialTester);
-  const quota = new QuotaService(repos, license);
+  // 用量:社区无条件计数;企业版在其上加限额检查(ee 实现包住社区实现)
+  const usageCounter = new CountingUsageGate(repos);
+  const quota = new QuotaService(repos, license, usageCounter);
   // 日志流（docs/10 B3）：先于 executions/audit 建好，两者把事件旁路到它
   const logStreaming = new LogStreamingService(repos, opts.logStreamPost);
   // 二进制存储：执行状态里只留引用，字节流落 store。

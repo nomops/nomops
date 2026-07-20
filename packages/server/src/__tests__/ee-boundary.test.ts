@@ -32,25 +32,22 @@ function sourceFiles(dir: string): string[] {
 }
 
 /**
- * ★已知的社区 → ee 依赖，待偿清单。
+ * ★允许认识 ee 的社区文件。
  *
- * 这三处是 C1 迁移时暴露的**结构性纠缠**，不是疏忽：三个服务的「计数/记录」
- * 部分属于社区行为，只有「限额/查询」才是付费功能，所以社区核心确实要调它们。
- * 正确的解法是依赖倒置——社区侧定义端口（接口 + 空实现），ee 侧提供适配器，
- * 与本仓库已有的 IEncryptionKeyProvider / ISecretsProvider 同一手法。
+ * C1 上半场迁移时曾有四条**业务代码**依赖 ee（execution/credential/AWM/billing），
+ * 下半场按各自的真实性质分别解决，不是同一个模式套四遍：
+ * - Audit：写入始终进行、只有查询门控 → 写入器本就属于社区，搬回去了
+ * - Quota：计数是社区行为、限额才付费 → 拆成社区 CountingUsageGate + ee 限额包装
+ * - Secrets：解析整体是付费功能 → 社区定端口、缺省不注入，ee 提供实现
  *
- * 在那之前，把它们显式钉在这里：数量只能减不能增。加新的一条就会红。
+ * 剩下的只有组装层与路由层——它们的职责就是认识两侧，不算违规，
+ * 但仍登记以免无声扩散。名单只减不增。
  */
 const KNOWN_COMMUNITY_TO_EE = new Set([
-  'services/execution-service.ts', // QuotaService：计数是社区行为，限额才是付费
-  'services/credential-service.ts', // SecretsService：{{ $secrets.X }} 解析
-  'triggers/active-workflow-manager.ts', // AuditService：写入始终进行，查询才门控
-  'billing/billing-service.ts', // AuditService：同上
-  // 组装层天然要认识两侧，不算违规，但仍登记以免无声扩散
-  'bootstrap.ts',
-  'app-services.ts',
-  'app.ts',
-  'controllers/index.ts',
+  'bootstrap.ts', // 依赖注入的组装点
+  'app-services.ts', // 服务容器的类型声明
+  'app.ts', // 挂载 ee 路由
+  'controllers/index.ts', // 企业路由尚未抽出（C1 下半场剩余项）
 ]);
 
 describe('LICENSE_EE 与真实目录', () => {
@@ -78,7 +75,7 @@ describe('LICENSE_EE 与真实目录', () => {
     // 功能位 → 实现它的文件/目录（相对 ee/）。加功能位时这里会红,提醒把实现放进边界内。
     const homes: Record<(typeof LICENSE_FEATURES)[number], string> = {
       rbac: 'license/license-service.ts', // 权限矩阵由 license 门控驱动
-      auditLogs: 'services/audit-service.ts',
+      auditLogs: 'routes.ts', // 写入是社区行为(services/audit-service.ts),只有查询路由是付费
       sso: 'sso/oidc-service.ts',
       saml: 'sso/saml-service.ts',
       scim: 'scim/scim-service.ts',

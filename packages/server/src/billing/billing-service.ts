@@ -1,6 +1,6 @@
 import type { Repositories } from '@nomops/db';
 import { OperationalError } from '@nomops/workflow';
-import type { AuditService } from '../ee/services/audit-service.js';
+import type { AuditService } from '../services/audit-service.js';
 import type { IPaymentEvent } from './payment-provider.js';
 import type { AlipayNotify, AlipayProvider } from './alipay-provider.js';
 
