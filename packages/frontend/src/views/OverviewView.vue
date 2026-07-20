@@ -42,7 +42,7 @@ const currentFolderId = ref<string | null>(null); // null = 项目根
 const credentials = ref<CredentialView[]>([]);
 const executions = ref<ExecutionRow[]>([]);
 
-/* 凭证：弹窗（选类型 → 填字段）；editingCred 非空 = 编辑模式（对标 n8n 卡片 Open） */
+/* 凭证：弹窗（选类型 → 填字段）；editingCred 非空 = 编辑模式（对标基线卡片 Open） */
 const showCredModal = ref(false);
 const editingCred = ref<CredentialView | null>(null);
 function openCredential(row: CredentialView) {
@@ -57,7 +57,7 @@ function closeCredModal() {
 async function onCredUpdated() {
   credentials.value = await api.credentials.list().catch(() => credentials.value);
 }
-/** 凭证被哪些工作流引用（B3 依赖图反查；对标 n8n 凭证卡片依赖胶囊）。 */
+/** 凭证被哪些工作流引用（B3 依赖图反查；对标基线凭证卡片依赖胶囊）。 */
 function credUsedBy(credId: string): Array<{ id: string; name: string }> {
   const out: Array<{ id: string; name: string }> = [];
   for (const [wfId, deps] of Object.entries(wfDeps.value)) {
@@ -88,7 +88,7 @@ function startNewVariable() {
   editingVar.value = { id: 'new', key: '', value: '' };
 }
 
-/* B1 对标 n8n：右上创建按钮随 tab 切换（split：主按钮 + caret 列其余创建项） */
+/* B1 对标基线：右上创建按钮随 tab 切换（split：主按钮 + caret 列其余创建项） */
 type CreateKey = 'workflow' | 'credential' | 'variable' | 'data-table';
 const CREATE_ACTIONS: Record<CreateKey, { label: string; run: () => void }> = {
   workflow: { label: 'Create workflow', run: () => createWorkflow() },
@@ -102,7 +102,7 @@ const CREATE_ACTIONS: Record<CreateKey, { label: string; run: () => void }> = {
   },
   'data-table': { label: 'Create data table', run: () => openCreateDataTable() },
 };
-/* Executions 无创建动作 → 同 n8n 回退 Create workflow */
+/* Executions 无创建动作 → 同基线回退 Create workflow */
 const primaryCreate = computed<CreateKey>(() => {
   if (tab.value === 'credentials') return 'credential';
   if (tab.value === 'variables') return 'variable';
@@ -193,7 +193,7 @@ function closeMenus() {
 
 /* 筛选 / 排序 / 分页 */
 const sortKey = ref<SortKey>('updated');
-// D037 对标 n8n:Status 三态(All/Published/Unpublished),取代原 activeOnly 布尔
+// D037 对标基线:Status 三态(All/Published/Unpublished),取代原 activeOnly 布尔
 const statusFilter = ref<StatusFilter>('all');
 const showFilter = ref(false);
 const page = ref(1);
@@ -306,7 +306,7 @@ watch(
 );
 onUnmounted(() => window.removeEventListener('click', closeMenus));
 
-/* B3 依赖胶囊（对标 n8n DependencyPill）：workflowId → 依赖列表；分组展示可跳转 */
+/* B3 依赖胶囊（对标基线 DependencyPill）：workflowId → 依赖列表；分组展示可跳转 */
 const wfDeps = ref<Record<string, WorkflowDependency[]>>({});
 const DEP_GROUPS: Array<{ type: WorkflowDependency['type']; label: string; icon: string }> = [
   { type: 'credential', label: 'Credentials', icon: 'M21 2l-9.6 9.6M15.5 7.5l3 3L22 7l-3-3M11.4 11.6a4.6 4.6 0 1 0-6.5 6.5 4.6 4.6 0 0 0 6.5-6.5z' },
@@ -325,7 +325,7 @@ function openDependency(dep: WorkflowDependency) {
     switchTab('credentials');
     search.value = dep.name; // 凭证无独立详情页：切 tab 并按名过滤定位
   } else {
-    window.open(router.resolve({ name: 'canvas', params: { id: dep.id } }).href, '_blank'); // 同 n8n：新标签打开
+    window.open(router.resolve({ name: 'canvas', params: { id: dep.id } }).href, '_blank'); // 同基线：新标签打开
   }
 }
 
@@ -407,7 +407,7 @@ async function enterFolder(id: string | null) {
   page.value = 1;
   await reload();
 }
-/* B7 对标 n8n：Add folder 图标按钮 → 命名弹窗（Create / Cancel） */
+/* B7 对标基线：Add folder 图标按钮 → 命名弹窗（Create / Cancel） */
 const folderModalOpen = ref(false);
 const folderNameDraft = ref('');
 const folderModalError = ref('');
@@ -479,11 +479,11 @@ async function removeWorkflow(id: string) {
   workflows.value = workflows.value.filter((w) => w.id !== id);
 }
 
-/* ── B2 对标 n8n 卡片菜单：Open / Share... / Favorite / Duplicate / Archive / Enable MCP access ── */
+/* ── B2 对标基线卡片菜单：Open / Share... / Favorite / Duplicate / Archive / Enable MCP access ── */
 const showArchived = ref(false); // 归档视图切换（默认列表隐藏 archived）
 watch(showArchived, () => void reload());
 
-/* D039:Share... = Enterprise 锁(Community 不能共享工作流,对标 n8n)。 */
+/* D039:Share... = Enterprise 锁(Community 不能共享工作流,对标基线)。 */
 const shareLockOpen = ref(false);
 function openShareLock() {
   closeMenus();
@@ -552,13 +552,13 @@ async function removeCredential(id: string) {
   credentials.value = credentials.value.filter((c) => c.id !== id);
 }
 
-/* ── B5 对标 n8n Executions 表：行点击进画布执行视图；多选/重试/删除/自动刷新 ── */
+/* ── B5 对标基线 Executions 表：行点击进画布执行视图；多选/重试/删除/自动刷新 ── */
 
 function openExecution(row: ExecutionRow) {
   void router.push({ name: 'canvas', params: { id: row.workflowId }, query: { tab: 'executions', exec: row.id } });
 }
 
-/* Auto refresh（同 n8n 默认开，5s；仅 executions tab 时轮询） */
+/* Auto refresh（同基线默认开，5s；仅 executions tab 时轮询） */
 const execAutoRefresh = ref(true);
 /* D044:漏斗 Status 过滤(all/success/error/running/waiting/canceled) */
 const execStatusFilter = ref('all');
@@ -757,7 +757,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
         <p class="ov-sub">{{ pageSub }}</p>
       </div>
       <div class="ov-actions">
-        <!-- 右上创建按钮随 tab 切换（对标 n8n：split 主按钮 + caret 列其余创建项） -->
+        <!-- 右上创建按钮随 tab 切换（对标基线：split 主按钮 + caret 列其余创建项） -->
         <template v-if="tab !== 'project-settings'">
           <!-- Run live demo 已按裁决移入侧栏 Help 菜单 -->
           <div class="split" @click.stop>
@@ -810,7 +810,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
           :placeholder="tab === 'credentials' ? t('Search credentials...') : t('Search')"
         />
       </div>
-      <!-- n8n 结构：Search + Sort(两 tab)+ 漏斗弹层(Tags/Status/Show archived)+ Add folder(仅 workflows) -->
+      <!-- 基线结构：Search + Sort(两 tab)+ 漏斗弹层(Tags/Status/Show archived)+ Add folder(仅 workflows) -->
       <div class="dropdown" @click.stop>
         <button class="sortby" data-test="sort-toggle" @click="toggleMenu('sort')">
           {{ sortLabel }}
@@ -861,7 +861,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
 
     <!-- ── Workflows ── -->
     <template v-if="tab === 'workflows'">
-      <!-- 面包屑 + 新建文件夹（对齐 n8n:根目录无文件夹时不占位） -->
+      <!-- 面包屑 + 新建文件夹（对齐基线:根目录无文件夹时不占位） -->
       <div v-if="currentFolderId !== null || folders.length > 0" class="folder-bar">
         <div class="breadcrumb" data-test="breadcrumb">
           <button class="crumb" :class="{ cur: currentFolderId === null }" data-test="crumb-root" @click="enterFolder(null)">{{ t('All workflows') }}</button>
@@ -947,7 +947,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
             <button class="row-menu" :data-test-menu="row.id" @click="toggleMenu(row.id)">
               <svg viewBox="0 0 24 24" fill="currentColor" class="i18"><circle cx="12" cy="5" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="12" cy="19" r="1.7" /></svg>
             </button>
-            <!-- D039 对标 n8n 卡菜单 6 项:Open / Share... / Favorite / Duplicate / Archive / Enable MCP access。
+            <!-- D039 对标基线卡菜单 6 项:Open / Share... / Favorite / Duplicate / Archive / Enable MCP access。
                  移除自有 Activate/Manage tags/Move to(方法保留可回退);Share... = Enterprise 锁。 -->
             <div v-if="openMenu === row.id" class="menu row-menu-pop" :data-test-menu-pop="row.id">
               <button class="menu-item" @click="openWorkflow(row.id)">{{ t('Open') }}</button>
@@ -1067,9 +1067,9 @@ const fmtRunTime = (row: ExecutionRow): string => {
 
     </template>
 
-    <!-- ── Executions（B5 对标 n8n：Auto refresh / 多选 / 红色错误行 / Retry） ── -->
+    <!-- ── Executions（B5 对标基线：Auto refresh / 多选 / 红色错误行 / Retry） ── -->
     <template v-else-if="tab === 'executions'">
-      <!-- D044 对标 n8n:Auto refresh + 漏斗 Filters(Status),移除多余 "N executions" 计数 -->
+      <!-- D044 对标基线:Auto refresh + 漏斗 Filters(Status),移除多余 "N executions" 计数 -->
       <div class="exec-tools">
         <label class="exec-autorefresh">
           <input v-model="execAutoRefresh" type="checkbox" data-test="exec-autorefresh" />
@@ -1158,7 +1158,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
                     <svg viewBox="0 0 24 24" fill="currentColor" class="i18"><circle cx="12" cy="5" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="12" cy="19" r="1.7" /></svg>
                   </button>
                   <div v-if="openMenu === `exec-${row.id}`" class="menu row-menu-pop exec-menu-pop" :data-test-exec-menu-pop="row.id">
-                    <!-- n8n 真值(错误行 ⋮ 实测):两个 Retry 项带 “(from node with error)” 后缀,仅错误执行可重试 -->
+                    <!-- 基线真值(错误行 ⋮ 实测):两个 Retry 项带 “(from node with error)” 后缀,仅错误执行可重试 -->
                     <template v-if="row.status === 'error'">
                       <button class="menu-item" :disabled="retryingId === row.id" @click="retryExec(row, false)">
                         {{ retryingId === row.id ? t('Retrying…') : t('Retry with currently saved workflow (from node with error)') }}
@@ -1177,7 +1177,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
         </table>
       </div>
 
-      <!-- 多选浮条（对标 n8n） -->
+      <!-- 多选浮条（对标基线） -->
       <div v-if="selectedExecIds.size > 0" class="exec-bulkbar" data-test="exec-bulkbar">
         <span>{{ t(selectedExecIds.size === 1 ? '{n} row selected' : '{n} rows selected', { n: selectedExecIds.size }) }}</span>
         <button class="btn danger-solid" data-test="exec-bulk-delete" @click="deleteSelectedExecs">{{ t('Delete') }}</button>
@@ -1232,7 +1232,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
       </div>
     </template>
 
-    <!-- ── Variables:对标 n8n Community 锁态(升级墙)。后端 /api/variables 保留,仅前端呈锁态 ── -->
+    <!-- ── Variables:对标基线 Community 锁态(升级墙)。后端 /api/variables 保留,仅前端呈锁态 ── -->
     <template v-else-if="tab === 'variables'">
       <div class="var-lock" data-test="variables-lock">
         <h3 class="vl-title">{{ t('Upgrade to unlock variables') }}</h3>
@@ -1290,7 +1290,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
       </div>
     </template>
 
-    <!-- Add folder 命名弹窗（B7 对标 n8n message.prompt） -->
+    <!-- Add folder 命名弹窗（B7 对标基线 message.prompt） -->
     <div v-if="folderModalOpen" class="modal-mask" data-test="folder-modal" @click.self="folderModalOpen = false">
       <div class="modal-card">
         <h2 class="modal-title">
@@ -1323,7 +1323,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
     />
 
     <!-- ── Create data table 弹窗 ── -->
-    <!-- D048 对标 n8n:label "Data table name"* + 单选 From scratch/Import CSV + Cancel/Create -->
+    <!-- D048 对标基线:label "Data table name"* + 单选 From scratch/Import CSV + Cancel/Create -->
     <div v-if="showDataTableModal" class="modal-mask" data-test="data-table-modal" @click.self="showDataTableModal = false">
       <div class="modal-card">
         <h2 class="modal-title">{{ t('Create new data table') }}</h2>
@@ -1378,7 +1378,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
       </div>
     </div>
 
-    <!-- D039 Share... Enterprise 锁(对标 n8n Community:工作流共享需升级) -->
+    <!-- D039 Share... Enterprise 锁(对标基线 Community:工作流共享需升级) -->
     <div v-if="shareLockOpen" class="modal-mask" data-test="share-lock-modal" @click.self="shareLockOpen = false">
       <div class="modal-card" style="max-width: 460px; text-align: center">
         <h2 style="margin: 0 0 10px">{{ t('Available on the Enterprise plan') }}</h2>
@@ -1387,7 +1387,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
         </p>
         <div style="display: flex; gap: 10px; justify-content: center">
           <button class="btn secondary" @click="shareLockOpen = false">{{ t('Close') }}</button>
-          <a class="btn primary" href="https://n8n.io/pricing" target="_blank" rel="noopener">{{ t('See plans') }}</a>
+          <a class="btn primary" href="https://基线.io/pricing" target="_blank" rel="noopener">{{ t('See plans') }}</a>
         </div>
       </div>
     </div>
@@ -1395,7 +1395,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
 </template>
 
 <style scoped>
-/* n8n 实测@1440: 内容列 x248..1392(左右 48 gutter)、标题区高≈101 至 KPI */
+/* 基线实测@1440: 内容列 x248..1392(左右 48 gutter)、标题区高≈101 至 KPI */
 .ov { padding: 28px 48px 40px 28px; width: 100%; }
 
 /* Header */
@@ -1404,7 +1404,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
 .ov-sub { margin: 4px 0 0; color: var(--text-dim); font-size: 14px; }
 .ov-actions { margin-left: auto; display: flex; align-items: stretch; gap: 10px; }
 
-/* n8n 实测：页头按钮 32px/衬 0 12/圆角 4 */
+/* 基线实测：页头按钮 32px/衬 0 12/圆角 4 */
 .btn {
   display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 var(--spacing--xs);
   border-radius: var(--radius); border: none; font-size: var(--font-size--sm); font-weight: var(--font-weight--medium);
@@ -1436,7 +1436,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
   border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
 .proj-menu:hover { background: var(--bg-hover); color: var(--text); }
-/* n8n 实测（搜索框）：高 32、圆角 4、bg light-2、1px white-alpha-100 内嵌环、
+/* 基线实测（搜索框）：高 32、圆角 4、bg light-2、1px white-alpha-100 内嵌环、
    内衬 0 12px、内部 gap 12、文字 14px 白 */
 .search {
   display: flex; align-items: center; gap: var(--spacing--xs); background: var(--color--background--light-2);
@@ -1450,7 +1450,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
   font-family: inherit; width: 100%; padding: 0; box-shadow: none;
 }
 .search input::placeholder { color: var(--color--text--tint-1); }
-/* n8n 实测:排序控件 196×32(与搜索同宽)/12px 字/衬 0 12 0 8 */
+/* 基线实测:排序控件 196×32(与搜索同宽)/12px 字/衬 0 12 0 8 */
 .sortby {
   display: flex; align-items: center; justify-content: space-between; width: 196px;
   background: var(--color--background--light-2);
@@ -1508,7 +1508,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
 }
 .folder-del:hover { color: var(--err, #ef5f5f); background: rgba(239, 95, 95, 0.12); }
 
-/* Workflow cards — n8n 实测：bg light-3、1px border-color、圆角 8(--radius--lg)、
+/* Workflow cards — 基线实测：bg light-3、1px border-color、圆角 8(--radius--lg)、
    卡间距 8(--spacing--2xs)、内衬 16(--spacing--sm)、标题 14px/500 白/行高 1.35、meta 12px tint-1 */
 .wf-list { display: flex; flex-direction: column; gap: var(--spacing--2xs); }
 .wf-card {
@@ -1530,7 +1530,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
 .wf-meta .sep { color: var(--color--text--tint-1); }
 .wf-meta .active-dot { color: var(--ok); font-size: 12px; }
 .wf-meta .active-dot::before { content: '● '; }
-/* n8n 实测：Personal 徽章 25px 高 / bg light-3 / 1px border / 圆角 4 / 文字 12px */
+/* 基线实测：Personal 徽章 25px 高 / bg light-3 / 1px border / 圆角 4 / 文字 12px */
 .chip {
   display: inline-flex; align-items: center; gap: var(--spacing--3xs); background: var(--color--background--light-3);
   border: var(--border-width) var(--border-style) var(--border-color); border-radius: var(--radius);
@@ -1538,14 +1538,14 @@ const fmtRunTime = (row: ExecutionRow): string => {
   font-size: var(--font-size--2xs); color: var(--color--text); white-space: nowrap;
 }
 .chip svg { color: var(--color--text--tint-1); }
-/* n8n 实测：行内 ⋮ 28×28 / 圆角 4 / 透明底 */
+/* 基线实测：行内 ⋮ 28×28 / 圆角 4 / 透明底 */
 .row-menu {
   width: 28px; height: 28px; border-radius: var(--radius); background: none; border: none;
   color: var(--color--text--shade-1); cursor: pointer; display: flex; align-items: center; justify-content: center;
 }
 .row-menu:hover { background: var(--background--hover); }
 
-/* Pagination — n8n 实测：Total 12px 白；页号 30×28、当前页 1px primary 描边 + 12px/600 primary、透明底 */
+/* Pagination — 基线实测：Total 12px 白；页号 30×28、当前页 1px primary 描边 + 12px/600 primary、透明底 */
 .pager { display: flex; align-items: center; justify-content: flex-end; gap: var(--spacing--2xs); margin-top: 10px; color: var(--color--text--shade-1); font-size: var(--font-size--2xs); }
 .pg-total { margin-right: 6px; }
 .pg-arrow {
@@ -1580,7 +1580,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
 }
 .cred-empty .lock { font-size: 40px; opacity: 0.8; }
 .cred-empty h3 { margin: 8px 0 0; font-weight: 600; color: var(--text-hi); }
-/* Variables 升级锁态(对标 n8n Community):虚线大框 + 标题 + 说明(含 $vars)+ View plans */
+/* Variables 升级锁态(对标基线 Community):虚线大框 + 标题 + 说明(含 $vars)+ View plans */
 .var-lock {
   display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center;
   border: 2px dashed var(--border-strong); border-radius: 14px; padding: 56px 32px; margin-top: 8px;
@@ -1597,7 +1597,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
   box-shadow: inset 0 0 0 1px var(--button--border-color--primary), 0 1px 3px -1px var(--color--black-alpha-100);
 }
 .btn-viewplans:hover { background: var(--button--color--background--primary--hover-active-focus); }
-/* n8n 实测：凭证品牌图标 26×26 裸图，无底框无圆角 */
+/* 基线实测：凭证品牌图标 26×26 裸图，无底框无圆角 */
 .cred-row-icon {
   width: 26px; height: 26px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center; font-size: 15px;
@@ -1644,7 +1644,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
 .exec-tools { display: flex; align-items: center; margin: 18px 0 14px; padding-left: 24px; }
 .exec-sublabel { font-size: 13px; }
 .exec-table { width: 100%; border-collapse: collapse; }
-/* n8n 实测：表头 36px 高 / bg light-1 / 12px-600 neutral-200 / 衬 0 8px 0 16px /
+/* 基线实测：表头 36px 高 / bg light-1 / 12px-600 neutral-200 / 衬 0 8px 0 16px /
    底边 1px neutral-800(--color--foreground) */
 .exec-table thead th {
   text-align: left; font-size: var(--font-size--2xs); font-weight: var(--font-weight--bold); color: var(--color--text);
@@ -1652,7 +1652,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
   background: var(--color--background--light-1);
   border-bottom: var(--border-width) var(--border-style) var(--color--foreground); white-space: nowrap;
 }
-/* n8n 实测列宽@1440:check 50 / Status 153 / Started 187 / Run time 110 / Exec.ID 98 / 尾 56 */
+/* 基线实测列宽@1440:check 50 / Status 153 / Started 187 / Run time 110 / Exec.ID 98 / 尾 56 */
 .exec-check-col { width: 50px; padding-right: 0 !important; text-align: center; }
 .exec-table th:nth-child(2), .exec-table td:nth-child(2) { width: 371px; }
 .exec-table th:nth-child(3), .exec-table td:nth-child(3) { width: 153px; }
@@ -1661,13 +1661,13 @@ const fmtRunTime = (row: ExecutionRow): string => {
 .exec-table th:nth-child(6), .exec-table td:nth-child(6) { width: 98px; }
 .exec-check-col input { accent-color: var(--accent); cursor: pointer; }
 .exec-actions-col { width: 48px; text-align: right; }
-/* n8n 实测:manual 试管图标列 47px */
+/* 基线实测:manual 试管图标列 47px */
 .exec-flask-col { width: 47px; text-align: center; }
 .flask-i { color: var(--color--text--tint-1); }
-/* n8n 实测：错误行整行 rgba(215,56,58,.1)(实例专有值,无对应全局令牌) */
+/* 基线实测：错误行整行 rgba(215,56,58,.1)(实例专有值,无对应全局令牌) */
 .exec-row.exec-error > td { background: rgba(215, 56, 58, 0.1); }
 .exec-autorefresh { display: inline-flex; align-items: center; gap: 8px; font-size: var(--font-size--sm); color: var(--color--text--shade-1); cursor: pointer; white-space: nowrap; }
-/* n8n 实测：状态列 14px 白字 + 彩色图标 */
+/* 基线实测：状态列 14px 白字 + 彩色图标 */
 .exec-status { display: inline-flex; align-items: center; gap: 7px; font-size: var(--font-size--sm); color: var(--color--text--shade-1); }
 .exec-status svg { color: var(--color--text--tint-1); }
 .exec-status.ok svg { color: var(--color--success); }
@@ -1677,7 +1677,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
 .exec-status svg { flex: none; }
 .exec-autorefresh input { accent-color: var(--accent); cursor: pointer; }
 .exec-menu-pop { right: 8px; min-width: 280px; }
-/* n8n Filters 弹层：Tags/Status 下拉 + Show archived 复选 */
+/* 基线 Filters 弹层：Tags/Status 下拉 + Show archived 复选 */
 .filter-pop { top: calc(100% + 6px); right: 0; min-width: 300px; padding: 12px; }
 .fp-label { font-size: var(--font-size--2xs); color: var(--color--text--shade-1); font-weight: var(--font-weight--medium); margin: 8px 0 6px; }
 .fp-label:first-child { margin-top: 0; }
@@ -1698,7 +1698,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
 .btn.danger-solid { background: var(--err); color: #fff; border: none; }
 .exec-caret-col { width: 34px; padding-right: 0 !important; }
 .exec-row { cursor: pointer; }
-/* n8n 实测：行高 48 / 单元格衬 0 8px 0 16px / 14px / 底边 1px neutral-800 */
+/* 基线实测：行高 48 / 单元格衬 0 8px 0 16px / 14px / 底边 1px neutral-800 */
 .exec-row td {
   height: 48px; padding: 0 var(--spacing--2xs) 0 var(--spacing--sm);
   font-size: var(--font-size--sm);

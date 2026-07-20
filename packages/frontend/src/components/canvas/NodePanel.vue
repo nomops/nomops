@@ -7,12 +7,12 @@ import { nodeIcon } from '../../lib/icons.js';
 import IconSvg from '../IconSvg.vue';
 
 /**
- * 节点创建面板(对标 n8n):
+ * 节点创建面板(对标基线):
  * - 空画布 → "What triggers this workflow?" + 8 张策展触发器卡(D070)
  * - 有触发器 → "What happens next?" + 7 张语义分类卡(D069),点卡下钻该类节点列表
  * - 输入搜索 → 回退平铺过滤列表(跨所有节点)
- * 说明:分类/触发器标题与描述均为 n8n live 逐字取证(2026-07-19 经 N 键打开节点创建器读取),
- *       其中 "in n8n" 品牌名按 nomops 替换。
+ * 说明:分类/触发器标题与描述均为基线 live 逐字取证(2026-07-19 经 N 键打开节点创建器读取),
+ *       其中 "in 基线" 品牌名按 nomops 替换。
  */
 const nodeTypes = useNodeTypesStore();
 const editor = useEditorStore();

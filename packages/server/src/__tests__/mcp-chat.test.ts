@@ -56,7 +56,7 @@ describe('Instance-level MCP', () => {
     const mcpToken = enabled.body.token as string;
     expect(mcpToken).toMatch(/^nmcp_/);
 
-    // 未发布的工作流不可暴露（对标 n8n：MCP 只跑已发布版本）
+    // 未发布的工作流不可暴露（对标基线：MCP 只跑已发布版本）
     await request(app).put('/api/mcp/workflows').set(authed()).send({ workflowIds: [wf.body.id] }).expect(400);
     await request(app).post(`/api/workflows/${wf.body.id}/publish`).set(authed()).expect(200);
     const set = await request(app).put('/api/mcp/workflows').set(authed()).send({ workflowIds: [wf.body.id] }).expect(200);

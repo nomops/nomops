@@ -3,8 +3,8 @@ import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 /**
- * Shared with you — 对标 n8n /shared/workflows | /shared/credentials。
- * nomops 自托管暂无跨用户共享数据,恒空态(对齐 n8n Community 空态)。
+ * Shared with you — 对标基线 /shared/workflows | /shared/credentials。
+ * nomops 自托管暂无跨用户共享数据,恒空态(对齐基线 Community 空态)。
  */
 const route = useRoute();
 const router = useRouter();

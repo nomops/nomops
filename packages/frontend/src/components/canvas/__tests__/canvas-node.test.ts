@@ -5,7 +5,7 @@ import type { INode } from '@nomops/workflow';
 import CanvasNode from '../CanvasNode.vue';
 
 /**
- * CanvasNode 悬停工具条（对标 n8n canvas-node-toolbar）。
+ * CanvasNode 悬停工具条（对标基线 canvas-node-toolbar）。
  * 便签分支不含 <Handle>（无端口），可独立挂载；普通节点分支的 Handle 需 VueFlow 上下文，用 stub 顶掉。
  */
 const stickyNode: INode = {

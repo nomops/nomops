@@ -30,6 +30,8 @@ export const useEditorStore = defineStore('editor', {
     selectedNodeName: null as string | null,
     /** D082:多选集(框选 / Shift 点选);单选时等于 [selectedNodeName]。 */
     selectedNames: [] as string[],
+    /** D080:请求进入便签行内编辑的节点名(CanvasNode 监听后置为 null)。 */
+    editingSticky: null as string | null,
     /** D076:从连线中点 + 插入节点时,记住要插进哪条连线;下一次 addNode 消费它。 */
     pendingInsert: null as
       | { source: string; sourceIndex: number; target: string; targetIndex: number; type: string }
@@ -169,7 +171,7 @@ export const useEditorStore = defineStore('editor', {
     addNode(desc: NodeTypeInfo, position?: [number, number]) {
       this.pushHistory();
       const name = uniqueNodeName(desc.defaults.name, this.nodes.map((n) => n.name));
-      // D079 对标 n8n:创建时填入各属性的 default(如便签默认 markdown 内容)
+      // D079 对标基线:创建时填入各属性的 default(如便签默认 markdown 内容)
       const parameters: Record<string, unknown> = {};
       for (const p of desc.properties ?? []) {
         if (p.default !== undefined) parameters[p.name] = p.default;
@@ -242,7 +244,7 @@ export const useEditorStore = defineStore('editor', {
         ...JSON.parse(JSON.stringify(src)) as INode,
         id: crypto.randomUUID(),
         name: uniqueNodeName(src.name, this.nodes.map((n) => n.name)),
-        position: [src.position[0] + 96 + 32, src.position[1] + 32], // n8n 式右下偏移
+        position: [src.position[0] + 96 + 32, src.position[1] + 32], // 基线式右下偏移
       };
       this.nodes.push(copy);
       this.selectedNodeName = copy.name;
@@ -341,7 +343,7 @@ export const useEditorStore = defineStore('editor', {
       this.selectedNames = name ? [name] : [];
     },
 
-    /* ── D082 对标 n8n:多选(框选 / Shift 点选)── */
+    /* ── D082 对标基线:多选(框选 / Shift 点选)── */
     /** 画布选择变化 → 同步多选集;主选中取最后一个(NDV / 自动接线用)。 */
     setSelection(names: string[]) {
       this.selectedNames = [...names];
@@ -371,7 +373,7 @@ export const useEditorStore = defineStore('editor', {
     },
 
     /**
-     * Tidy up（对标 n8n）：按连接拓扑分层自动布局。
+     * Tidy up（对标基线）：按连接拓扑分层自动布局。
      * 列 = 距根的最长路径深度，行 = 同列内保持原相对纵序；便签不参与（保持手动摆放）。
      */
     tidyUp() {

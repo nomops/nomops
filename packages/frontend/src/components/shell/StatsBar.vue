@@ -44,7 +44,7 @@ const cards = computed(() => {
   const d = data.value;
   const runtime = fmtRuntime(d?.avgRuntimeMs ?? 0);
   const saved = fmtSaved(d?.estSavedMinutes ?? 0);
-  // D031 对标 n8n:5 格各深链到自己的 /insights/<metric>
+  // D031 对标基线:5 格各深链到自己的 /insights/<metric>
   return [
     { label: 'Prod. executions', value: d ? String(d.total) : '0', unit: '', dim: false, saved: false, to: '/insights/total' },
     { label: 'Failed prod. executions', value: d ? String(d.error) : '0', unit: '', dim: false, saved: false, to: '/insights/failed' },
@@ -56,7 +56,7 @@ const cards = computed(() => {
 </script>
 
 <template>
-  <!-- n8n 实测（2.30.4 /home/workflows KPI 条）：
+  <!-- 基线实测（2.30.4 /home/workflows KPI 条）：
        ul 外框 1px var(--border-color) + 6px 圆角(--radius--2xs) + overflow hidden;
        格子高 99px、bg --color--background--light-3、padding 6px 24px 0;
        label <strong> 14px/400 白；数值 <em> 24px/600 白；整格可点跳 /insights/<type> -->

@@ -10,7 +10,7 @@ import { api } from '../../api/client.js';
 import { t } from '../../lib/i18n.js';
 
 /**
- * 左侧边栏(对标 n8n):品牌 + 顶栏工具（新建/搜索/折叠）、Overview / Chat(Preview)、
+ * 左侧边栏(对标基线):品牌 + 顶栏工具（新建/搜索/折叠）、Overview / Chat(Preview)、
  * 底部 Templates(外链) · Insights · Help · Settings。固定 201px 不可拖拽。
  * 折叠态收为窄图标栏；快速新建下拉(4 项)；搜索开命令面板；Help/Settings 弹出子菜单。
  */
@@ -21,23 +21,23 @@ const route = useRoute();
 const router = useRouter();
 
 const collapsed = computed(() => ui.sidebarCollapsed);
-// D002 对标 n8n:侧栏固定 201px、不可拖拽(移除调宽把手与逻辑)。
+// D002 对标基线:侧栏固定 201px、不可拖拽(移除调宽把手与逻辑)。
 const teamProjects = computed(() => projects.projects.filter((p) => p.type !== 'personal'));
 
 const flyout = ref<'settings' | 'help' | null>(null);
 
-/* D007/D012–D015 对标 n8n:外链一律照抄 n8n.io/官方资源(用户裁决"完全 1:1")。 */
-const TEMPLATES_URL = 'https://n8n.io/workflows/?utm_source=n8n_app&utm_medium=template_library';
+/* D007/D012–D015:侧栏外链一律指向项目自有资源。Templates 走站内 /templates 路由。 */
+const REPO_URL = 'https://github.com/nomops/nomops';
 const HELP_LINKS = {
-  quickstart: 'https://www.youtube.com/watch?v=4cQWJViybAQ',
-  documentation: 'https://docs.n8n.io/?utm_source=n8n_app&utm_medium=app_sidebar',
-  forum: 'https://community.n8n.io/?utm_source=n8n_app&utm_medium=app_sidebar',
-  course: 'https://docs.n8n.io/courses/',
-  reportBug: 'https://github.com/n8n-io/n8n/issues/new?labels=bug-report',
-  changelog: 'https://docs.n8n.io/release-notes/',
+  quickstart: `${REPO_URL}#quick-start`,
+  documentation: `${REPO_URL}/tree/main/docs`,
+  forum: `${REPO_URL}/discussions`,
+  course: `${REPO_URL}/tree/main/docs/README.md`,
+  reportBug: `${REPO_URL}/issues/new?labels=bug-report`,
+  changelog: `${REPO_URL}/releases`,
 };
 
-/* A1 对标 n8n：Help 红点 = What's New 未读；打开即读 */
+/* A1 对标基线：Help 红点 = What's New 未读；打开即读 */
 const newsUnread = ref(hasUnreadNews());
 const showNews = ref(false);
 function openWhatsNew() {
@@ -51,7 +51,7 @@ function toggleFlyout(which: 'settings' | 'help') {
   quickOpen.value = false;
   flyout.value = flyout.value === which ? null : which;
 }
-/* A3 对标 n8n：Help/Settings 子菜单 hover 展开（离开延迟收起，给滑向子菜单留缓冲） */
+/* A3 对标基线：Help/Settings 子菜单 hover 展开（离开延迟收起，给滑向子菜单留缓冲） */
 let flyoutHideTimer: ReturnType<typeof setTimeout> | null = null;
 function flyoutEnter(which: 'settings' | 'help') {
   if (flyoutHideTimer) clearTimeout(flyoutHideTimer);
@@ -161,18 +161,18 @@ async function openAbout() {
         <span v-if="!collapsed" class="brand-word">nomops</span>
       </RouterLink>
 
-      <!-- 顶部工具:+/搜索/折叠开关。折叠态竖排(对标 n8n 折叠列仍含这三个图标) -->
+      <!-- 顶部工具:+/搜索/折叠开关。折叠态竖排(对标基线折叠列仍含这三个图标) -->
       <div class="brand-tools" @click.stop>
         <div class="flyout-anchor">
           <button class="icon-btn" data-test="quick-create" :title="t('Create')" @click.stop="quickOpen = !quickOpen; flyout = null">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14" /></svg>
           </button>
-          <!-- D008 对标 n8n:+ 菜单 4 项(workflow/credential/data table/project) -->
+          <!-- D008 对标基线:+ 菜单 4 项(workflow/credential/data table/project) -->
           <div v-if="quickOpen" class="flyout quick" data-test="quick-menu" @click.stop>
             <button class="flyout-item qc" data-test="quick-workflow" @click="quickNewWorkflow">{{ t('New workflow') }}<span class="qc-chev">›</span></button>
             <button class="flyout-item qc" data-test="quick-credential" @click="quickNewCredential">{{ t('New credential') }}<span class="qc-chev">›</span></button>
             <button class="flyout-item qc" data-test="quick-datatable" @click="quickNewDataTable">{{ t('New data table') }}<span class="qc-chev">›</span></button>
-            <!-- D009 对标 n8n:New project 带 Enterprise 徽章且置灰不可点 -->
+            <!-- D009 对标基线:New project 带 Enterprise 徽章且置灰不可点 -->
             <button v-if="projects.hasFeature('rbac')" class="flyout-item qc" data-test="quick-project" @click="quickNewProject">
               {{ t('New project') }}<span class="qc-chev">›</span>
             </button>
@@ -202,7 +202,7 @@ async function openAbout() {
       <span v-if="!collapsed" class="badge-preview">{{ t('Preview') }}</span>
     </RouterLink>
 
-    <!-- D004 对标 n8n:无独立 "Personal" 项(个人空间即 Overview 默认上下文) -->
+    <!-- D004 对标基线:无独立 "Personal" 项(个人空间即 Overview 默认上下文) -->
 
     <!-- 团队项目 -->
     <template v-if="teamProjects.length">
@@ -216,12 +216,12 @@ async function openAbout() {
     <div class="sb-spacer" />
 
     <div class="sidebar-bottom">
-      <!-- D005 对标 n8n:侧栏无 "Admin Panel"(路由 /admin 保留,仅移除侧栏入口) -->
-      <!-- D007 对标 n8n:Templates 外链 n8n.io/workflows(带 UTM),新标签打开 -->
-      <a class="nav-item" :href="TEMPLATES_URL" target="_blank" rel="noopener" :title="t('Templates')" data-test="nav-templates" @click="closeAll">
+      <!-- D005 对标基线:侧栏无 "Admin Panel"(路由 /admin 保留,仅移除侧栏入口) -->
+      <!-- D007:Templates 走站内模板库路由 -->
+      <RouterLink class="nav-item" :class="{ active: route.name === 'templates' }" :to="{ name: 'templates' }" :title="t('Templates')" data-test="nav-templates" @click="closeAll">
         <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 7.5 12 12l9-4.5L12 3z" /><path d="M3 12l9 4.5L21 12M3 16.5 12 21l9-4.5" /></svg>
         <span class="lbl">{{ t('Templates') }}</span>
-      </a>
+      </RouterLink>
       <RouterLink class="nav-item" :class="{ active: route.name === 'insights' }" :to="{ name: 'insights' }" :title="t('Insights')" data-test="nav-insights">
         <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V4M4 20h16" /><rect x="7" y="12" width="3" height="5" /><rect x="12" y="8" width="3" height="9" /><rect x="17" y="10" width="3" height="7" /></svg>
         <span class="lbl">{{ t('Insights') }}</span>
@@ -236,7 +236,7 @@ async function openAbout() {
           <span class="lbl">{{ t('Help') }}</span>
           <svg v-if="!collapsed" class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6" /></svg>
         </button>
-        <!-- D012–D015 对标 n8n Help 菜单:Quickstart/Documentation/Forum/Course/Report a bug 外链 n8n.io;
+        <!-- D012–D015 对标基线 Help 菜单:Quickstart/Documentation/Forum/Course/Report a bug 外链基线.io;
              About 保留 nomops 品牌;底部 What's new 分组(新闻标题 + Full changelog + Update)。 -->
         <div v-if="flyout === 'help'" class="flyout" data-test="help-flyout" @click.stop>
           <a class="flyout-item" :href="HELP_LINKS.quickstart" target="_blank" rel="noopener" data-test="help-quickstart" @click="closeAll">{{ t('Quickstart') }}</a>
@@ -323,14 +323,14 @@ async function openAbout() {
 </template>
 
 <style scoped>
-/* D002 对标 n8n:侧栏固定 201px、不可拖拽 */
+/* D002 对标基线:侧栏固定 201px、不可拖拽 */
 .sidebar { position: relative; }
 .sidebar:not(.collapsed) { width: 201px; }
 
 .sidebar.collapsed { width: 58px; padding: 10px 8px; align-items: center; }
 .sidebar.collapsed .lbl { display: none; }
 .sidebar.collapsed .nav-item { justify-content: center; padding: 8px 0; }
-/* 折叠态:logo 在上,+/搜索/折叠 三键竖排在下(对标 n8n 折叠列) */
+/* 折叠态:logo 在上,+/搜索/折叠 三键竖排在下(对标基线折叠列) */
 .sidebar.collapsed .brand-row { flex-direction: column; justify-content: center; gap: 4px; }
 .sidebar.collapsed .brand-tools { flex-direction: column; margin-left: 0; gap: 2px; }
 .sidebar.collapsed .flyout.quick { left: calc(100% + 4px); top: 0; }
@@ -341,7 +341,7 @@ async function openAbout() {
 .brand-mark { width: 38px; height: 22px; flex-shrink: 0; }
 .brand-word { font-weight: 700; font-size: 16px; letter-spacing: -0.3px; color: var(--text-hi); }
 .brand-tools { display: flex; align-items: center; gap: 0; margin-left: auto; flex-shrink: 0; }
-/* n8n 实测：顶部工具钮 28×28/圆角 4；导航图标 16×16 白（24px 盒居中）；
+/* 基线实测：顶部工具钮 28×28/圆角 4；导航图标 16×16 白（24px 盒居中）；
    Preview 徽章 purple-200 底/purple-600 字/圆角 16/10px 600/衬 2px 4px */
 .icon-btn {
   width: 28px; height: 28px; flex-shrink: 0; border: none; background: none; color: var(--color--text--shade-1);

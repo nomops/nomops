@@ -109,10 +109,10 @@ export class WorkflowService {
 
   /** folderId: undefined → 全部；null → 项目根；string → 指定文件夹。archived=true 只看归档。 */
   /**
-   * 项目依赖图（对标 n8n 卡片依赖胶囊）：一次扫全项目，返回每个工作流的依赖列表。
+   * 项目依赖图（对标基线卡片依赖胶囊）：一次扫全项目，返回每个工作流的依赖列表。
    * 类型：credential（节点绑定的凭证）/ subWorkflow（Execute Workflow 目标）/
    * errorWorkflow（settings.errorWorkflow）+ 两个反向（parentWorkflow / errorWorkflowParent）。
-   * 已删除的凭证/工作流引用不计入（以 DB 现存为准，与 n8n 打开时重查的语义一致）。
+   * 已删除的凭证/工作流引用不计入（以 DB 现存为准，与基线打开时重查的语义一致）。
    */
   async dependencies(projectId: string): Promise<Record<string, Array<{ type: string; id: string; name: string }>>> {
     const [workflows, credentials] = await Promise.all([

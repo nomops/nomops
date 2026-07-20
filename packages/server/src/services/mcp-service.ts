@@ -6,7 +6,7 @@ import type { ExecutionService } from './execution-service.js';
 import type { WorkflowService } from './workflow-service.js';
 
 /**
- * 实例级 MCP（对标 n8n Instance-level MCP，Preview）：
+ * 实例级 MCP（对标基线 Instance-level MCP，Preview）：
  * 把勾选的工作流暴露为 MCP tools，让 Claude Code / Cursor 等 MCP 客户端发现并执行。
  * - 传输：MCP Streamable HTTP 的最小子集（POST JSON-RPC 2.0，响应 application/json，不做 SSE 流）。
  * - 鉴权：Access token（Bearer；DB 只存 sha256 哈希，明文仅生成时回显一次——铁律 3）。
@@ -101,7 +101,7 @@ export class McpService {
   }
 
   /**
-   * 覆盖式设置暴露的工作流。约束对标 n8n：必须**已发布**（MCP 调用跑已发布版本）。
+   * 覆盖式设置暴露的工作流。约束对标基线：必须**已发布**（MCP 调用跑已发布版本）。
    * 已删除的工作流 id 静默剔除（白名单可能残留孤儿——工作流删除不反向清这里）。
    */
   async setWorkflows(workflowIds: string[]): Promise<void> {

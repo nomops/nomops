@@ -165,7 +165,7 @@ export function createAuthRouter(services: AppServices): Router {
     }),
   );
 
-  // 首访引导：无任何用户 → 前端登录页自动切「Set up owner account」（对标 n8n /setup）
+  // 首访引导：无任何用户 → 前端登录页自动切「Set up owner account」（对标基线 /setup）
   router.get(
     '/needs-setup',
     h(async (_req, res) => {
@@ -348,7 +348,7 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
-  /* ── 收藏 / 归档（对标 n8n 卡片菜单 Favorite / Archive；Delete 仅对 archived 开放） ── */
+  /* ── 收藏 / 归档（对标基线卡片菜单 Favorite / Archive；Delete 仅对 archived 开放） ── */
   router.post(
     '/workflows/:id/favorite',
     editor,
@@ -364,7 +364,7 @@ export function createApiRouter(services: AppServices): Router {
     editor,
     h(async (req, res) => {
       const row = await services.workflows.getById(param(req, 'id'), auth(req).projectId);
-      // 归档即下线：触发器注销 + active=false（n8n 语义）
+      // 归档即下线：触发器注销 + active=false（基线语义）
       if (row.active) {
         await services.activeWorkflows.remove(row.id);
         await services.repos.workflows.setActive(row.id, false);
@@ -553,7 +553,7 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
-  /* 画布/API 聊天（Chat Trigger 起点，对标 n8n Chat 面板） */
+  /* 画布/API 聊天（Chat Trigger 起点，对标基线 Chat 面板） */
   router.post(
     '/workflows/:id/chat',
     editor,
@@ -582,7 +582,7 @@ export function createApiRouter(services: AppServices): Router {
       const body = parseBody(activateBodySchema, req);
       let row = await services.workflows.getById(param(req, 'id'), auth(req).projectId);
       if (body.active) {
-        // 从未发布 → 激活即发布当前定义（对标 n8n：激活总是让「此刻的定义」上生产）
+        // 从未发布 → 激活即发布当前定义（对标基线：激活总是让「此刻的定义」上生产）
         if (!row.publishedVersionId) {
           row = await services.workflows.publish(row.id, auth(req).projectId, auth(req).userId);
         }
@@ -647,7 +647,7 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
-  /* 删除执行记录（B5 对标 n8n executions 表：行菜单 Delete + 多选批量） */
+  /* 删除执行记录（B5 对标基线 executions 表：行菜单 Delete + 多选批量） */
   router.delete(
     '/executions/:id',
     editor,
@@ -709,7 +709,7 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
-  /* 编辑凭证（对标 n8n 卡片 Open）：改名 + 覆写填写的字段（留空 = 保持不变） */
+  /* 编辑凭证（对标基线卡片 Open）：改名 + 覆写填写的字段（留空 = 保持不变） */
   router.patch(
     '/credentials/:id',
     editor,
@@ -1148,7 +1148,7 @@ export function createApiRouter(services: AppServices): Router {
     '/insights',
     h(async (req, res) => {
       const executions = await services.executions.list(auth(req).projectId);
-      // E2 对标 n8n：?from=ISO&to=ISO 自定义日期范围；缺省近 7 日
+      // E2 对标基线：?from=ISO&to=ISO 自定义日期范围；缺省近 7 日
       const parse = (v: unknown): Date | null => {
         if (typeof v !== 'string' || !v) return null;
         const d = new Date(v);
@@ -1190,7 +1190,7 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
-  /* Configure provider（Settings → Chat 弹窗；对标 n8n：Enable / Default credential / Context window） */
+  /* Configure provider（Settings → Chat 弹窗；对标基线：Enable / Default credential / Context window） */
   router.patch(
     '/assistant/providers/:id',
     h(async (req, res) => {
@@ -1719,7 +1719,7 @@ export function createApiRouter(services: AppServices): Router {
       await assertInstanceAdmin(req);
       const users = await services.repos.users.findAll();
       const invitations = await services.repos.invitations.findAll();
-      // Projects 列（对标 n8n）：成员所属项目数；owner/admin 前端显示 "All projects"
+      // Projects 列（对标基线）：成员所属项目数；owner/admin 前端显示 "All projects"
       const projectCounts = new Map<string, number>();
       for (const u of users) {
         projectCounts.set(u.id, (await services.repos.projects.findAllByUserWithRole(u.id)).length);

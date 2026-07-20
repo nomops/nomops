@@ -47,7 +47,7 @@ interface Item {
   run: () => void;
 }
 
-/* D024 对标 n8n:命令面板用单色描边 SVG 图标(非 emoji)。 */
+/* D024 对标基线:命令面板用单色描边 SVG 图标(非 emoji)。 */
 type IconKey = 'plus' | 'workflow' | 'key' | 'table' | 'command';
 const ICON_PATHS: Record<IconKey, string> = {
   plus: 'M12 5v14M5 12h14',
@@ -57,7 +57,7 @@ const ICON_PATHS: Record<IconKey, string> = {
   command: 'M6 4h4v4H6zM14 4h4v4h-4zM6 12h4v8H6zM14 12h4v4h-4z',
 };
 
-/** 分组结构对齐 n8n 命令面板：Workflows(建/开) / Credentials(建/开) 各成组，
+/** 分组结构对齐基线命令面板：Workflows(建/开) / Credentials(建/开) 各成组，
     上下文命令(画布注入)按其组名单独成组置顶。 */
 interface Group {
   label: string;
@@ -104,7 +104,7 @@ const groups = computed<Group[]>(() => {
     })),
   ];
 
-  // Data tables 组(对标 n8n 命令面板全局态第三组)
+  // Data tables 组(对标基线命令面板全局态第三组)
   const dataGroup: Item[] = [
     ...(match('Create data table in Personal') ? [{ kind: 'action' as const, icon: 'plus' as const, label: 'Create data table in Personal', sub: '', run: () => go('/?tab=datatables') }] : []),
     ...dataTables.value.filter((d) => match(d.name)).map((d) => ({
@@ -116,7 +116,7 @@ const groups = computed<Group[]>(() => {
     })),
   ];
 
-  // D023 对标 n8n:全局态命令面板无 "Executions" 组(执行入口仅在工作流上下文经 paletteContext 出现)
+  // D023 对标基线:全局态命令面板无 "Executions" 组(执行入口仅在工作流上下文经 paletteContext 出现)
 
   const out: Group[] = [];
   if (ctxItems.length) out.push({ label: ui.paletteContext[0]?.group ?? 'Commands', items: ctxItems });
@@ -202,7 +202,7 @@ function onKey(e: KeyboardEvent) {
 
 <style scoped>
 .pi-shortcut { margin-left: auto; font-size: 11.5px; white-space: nowrap; }
-/* n8n 实测（命令面板 _commandBar_）：面板 700px/bg light-3/1px border/4px 圆角/
+/* 基线实测（命令面板 _commandBar_）：面板 700px/bg light-3/1px border/4px 圆角/
    --command-bar--shadow 阴影；**无遮罩变暗**；输入行 48px(衬 0 32px 0 16px, 14px)；
    列表区衬 8px；分组标 12px neutral-400 衬 12px 8px；条目高 40px */
 .palette-overlay {

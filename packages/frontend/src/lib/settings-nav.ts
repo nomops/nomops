@@ -1,5 +1,5 @@
 /**
- * Settings 导航单一事实源（对标 n8n）：Settings 页专属侧栏、主侧栏 Settings flyout、
+ * Settings 导航单一事实源（对标基线）：Settings 页专属侧栏、主侧栏 Settings flyout、
  * Chat 页 Settings flyout 三处共用（顺序 / 命名 / 徽标 / 图标一致）。
  */
 export type SettingsSection =
@@ -23,7 +23,7 @@ export type SettingsSection =
 export const SETTINGS_SECTIONS: Array<{ key: SettingsSection; label: string; badge?: string }> = [
   { key: 'billing', label: 'Usage and plan' },
   { key: 'personal', label: 'Personal' },
-  // D017/D132 对标 n8n:设置左导航无 "Languages"(section 渲染保留,仅移除导航入口)
+  // D017/D132 对标基线:设置左导航无 "Languages"(section 渲染保留,仅移除导航入口)
   { key: 'users', label: 'Users' },
   { key: 'roles', label: 'Roles', badge: 'New' },
   { key: 'api', label: 'nomops API' },

@@ -50,7 +50,7 @@ function onEdgeRemove(id: string) {
   if (conn) editor.disconnect(conn);
 }
 
-/* ── D082 对标 n8n:多选(Shift 框选 / ⌘·Ctrl 点选)── */
+/* ── D082 对标基线:多选(Shift 框选 / ⌘·Ctrl 点选)── */
 function onSelectionChange({ nodes }: { nodes: Node[] }) {
   editor.setSelection(nodes.map((n) => n.id));
 }
@@ -63,7 +63,7 @@ function clearSelection() {
   editor.select(null);
 }
 
-/** C8 对标 n8n Tidy up：自动分层布局后适配视口。 */
+/** C8 对标基线 Tidy up：自动分层布局后适配视口。 */
 function onTidyUp() {
   editor.tidyUp();
   void nextTick(() => fitView({ padding: 0.2 }));
@@ -119,7 +119,7 @@ function onDrop(event: DragEvent) {
   editor.addNode(desc, [pos.x, pos.y]);
 }
 
-/* ── D068 空白画布右键菜单(对标 n8n:Add node / Add sticky note / Tidy up workflow / Select all / Clear selection)── */
+/* ── D068 空白画布右键菜单(对标基线:Add node / Add sticky note / Tidy up workflow / Select all / Clear selection)── */
 const paneCtx = ref<{ x: number; y: number } | null>(null);
 function onPaneContextMenu(event: MouseEvent) {
   event.preventDefault();
@@ -148,7 +148,7 @@ function paneClearSelection() {
   editor.select(null);
 }
 
-/* ── 节点右键菜单(对标 n8n 13 项)── */
+/* ── 节点右键菜单(对标基线 13 项)── */
 const ctxMenu = ref<{ x: number; y: number; node: string } | null>(null);
 function onNodeContextMenu({ event, node }: NodeMouseEvent) {
   const e = event as MouseEvent;
@@ -158,8 +158,24 @@ function onNodeContextMenu({ event, node }: NodeMouseEvent) {
 }
 function closeCtx() {
   ctxMenu.value = null;
+  ctxColorOpen.value = false;
 }
 const ctxNode = computed(() => editor.nodes.find((n) => n.name === ctxMenu.value?.node));
+/* ── D080 对标基线:便签右键菜单(与普通节点 13 项不同)── */
+const ctxIsSticky = computed(() => ctxNode.value?.type === 'nomops.stickyNote');
+const STICKY_COLORS = ['yellow', 'gold', 'red', 'green', 'blue', 'purple', 'neutral'] as const;
+const ctxColorOpen = ref(false);
+function ctxStickyEdit() {
+  const n = ctxMenu.value?.node;
+  closeCtx();
+  if (n) editor.editingSticky = n;
+}
+function ctxStickyColor(color: string) {
+  const n = ctxMenu.value?.node;
+  closeCtx();
+  ctxColorOpen.value = false;
+  if (n) editor.setParam(n, 'color', color);
+}
 const ctxDisabled = computed(() => Boolean(ctxNode.value?.disabled));
 async function ctxExecute() {
   const name = ctxMenu.value?.node;
@@ -237,7 +253,7 @@ function ctxDelete() { const n = ctxMenu.value?.node; closeCtx(); if (n) editor.
       </button>
     </div>
 
-    <!-- D068 空白画布右键菜单(对标 n8n) -->
+    <!-- D068 空白画布右键菜单(对标基线) -->
     <template v-if="paneCtx">
       <div class="ctx-backdrop" @click="closePaneCtx" @contextmenu.prevent="closePaneCtx" />
       <div class="ctx-menu" data-test="pane-context-menu" :style="{ left: paneCtx.x + 'px', top: paneCtx.y + 'px' }">
@@ -249,10 +265,41 @@ function ctxDelete() { const n = ctxMenu.value?.node; closeCtx(); if (n) editor.
       </div>
     </template>
 
-    <!-- 节点右键菜单(对标 n8n 13 项);暂无对应能力的项置灰(Replace/Pin/Convert/Select all) -->
+    <!-- 节点右键菜单(对标基线 13 项);暂无对应能力的项置灰(Replace/Pin/Convert/Select all) -->
     <template v-if="ctxMenu">
       <div class="ctx-backdrop" @click="closeCtx" @contextmenu.prevent="closeCtx" />
-      <div class="ctx-menu" data-test="node-context-menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }">
+      <!-- D080 便签右键菜单(对标基线:与普通节点不同的 8 项) -->
+      <div
+        v-if="ctxIsSticky"
+        class="ctx-menu"
+        data-test="sticky-context-menu"
+        :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
+      >
+        <button class="ctx-item" data-test="sticky-edit" @click="ctxStickyEdit">Edit<span class="ctx-sc">↵</span></button>
+        <button class="ctx-item" data-test="sticky-color" @click.stop="ctxColorOpen = !ctxColorOpen">
+          Change color<span class="ctx-sc">›</span>
+        </button>
+        <div v-if="ctxColorOpen" class="ctx-swatches" @click.stop>
+          <button
+            v-for="c in STICKY_COLORS"
+            :key="c"
+            class="ctx-swatch"
+            :class="`sw-${c}`"
+            :title="c"
+            :data-test-sticky-color="c"
+            @click="ctxStickyColor(c)"
+          />
+        </div>
+        <button class="ctx-item" data-test="sticky-copy" @click="ctxCopy">Copy<span class="ctx-sc">⌘C</span></button>
+        <button class="ctx-item" data-test="sticky-duplicate" @click="ctxDuplicate">Duplicate<span class="ctx-sc">⌘D</span></button>
+        <div class="ctx-sep" />
+        <button class="ctx-item" data-test="sticky-tidy" @click="ctxTidy">Tidy up workflow<span class="ctx-sc">⇧⌥T</span></button>
+        <button class="ctx-item" data-test="sticky-select-all" @click="closeCtx(); selectAllNodes()">Select all<span class="ctx-sc">⌘A</span></button>
+        <button class="ctx-item" data-test="sticky-clear" @click="closeCtx(); clearSelection()">Clear selection</button>
+        <button class="ctx-item danger" data-test="sticky-delete" @click="ctxDelete">Delete<span class="ctx-sc">Del</span></button>
+      </div>
+
+      <div v-else class="ctx-menu" data-test="node-context-menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }">
         <button class="ctx-item" data-test="ctx-open" @click="ctxOpen">Open<span class="ctx-sc">↵</span></button>
         <button class="ctx-item" data-test="ctx-execute" @click="ctxExecute">Execute step</button>
         <button class="ctx-item" data-test="ctx-rename" @click="ctxRename">Rename<span class="ctx-sc">Space</span></button>
@@ -274,12 +321,12 @@ function ctxDelete() { const n = ctxMenu.value?.node; closeCtx(); if (n) editor.
 </template>
 
 <style scoped>
-/* n8n 实测：画布底 --canvas--color--background(dark neutral-950)、
+/* 基线实测：画布底 --canvas--color--background(dark neutral-950)、
    点阵 --canvas--dot--color(neutral-700)、主连线 oklch(0.627 0 0) 2px */
 .canvas-wrap { flex: 1; min-height: 0; position: relative; background: var(--canvas--color--background); }
 .canvas-wrap :deep(.vue-flow__background circle) { fill: var(--canvas--dot--color); }
-.canvas-wrap :deep(.vue-flow__edge-path) { stroke: oklch(0.42 0 0); stroke-width: 2px; } /* n8n 实测默认边线 */
-/* AI 能力连接：灰色虚线（n8n 同为虚线） */
+.canvas-wrap :deep(.vue-flow__edge-path) { stroke: oklch(0.42 0 0); stroke-width: 2px; } /* 基线实测默认边线 */
+/* AI 能力连接：灰色虚线（基线同为虚线） */
 .canvas-wrap :deep(.vue-flow__edge.edge-ai path.vue-flow__edge-path) {
   stroke-dasharray: 6 4;
   stroke: oklch(0.42 0 0);
@@ -308,6 +355,20 @@ function ctxDelete() { const n = ctxMenu.value?.node; closeCtx(); if (n) editor.
 .ctx-item.danger { color: var(--color--danger); }
 .ctx-sc { color: var(--color--text--tint-1); font-size: 11px; }
 .ctx-sep { height: 1px; background: var(--border-color); margin: 4px 2px; }
+/* D080 便签「Change color」7 色板(与便签 hover 工具条同色令牌) */
+.ctx-swatches { display: flex; gap: 6px; padding: 6px 10px 8px; }
+.ctx-swatch {
+  width: 16px; height: 16px; padding: 0; border-radius: 50%; cursor: pointer;
+  border: var(--border-width) var(--border-style) var(--sticky--border-color);
+}
+.ctx-swatch:hover { outline: 2px solid var(--color--primary); outline-offset: 1px; }
+.ctx-swatch.sw-yellow { background: var(--sticky--color--background--variant-1); }
+.ctx-swatch.sw-gold { background: var(--sticky--color--background--variant-2); }
+.ctx-swatch.sw-red { background: var(--sticky--color--background--variant-3); }
+.ctx-swatch.sw-green { background: var(--sticky--color--background--variant-4); }
+.ctx-swatch.sw-blue { background: var(--sticky--color--background--variant-5); }
+.ctx-swatch.sw-purple { background: var(--sticky--color--background--variant-6); }
+.ctx-swatch.sw-neutral { background: var(--sticky--color--background--variant-7); }
 .zc-i { width: 15px; height: 15px; }
 .zoom-controls button {
   width: 32px; height: 32px; padding: 0; font-size: 15px;

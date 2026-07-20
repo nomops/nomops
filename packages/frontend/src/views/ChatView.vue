@@ -5,7 +5,7 @@ import { api, type WorkflowRow } from '../api/client.js';
 import SettingsMenu from '../components/shell/SettingsMenu.vue';
 
 /**
- * Chat 页（D1，完全对标 n8n Chat）：整页接管布局。
+ * Chat 页（D1，完全对标基线 Chat）：整页接管布局。
  * 专属侧栏：New chat / Personal agents / Workflow agents / 按日期分组的会话历史 / Settings。
  * 主区：顶栏 Select model 下拉（搜索 + Personal agents / Workflow agents / Anthropic 模型），
  * 未选模型时输入禁用并显示提示条；选中后正常对话。
@@ -23,7 +23,7 @@ interface PersonalAgent {
   name: string;
   system: string;
 }
-/** 会话目标：模型 / 个人 agent / 工作流 agent（同 n8n Select model 三类）。 */
+/** 会话目标：模型 / 个人 agent / 工作流 agent（同基线 Select model 三类）。 */
 interface ChatTarget {
   type: 'model' | 'agent' | 'workflow';
   label: string;
@@ -105,7 +105,7 @@ function deleteSession(id: string) {
   if (activeSessionId.value === id) activeSessionId.value = null;
 }
 
-/** 会话历史按日期分组（Today / Yesterday / Previous，同 n8n）。 */
+/** 会话历史按日期分组（Today / Yesterday / Previous，同基线）。 */
 const groupedSessions = computed(() => {
   const now = new Date();
   const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -124,7 +124,7 @@ const groupedSessions = computed(() => {
   return groups.filter((g) => g.items.length > 0);
 });
 
-/* ── Select model 下拉（同 n8n：搜索 + Personal agents / Workflow agents / Anthropic） ── */
+/* ── Select model 下拉（同基线：搜索 + Personal agents / Workflow agents / Anthropic） ── */
 const modelPickerOpen = ref(false);
 const settingsFlyoutOpen = ref(false);
 const modelSearch = ref('');
@@ -168,9 +168,9 @@ const pickerGroups = computed(() => {
   }
   return order.map((g) => ({ group: g, items: byGroup.get(g)! }));
 });
-/* D157 对标 n8n:provider → models 两级级联。
+/* D157 对标基线:provider → models 两级级联。
    Agents 两组仍是直选;每个 provider 一行带 ›,悬停/点击展开其 models 子菜单。
-   搜索时退化为扁平列表(跨 provider 搜 model),同 n8n。 */
+   搜索时退化为扁平列表(跨 provider 搜 model),同基线。 */
 const isSearching = computed(() => modelSearch.value.trim().length > 0);
 const agentGroups = computed(() =>
   pickerGroups.value.filter((g) => g.group === 'Personal agents' || g.group === 'Workflow agents'),
@@ -284,7 +284,7 @@ function chatWith(target: ChatTarget) {
 
 <template>
   <div class="chatpage" data-test="chat-page">
-    <!-- 专属侧栏（整页接管，对标 n8n Chat） -->
+    <!-- 专属侧栏（整页接管，对标基线 Chat） -->
     <aside class="chat-side" data-test="chat-side">
       <div class="side-top">
         <button class="side-logo" title="Back to nomops" data-test="chat-logo" @click="router.push({ name: 'overview' })">
@@ -335,7 +335,7 @@ function chatWith(target: ChatTarget) {
 
     <!-- 主区 -->
     <div class="chat-main">
-      <!-- Personal agents 页(对标 n8n:标题 + 副标 + 右上 New Agent 橙钮 + 空态) -->
+      <!-- Personal agents 页(对标基线:标题 + 副标 + 右上 New Agent 橙钮 + 空态) -->
       <div v-if="view === 'personal-agents'" class="agents-page" data-test="personal-agents-page">
         <div class="agents-head">
           <div>
@@ -376,7 +376,7 @@ function chatWith(target: ChatTarget) {
         </div>
       </div>
 
-      <!-- Workflow agents 页（文案对标 n8n） -->
+      <!-- Workflow agents 页（文案对标基线） -->
       <div v-else-if="view === 'workflow-agents'" class="agents-page" data-test="workflow-agents-page">
         <h1>Workflow Agents</h1>
         <p class="dim sub">Browse and use AI agents built with nomops workflows</p>
@@ -398,7 +398,7 @@ function chatWith(target: ChatTarget) {
         </div>
       </div>
 
-      <!-- 会话区（对标 n8n：顶栏 Select model；未选模型禁输入） -->
+      <!-- 会话区（对标基线：顶栏 Select model；未选模型禁输入） -->
       <template v-else>
         <!-- 顶栏：Select model 下拉 -->
         <div class="model-bar" @click.stop>
@@ -489,7 +489,7 @@ function chatWith(target: ChatTarget) {
           </div>
         </div>
 
-        <!-- 底部输入区（对标 n8n：未选模型显示提示条 + 禁用输入） -->
+        <!-- 底部输入区（对标基线：未选模型显示提示条 + 禁用输入） -->
         <div class="composer-dock">
           <div v-if="!activeSession?.target" class="model-hint" data-test="model-hint">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" class="i14"><circle cx="12" cy="12" r="9" /><path d="M12 8h.01M12 11v5" /></svg>
@@ -497,7 +497,7 @@ function chatWith(target: ChatTarget) {
             <a href="#" data-test="model-hint-link" @click.prevent.stop="modelPickerOpen = true">select a model</a>
             to start a conversation
           </div>
-          <!-- D156 对标 n8n:输入区 + 底栏(左 +Tools / 右 橙色发送) -->
+          <!-- D156 对标基线:输入区 + 底栏(左 +Tools / 右 橙色发送) -->
           <div class="composer" :class="{ disabled: !activeSession?.target }">
             <textarea
               v-model="input"
@@ -622,7 +622,7 @@ function chatWith(target: ChatTarget) {
 .apply svg { width: 14px; height: 14px; }
 
 /* 底部输入区 */
-.composer-dock { padding: 0 24px 22px; max-width: 806px; width: 100%; margin: 0 auto; } /* n8n 实测 composer 758 宽 */
+.composer-dock { padding: 0 24px 22px; max-width: 806px; width: 100%; margin: 0 auto; } /* 基线实测 composer 758 宽 */
 .model-hint svg, .model-btn svg { width: 14px; height: 14px; flex: none; }
 .model-hint {
   display: flex; align-items: center; gap: 7px;
@@ -631,7 +631,7 @@ function chatWith(target: ChatTarget) {
 }
 .model-hint a { color: var(--color--purple-300); text-decoration: underline; }
 .model-hint + .composer { border-top-left-radius: 0; border-top-right-radius: 0; }
-/* n8n 实测：composer = bg light-3 / 圆角 8 / 衬 8 / 1px 白环 + 0 1px 3px -1px 投影 */
+/* 基线实测：composer = bg light-3 / 圆角 8 / 衬 8 / 1px 白环 + 0 1px 3px -1px 投影 */
 .composer {
   position: relative; width: 100%;
   background: var(--color--background--light-3); border: none;

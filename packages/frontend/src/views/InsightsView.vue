@@ -2,9 +2,9 @@
 import { computed } from 'vue';
 
 /**
- * Insights — 对标 n8n 2.30.4 Community:锁态。
+ * Insights — 对标参考基线 2.30.4 Community:锁态。
  * H1 "Insights" + 日期范围 chip + 升级锁块(Upgrade to access more detailed insights)。
- * 说明:nomops 后端 /api/insights 仍在(未删),此处仅前端按 1:1 呈现 n8n 的锁态。
+ * 说明:nomops 后端 /api/insights 仍在(未删),此处仅前端按 1:1 呈现基线的锁态。
  */
 const mon = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const fmt = (d: Date) => `${d.getDate()} ${mon[d.getMonth()]}`;
@@ -44,7 +44,7 @@ const rangeLabel = computed(() => {
   background: none; border: var(--border-width) var(--border-style) var(--border-color); color: var(--color--text); cursor: pointer;
 }
 
-/* 升级锁块(对标 n8n Community Insights) */
+/* 升级锁块(对标基线 Community Insights) */
 .lock {
   display: flex; flex-direction: column; align-items: center; text-align: center;
   gap: 12px; padding: 96px 24px; max-width: 460px; margin: 0 auto;

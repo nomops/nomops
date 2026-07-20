@@ -502,7 +502,7 @@ export const CREDENTIAL_TYPES: CredentialTypeMeta[] = [
     ],
   },
   {
-    // D051 对标 n8n OpenAI 凭证字段集:API Key* / Organization ID(optional) / Base URL / Add Custom Header
+    // D051 对标基线 OpenAI 凭证字段集:API Key* / Organization ID(optional) / Base URL / Add Custom Header
     type: 'openAiApi',
     displayName: 'OpenAI API',
     icon: '🤖',

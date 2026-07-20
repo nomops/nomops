@@ -7,7 +7,7 @@ import { useAuthStore } from '../stores/auth.js';
 import ReadOnlyCanvas from '../components/canvas/ReadOnlyCanvas.vue';
 
 /**
- * 工作流版本历史整页（对标 n8n `/workflow/:id/history/:versionId`）。
+ * 工作流版本历史整页（对标基线 `/workflow/:id/history/:versionId`）。
  * 左：选中版本的只读斜纹画布快照;右:Versions | Publish Timeline 双 tab +
  * 版本时间轴列表 + 升级脚注;画布右上浮动 Actions 下拉(4 项)。
  */
@@ -102,7 +102,7 @@ function closeHistory() {
   void router.push(`/workflow/${workflowId.value}`);
 }
 
-/* ── Actions 下拉(对标 n8n:Publish version / Clone to new workflow / Open version in new tab / Download)── */
+/* ── Actions 下拉(对标基线:Publish version / Clone to new workflow / Open version in new tab / Download)── */
 async function publishVersion() {
   actionsOpen.value = false;
   if (!selectedId.value) return; // Current changes 无需发布
@@ -193,7 +193,7 @@ function download() {
         <template v-if="tab === 'versions'">
           <p v-if="loadError" class="wh-error">{{ loadError }}</p>
           <div class="wh-list-scroll" data-test="workflow-history-list">
-            <!-- Current changes:当前工作副本,始终置顶(对标 n8n) -->
+            <!-- Current changes:当前工作副本,始终置顶(对标基线) -->
             <ul class="wh-list">
               <li
                 class="wh-item"

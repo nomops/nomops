@@ -121,13 +121,13 @@ export const settings = pgTable('settings', {
 interface INode {
   id: string;                    // 画布内唯一
   name: string;                  // 显示名，连接用它引用（唯一）
-  type: string;                  // node type 名，如 'n8n-nodes-base.httpRequest' → 我们用 'nomops.httpRequest'
+  type: string;                  // node type 名，统一 `nomops.` 前缀，如 `nomops.httpRequest`
   typeVersion: number;           // 节点版本，用于兼容升级
   position: [number, number];    // 画布坐标
   parameters: Record<string, any>;  // 用户填的参数（可含 {{表达式}}）
   credentials?: Record<string, { id: string; name: string }>;  // 引用的凭证
   disabled?: boolean;
-  // 循环/容器用（参考 n8n 无此，我们如需嵌套可加 parentId）
+  // 循环/容器用（参考基线无此，我们如需嵌套可加 parentId）
 }
 
 // 连接：从源节点的某输出，连到目标节点的某输入

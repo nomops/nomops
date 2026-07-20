@@ -5,8 +5,8 @@ import { api } from '../api/client.js';
 import { useAuthStore } from '../stores/auth.js';
 
 /**
- * 认证页（对标 n8n 自托管）：
- * - 首访无用户 → 自动切「Set up owner account」（对应 n8n /setup；后端注册本就只放行首个用户）
+ * 认证页（对标基线自托管）：
+ * - 首访无用户 → 自动切「Set up owner account」（对应基线 /setup；后端注册本就只放行首个用户）
  * - 已有用户 → Sign in；后续用户走邀请（SignupView）
  */
 const auth = useAuthStore();
@@ -129,7 +129,7 @@ async function submitReset() {
 
 <template>
   <div class="auth-page">
-    <!-- 居中 logo（卡片之外，对标 n8n） -->
+    <!-- 居中 logo（卡片之外，对标基线） -->
     <div class="auth-logo">
       <svg class="logo-mark" viewBox="19 37 130 54" fill="none">
         <defs>
@@ -182,7 +182,7 @@ async function submitReset() {
         </form>
       </template>
 
-      <!-- 首个用户：owner setup（对标 n8n /setup） -->
+      <!-- 首个用户：owner setup（对标基线 /setup） -->
       <template v-else-if="mode === 'setup'">
         <h1 class="card-title">Set up owner account</h1>
         <form @submit.prevent="submit">
@@ -269,7 +269,7 @@ async function submitReset() {
 </template>
 
 <style scoped>
-/* ══ n8n 2.30.4 /signin 实测（1440×840, dark）══
+/* ══ 参考基线 2.30.4 /signin 实测（1440×840, dark）══
    页面平铺 light-2；logo 块高 52 顶距 35，与卡片间距 19；
    卡片 352 宽 / light-3 / 1px white-alpha-100 / 圆角 8 / 衬 24 / 投影 rgba(99,77,255,.06) 0 4px 16px；
    标题 20/400 行高 25 距下 32；label 14/500 白衬下 8；
@@ -285,7 +285,7 @@ async function submitReset() {
   padding: 35px 16px 40px;
 }
 
-/* logo：图标 + 字标，居中在卡片上方（尺寸对齐 n8n logo 块 52 高） */
+/* logo：图标 + 字标，居中在卡片上方（尺寸对齐基线 logo 块 52 高） */
 .auth-logo { display: flex; align-items: center; gap: 10px; height: 52px; margin-bottom: 19px; }
 .logo-mark { width: 58px; height: 24px; }
 .logo-word { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; color: var(--text-hi); }
@@ -315,7 +315,7 @@ async function submitReset() {
   padding-bottom: 8px;
   font-size: var(--font-size--sm);
   font-weight: var(--font-weight--medium);
-  line-height: 18.9px; /* n8n 实测 label 文本行高（14px × 1.35） */
+  line-height: 18.9px; /* 基线实测 label 文本行高（14px × 1.35） */
   color: var(--color--text--shade-1);
 }
 form .field-label:first-child { margin-top: 0; }
@@ -333,7 +333,7 @@ form .field-label:first-child { margin-top: 0; }
   color: var(--color--text--shade-1);
   box-sizing: border-box;
 }
-/* n8n 实测：聚焦环 = purple-500（同卡片投影紫系） */
+/* 基线实测：聚焦环 = purple-500（同卡片投影紫系） */
 .auth-card input:not([type='checkbox']):focus {
   outline: none;
   box-shadow: inset 0 0 0 1px var(--color--purple-500);
@@ -356,7 +356,7 @@ form .field-label:first-child { margin-top: 0; }
   accent-color: var(--accent);
 }
 
-/* 按钮：n8n 实测 36 高 primary、自适应宽、居中 */
+/* 按钮：基线实测 36 高 primary、自适应宽、居中 */
 .submit-row { display: flex; justify-content: center; margin-top: 32px; }
 .submit-btn {
   height: 36px;
@@ -380,7 +380,7 @@ form .field-label:first-child { margin-top: 0; }
   margin-top: 16px;
   font-size: var(--font-size--md);
   font-weight: var(--font-weight--regular);
-  line-height: 19px; /* n8n 实测链接行框 19 高 */
+  line-height: 19px; /* 基线实测链接行框 19 高 */
   color: var(--color--primary);
   text-decoration: none;
 }

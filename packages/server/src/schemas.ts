@@ -119,7 +119,7 @@ export const chatBodySchema = z.object({
 
 export const runBodySchema = z.object({
   destinationNode: z.string().optional(),
-  /** 多触发器画布：从指定 trigger 节点开始执行（对标 n8n "Execute workflow from X"）。 */
+  /** 多触发器画布：从指定 trigger 节点开始执行（对标基线 "Execute workflow from X"）。 */
   startNode: z.string().optional(),
   /** true = 部分执行：复用最近一次执行的干净上游数据，只重跑脏子图（需配合 destinationNode）。 */
   usePreviousData: z.boolean().optional(),

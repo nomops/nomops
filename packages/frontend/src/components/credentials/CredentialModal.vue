@@ -13,7 +13,7 @@ import IconSvg from '../IconSvg.vue';
  */
 const emit = defineEmits<{ close: []; created: [cred: CredentialView]; updated: [cred: CredentialView] }>();
 
-/** edit：编辑已有凭证（对标 n8n 卡片 Open）——跳过选类型，字段留空 = 保持不变。
+/** edit：编辑已有凭证（对标基线卡片 Open）——跳过选类型，字段留空 = 保持不变。
  *  createType：直达新建某类型（如 Chat provider 弹窗的 Create new credential）。 */
 const props = defineProps<{ edit?: CredentialView; createType?: string }>();
 
@@ -55,7 +55,7 @@ async function deleteCredential() {
     deleting.value = false;
   }
 }
-/* n8n 式相对时间(粗粒度:秒/分/时/天,再退化为日期)。 */
+/* 基线式相对时间(粗粒度:秒/分/时/天,再退化为日期)。 */
 function fmtWhen(iso: string): string {
   const then = new Date(iso).getTime();
   const diff = Math.max(0, Date.now() - then);
@@ -314,7 +314,7 @@ onUnmounted(() => {
           <button class="btn neutral head-save" data-test="cred-save" :disabled="busy" @click="save">
             {{ busy ? 'Saving…' : 'Save' }}
           </button>
-          <!-- D054 对标 n8n:已存凭证头部有垃圾桶(删除) -->
+          <!-- D054 对标基线:已存凭证头部有垃圾桶(删除) -->
           <button v-if="credInfo" class="icon-trash" data-test="cred-delete" title="Delete credential" :disabled="deleting" @click="deleteCredential">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /></svg>
           </button>
@@ -425,16 +425,16 @@ onUnmounted(() => {
               </p>
             </template>
 
-            <!-- D049 Sharing:对标 n8n Community 的虚线升级卡 -->
+            <!-- D049 Sharing:对标基线 Community 的虚线升级卡 -->
             <template v-else-if="tab === 'sharing'">
               <div class="sharing-lock" data-test="cred-sharing-lock">
                 <h4>Upgrade to collaborate</h4>
                 <p>You can share credentials with others when you upgrade your plan.</p>
-                <a class="btn primary" href="https://n8n.io/pricing" target="_blank" rel="noopener">View plans</a>
+                <a class="btn primary" href="https://基线.io/pricing" target="_blank" rel="noopener">View plans</a>
               </div>
             </template>
 
-            <!-- D050 Details:对标 n8n:已存 = Created / Last modified / ID 三行;未存 = 空白 -->
+            <!-- D050 Details:对标基线:已存 = Created / Last modified / ID 三行;未存 = 空白 -->
             <template v-else>
               <template v-if="credInfo">
                 <div class="detail-row"><span class="k">Created</span><span class="v">{{ fmtWhen(credInfo.createdAt) }}</span></div>
@@ -451,7 +451,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* n8n 实测：遮罩 = --dialog--overlay--color--background(slate-alpha-700)；
+/* 基线实测：遮罩 = --dialog--overlay--color--background(slate-alpha-700)；
    面板 bg light-3 / 1px border / 圆角 8 / el-dialog 阴影 0 6px 16px rgba(68,28,23,.06)；
    pick 步 420px；config 步 70% 视宽 */
 .cred-overlay {
@@ -469,7 +469,7 @@ onUnmounted(() => {
 
 /* Header */
 .cred-head { display: flex; align-items: center; gap: 14px; padding: var(--spacing--sm) var(--spacing--lg); border-bottom: var(--border-width) var(--border-style) var(--border-color); }
-/* n8n 实测：模态标题 20px/400 白 */
+/* 基线实测：模态标题 20px/400 白 */
 .cred-title { font-size: var(--font-size--xl); font-weight: var(--font-weight--regular); color: var(--color--text--shade-1); flex: 1; }
 .icon-x {
   width: 30px; height: 30px; border-radius: 7px; border: none; background: none; color: var(--text-dim);
@@ -478,7 +478,7 @@ onUnmounted(() => {
 .icon-x:hover { background: var(--bg-hover); color: var(--text); }
 
 .cred-head.config { align-items: center; }
-/* n8n 实测：品牌图标 26×26 裸图，无底框 */
+/* 基线实测：品牌图标 26×26 裸图，无底框 */
 .head-icon {
   width: 26px; height: 26px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
@@ -495,7 +495,7 @@ onUnmounted(() => {
 
 /* Config: two-column body */
 .config-body { flex: 1 1 auto; min-height: 0; display: flex; }
-/* n8n 实测：左栏 tab 14px；未激活 neutral-200、激活白 + light-1 底 */
+/* 基线实测：左栏 tab 14px；未激活 neutral-200、激活白 + light-1 底 */
 .side-tabs {
   width: 176px; flex-shrink: 0; border-right: var(--border-width) var(--border-style) var(--border-color); padding: 14px 12px;
   display: flex; flex-direction: column; gap: 2px;
@@ -510,17 +510,17 @@ onUnmounted(() => {
 .tab-content { flex: 1; min-width: 0; overflow-y: auto; padding: 22px 26px 26px; }
 
 /* Body (pick step) */
-/* n8n 实测：内容衬 24px；说明行 16px neutral-200、下距 16 */
+/* 基线实测：内容衬 24px；说明行 16px neutral-200、下距 16 */
 .cred-body { padding: var(--spacing--md) var(--spacing--lg) var(--spacing--lg); }
 .fld-label { display: block; font-size: var(--font-size--md); color: var(--color--text); margin-bottom: var(--spacing--sm); }
 .pick-actions { margin-top: 16px; }
-/* n8n 实测：模态主按钮 36px 高 / 圆角 6 / 衬 0 16 */
+/* 基线实测：模态主按钮 36px 高 / 圆角 6 / 衬 0 16 */
 .pick-actions .btn { height: 36px; border-radius: var(--radius--2xs); padding: 0 var(--spacing--sm); }
 
 /* Fields */
 .field { margin-bottom: 18px; }
 .field:last-child { margin-bottom: 0; }
-/* n8n 实测：模态/NDV 输入 36px 高 / 圆角 6 / 14px 字 / bg light-2 */
+/* 基线实测：模态/NDV 输入 36px 高 / 圆角 6 / 14px 字 / bg light-2 */
 .field label { display: block; margin: 0 0 7px; color: var(--color--text); font-size: var(--font-size--sm); }
 .field input,
 .select-wrap select {
@@ -554,7 +554,7 @@ onUnmounted(() => {
 
 /* Combobox (pick step) */
 .combo { position: relative; }
-/* n8n 实测：类型选择组合框 48px 高 / bg light-2 / 圆角 4 / 16px 字 */
+/* 基线实测：类型选择组合框 48px 高 / bg light-2 / 圆角 4 / 16px 字 */
 .combo-control {
   display: flex; align-items: center; gap: 8px; height: 48px; padding: 0 10px 0 12px;
   background: var(--color--background--light-2); border: var(--border-width) var(--border-style) var(--border-color);
@@ -612,7 +612,7 @@ onUnmounted(() => {
 .vault-note a:hover { text-decoration: underline; }
 
 /* Sharing tab */
-/* D049 Sharing 虚线升级卡(对标 n8n) */
+/* D049 Sharing 虚线升级卡(对标基线) */
 .sharing-lock {
   text-align: center; padding: 40px 24px; margin: 8px 0;
   border: 1px dashed var(--border-strong); border-radius: 10px;

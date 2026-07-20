@@ -22,8 +22,8 @@ const node = computed(() => editor.selectedNode);
 const desc = computed(() => (node.value ? nodeTypes.byType.get(node.value.type) : undefined));
 const tab = ref<'parameters' | 'settings'>('parameters');
 
-/* D091 对标 n8n:头带 Docs 外链(按"外链照抄"指向 n8n 内置节点文档)。 */
-const docsUrl = computed(() => 'https://docs.n8n.io/integrations/builtin/?utm_source=n8n_app&utm_medium=node_settings_modal-credential_link');
+/* D091:头带 Docs 外链,指向项目自有的节点文档。 */
+const docsUrl = computed(() => 'https://github.com/nomops/nomops/tree/main/docs/03-MODULES.md');
 
 const visibleProps = computed(() => {
   if (!desc.value || !node.value) return [];
@@ -32,10 +32,10 @@ const visibleProps = computed(() => {
   );
 });
 
-/* n8n 中栏按节点型定宽(实测 IF/HTTP 640、Set 420);以可见参数数近似 */
+/* 基线中栏按节点型定宽(实测 IF/HTTP 640、Set 420);以可见参数数近似 */
 const centerWidth = computed(() => (visibleProps.value.length <= 4 ? 420 : 640));
 
-/* D093 对标 n8n:三栏分隔条可拖拽调中栏宽度(拖柄覆在两侧 4px 边上)。 */
+/* D093 对标基线:三栏分隔条可拖拽调中栏宽度(拖柄覆在两侧 4px 边上)。 */
 const paramsWidth = ref<number | null>(null);
 const effectiveWidth = computed(() => paramsWidth.value ?? centerWidth.value);
 let dragStartX = 0;
@@ -63,7 +63,7 @@ function startDrag(side: 'left' | 'right', e: MouseEvent) {
   window.addEventListener('mouseup', endDrag);
 }
 
-/* D092 对标 n8n:NDV 两侧相邻节点 chip(floating nodes),点击切到该节点。 */
+/* D092 对标基线:NDV 两侧相邻节点 chip(floating nodes),点击切到该节点。 */
 const inputNeighbors = computed<string[]>(() => {
   const name = node.value?.name;
   if (!name) return [];
@@ -96,7 +96,7 @@ const inputItems = computed(() =>
 );
 const hasInputPort = computed(() => (desc.value?.inputs.length ?? 0) > 0);
 
-/* ── 凭证选择器(对标 n8n:节点声明 credentials 时,NDV 顶部出现凭证下拉) ── */
+/* ── 凭证选择器(对标基线:节点声明 credentials 时,NDV 顶部出现凭证下拉) ── */
 const router = useRouter();
 const allCredentials = ref<CredentialView[]>([]);
 watch(
@@ -169,7 +169,7 @@ async function executeStep() {
             <span v-if="lastRun?.error" style="color: var(--err)"> · {{ lastRun.error.message }}</span>
           </span>
         </div>
-        <!-- 对齐 n8n:头带右侧 Docs 外链 + X(无 Delete,画布 Delete/Backspace 已覆盖) -->
+        <!-- 对齐基线:头带右侧 Docs 外链 + X(无 Delete,画布 Delete/Backspace 已覆盖) -->
         <div class="ndv-head-actions">
           <a class="ndv-docs" :href="docsUrl" target="_blank" rel="noopener" data-test="ndv-docs">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="ndv-docs-i"><path d="M4 5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" /><path d="M13 3v5h5" /></svg>
@@ -261,13 +261,13 @@ async function executeStep() {
               />
             </div>
 
-            <!-- D095 对标 n8n:参数区底部居中反馈链 "I wish this node would..." -->
+            <!-- D095 对标基线:参数区底部居中反馈链 "I wish this node would..." -->
             <div class="ndv-wish-row">
               <span class="ndv-wish" data-test="ndv-wish">I wish this node would...</span>
             </div>
           </div>
 
-          <!-- NDV Settings tab(对标 n8n:3 开关 + On Error 下拉 + Notes + Display note 开关 + 版本注记) -->
+          <!-- NDV Settings tab(对标基线:3 开关 + On Error 下拉 + Notes + Display note 开关 + 版本注记) -->
           <div v-show="tab === 'settings'" class="params-body ndv-set" data-test="ndv-settings">
             <div class="set-row">
               <span class="set-label">Always Output Data</span>
@@ -319,7 +319,7 @@ async function executeStep() {
 </template>
 
 <style scoped>
-/* n8n 实测（NDV 骨架）：全屏浮层，模态左右/底部各留 25px 露出画布；
+/* 基线实测（NDV 骨架）：全屏浮层，模态左右/底部各留 25px 露出画布；
    顶部 66px 头带（标题/拖柄/Docs/X）；三栏 = 侧栏 375px 定宽 bg light-3、
    中栏弹性 bg light-1(4px 拖柄)；容器底角 8px 圆角 */
 .ndv-overlay {
@@ -336,7 +336,7 @@ async function executeStep() {
   height: 66px; flex-shrink: 0; padding: 0 var(--spacing--sm);
   color: var(--color--text--shade-1);
 }
-/* n8n 实测：头带 = 节点图标 + 名称(16px 白)，右侧 Docs/X */
+/* 基线实测：头带 = 节点图标 + 名称(16px 白)，右侧 Docs/X */
 .ndv-head-actions { display: flex; align-items: center; gap: var(--spacing--xs); }
 .ndv-docs {
   display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px;
@@ -383,14 +383,14 @@ async function executeStep() {
   background: transparent; transition: background 0.15s;
 }
 .col-drag:hover::after, .col-drag:active::after { background: var(--color--primary); }
-/* n8n 实测：侧栏弹性均分、中栏定宽(IF/HTTP 类 640;简单节点 420 —— 每节点宽度表留后续) */
+/* 基线实测：侧栏弹性均分、中栏定宽(IF/HTTP 类 640;简单节点 420 —— 每节点宽度表留后续) */
 .ndv-col.side { flex: 1; min-width: 0; background: var(--color--background--light-3); }
 .ndv-col.params { flex: 0 0 640px; background: var(--ndv--header--color); border-left: 4px solid var(--color--background--light-1); border-right: 4px solid var(--color--background--light-1); }
 .param-tabs {
   display: flex; align-items: center; gap: 4px;
   padding: 10px var(--spacing--sm); flex-shrink: 0;
 }
-/* n8n 实测：tab 12px/600；激活橙、未激活 tint-1 */
+/* 基线实测：tab 12px/600；激活橙、未激活 tint-1 */
 .ptab {
   background: none; border: none; border-radius: 0; height: auto;
   color: var(--color--text--tint-1); padding: 4px 8px;
@@ -398,7 +398,7 @@ async function executeStep() {
 }
 .ptab:hover { color: var(--color--text); background: none; }
 .ptab.active { color: var(--color--primary); }
-/* n8n 实测：Execute step 28px 高 / 13px-500 / primary + inset 环 */
+/* 基线实测：Execute step 28px 高 / 13px-500 / primary + inset 环 */
 .execute-step {
   height: 28px; background: var(--button--color--background--primary); border: none; color: var(--button--color--text--primary);
   padding: 0 var(--spacing--xs); font-size: 13px; font-weight: var(--font-weight--medium);
@@ -441,7 +441,7 @@ async function executeStep() {
 }
 .set-notes:focus, .set-field select:focus { outline: none; border-color: var(--color--primary); }
 .set-version { margin: 0; font-size: 11px; color: var(--color--text--tint-1); }
-/* n8n 开关 32×16(与 ParamInput 一致) */
+/* 基线开关 32×16(与 ParamInput 一致) */
 .pswitch {
   position: relative; width: 32px; height: 16px; flex-shrink: 0; padding: 0; cursor: pointer;
   border-radius: 8px; border: 1px solid var(--switch--border-color); background: var(--switch--color--background); transition: background 0.15s, border-color 0.15s;

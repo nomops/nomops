@@ -3,7 +3,7 @@ import { computed, ref, type CSSProperties } from 'vue';
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, Position } from '@vue-flow/core';
 
 /**
- * D076 对标 n8n:自定义连线——中点悬浮工具条(+ 插入节点 / 🗑 删除连线)。
+ * D076 对标基线:自定义连线——中点悬浮工具条(+ 插入节点 / 🗑 删除连线)。
  * 默认只画贝塞尔线;鼠标移到线上(或工具条上)时工具条浮出。
  */
 const props = defineProps<{

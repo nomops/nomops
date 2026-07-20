@@ -11,7 +11,7 @@
 
 理由：OIDC 是纯 HTTP + JWT，用认证过的 `openid-client` 库即可安全实现，且能在单测里
 起一个进程内 mock IdP 完整验收；SAML 需要 XML 签名栈（xml-crypto 一族），
-自研/浅封装都是安全高危区，对标 n8n 也是先 SAML 后补 OIDC 的历史包袱路线——我们反着走。
+自研/浅封装都是安全高危区，对标基线也是先 SAML 后补 OIDC 的历史包袱路线——我们反着走。
 需要 SAML 的客户场景等真实需求出现再评估（多数现代 IdP：Okta/Azure AD/Auth0/Keycloak 都支持 OIDC）。
 
 **SCIM = SCIM 2.0 Users 资源（RFC 7643/7644 子集），Groups 延后。**

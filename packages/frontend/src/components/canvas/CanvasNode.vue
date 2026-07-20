@@ -41,7 +41,7 @@ const isSticky = computed(() => props.data.node.type === 'nomops.stickyNote');
 const stickyColor = computed(() => String(props.data.node.parameters['color'] ?? 'yellow'));
 const stickyEditing = ref(false);
 
-/* D078 对标 n8n:便签可拖拽调宽高(尺寸存进 node.parameters.width/height)。 */
+/* D078 对标基线:便签可拖拽调宽高(尺寸存进 node.parameters.width/height)。 */
 const STICKY_W = 240;
 const STICKY_H = 160;
 const stickyW = computed(() => Number(props.data.node.parameters['width'] ?? STICKY_W) || STICKY_W);
@@ -51,7 +51,7 @@ function onStickyResize(event: { params: { width: number; height: number } }) {
   editor.setParam(props.data.node.name, 'height', Math.round(event.params.height));
 }
 
-/** D079 对标 n8n:便签内容按 markdown 渲染(先转义防 XSS,再做标题/粗斜体/链接/列表变换)。 */
+/** D079 对标基线:便签内容按 markdown 渲染(先转义防 XSS,再做标题/粗斜体/链接/列表变换)。 */
 const stickyHtml = computed(() => {
   const raw = String(props.data.node.parameters['content'] ?? '');
   const esc = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -73,10 +73,23 @@ function commitSticky(event: Event) {
   stickyEditing.value = false;
 }
 
+/* D080:右键菜单「Edit」请求进入行内编辑 —— 监听 store 标记后自行消费。
+   注意:必须放在 `const editor` 之后,否则 watch 的 getter 会在 TDZ 里取 editor,
+   setup 抛错会导致整块画布节点不渲染(本会话已踩过同类坑两次)。 */
+watch(
+  () => editor.editingSticky,
+  (name) => {
+    if (name && name === props.data.node.name) {
+      stickyEditing.value = true;
+      editor.editingSticky = null;
+    }
+  },
+);
+
 /** 每个节点类型的 SVG 图标与主色（core 图标着色，品牌图标自带配色）。 */
 const visual = computed(() => nodeIcon(props.data.node.type));
 
-/* ── 悬停工具条（对标 n8n 2.30.4 canvas-node-toolbar）──
+/* ── 悬停工具条（对标参考基线 2.30.4 canvas-node-toolbar）──
    实测按钮集分流:
    - 普通/触发器/Agent/Tool 子节点 → ▶ Execute step · ⏻ Deactivate · 🗑 Delete · ⋯ More
    - 能力子节点(仅 ai_languageModel/ai_memory 输出,不能单独跑)→ 去掉 ▶,余 3 键
@@ -146,16 +159,16 @@ function onOpen() {
   editor.openNdv(props.data.node.name);
 }
 
-/** 便签颜色(对标 n8n change-sticky-color;nomops 便签色模型=parameters.color)。
+/** 便签颜色(对标基线 change-sticky-color;nomops 便签色模型=parameters.color)。
     stickyColorOpen 已在上方(watch 之前)声明,避免 watch getter 同步取值时命中 TDZ。 */
-// n8n 便签调色板 7 色(按 --sticky--*--variant-1..7 顺序:黄/金/红/绿/蓝/紫/灰)
+// 基线便签调色板 7 色(按 --sticky--*--variant-1..7 顺序:黄/金/红/绿/蓝/紫/灰)
 const STICKY_COLORS = ['yellow', 'gold', 'red', 'green', 'blue', 'purple', 'neutral'] as const;
 function setStickyColor(c: string) {
   editor.setParam(props.data.node.name, 'color', c);
   stickyColorOpen.value = false;
 }
 
-/** ai 连接类型的短标签（Agent 底部能力口下方显示）。D075 对标 n8n:Chat Model(必填)/ Memory / Tool。 */
+/** ai 连接类型的短标签（Agent 底部能力口下方显示）。D075 对标基线:Chat Model(必填)/ Memory / Tool。 */
 const AI_LABELS: Record<string, string> = {
   ai_languageModel: 'Chat Model',
   ai_tool: 'Tool',
@@ -195,7 +208,7 @@ const bottomStyle = (i: number, count: number) => ({
     :data-test-node="data.node.name"
     @dblclick.stop="stickyEditing = true"
   >
-    <!-- D078 对标 n8n:便签可拖拽调宽高(选中时显八向把手) -->
+    <!-- D078 对标基线:便签可拖拽调宽高(选中时显八向把手) -->
     <NodeResizer
       v-if="!readonly"
       :min-width="150"
@@ -203,7 +216,7 @@ const bottomStyle = (i: number, count: number) => ({
       :is-visible="Boolean(selected)"
       @resize-end="onStickyResize"
     />
-    <!-- 便签悬停工具条(对标 n8n:🗑 Delete · 🎨 颜色 · ⋯ More;无执行/无禁用) -->
+    <!-- 便签悬停工具条(对标基线:🗑 Delete · 🎨 颜色 · ⋯ More;无执行/无禁用) -->
     <div v-if="!readonly" ref="toolbarRef" class="node-toolbar sticky-toolbar" :class="{ pinned: overflowOpen || stickyColorOpen }" @mousedown.stop @dblclick.stop>
       <div class="node-toolbar-items" data-test="canvas-node-toolbar">
         <button class="tb-btn" title="Delete" data-test-node-tb="delete" @click.stop="onDelete">
@@ -247,13 +260,13 @@ const bottomStyle = (i: number, count: number) => ({
   </div>
 
   <div v-else class="node-wrap" :data-test-node="data.node.name">
-    <!-- D073 对标 n8n:触发器仅左侧圆弧,无外挂 ⚡ 旗标(已移除) -->
+    <!-- D073 对标基线:触发器仅左侧圆弧,无外挂 ⚡ 旗标(已移除) -->
 
     <div
       class="nomops-node"
       :class="[{ selected, trigger: isTrigger, subnode: isSubNode, disabled: isDisabled }, status ? `status-${status}` : '']"
     >
-      <!-- 悬停工具条(对标 n8n canvas-node-toolbar):默认 opacity 0,悬停/聚焦/菜单打开时浮出 -->
+      <!-- 悬停工具条(对标基线 canvas-node-toolbar):默认 opacity 0,悬停/聚焦/菜单打开时浮出 -->
       <div v-if="!readonly" ref="toolbarRef" class="node-toolbar" :class="{ pinned: overflowOpen }" @mousedown.stop @dblclick.stop>
         <div class="node-toolbar-items" data-test="canvas-node-toolbar">
           <button
@@ -287,7 +300,7 @@ const bottomStyle = (i: number, count: number) => ({
           </button>
         </div>
         <!-- ⋯ 溢出菜单:落地能对应 nomops 真实能力的子集(Open/Execute/Deactivate/Duplicate/Delete);
-             n8n 的 Rename/Pin/Replace/Convert-to-subworkflow 暂未实现,不放空项 -->
+             基线的 Rename/Pin/Replace/Convert-to-subworkflow 暂未实现,不放空项 -->
         <div v-if="overflowOpen" class="node-menu" data-test="node-overflow-menu" @click.stop>
           <button class="nm-item" @click="onOpen">Open…</button>
           <button v-if="canExecute" class="nm-item" @click="onExecute">Execute step</button>
@@ -337,7 +350,7 @@ const bottomStyle = (i: number, count: number) => ({
         <span v-if="outputLabel(i)" class="port-label" :style="sideStyle(i, mainOutputs.length)">
           {{ outputLabel(i) }}
         </span>
-        <!-- D074 对标 n8n:输出端口旁 + 快捷加节点(选中本节点后开面板,新节点自动接线) -->
+        <!-- D074 对标基线:输出端口旁 + 快捷加节点(选中本节点后开面板,新节点自动接线) -->
         <button
           v-if="!readonly"
           class="port-plus"
@@ -363,7 +376,7 @@ const bottomStyle = (i: number, count: number) => ({
       />
     </div>
 
-    <!-- 名称在卡片下方(禁用态 n8n 补 " (Deactivated)") -->
+    <!-- 名称在卡片下方(禁用态基线补 " (Deactivated)") -->
     <div class="node-label">{{ data.node.name }}<span v-if="isDisabled"> (Deactivated)</span></div>
   </div>
 </template>
@@ -384,27 +397,27 @@ const bottomStyle = (i: number, count: number) => ({
 .port-plus svg { width: 11px; height: 11px; }
 .nomops-node:hover .port-plus, .port-plus:hover, .port-plus:focus-visible { opacity: 1; }
 .port-plus:hover { border-color: var(--color--primary); color: var(--color--primary); }
-/* n8n 实测（2.30.4 画布 _node_）：96×96、bg --node--color--background(dark #2b2b2b)、
+/* 基线实测（2.30.4 画布 _node_）：96×96、bg --node--color--background(dark #2b2b2b)、
    border 1.5px rgba(255,255,255,.63)（实测 oklch 白/0.632）、圆角 8；图标 48；
    子节点圆 80×80；label 卡下 192px 宽白字 14px */
 .nomops-node {
   position: relative;
   width: 96px; height: 96px;
   background: var(--node--color--background);
-  border: 1.5px solid var(--color--white-alpha-200); /* n8n 实测默认边 α0.2 */
+  border: 1.5px solid var(--color--white-alpha-200); /* 基线实测默认边 α0.2 */
   border-radius: var(--radius--lg);
   display: flex; align-items: center; justify-content: center;
 }
-.nomops-node.trigger { border-top-left-radius: 36px; border-bottom-left-radius: 36px; } /* n8n 实测 36 */
+.nomops-node.trigger { border-top-left-radius: 36px; border-bottom-left-radius: 36px; } /* 基线实测 36 */
 .nomops-node.subnode { width: 80px; height: 80px; border-radius: 50%; }
 .nomops-node.selected { border-color: var(--canvas--color--selected); box-shadow: 0 0 0 1px var(--canvas--color--selected); }
-.nomops-node.disabled { border-color: var(--color--foreground); } /* n8n 实测:禁用态边框 → foreground 中灰 */
+.nomops-node.disabled { border-color: var(--color--foreground); } /* 基线实测:禁用态边框 → foreground 中灰 */
 .nomops-node.status-running { border-color: var(--node--border-color--running); }
 .nomops-node.status-success { border-color: var(--color--success); }
 .nomops-node.status-error { border-color: var(--color--danger); }
 .node-icon { line-height: 0; }
 .node-label {
-  margin-top: 6px; font-size: var(--font-size--md); font-weight: var(--font-weight--regular); /* n8n 实测 16px */
+  margin-top: 6px; font-size: var(--font-size--md); font-weight: var(--font-weight--regular); /* 基线实测 16px */
   color: var(--color--text--shade-1); line-height: var(--line-height--lg);
   width: 192px; max-width: 192px; text-align: center;
   white-space: normal; overflow: hidden; text-overflow: ellipsis;
@@ -415,7 +428,7 @@ const bottomStyle = (i: number, count: number) => ({
   font-size: 10px; color: var(--text-dim);
 }
 
-/* ── 悬停工具条 — n8n 2.30.4 实测 ──
+/* ── 悬停工具条 — 参考基线 2.30.4 实测 ──
    外层:absolute/bottom:100%/居中/衬底 --spacing--xs(离节点间距)/pointer-events:none;
    药丸:--canvas--color--background 底、圆角 --radius、按钮 28×28、图标 12、字色 tint-1;
    默认 opacity 0,:hover / :focus-within / .pinned → 1(过渡 .1s)。 */
@@ -493,7 +506,7 @@ const bottomStyle = (i: number, count: number) => ({
 }
 .ai-port-label.staggered { bottom: -27px; }
 
-/* 便签 — n8n 实测：--sticky--* 令牌（dark: 变体1 黄=yellow-900底/800边;
+/* 便签 — 基线实测：--sticky--* 令牌（dark: 变体1 黄=yellow-900底/800边;
    蓝=blue-900/800; 绿=green-950/900; 紫=purple-950/800）、圆角 4、1px 边 */
 .sticky-note {
   position: relative;

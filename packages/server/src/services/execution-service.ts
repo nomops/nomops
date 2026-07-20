@@ -75,7 +75,7 @@ export class ExecutionService {
     const row = await this.workflowService.getById(workflowId, projectId);
     const workflow = this.toWorkflow(row, { applyPinData: true }); // 手动调试应用钉住数据
 
-    // 多触发器：指定起点 trigger（对标 n8n "Execute workflow from X"）；不存在即报错
+    // 多触发器：指定起点 trigger（对标基线 "Execute workflow from X"）；不存在即报错
     const startNode = options.startNode ? workflow.getNode(options.startNode) : undefined;
     if (options.startNode && !startNode) {
       throw new OperationalError(`Start node not found: ${options.startNode}`, { status: 400 });
@@ -108,7 +108,7 @@ export class ExecutionService {
   }
 
   /**
-   * 画布/API 聊天（Chat Trigger 起点，对标 n8n Chat）：消息播种为触发输出，
+   * 画布/API 聊天（Chat Trigger 起点，对标基线 Chat）：消息播种为触发输出，
    * 跑完从最后节点输出提取回复文本（text/output/reply/message 字段，否则整个 json）。
    */
   async chat(
@@ -157,7 +157,7 @@ export class ExecutionService {
   }
 
   /**
-   * 执行保存策略（workflow settings，对标 n8n）：默认全存；
+   * 执行保存策略（workflow settings，对标基线）：默认全存；
    * saveManualExecutions / saveFailedExecutions / saveSuccessfulExecutions 置 false → 收尾后删除该执行记录。
    * waiting（挂起待续跑）不删。统计已在收尾前累计，不受影响。
    */
@@ -342,9 +342,9 @@ export class ExecutionService {
   }
 
   /**
-   * 重试（对标 n8n executions 列表 Retry）：整个工作流重跑，产生新执行记录（mode 'retry'）。
+   * 重试（对标基线 executions 列表 Retry）：整个工作流重跑，产生新执行记录（mode 'retry'）。
    * useOriginal=true 用该执行的定义快照（original workflow）；false 用当前保存的草稿（currently saved）。
-   * 与 n8n 差异：n8n 从错误节点续跑，这里为全量重跑（部分续跑后续深化）。
+   * 与基线差异：基线从错误节点续跑，这里为全量重跑（部分续跑后续深化）。
    */
   async retry(executionId: string, projectId: string, useOriginal: boolean): Promise<IRunSummary> {
     const orig = await this.repos.executions.findById(executionId, projectId);

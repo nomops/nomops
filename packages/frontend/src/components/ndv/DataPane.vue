@@ -14,7 +14,7 @@ const props = withDefaults(
     items: INodeExecutionData[];
     emptyHint?: string;
     draggable?: boolean;
-    /** n8n 式空态：标题 + 主按钮文案（如 Execute previous nodes / Execute step） */
+    /** 基线式空态：标题 + 主按钮文案（如 Execute previous nodes / Execute step） */
     emptyTitle?: string;
     emptyAction?: string;
     emptyCaption?: string;
@@ -23,7 +23,7 @@ const props = withDefaults(
 );
 
 type ViewMode = 'schema' | 'table' | 'json';
-// D098 对标 n8n:数据窗格默认 Schema 视图
+// D098 对标基线:数据窗格默认 Schema 视图
 const view = ref<ViewMode>('schema');
 
 defineEmits<{ 'empty-action': [] }>();
@@ -98,7 +98,7 @@ function onDragField(event: DragEvent, path: string) {
     </div>
 
     <div class="pane-body">
-      <!-- n8n 实测空态：标题 16px/600 白 + primary 按钮(32px) + 说明行 -->
+      <!-- 基线实测空态：标题 16px/600 白 + primary 按钮(32px) + 说明行 -->
       <div v-if="items.length === 0" class="pane-empty" data-test="pane-empty">
         <template v-if="emptyTitle">
           <div class="pe-title">{{ emptyTitle }}</div>
@@ -154,7 +154,7 @@ function onDragField(event: DragEvent, path: string) {
 
 <style scoped>
 .data-pane { display: flex; flex-direction: column; min-width: 0; height: 100%; }
-/* n8n 实测：INPUT/OUTPUT 头 = 12px/600 白色大写、字距放宽、无底边线 */
+/* 基线实测：INPUT/OUTPUT 头 = 12px/600 白色大写、字距放宽、无底边线 */
 .pane-head {
   display: flex; justify-content: space-between; align-items: center; gap: 8px;
   padding: 14px var(--spacing--sm) 8px;

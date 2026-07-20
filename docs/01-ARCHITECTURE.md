@@ -26,18 +26,18 @@
 
 ## 二、双部署形态
 
-### ★语言澄清（对标 n8n，写死，勿再纠结）
+### ★语言澄清（写死，勿再纠结）
 
 **Cloud Web 端的后端语言 = 与自托管完全相同的同一份 Node.js / TypeScript 应用。不存在「Cloud 用另一种后端语言」。**
 
-对标 n8n 的事实：n8n 的所有自托管安装与 Cloud 用的是同一个核心产品，区别不是语言，而是**谁来运维**——自托管是你自己 `docker run`，Cloud 是 n8n 替你托管同一个 Node 应用。用户访问 Cloud web 端时，后端就是那个 Node.js 应用本身。
+对标基线的事实：同类产品的自托管安装与 Cloud 用的是同一个核心产品，区别不是语言，而是**谁来运维**——自托管是你自己 `docker run`，Cloud 是厂商替你托管同一个 Node 应用。用户访问 Cloud web 端时，后端就是那个 Node.js 应用本身。
 
 因此本项目：
 - 一份 `@nomops` 的 Node.js 应用，既是自托管产物，也是 Cloud 上跑的东西。
 - 自托管：用户 `docker run` 它。
 - Cloud：我们在 k8s / 云上跑它，前面加注册 + 计费 + 租户路由。
 
-Cloud 比自托管**多出来**的「控制平面」（实例编排、计费、多租户路由）是套在这个 Node 应用**外面**的独立编排层，通过网络边界与内核通信。它**不是「web 端后端」**，且属于 Phase 6+，现在完全不碰。将来它用什么语言是很久以后、且与内核解耦的独立决策——**MVP 阶段与对标 n8n 而言，全项目后端只有 TypeScript 一种语言。**
+Cloud 比自托管**多出来**的「控制平面」（实例编排、计费、多租户路由）是套在这个 Node 应用**外面**的独立编排层，通过网络边界与内核通信。它**不是「web 端后端」**，且属于 Phase 6+，现在完全不碰。将来它用什么语言是很久以后、且与内核解耦的独立决策——**MVP 阶段与对标基线而言，全项目后端只有 TypeScript 一种语言。**
 
 ---
 
@@ -173,7 +173,7 @@ frontend ──(HTTP)──> server ──> core ──> workflow
 2. 定时/轮询触发器**只能由 leader 跑**，否则多 worker 会把一个 cron 触发 N 次。触发器管理必须区分「webhook 型（无状态，任意进程可接）」与「定时型（有状态，仅 leader）」。
 3. 执行状态 `RunExecutionData` 必须整体可序列化——入队时序列化，worker 反序列化后继续。这也是引擎用「显式栈」而非「递归」的原因。
 
-### 自托管部署矩阵（对标 n8n 官方，供 Phase 5 参考）
+### 自托管部署矩阵（对标基线官方，供 Phase 5 参考）
 
 同一份 Node 应用，多种分发方式。用户按需选：
 
@@ -184,9 +184,9 @@ frontend ──(HTTP)──> server ──> core ──> workflow
 | Docker Compose | 生产单机 | app + PostgreSQL + 反向代理(traefik/nginx，TLS) |
 | 云平台 | 托管 | AWS / Azure / GCP Cloud Run / DigitalOcean / Hetzner / k8s |
 
-配套配置项（对标 n8n 环境变量思路）：
+配套配置项（对标基线环境变量思路）：
 - 运行模式：`EXECUTIONS_MODE=regular`(单进程) / `queue`(队列模式)
-- 数据库：`DB_TYPE=sqlite`(开发) / `postgres`(生产)。MySQL/MariaDB 不做（n8n 已弃用）。
+- 数据库：`DB_TYPE=sqlite`(开发) / `postgres`(生产)。MySQL/MariaDB 不做（基线已弃用）。
 - License：不加 key = 免费社区版；加 key 解锁企业功能（Phase 5 只做校验骨架）。
 - Webhook 可达性：生产走反向代理 + 域名；本地开发可用隧道（cloudflared）临时暴露。
 

@@ -1,6 +1,6 @@
-# n8n 1:1 复刻 — 阶段三:逐页字段级清单 (field-specs)
+# 基线 1:1 复刻 — 阶段三:逐页字段级清单 (field-specs)
 
-> 事实来源:http://localhost:5679/ (n8n 2.30.4 stable, Community, dark)
+> 事实来源:http://localhost:5679/ (参考基线 2.30.4 stable, Community, dark)
 > 取证时间:2026-07-17(阶段一 + 阶段三两轮实测)
 > 用法:实现验收标准。每个控件的 类型/label/placeholder/默认值/选项/交互 均为实测原文;
 > 标注 ⚠人工 的条目为本轮工具限制未能取证、需人工手测一次的残留项(全文仅 2 处)。
@@ -12,21 +12,21 @@
 ### 1.1 主侧栏
 | 控件 | 实测细节 |
 |---|---|
-| Logo | n8n 粉色 logo;折叠态隐藏文字 |
+| Logo | 基线粉色 logo;折叠态隐藏文字 |
 | `+` Add new item | 菜单:New workflow / New credential / New data table / New project(禁用+`Enterprise`徽章) |
 | 搜索按钮 | 打开命令面板(见 1.2) |
 | 侧栏开关 | 折叠(50px 图标列)↔ 展开(200px,实测 aside#sidebar) |
 | 导航 | Overview(`/home`)、Chat+`Preview` 徽章(`/home/chat`) |
-| 底部 | Templates(**外链** n8n.io+UTM)、Insights(图标带红点)、Help(子菜单)、Settings(子菜单) |
-| Help 子菜单 | Quickstart(视频图标)/ Documentation / Forum / Course / Report a bug / About n8n / 组标题 "What's new" / What's new 条目 / Full changelog / **Update (1 version behind)**(橙色感叹号) |
-| Settings 子菜单 | Usage and plan / Personal / Users / Roles`New` / n8n API / External Secrets / Environments / SSO / Security & policies / LDAP / Log Streaming / OpenTelemetry / Community nodes / Instance-level MCP`Preview` / Chat`Preview` / ―分隔― / Sign out |
+| 底部 | Templates(**外链** 对标站点+UTM)、Insights(图标带红点)、Help(子菜单)、Settings(子菜单) |
+| Help 子菜单 | Quickstart(视频图标)/ Documentation / Forum / Course / Report a bug / About 基线 / 组标题 "What's new" / What's new 条目 / Full changelog / **Update (1 version behind)**(橙色感叹号) |
+| Settings 子菜单 | Usage and plan / Personal / Users / Roles`New` / 基线 API / External Secrets / Environments / SSO / Security & policies / LDAP / Log Streaming / OpenTelemetry / Community nodes / Instance-level MCP`Preview` / Chat`Preview` / ―分隔― / Sign out |
 
 ### 1.2 命令面板
 - 全局态:输入 placeholder `Type a command or search...`;分组 Workflows(Create workflow in Personal / Open workflow)、Credentials(Create credential in Personal / Open credential)、Data tables(Create data table in Personal / Open data table)
 - 工作流上下文态:作用域徽标 `Workflow · <名称>`;分组 Recent:`Open <节点名>`(带节点图标,逐节点)
 
 ### 1.3 文档标题
-`Workflows - n8n` 等;编辑器 `▶️ <名> - n8n`;执行中 `🔄 <名> - n8n`;兜底 `n8n.io - Workflow Automation`
+`Workflows - 基线` 等;编辑器 `▶️ <名> - 基线`;执行中 `🔄 <名> - 基线`;兜底 `对标站点 - Workflow Automation`
 
 ---
 
@@ -62,7 +62,7 @@
   - 底部注:"Enterprise plan users can pull in credentials from external vaults. **More info**"
   - Sharing:虚线框 "Upgrade to collaborate" + View plans
   - Details(已保存):Created / Last modified / ID 三行;未保存:空白
-- 凭证类型全列表:见 `refs/n8n-node-types-summary.json` 的 credentials 字段 + `/types/credentials.json`
+- 凭证类型全列表:见 `refs/node-types-reference.json` 的 credentials 字段 + `/types/credentials.json`
 
 ### 2.3 Executions 列表
 - `Auto refresh` 复选框(默认勾选,橙色)+ 漏斗
@@ -97,15 +97,15 @@
 ### 3.2 画布
 - 空画布首屏:虚线 `+` 占位节点 + 文案 `Add first step…`;无触发器时**无** Execute 按钮,底栏仅 Logs
 - **触发器面板**(实测 8 项,标题 "What triggers this workflow?" 副标 "A trigger is a step that starts your workflow"):
-  1. Trigger manually — Runs the flow on clicking a button in n8n. Good for getting started quickly
+  1. Trigger manually — Runs the flow on clicking a button in 基线. Good for getting started quickly
   2. On app event — Runs the flow when something happens in an app like Telegram, Notion or Airtable
   3. On a schedule — Runs the flow every day, hour, or custom interval
   4. On webhook call — Runs the flow on receiving an HTTP request
-  5. On form submission — Generate webforms in n8n and pass their responses to the workflow
+  5. On form submission — Generate webforms in 基线 and pass their responses to the workflow
   6. When executed by another workflow — Runs the flow when called by the Execute Workflow node from a different workflow
   7. On chat message — Runs the flow when a user sends a chat message. For use with AI nodes
   8. Other ways... — Runs the flow on workflow errors, file changes, etc.
-- **节点创建面板**("What happens next?"):搜索 placeholder `Search nodes...`;7 分类:AI / Action in an app / Data transformation / Flow / Core / Human review / Add another trigger;搜索结果=平铺列表(图标+名+描述,如 `Edit Fields (Set) — Modify, add, or remove item fields`);选中即插入节点并自动打开 NDV;AI 子面板见 manifest §7.4;**全部节点清单数据源:`refs/n8n-node-types-summary.json`(916 个,实测导出)**
+- **节点创建面板**("What happens next?"):搜索 placeholder `Search nodes...`;7 分类:AI / Action in an app / Data transformation / Flow / Core / Human review / Add another trigger;搜索结果=平铺列表(图标+名+描述,如 `Edit Fields (Set) — Modify, add, or remove item fields`);选中即插入节点并自动打开 NDV;AI 子面板见 manifest §7.4;**全部节点清单数据源:`refs/node-types-reference.json`(916 个,实测导出)**
 - 节点状态(全实测):默认 / 选中(白描边)/ 执行成功(绿描边+绿勾徽章,连线变绿+`1 item` 标签)/ 参数改动未重跑(橙描边+橙三角)/ 错误(红三角)/ 触发器闪电标 / 副标题行(如 `manual`)
 - 连线:`+`(线中插入)、IF 输出标 `true`/`false`、端点 `+`
 - 便签 Sticky:右栏便签按钮一键创建;默认内容 `I'm a note\n\n**Double click** to edit me.\n[Guide]`;右键菜单:Edit sticky note(↵)/ **Change color** / Copy / Duplicate / Tidy up workflow / Select all / Clear selection / Delete;调色工具条:**7 色板 + 彩虹自定义色块**,下挂 垃圾桶/调色/⋯;选中灰描边
@@ -174,9 +174,9 @@
 ## 7. 数据源(实现直接消费)
 | 数据 | 来源 | 状态 |
 |---|---|---|
-| 节点类型全量(NDV 参数 schema) | `GET /types/nodes.json`(16.6MB,916 节点) | 摘要已入库 `refs/n8n-node-types-summary.json`;全量按需重拉 |
+| 节点类型全量(NDV 参数 schema) | `GET /types/nodes.json`(16.6MB,916 节点) | 摘要已入库 `refs/node-types-reference.json`;全量按需重拉 |
 | 凭证类型全量 | `GET /types/credentials.json` | 同上方式拉取 |
-| 设计令牌 | `n8n-tokens.css` | ✅ 已 100% 等值验收 |
+| 设计令牌 | `design-tokens.css` | ✅ 已 100% 等值验收 |
 | 分类计数(实测) | AI 423 / Communication 119 / Development 125 / Core Nodes 95 / Data & Storage 72 / Marketing 61 / Productivity 54 / Sales 48 / Utility 27 / HITL 16 / Finance 15 / Misc 15 / Analytics 14 / Developer Tools 3 | — |
 
 ---

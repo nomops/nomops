@@ -7,7 +7,7 @@ import { toFlowEdges, toFlowNodes } from '../../lib/workflow-convert.js';
 import CanvasNode from './CanvasNode.vue';
 
 /**
- * 只读画布快照（对标 n8n 版本历史 / 执行详情的斜纹只读画布）。
+ * 只读画布快照（对标基线版本历史 / 执行详情的斜纹只读画布）。
  * 不绑 editor store：节点/连线全部由 props 传入，禁用一切编辑交互，
  * 仅保留平移/缩放；叠一层对角斜纹以示「快照·不可编辑」。
  */
@@ -47,10 +47,10 @@ const flowEdges = computed(() => toFlowEdges(props.connections));
       <Background :gap="18" />
     </VueFlow>
 
-    <!-- 斜纹只读叠层（对标 n8n：快照不可编辑视觉信号） -->
+    <!-- 斜纹只读叠层（对标基线：快照不可编辑视觉信号） -->
     <div class="ro-stripes" aria-hidden="true" />
 
-    <!-- 只读缩放控件（对标 n8n：Zoom to Fit / Zoom In / Zoom Out） -->
+    <!-- 只读缩放控件（对标基线：Zoom to Fit / Zoom In / Zoom Out） -->
     <div class="ro-zoom" data-test="readonly-zoom">
       <button title="Zoom to fit" data-test="ro-zoom-fit" @click="fitView({ padding: 0.2 })">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="zc-i"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" /></svg>

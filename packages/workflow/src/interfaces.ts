@@ -64,7 +64,7 @@ export interface INode {
    * false/缺省 = 终止整个执行。
    */
   continueOnError?: boolean;
-  /** 节点级设置(对标 n8n NDV Settings tab)。onError 是 continueOnError 的多态版本;
+  /** 节点级设置(对标基线 NDV Settings tab)。onError 是 continueOnError 的多态版本;
    *  引擎当前仅消费 continueOnError,其余字段先做存储 + UI(行为深化后续)。 */
   onError?: 'stopWorkflow' | 'continueRegularOutput' | 'continueErrorOutput';
   alwaysOutputData?: boolean;
@@ -134,7 +134,7 @@ export type NodePropertyType =
   | 'color'
   | 'notice';
 
-/** 声明式控件微调（对标 n8n typeOptions 子集）：多行文本 rows。 */
+/** 声明式控件微调（对标基线 typeOptions 子集）：多行文本 rows。 */
 export interface INodePropertyTypeOptions {
   /** string 字段渲染为多行 textarea 的行数（>1 生效）。 */
   rows?: number;

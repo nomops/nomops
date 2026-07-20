@@ -1,8 +1,8 @@
-# n8n 1:1 复刻 — 阶段一侦察清单 (manifest)
+# 基线 1:1 复刻 — 阶段一侦察清单 (manifest)
 
 > 事实来源:运行中的 http://localhost:5679/(唯一依据,全部条目均为实际访问取证)
 > 侦察时间:2026-07-17
-> 目标版本:**n8n 2.30.4 (stable) · Community 许可**(`/rest/settings` 实测)
+> 目标版本:**参考基线 2.30.4 (stable) · Community 许可**(`/rest/settings` 实测)
 > 主题:深色(账号 Theme=System default,当前渲染为 dark)
 > 说明:每项前的 `[ ]` 为实现进度勾选框。标注 **⚠待补** 的条目 = 本轮未能取证(原因注明),必须回到页面二次侦察后才许实现,禁止凭记忆编造。
 
@@ -31,7 +31,7 @@
 | `/workflow/:id/evaluation` | Evaluation | ✅ 已探(注册门) |
 | `/workflow/:id/history/:versionId?` | WorkflowHistory | ✅ 已探 |
 | `/settings/*` 全部 14 个子页 | 见 §8 | ✅ 已探 |
-| `/templates/` | TemplatesSearchView | ✅ 实测:**302 跳外站 n8n.io/workflows**(应用内无模板库页) |
+| `/templates/` | TemplatesSearchView | ✅ 实测:**302 跳外站 对标站点模板库**(应用内无模板库页) |
 
 ### 0.2 存在但本轮未取证(⚠待补,按风险/依赖标注)
 | 路由 | 原因 |
@@ -52,13 +52,13 @@
 
 ### 1.1 主侧栏(左)
 - [ ] 折叠态:仅图标列(+、搜索、侧栏开关、Overview、Chat、底部 4 图标),宽 ~50px
-- [x] 展开态:n8n Logo(粉红色 logo + 字标)、条目带文案
+- [x] 展开态:基线 Logo(粉红色 logo + 字标)、条目带文案
 - [x] 条目:Overview(房子图标,当前页高亮=浅色背景块)
 - [x] 条目:Chat + 紫色 `Preview` 徽章
-- [ ] 底部条目:Templates(**外链** n8n.io/workflows,带 UTM 参数)
+- [ ] 底部条目:Templates(**外链** 对标站点模板库,带 UTM 参数)
 - [ ] 底部条目:Insights(图标右上角有红点通知)
-- [ ] 底部条目:Help(chevron)→ 悬浮子菜单:Quickstart(视频图标)/ Documentation / Forum / Course / Report a bug / About n8n / 分组标题 "What's new" / What's new 条目(如 "Connect your tools in one click")/ Full changelog / **Update (1 version behind)**(橙色感叹号,版本落后提示)
-- [ ] 底部条目:Settings(chevron)→ 悬浮子菜单 16 项:Usage and plan / Personal / Users / Roles(灰色 `New` 徽章)/ n8n API / External Secrets / Environments / SSO / Security & policies / LDAP / Log Streaming / OpenTelemetry / Community nodes / Instance-level MCP(`Preview`)/ Chat(`Preview`)/ **Sign out**(分隔线下)
+- [ ] 底部条目:Help(chevron)→ 悬浮子菜单:Quickstart(视频图标)/ Documentation / Forum / Course / Report a bug / About 基线 / 分组标题 "What's new" / What's new 条目(如 "Connect your tools in one click")/ Full changelog / **Update (1 version behind)**(橙色感叹号,版本落后提示)
+- [ ] 底部条目:Settings(chevron)→ 悬浮子菜单 16 项:Usage and plan / Personal / Users / Roles(灰色 `New` 徽章)/ 基线 API / External Secrets / Environments / SSO / Security & policies / LDAP / Log Streaming / OpenTelemetry / Community nodes / Instance-level MCP(`Preview`)/ Chat(`Preview`)/ **Sign out**(分隔线下)
 - [x] 状态:hover(条目浅色背景)、active(当前路由高亮)、折叠/展开切换动画(折叠宽度待量)
 
 ### 1.2 顶部工具(侧栏头)
@@ -69,9 +69,9 @@
 - [ ] 侧栏折叠/展开开关(双栏图标)
 
 ### 1.3 文档标题/图标状态(实测)
-- [ ] 列表页 title:`Workflows - n8n` / `Credentials - n8n` / …
-- [ ] 编辑器 title 前缀 `▶️ <workflow名> - n8n`
-- [ ] 兜底 title:`n8n.io - Workflow Automation`
+- [ ] 列表页 title:`Workflows - 基线` / `Credentials - 基线` / …
+- [ ] 编辑器 title 前缀 `▶️ <workflow名> - 基线`
+- [ ] 兜底 title:`对标站点 - Workflow Automation`
 
 ---
 
@@ -100,7 +100,7 @@
   - [ ] Connection:提示条 "Need help filling out these fields? Read our docs"(链接);字段 API Key*(必填星号)、Organization ID (optional)+帮助文本、Base URL(默认值 `https://api.openai.com/v1`)、Add Custom Header 开关
   - [ ] Sharing:Community 锁 → 虚线框 "Upgrade to collaborate" + View plans 按钮
   - [ ] Details:未保存时为空白(⚠待补:已保存凭证的 Details 内容)
-  - [ ] ⚠待补:已保存凭证的 **Test connection / 连接测试**状态区、红/绿结果条(本仓库已有对标实现,但 n8n 原样式需回访已保存凭证取证)
+  - [ ] ⚠待补:已保存凭证的 **Test connection / 连接测试**状态区、红/绿结果条(本仓库已有对标实现,但基线原样式需回访已保存凭证取证)
 
 ### 2.4 Executions Tab(即 `/home/executions`)
 - [x] 工具行:`Auto refresh` 复选框(橙色勾选态)+ 漏斗按钮
@@ -230,15 +230,15 @@
 - [ ] **Personal**:右上用户名+`Owner`+渐变圆头像(姓名缩写);分区 Basic Information(First Name* / Last Name* / Email*)、Security(Password → Change password 橙链;2FA 说明 + **Enable 2FA** 按钮)、Personalisation(Theme 下拉,当前 System default;选项枚举 ⚠待补)、底部 **Save**(未改动禁用);Change password / Enable 2FA 弹窗 ⚠待补
 - [ ] **Users**:H1 + "1 user";Upgrade 提示条(米黄)"Upgrade to unlock the ability to create additional admin users";搜索 "Search by name or email";**Invite** 橙按钮(Community 下点击行为 ⚠待补);表格列 User(头像+名+邮箱)/ Account Type(Owner)/ Last Active(Today)/ 2FA(Disabled)/ Projects(All proj…,列宽截断)/(行尾 ⋮ ⚠待补)
 - [ ] **Roles**:H1+`New` 徽章+说明(documentation 链接);Tab `Instance roles | Project roles`;主体 Enterprise 锁:三张权限卡图形 + "Upgrade to Enterprise" + 说明 + **Learn more ↗**(次要)+ **Upgrade**(橙);Project roles tab ⚠待补(预计同锁)
-- [ ] **n8n API**:H1 "API";虚线空态框:"Control n8n programmatically using the n8n API"(橙链)+ **Create API key**;创建后的 key 列表/scopes 表单 ⚠待补(避免造 key,二轮建后即删)
+- [ ] **基线 API**:H1 "API";虚线空态框:"Control 基线 programmatically using the 基线 API"(橙链)+ **Create API key**;创建后的 key 列表/scopes 表单 ⚠待补(避免造 key,二轮建后即删)
 - [ ] **External Secrets**:说明 + 虚线框 "Available on the Enterprise plan" + **See plans**
 - [ ] **Environments**:同上锁样式 + 说明 "Use multiple instances for different environments (dev, prod, etc.), deploying between them via a Git repository. **More info**"
 - [ ] **SSO**:H1 "Single Sign-On" + 说明(SAML 2.0/OIDC, documentation 链接)+ Enterprise 锁框("Use Single Sign On to consolidate…")+ See plans
 - [ ] **Security & policies**:说明;分区 ①Enforce two-factor authentication:开关行 + `Upgrade` 胶囊徽章 + 描述;②Data redaction:Enforce data redaction 开关(Upgrade)+ Learn more;Redact executions 下拉 `Production executions (Recommended)`(Upgrade);指标行 Affected scope — No executions;③Personal Space:Sharing(Upgrade)+ 描述 + 指标行 Existing shares — 0 workflows, 0 credentials;Workflow publishing(Upgrade)+ 指标行 Existing published workflows — 0 workflows
 - [ ] **LDAP**:说明(Active Directory/Okta/Jumpcloud)+ Enterprise 锁框 + See plans
 - [ ] **Log Streaming**:说明(More info 链接)+ Enterprise 锁框 + See plans
-- [ ] **OpenTelemetry**(本实例扩展页,字段全):Enable OpenTelemetry(下拉 `Disabled`,选项枚举 ⚠待补);分区 Collector connection:OTLP endpoint(占位 `http://localhost:4318`)/ Service name(`n8n`)/ Custom headers(**+ Add header** 按钮,行编辑 ⚠待补)/ Trace path(`/v1/traces`)/ Startup connectivity timeout(数值 `2000` + 后缀单位 `ms`)/ Verify configuration(**Send test trace** 按钮);分区 Tracing:Trace sample rate(`of 1.00`)/ Include node spans / Inject outbound traceparent / Track published workflows only(开关组);底部 **Save settings** + **Discard changes**
-- [ ] **Community nodes**:H1 + 右上 **Install** 橙按钮(安装弹窗 ⚠待补);包卡片:包名(`n8n-nodes-deepseek`)、"N node(s): 节点名列表"、右侧 `v1.0.6` + 更新检查 ✓ 图标 + ⋮ 菜单(⚠待补:预计 Uninstall/Update)
+- [ ] **OpenTelemetry**(本实例扩展页,字段全):Enable OpenTelemetry(下拉 `Disabled`,选项枚举 ⚠待补);分区 Collector connection:OTLP endpoint(占位 `http://localhost:4318`)/ Service name(`基线`)/ Custom headers(**+ Add header** 按钮,行编辑 ⚠待补)/ Trace path(`/v1/traces`)/ Startup connectivity timeout(数值 `2000` + 后缀单位 `ms`)/ Verify configuration(**Send test trace** 按钮);分区 Tracing:Trace sample rate(`of 1.00`)/ Include node spans / Inject outbound traceparent / Track published workflows only(开关组);底部 **Save settings** + **Discard changes**
+- [ ] **Community nodes**:H1 + 右上 **Install** 橙按钮(安装弹窗 ⚠待补);包卡片:包名(`<社区节点包示例>`)、"N node(s): 节点名列表"、右侧 `v1.0.6` + 更新检查 ✓ 图标 + ⋮ 菜单(⚠待补:预计 Uninstall/Update)
 - [ ] **Instance-level MCP**:H1+`Preview` 徽章;右上 `Enabled` 绿色开关 + **Connection details** 按钮(弹窗 ⚠待补);警示横幅(棕底,OAuth redirect allowlist 提示,可关 ×);Tab `Workflows | Connected clients | OAuth settings`(后两 tab ⚠待补);Workflows 表(Name/Location/Description)空态 "No workflows enabled" + 说明 + **Enable workflows** 橙按钮;右上刷新图标
 - [ ] **Chat(设置)**:Enable Chat 开关(绿);Providers 表(Provider/Models/Last edited/⋮):15 家(OpenAI / Anthropic / Google / Azure (API Key) / Azure (Entra ID) / Ollama / AWS Bedrock / Vercel AI Gateway / xAI Grok / Groq / OpenRouter / DeepSeek / Cohere / Mistral Cloud / NVIDIA Nemotron),各带品牌图标、"All models"、`-`;⋮ 配置弹窗(API key/模型白名单)⚠待补;右上刷新按钮
 
@@ -288,32 +288,32 @@
 
 ## 附 2:阶段四实现进度日志
 **2026-07-18 · 阶段五收尾(Chat/命令面板复核 + 环境清理)**
-- Chat:侧栏 240→200;composer dock 980→806(净宽 758 = n8n 实测);圆角/环/投影/hint 拼接复核 ✓
+- Chat:侧栏 240→200;composer dock 980→806(净宽 758 = 基线实测);圆角/环/投影/hint 拼接复核 ✓
 - 命令面板:[*,168,700,403]/输入行 48/20vh 顶距 —— 逐项吻合
-- 清理:nomops 种子数据(2 流+1 凭证)API 删除;临时用户+孤儿 Personal 项目 DB 级清除(外键引用逐表清理),仅剩原 owner;n8n 侧零残留
+- 清理:nomops 种子数据(2 流+1 凭证)API 删除;临时用户+孤儿 Personal 项目 DB 级清除(外键引用逐表清理),仅剩原 owner;基线侧零残留
 - 产出 acceptance-report.md:7 组页面验收结果、5 项单侧测量纠错记录、10 项产品元素裁决表、5 项遗留清单
 - 校验:build ✓ / vitest 22 ✓
 
 **2026-07-18 · 阶段五 · 第 5-6 页(带节点画布 / NDV+Settings 复核)**
-- 带节点画布(n8n 侧建同构临时流"UI Verify Tmp"对比后已删净):修正 4 项早前偏差——触发器左圆角 48→**36**;默认边框 α0.63→**white-alpha-200**(0.63 是选中/悬停态);节点 label 14→**16px**;连线 oklch(0.627)→**oklch(0.42)**;节点 96×96/bg/圆角 8/label 192 宽复核 ✓
+- 带节点画布(基线侧建同构临时流"UI Verify Tmp"对比后已删净):修正 4 项早前偏差——触发器左圆角 48→**36**;默认边框 α0.63→**white-alpha-200**(0.63 是选中/悬停态);节点 label 14→**16px**;连线 oklch(0.627)→**oklch(0.42)**;节点 96×96/bg/圆角 8/label 192 宽复核 ✓
 - NDV 列宽新发现:侧栏弹性均分、中栏按节点型定宽(IF/HTTP 640,Set 420)——布局改为侧 flex + 中 640 定宽(与 IF 实测吻合);每节点宽度表记为后续项
 - NDV Execute step [x,72,122,28] 复核 ✓
 - Settings 复核:轨 230/条目 32px-14px-light-1/H1 28-400 ✓;轨衬 12→6(条目宽对齐 218)
-- 校验:build ✓ / vitest 22 ✓;n8n 侧临时数据零残留
+- 校验:build ✓ / vitest 22 ✓;基线侧临时数据零残留
 
 **2026-07-18 · 阶段五 · 第 2-4 页(Credentials / Executions / 编辑器 chrome)**
-- Credentials:卡片[248,337,1144]/图标[264,359,26]/名称/meta 全部与 n8n 零差;工具行结构化 = Search+Sort(凭证列表新增排序支持)+漏斗弹层(Tags/Status/Show archived 收纳,替代三个独立切换钮,对齐 n8n);排序钮宽差 11px 记录
-- Executions:表头/行 36/48 ✓;列宽锁定 n8n 真值(check50/WF371/Status153/Started187/RunTime110/ID98);"Run Time"→"Run time";工具行缩进 24;遗留=尾部 flask/retry 图标列需执行 mode 数据
-- 编辑器 chrome:头带 65px/bg light-3/无底线;**Editor|Executions pill 重构为 n8n 真形**=居中悬浮 y48 压头带下缘、外层 neutral-800 衬 2 圆角 4、格 26px/12px-500、激活 bg light-2;右栏轨钮 36×36 ✓
+- Credentials:卡片[248,337,1144]/图标[264,359,26]/名称/meta 全部与基线零差;工具行结构化 = Search+Sort(凭证列表新增排序支持)+漏斗弹层(Tags/Status/Show archived 收纳,替代三个独立切换钮,对齐基线);排序钮宽差 11px 记录
+- Executions:表头/行 36/48 ✓;列宽锁定基线真值(check50/WF371/Status153/Started187/RunTime110/ID98);"Run Time"→"Run time";工具行缩进 24;遗留=尾部 flask/retry 图标列需执行 mode 数据
+- 编辑器 chrome:头带 65px/bg light-3/无底线;**Editor|Executions pill 重构为基线真形**=居中悬浮 y48 压头带下缘、外层 neutral-800 衬 2 圆角 4、格 26px/12px-500、激活 bg light-2;右栏轨钮 36×36 ✓
 - 校验:build ✓ / vitest 22 ✓ / 预览目视编辑器 chrome 与真身结构一致
 
 **2026-07-18 · 阶段五开工(并排验收 · Overview 第一页)**
 - 登录打通:dev DB 插入临时用户 ui-verify@nomops.local(admin,阶段五结束删除);本会话自起 server(5678, nomops.db);预览注入真实会话
 - 造对比数据:2 工作流(其一含双节点)/1 次成功执行/1 凭证
 - 验收方法升级:两侧同视口(1440×840)后**数值化对差**(getBoundingClientRect + 计算样式),不再目测截图
-- Overview 差异清单→修复:①右 gutter 26→48+左对齐 x248;②头部 sub→KPI 间距 22→34;③页头按钮 34→32px(+secondary inset 环);④搜索宽 230→196;⑤顶衬 +4;⑥根目录隐藏 nomops 文件夹条(n8n 无);⑦筛选行下距 16→12
-- **验收结果:KPI[249,101,228,99]、卡片[248,x,1144]、搜索[*,293,196,32] 与 n8n 逐像素一致**
-- 遗留差异(记账):工具行 nomops 多一个 archive 独立钮(n8n 收在 Filters 弹层)→ 下轮结构化;Run live demo/Admin Panel 等产品项待裁决
+- Overview 差异清单→修复:①右 gutter 26→48+左对齐 x248;②头部 sub→KPI 间距 22→34;③页头按钮 34→32px(+secondary inset 环);④搜索宽 230→196;⑤顶衬 +4;⑥根目录隐藏 nomops 文件夹条(基线无);⑦筛选行下距 16→12
+- **验收结果:KPI[249,101,228,99]、卡片[248,x,1144]、搜索[*,293,196,32] 与基线逐像素一致**
+- 遗留差异(记账):工具行 nomops 多一个 archive 独立钮(基线收在 Filters 弹层)→ 下轮结构化;Run live demo/Admin Panel 等产品项待裁决
 - 校验:build ✓ / vitest 22 ✓
 
 **2026-07-18 · 批次 9(Settings 壳 + Chat composer)**
@@ -324,17 +324,17 @@
 
 **2026-07-18 · 批次 8(节点创建面板 + NDV 头带)**
 - ✅ 节点抽屉真值:宽 385/bg light-3;标题 18px-600 白;搜索 40px/圆角 4/聚焦 primary 边;分类条目=外距 0 12 0 16+衬 12px、题 14px-500 白、描述 12px --color--text(实测非弱化色)可换行、hover light-1;z-index 用 --node-creator--z
-- ✅ NDV 头带补节点图标(24px 盒 + IconSvg)+ 名称 16px-400 白,结构对齐 n8n(图标+名 | 动作区)
+- ✅ NDV 头带补节点图标(24px 盒 + IconSvg)+ 名称 16px-400 白,结构对齐基线(图标+名 | 动作区)
 - 校验:build ✓ / vitest 22 ✓
 
 **2026-07-18 · 批次 7(参数控件 + 表达式编辑器)**
 - ✅ NDV 参数区控件真值:label 12px-400 白(下距 8);文本输入 32px/bg light-2/inset 1px 环/圆角 4/14px 白;下拉 30px/1px 边/12px;行距 10;Import cURL 类小钮规格(24px/12px-500)已记录
-- ✅ 布尔参数从原生 checkbox 升级为 n8n 开关:轨 32×16 胶囊、off = --switch--color--background + --switch--border-color、knob 12px --switch--toggle--color、on = --switch--color--background--active(green-500);测试同步更新(22/22 绿)
+- ✅ 布尔参数从原生 checkbox 升级为基线开关:轨 32×16 胶囊、off = --switch--color--background + --switch--border-color、knob 12px --switch--toggle--color、on = --switch--color--background--active(green-500);测试同步更新(22/22 绿)
 - ✅ 表达式编辑器:CodeMirror bg = --expression-editor--color--background、1px 边、圆角 0 4 4 0、内容 CommitMono 12px 白、衬 4 0 4 8;左侧 "=" gutter 块(20px,light-3 底)拼合;{{ }} 片段高亮改用 --expression-editor--resolvable--*--valid 绿系令牌
 - 校验:build ✓ / vitest 22 ✓
 
 **2026-07-18 · 批次 6(NDV 骨架 + 底部条)**
-- ✅ NDV 重构为 n8n 真实布局:全屏浮层(--ndv--z/black-alpha-600 遮罩)、模态四周 25px 露画布、顶部 66px 头带、侧栏 375px 定宽 bg light-3、中栏弹性 bg light-1(--ndv--header--color)+4px 拖柄边、容器底角 8 圆角
+- ✅ NDV 重构为基线真实布局:全屏浮层(--ndv--z/black-alpha-600 遮罩)、模态四周 25px 露画布、顶部 66px 头带、侧栏 375px 定宽 bg light-3、中栏弹性 bg light-1(--ndv--header--color)+4px 拖柄边、容器底角 8 圆角
 - ✅ 中栏 tab 12px-600(激活橙/未激活 tint-1,原 13px 灰属偏差);Execute step 28px-13px primary(实测小号规格)
 - ✅ DataPane:INPUT/OUTPUT 头 12px-600 白大写宽字距;空态升级 = 标题 16px-600 + 32px primary 动作钮 + 说明行(Execute previous nodes / Execute step 已接线)
 - ✅ 画布底部:Execute workflow 36px/圆角 6/inset 环(去胶囊形+橙泛光,均属偏差);Logs 条 33px/bg light-2/12px-500 白
@@ -363,12 +363,12 @@
 
 **2026-07-18 · 批次 2(侧栏 + 命令面板)**
 - ✅ 侧栏:条目 32px/衬 4px/圆角 4/gap 4/白字 14px/图标 16px(4px 盒边距);激活与 hover 底 = light-1(#2b2b2b);列表容器衬 0 6px 8px;logo 行 44px(衬 8px 6px);顶部工具钮 28×28/圆角 4;Preview 徽章 = purple-200 底/purple-600 字/圆角 16/10px-600/衬 2px 4px(硬编码色移除,改令牌)
-- ✅ Help 菜单结构对齐 n8n 顺序(条目 → About → "What's new" 分组)
-- ✅ 命令面板:面板 700px/light-3 底/1px 边框/4px 圆角/--command-bar--shadow;**无遮罩变暗**(n8n 实测透明);输入行 48px(0 32px 0 16px,placeholder "Type a command or search...");分组结构重构 = Workflows(Create workflow+开)/Credentials(Create credential+开)/Executions + 上下文组置顶;分组标 12px tint-1;条目 40px,hover = --command-bar-item--color--background--hover
+- ✅ Help 菜单结构对齐基线顺序(条目 → About → "What's new" 分组)
+- ✅ 命令面板:面板 700px/light-3 底/1px 边框/4px 圆角/--command-bar--shadow;**无遮罩变暗**(基线实测透明);输入行 48px(0 32px 0 16px,placeholder "Type a command or search...");分组结构重构 = Workflows(Create workflow+开)/Credentials(Create credential+开)/Executions + 上下文组置顶;分组标 12px tint-1;条目 40px,hover = --command-bar-item--color--background--hover
 - 校验:build ✓ / vitest 22 ✓ / 5181 预览目视(面板开合、分组、样式)✓
 
 **2026-07-18 · 批次 1(地基 + Overview 首屏)**
-- ✅ 令牌地基:n8n-tokens.css 进入构建;字体资产本地化;body[data-theme=dark];20 个历史别名重定向到真令牌(声明位置修正到 body,规避 :root 解析陷阱);body 16px/1;--radius 真值 4px 生效
+- ✅ 令牌地基:design-tokens.css 进入构建;字体资产本地化;body[data-theme=dark];20 个历史别名重定向到真令牌(声明位置修正到 body,规避 :root 解析陷阱);body 16px/1;--radius 真值 4px 生效
 - ✅ KPI 条重写(整条面板/99px 格/6px 圆角外框/24px 数值/可点,附 flex-shrink 防压扁修复)
 - ✅ Overview tab 行(14px/500,无整条下划线,激活橙 2px)
 - ✅ 工具行(搜索/排序/漏斗钮 32px + inset 1px 环 + bg light-2)

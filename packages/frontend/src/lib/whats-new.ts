@@ -1,5 +1,5 @@
 /**
- * What's New 内容源（对标 n8n Help 菜单的 What's New + 未读红点）。
+ * What's New 内容源（对标基线 Help 菜单的 What's New + 未读红点）。
  * 每次发布把亮点加到数组头部；id 单调递增，未读判定 = localStorage 里已读 id < 最新 id。
  */
 export interface WhatsNewEntry {

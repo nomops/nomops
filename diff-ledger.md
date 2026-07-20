@@ -1,18 +1,18 @@
-# nomops ⟷ n8n 1:1 复刻差异台账 (diff-ledger)
+# nomops ⟷ 基线 1:1 复刻差异台账 (diff-ledger)
 
-> 基准真站:http://localhost:5679/(n8n 2.30.4 stable · Community · dark)
+> 基准真站:http://localhost:5679/(参考基线 2.30.4 stable · Community · dark)
 > 复刻版:nomops http://localhost:5181/(1440×655 同视口)
-> 方法:①5 路并行代码级审计(以 manifest.md / field-specs.md / acceptance-report.md / n8n-tokens.css 里**已取证的 n8n 真值**为基准,逐行比对 nomops 源码,每行带 `file:line`);②本人在两侧运行实例上跑 **live computed-style 数值比对**(Control_Chrome 读 n8n · Browser 面板读 nomops)。
+> 方法:①5 路并行代码级审计(以 manifest.md / field-specs.md / acceptance-report.md / design-tokens.css 里**已取证的基线真值**为基准,逐行比对 nomops 源码,每行带 `file:line`);②本人在两侧运行实例上跑 **live computed-style 数值比对**(Control_Chrome 读基线 · Browser 面板读 nomops)。
 > 日期:2026-07-18 · **本轮只审计,未改任何代码**
 > 严重等级:**P0**=功能/结构缺失(整块没做/交互不通);**P1**=明显视觉/文案错误(用户一眼可见);**P2**=数值级偏差(几 px / 色差一档 / 文案措辞 / 过渡差)。
 >
-> ⚠ **关于「截图路径」列**:本会话 n8n 侧只有 Control_Chrome 通道(能读 computed style,**不能截图**;claude-in-chrome 全功能扩展本会话断连)。因此**无法产出 n8n 侧配对截图**——每行证据改用 `真站列的具体数值/文案 + 复刻版的 file:line`。此为环境限制,已在文末「没能验证到的部分」如实登记。
+> ⚠ **关于「截图路径」列**:本会话基线侧只有 Control_Chrome 通道(能读 computed style,**不能截图**;claude-in-chrome 全功能扩展本会话断连)。因此**无法产出基线侧配对截图**——每行证据改用 `真站列的具体数值/文案 + 复刻版的 file:line`。此为环境限制,已在文末「没能验证到的部分」如实登记。
 
 ---
 
 ## 修复进度(P0 分批)
 
-> 决定:B 类 6 项(Variables/Insights/Roles/Security&policies/Observability/Chat providers)按用户裁决**全部 1:1 阉割成 n8n 锁墙**(前端换锁态,后端接口保留可回退)。
+> 决定:B 类 6 项(Variables/Insights/Roles/Security&policies/Observability/Chat providers)按用户裁决**全部 1:1 阉割成基线锁墙**(前端换锁态,后端接口保留可回退)。
 
 - ✅ **Batch 1**(6a28b35):D028 动态 title · D022 命令面板 Data tables 组(+D021 in Personal)· D077 便签 7 色 · D001 侧栏折叠态。
 - ✅ **Batch 2**(6bf761a):D152 Insights 锁态 · D047 Variables 锁态 · D128 Roles Enterprise 锁卡。
@@ -20,47 +20,50 @@
 - ✅ **Batch 4**(ed47b1a):D061 Workflow settings 9 字段(+D062 #ID)· D088 NDV Settings tab 6 项(INode 扩展)。
 - ✅ **Batch 5a**(f9da5f5):D106 IF 条件组 · D105 Set 赋值区(告别 JSON 文本框)。
 - ✅ **Batch 5b**(762ec0f):D104 NDV 凭证选择器。
-- 🚫 **D103 resourceLocator = N/A**:无任何 nomops 节点使用(n8n 特有资源定位器),简化 schema 不需要 → 豁免。
+- 🚫 **D103 resourceLocator = N/A**:无任何 nomops 节点使用(基线特有资源定位器),简化 schema 不需要 → 豁免。
 - ⏸ **D096 Mapping\|From AI 暂缓**:AI Agent "让 AI 填参数" 运行时特性,需引擎 $fromAI 支持,纯 UI 假控件无意义 → 待引擎支持。
 - ✅ **Batch 6a**(d3adeb1):D067 节点右键 13 项菜单(+ 新增 editor.renameNode 重写连接)。
 - ✅ **Batch 6b**(2074736):D069 节点面板 7 分类 + D070 8 策展触发器(+ 顺带 D071/D072)。
-- ✅ **描述 live 逐字复验**(2026-07-19):经 Control_Chrome 按 **N 键**打开 n8n 节点创建器,读取 7 分类 + 8 触发器**逐字真值**并逐条订正(改 4 处:Action in an app 品牌名 `Slack,GitHub`→`Google Sheets, Telegram`;Core 补 `set webhooks`;Human review 全文改 `Request approval via services like Slack and Telegram before making tool calls`;Add another trigger 补句末句号)。nomops 侧 live 截图两张确认渲染一致(触发器根「What triggers this workflow?」/ 分类根「What happens next?」)。n8n 配对截图仍缺(claude-in-chrome 全程掉线),仅描述文本 live 取证。
-- ✅ **Batch 7a**(ee5f94c):D063 版本历史整页 + 只读斜纹画布(新增 ReadOnlyCanvas.vue;n8n History 页经 N 键全量 live 取证:Versions|Publish Timeline 双 tab、Current changes 置顶→N versions 分组头、Actions 4 项 Publish version/Clone to new workflow/Open version in new tab/Download、升级脚注)。
-- ✅ **Batch 7b**(D085):执行详情只读画布——顶条 Copy to editor + 垃圾桶 + 只读斜纹画布快照(节点带执行态 status-ok/error)+ 底部 Execution data 折叠。⚠ **两点受限**:①n8n 全实例 0 执行记录,本项 n8n 侧无法 live 复验(沿用先前审计真值 + n8n 执行详情通用结构);②nomops 执行 API 不返回执行时工作流快照,只读画布用「当前工作流」定义近似渲染,Copy to editor 退化为切回 Editor tab。nomops 侧 live 全量验证(造执行→顶条/斜纹画布/3 节点 status-ok/Execution data 折叠)。
-- ✅ **Batch 8**(B 类锁墙收尾,三页经 n8n /settings live 逐字取证):
-  - **D127** Security & policies:换成 n8n 三分区(Enforce 2FA / Data redaction / Personal Space),**5 处 Enterprise Upgrade 徽章** + Redact executions 下拉「Production executions (Recommended)」+ Affected scope「No executions」+ Existing shares「0 workflows, 0 credentials」+ Existing published workflows「0 workflows」。原 SSO/SCIM loader 后端保留可回退。
+- ✅ **描述 live 逐字复验**(2026-07-19):经 Control_Chrome 按 **N 键**打开基线节点创建器,读取 7 分类 + 8 触发器**逐字真值**并逐条订正(改 4 处:Action in an app 品牌名 `Slack,GitHub`→`Google Sheets, Telegram`;Core 补 `set webhooks`;Human review 全文改 `Request approval via services like Slack and Telegram before making tool calls`;Add another trigger 补句末句号)。nomops 侧 live 截图两张确认渲染一致(触发器根「What triggers this workflow?」/ 分类根「What happens next?」)。基线配对截图仍缺(claude-in-chrome 全程掉线),仅描述文本 live 取证。
+- ✅ **Batch 7a**(ee5f94c):D063 版本历史整页 + 只读斜纹画布(新增 ReadOnlyCanvas.vue;基线 History 页经 N 键全量 live 取证:Versions|Publish Timeline 双 tab、Current changes 置顶→N versions 分组头、Actions 4 项 Publish version/Clone to new workflow/Open version in new tab/Download、升级脚注)。
+- ✅ **Batch 7b**(D085):执行详情只读画布——顶条 Copy to editor + 垃圾桶 + 只读斜纹画布快照(节点带执行态 status-ok/error)+ 底部 Execution data 折叠。⚠ **两点受限**:①基线全实例 0 执行记录,本项基线侧无法 live 复验(沿用先前审计真值 + 基线执行详情通用结构);②nomops 执行 API 不返回执行时工作流快照,只读画布用「当前工作流」定义近似渲染,Copy to editor 退化为切回 Editor tab。nomops 侧 live 全量验证(造执行→顶条/斜纹画布/3 节点 status-ok/Execution data 折叠)。
+- ✅ **Batch 8**(B 类锁墙收尾,三页经基线 /settings live 逐字取证):
+  - **D127** Security & policies:换成基线三分区(Enforce 2FA / Data redaction / Personal Space),**5 处 Enterprise Upgrade 徽章** + Redact executions 下拉「Production executions (Recommended)」+ Affected scope「No executions」+ Existing shares「0 workflows, 0 credentials」+ Existing published workflows「0 workflows」。原 SSO/SCIM loader 后端保留可回退。
   - **D129** OpenTelemetry(顺带 **D018** 导航名 Observability→OpenTelemetry):整页两区 Collector connection / Tracing,全字段(状态下拉「When disabled, no traces leave this instance.」+ OTLP endpoint / Service name / Custom headers[Add header] / Trace path / Startup connectivity timeout[ms] / Verify configuration[Send test trace] / Trace sample rate / Include node spans / Inject outbound traceparent / Track published workflows only)+ Save settings·Discard changes。原 Prometheus /metrics 后端保留。
-  - **D130** Chat providers:6→**15 家逐字**(OpenAI/Anthropic/Google/Azure (API Key)/Azure (Entra ID)/Ollama/AWS Bedrock/Vercel AI Gateway/xAI Grok/Groq/OpenRouter/DeepSeek/Cohere/Mistral Cloud/NVIDIA Nemotron),表列 Provider/Models(All models)/Last edited(-)。⚠ **品牌图标不复制 n8n 的第三方厂商 logo 资源**,改用品牌色字母 monogram 芯片(视觉对等,规避第三方商标复制)。原 6 家真实 provider 后端 assistant-service 保留可回退。
+  - **D130** Chat providers:6→**15 家逐字**(OpenAI/Anthropic/Google/Azure (API Key)/Azure (Entra ID)/Ollama/AWS Bedrock/Vercel AI Gateway/xAI Grok/Groq/OpenRouter/DeepSeek/Cohere/Mistral Cloud/NVIDIA Nemotron),表列 Provider/Models(All models)/Last edited(-)。⚠ **品牌图标不复制基线的第三方厂商 logo 资源**,改用品牌色字母 monogram 芯片(视觉对等,规避第三方商标复制)。原 6 家真实 provider 后端 assistant-service 保留可回退。
   - 三页均 nomops 侧 live 全量验证(分区/徽章/字段/15 行)。typecheck+26 tests+build 全绿。
-- ✅ **P1-A**(应用壳/侧栏,基调=用户裁决"完全 1:1,n8n.io 外链照抄"):
-  - **D002** 侧栏固定 201px、移除拖拽调宽把手。**D004** 移除"Personal"侧栏项。**D005** 移除"Admin Panel"侧栏项(路由 /admin 保留)。**D007** Templates 改外链 `n8n.io/workflows`(新标签)。**D008** `+`菜单 6→4 项(去 New variable/New AI chat)。**D009** New project 非 rbac 时改 Enterprise 徽章 + 置灰。**D012–D015** Help 菜单重构:Quickstart(YouTube)/Documentation/Forum/Course/Report a bug(GitHub issues)全外链 n8n.io + About nomops(留品牌)+ What's new 分组(新闻标题 + Full changelog→release-notes)。**D017/D132** 设置左导航移除"Languages"(15 段对齐 n8n)。**D018** 已于 Batch 8 修。
+- ✅ **P1-A**(应用壳/侧栏,基调=用户裁决"完全 1:1,对标站点 外链照抄"):
+  - **D002** 侧栏固定 201px、移除拖拽调宽把手。**D004** 移除"Personal"侧栏项。**D005** 移除"Admin Panel"侧栏项(路由 /admin 保留)。**D007** Templates 改外链 `对标站点模板库`(新标签)。**D008** `+`菜单 6→4 项(去 New variable/New AI chat)。**D009** New project 非 rbac 时改 Enterprise 徽章 + 置灰。**D012–D015** Help 菜单重构:Quickstart(YouTube)/Documentation/Forum/Course/Report a bug(GitHub issues)全外链 对标站点 + About nomops(留品牌)+ What's new 分组(新闻标题 + Full changelog→release-notes)。**D017/D132** 设置左导航移除"Languages"(15 段对齐基线)。**D018** 已于 Batch 8 修。
   - 🔧 **D006 经 live 纠正**:红点在 **Help**(What's new 未读,nomops 已有),**不在 Insights**——ledger 记错,不给 Insights 加红点。
   - nomops 侧 live 全量验证(侧栏 6 项/201px/无拖拽/`+`4 项/Help 8 项外链/设置 15 段)。typecheck+26 tests+build 全绿。
 - ✅ **P1-B**(命令面板 CommandPalette.vue):**D023** 移除全局态多余 "Executions" 组(执行入口仅工作流上下文经 paletteContext 出现);**D024** emoji 图标(＋🔀🔑📋⌁)→单色描边 SVG(plus/workflow/key/table/command)。D021(Create … in Personal)、D025(真实行平铺)先前已做;**D026** 上下文 "Workflow · &lt;名&gt;" 徽标暂缓(需当前工作流名注入面板)。live 验证(分组无 Executions/图标为 SVG)。typecheck+26 tests+build 全绿。
-- ✅ **P1-C**(Settings 五锁页按钮 D136,n8n live 逐字取证):External Secrets/SSO/LDAP/Log Streaming 锁卡按钮 "Enter activation key"→**"See plans"**(外链 `n8n.io/pricing`);Environments 改 **[More info][See plans]** 双钮(live 实测 Environments 有两钮,ledger 原记只 More info 不全)+ 描述补 "(dev, prod, etc.)"。⚠ 锁卡仅未授权时渲染,测试实例 5 项全授权故无法 live 显示锁卡;改动经 typecheck+build 保证,n8n 真值已 live 取证(External Secrets/SSO/Environments 逐字)。
-- ✅ **P1-D**(Workflows 工具行 + Chat placeholder,n8n live 取证):**D036** Sort 加 "Sort by last created"(4 项:last updated/last created/name A-Z/name Z-A);**D037** Status 加 "Unpublished"(All/Published/Unpublished,activeOnly 布尔→statusFilter 三态);**D121** 底部 Chat placeholder 改 "Type message, or press 'up' for previous one"。live 验证(Sort 4 项/Status 3 项)。typecheck+26 tests+build 全绿。
-- ✅ **NDV truth 已取证**(用户在 n8n 手动开 NDV,Control_Chrome 读取):Docs 链、floating-node 相邻 chip、resize-handle/panel-drag-button 可拖分隔条、tab-params/tab-settings、radio-button-schema/table/json(input 面板默认 Schema)、radio-button-fixed/expression(每字段)、"I wish this node would..." 反馈链、input 面板 Mapping|From AI。
-- ✅ **P1-E**(NDV chrome):**D091** 头带右侧 Docs 外链(→docs.n8n.io 内置节点文档);**D095** 参数区底部居中反馈链 "I wish this node would..."。live 验证(Docs 链 + 反馈链渲染)。typecheck+26 tests+build 全绿。剩 NDV 子批(真值已存):D092 相邻 chip 导航、D093 可拖分隔条、D098 DataPane 默认 Schema、D108 multiOptions、D109 Fixed|Expression 全字段、D111 多行、D112 notice、D115-D117 表达式、D118/D119 Focus Panel、D123 Logs 树。
+- ✅ **P1-C**(Settings 五锁页按钮 D136,基线 live 逐字取证):External Secrets/SSO/LDAP/Log Streaming 锁卡按钮 "Enter activation key"→**"See plans"**(外链 `对标站点定价页`);Environments 改 **[More info][See plans]** 双钮(live 实测 Environments 有两钮,ledger 原记只 More info 不全)+ 描述补 "(dev, prod, etc.)"。⚠ 锁卡仅未授权时渲染,测试实例 5 项全授权故无法 live 显示锁卡;改动经 typecheck+build 保证,基线真值已 live 取证(External Secrets/SSO/Environments 逐字)。
+- ✅ **P1-D**(Workflows 工具行 + Chat placeholder,基线 live 取证):**D036** Sort 加 "Sort by last created"(4 项:last updated/last created/name A-Z/name Z-A);**D037** Status 加 "Unpublished"(All/Published/Unpublished,activeOnly 布尔→statusFilter 三态);**D121** 底部 Chat placeholder 改 "Type message, or press 'up' for previous one"。live 验证(Sort 4 项/Status 3 项)。typecheck+26 tests+build 全绿。
+- ✅ **NDV truth 已取证**(用户在基线手动开 NDV,Control_Chrome 读取):Docs 链、floating-node 相邻 chip、resize-handle/panel-drag-button 可拖分隔条、tab-params/tab-settings、radio-button-schema/table/json(input 面板默认 Schema)、radio-button-fixed/expression(每字段)、"I wish this node would..." 反馈链、input 面板 Mapping|From AI。
+- ✅ **P1-E**(NDV chrome):**D091** 头带右侧 Docs 外链(→docs.对标站点 内置节点文档);**D095** 参数区底部居中反馈链 "I wish this node would..."。live 验证(Docs 链 + 反馈链渲染)。typecheck+26 tests+build 全绿。剩 NDV 子批(真值已存):D092 相邻 chip 导航、D093 可拖分隔条、D098 DataPane 默认 Schema、D108 multiOptions、D109 Fixed|Expression 全字段、D111 多行、D112 notice、D115-D117 表达式、D118/D119 Focus Panel、D123 Logs 树。
 - ✅ **P1-F**(NDV 参数控件 ParamInput.vue):**D109** Fixed\|Expression 切换从"仅 string"扩到 string/number/options/multiOptions/dateTime/color——表达式态任意可切字段统一渲染表达式编辑器(live 验证:Method[options] 现有 ƒx,切换后 select→表达式编辑器);**D111** string 带 `typeOptions.rows`→多行 textarea;**D108** multiOptions 勾选芯片多选。契约极小扩展(NodePropertyType 加 'multiOptions'、INodeProperties 加 typeOptions.rows)——D108/D111 前瞻性支持(当前无 nomops 节点声明,待节点使用)。引擎全绿(workflow 16 + core 40 含六拓扑)+ 前端 26 tests + build。
 - ✅ **P1-G**(NDV 布局 NdvModal/DataPane):**D092** 两侧相邻节点 floating chip(左=输入邻居/右=输出邻居,点击切到该节点——live 验证点击右 chip→NDV 切到 No Operation);**D093** 三栏可拖拽分隔条(中栏两侧拖柄,live 验证右柄拖 +80px→420→500);**D098** DataPane 默认视图 table→Schema(live 验证 Schema 激活)。typecheck+26 tests+build 全绿。
-- ✅ **P1-H**(D123 底部 Logs 执行树):扁平 `log-row` 列表升级为「左树 + 右详情」——左=摘要行(Success/Error in {总耗时}ms)+ 逐节点行(状态点/名/耗时,可选中高亮,默认选最后执行/出错节点);右=选中节点详情(状态 + in {耗时}ms + Input|Output 切换 + 复用 DataPane 显示 input/output 的 Schema/Table/JSON)。⚠ n8n 实例 0 执行、不跑用户生产 Agent,本项按 ledger 审计真值 + n8n Logs 通用结构构建;nomops 侧 live 全量验证(造工作流跑一次→摘要 Success in 12ms/3 节点树/选中 No Operation/Input·Output/DataPane 三视图/1 ITEMS)。typecheck+26 tests+build 全绿。
-- ✅ **P1-I**(NDV 表达式/notice ParamInput/ExpressionInput):**D115** 表达式 Result 预览面板(标题 Result + 多 item 翻页 ‹›「Item N of M」+ 值/空态「[Execute previous nodes for preview]」+ 提示「Anything inside {{ }} is JavaScript. Learn more」)——live 验证 `={{ $json.firstName }}`→RESULT: Ada;**D117** `$json.` 成员级变量树补全(ExpressionInput 加 jsonFields prop + 成员补全源,ParamInput 从上游首 item 摊平字段路径喂入)——live 验证输入 Schema 显 firstName/city 同源;**D112** notice→紫色 Tip 提示条(code 正确,但当前无 nomops 节点声明 notice 属性,前瞻性,同 D108/D111 无法 live 触发)。⏸ **D116** 字段悬浮工具条(Focus Panel 图标/⋮/Fixed|Expression)暂缓——需 live 复观 n8n 悬浮工具条精确布局,NDV 已关无法取证,按铁律不虚构。修一处 Vue 模板 bug(`{{ '{{ }}' }}` 嵌套 mustache 编译失败→提 CURLY 常量)。typecheck+26 tests+build 全绿。
-- ✅ **P1-J**(Overview/Workflows StatsBar/OverviewView,n8n live 逐字取证):**D031** 5 KPI 卡各深链到自己的 `/insights/<metric>`(total/failed/failureRate/timeSaved/averageRunTime,原全链 /insights;路由改 `/insights/:metric?`)——live 验证 5 格 href + `/insights/total` 解析;**D039** 工作流卡 ⋮ 菜单按 n8n 重排为 6 项 **Open / Share... / Favorite / Duplicate / Archive / Enable MCP access**(加 Share...=Enterprise 锁弹窗;移除自有 Activate/Manage tags/Move to,方法保留可回退)——live 验证 6 项 + Share 锁弹窗。typecheck+26 tests+build 全绿。
-- ✅ **P1-K**(Overview 收尾 OverviewView,n8n live 逐字取证):**D044** Executions 工具行加**漏斗 Filters**(Status:All/Success/Error/Running/Waiting/Canceled + filteredExecutions 过滤),移除多余「N executions」计数——live 验证漏斗+6 状态+无计数;**D048** Data table 创建模态改 label「Data table name *」(ph「Enter data table name」)+ 单选 **From scratch/Import CSV**——live 验证 label/ph/双单选/Cancel·Create。**Overview 区 P1 收官**(D031/D036/D037/D039/D044/D048)。typecheck+26 tests+build 全绿。
-- ✅ **P1-L**(Credentials CredentialModal/credential-types,n8n live 逐字取证):**D049** Sharing tab 换 n8n 虚线升级卡「Upgrade to collaborate / You can share credentials with others when you upgrade your plan. / View plans」;**D050** Details tab 换 Created/Last modified/ID 三行(相对时间;未存则提示);**D051** OpenAI 凭证字段扩为 API Key* / Organization ID (optional)+hint / Base URL(默认 https://api.openai.com/v1)/ Add Custom Header 开关;**D053** CredentialField 加 required 位 + label 渲染红 *(API Key* 等);**D054** 头部加垃圾桶(已存凭证删除)。live 验证(建 OpenAI 凭证开模态:4 字段/必填星/垃圾桶/Sharing 锁/Details 三行全对)。typecheck+26 tests+build 全绿。
-- ✅ **P1-M**(Chat 壳 ChatView,n8n /home/chat live 逐字取证):**D156** composer 加底栏 +Tools 按钮(左)+ 橙发送(右)(实测 n8n 此版无回形针/麦克风,ledger 过记,未加);**D158** Personal Agents 副标改「Create and manage custom AI agents with specific instructions and behaviors」;**D159** New Agent 从网格虚线卡改右上橙钮「＋ New Agent」;**D160** 加空态「No personal agents available. Create your first custom agent to get started.」。live 验证(Tools/副标/New Agent/空态全对)。⏸ D155(侧栏搜索+折叠)/D157(provider→models 级联)较重,暂缓。typecheck+26 tests+build 全绿。
-- ✅ **P1-N**(Settings SettingsView,n8n live 逐字取证):**D133** Personal 加 Personalisation 分区 + Theme 下拉(System default/Light theme/Dark theme,存 localStorage + 根 data-theme;浅色令牌为后续)——live 验证 3 选项 + 分区渲染;**D137** Usage Unlock 横幅文案改「Unlock selected paid features for free (forever)」(仅 Community 显示,本 enterprise 实例横幅隐藏,code 正确);**D138** 用量行改「Published workflows — N of Unlimited」(N=active 工作流数)+ caption「Published workflows with multiple triggers count multiple times. Error and Sub-workflow triggers are excluded.」——live 验证「Published workflows 0 of Unlimited」+ caption。typecheck+26 tests+build 全绿。
-- ✅ **P1-O**(画布节点 CanvasNode/WorkflowCanvas,n8n live 逐字取证):**D068** 空白画布右键菜单(Add node[N] / Add sticky note[⇧S] / Tidy up workflow[⇧⌥T] / Select all[⌘A,置灰] / Clear selection)——live 验证 5 项;**D073** 移除触发器 ⚡ emoji 旗标(n8n 仅左弧无外挂)——live 验证无 flag;**D075** AI Agent 子端口标签 Model→**Chat Model**(必填红星)/ Tool / Memory——live 验证 Chat Model*/Tool/Memory。ledger D068 原记「Add node/Paste/Select all」不准(实测无 Paste,有 Add sticky note/Tidy up/Clear selection)。typecheck+26 tests+build 全绿。
-- ✅ **P1-P**(便签 StickyNote/CanvasNode/editor):**D079** 便签默认内容改 n8n markdown「## I'm a note \n**Double click** to edit me. [Guide](...)」+ CanvasNode 加极简 markdown 渲染(先转义防 XSS,再变换 标题/粗斜体/行内码/链接/列表/换行);editor.addNode 改为创建时填入各属性 default(便签默认内容才能落到节点)——live 验证(新便签渲染 h2「I'm a note」+ 粗体「Double click」+ 下划线链接「Guide」)。⏸ **D078** 便签 resize(需加 @vue-flow/node-resizer 依赖)/ **D080** 便签右键菜单(需 context-menu 分支)暂缓。typecheck+26 tests+build 全绿。
-- ✅ **P1-Q**(Settings Users SettingsView,n8n live 逐字取证):**D134** Users 顶部加米黄升级条「Upgrade to unlock the ability to create additional admin users」(仅 Community 显示;本 enterprise 实例隐藏,code 正确);**D135** Account Type 列从内联 `<select>` 改纯文本(capitalize 角色;changeUserRole 保留可回退)——roleIsSelect=false 确认非 select。⚠ 测试账号是 member(无权列用户,Users 显 0 users)+ enterprise(升级条隐藏),故用户行/升级条无法 live 渲染验证;改动经 build 保证,n8n 侧真值已 live 取证。typecheck+26 tests+build 全绿。
-- ✅ **P1-R**(画布顶栏 CanvasView,n8n live 逐字取证):**D064** 面包屑项目名前加人形图标(home-project「Personal」+ 人形 svg)——live 验证有图标 + "Personal";**D065** Add tag 下拉底部加「Manage tags」(眼睛图标,点击去 Overview 工作流列表)——live 验证 Manage tags。typecheck+26 tests+build 全绿。
-- ✅ **P1-S**(Settings Community nodes SettingsView,n8n live 逐字取证):**D139** 标题行右上加常驻 Install 橙钮(有包时显示);**D140** 已装包从表格改**卡片**(包名 + 「N node(s): 节点名」+ 版本 + Uninstall,取代 Package/Version/Nodes 表)。⚠ nomops 无已装社区节点(空态),不装真 npm 包,故卡片/顶部 Install 无法 live 渲染;空态正常 + build 保证,n8n 侧真值已 live 取证(n8n-nodes-deepseek「1 node: DeepSeek v1.0.6」等)。typecheck+26 tests+build 全绿。
-- ✅ **P1-T**(Settings API SettingsView,n8n live 逐字取证):**D141** Create API Key 弹窗 Expiration 加「Custom」(选中显 `<input type=date>` + 动态过期文案),Scopes 加「Custom」单选(All/Read only/Custom);createApiKey 处理 custom→按日期换算天数、custom scope 后端未支持提交按 all。live 验证(Expiration 6 项含 Custom + 日期输入 / Scopes All·Read only·Custom)。typecheck+26 tests+build 全绿。
+- ✅ **P1-H**(D123 底部 Logs 执行树):扁平 `log-row` 列表升级为「左树 + 右详情」——左=摘要行(Success/Error in {总耗时}ms)+ 逐节点行(状态点/名/耗时,可选中高亮,默认选最后执行/出错节点);右=选中节点详情(状态 + in {耗时}ms + Input|Output 切换 + 复用 DataPane 显示 input/output 的 Schema/Table/JSON)。⚠ 基线实例 0 执行、不跑用户生产 Agent,本项按 ledger 审计真值 + 基线 Logs 通用结构构建;nomops 侧 live 全量验证(造工作流跑一次→摘要 Success in 12ms/3 节点树/选中 No Operation/Input·Output/DataPane 三视图/1 ITEMS)。typecheck+26 tests+build 全绿。
+- ✅ **P1-I**(NDV 表达式/notice ParamInput/ExpressionInput):**D115** 表达式 Result 预览面板(标题 Result + 多 item 翻页 ‹›「Item N of M」+ 值/空态「[Execute previous nodes for preview]」+ 提示「Anything inside {{ }} is JavaScript. Learn more」)——live 验证 `={{ $json.firstName }}`→RESULT: Ada;**D117** `$json.` 成员级变量树补全(ExpressionInput 加 jsonFields prop + 成员补全源,ParamInput 从上游首 item 摊平字段路径喂入)——live 验证输入 Schema 显 firstName/city 同源;**D112** notice→紫色 Tip 提示条(code 正确,但当前无 nomops 节点声明 notice 属性,前瞻性,同 D108/D111 无法 live 触发)。⏸ **D116** 字段悬浮工具条(Focus Panel 图标/⋮/Fixed|Expression)暂缓——需 live 复观基线悬浮工具条精确布局,NDV 已关无法取证,按铁律不虚构。修一处 Vue 模板 bug(`{{ '{{ }}' }}` 嵌套 mustache 编译失败→提 CURLY 常量)。typecheck+26 tests+build 全绿。
+- ✅ **P1-J**(Overview/Workflows StatsBar/OverviewView,基线 live 逐字取证):**D031** 5 KPI 卡各深链到自己的 `/insights/<metric>`(total/failed/failureRate/timeSaved/averageRunTime,原全链 /insights;路由改 `/insights/:metric?`)——live 验证 5 格 href + `/insights/total` 解析;**D039** 工作流卡 ⋮ 菜单按基线重排为 6 项 **Open / Share... / Favorite / Duplicate / Archive / Enable MCP access**(加 Share...=Enterprise 锁弹窗;移除自有 Activate/Manage tags/Move to,方法保留可回退)——live 验证 6 项 + Share 锁弹窗。typecheck+26 tests+build 全绿。
+- ✅ **P1-K**(Overview 收尾 OverviewView,基线 live 逐字取证):**D044** Executions 工具行加**漏斗 Filters**(Status:All/Success/Error/Running/Waiting/Canceled + filteredExecutions 过滤),移除多余「N executions」计数——live 验证漏斗+6 状态+无计数;**D048** Data table 创建模态改 label「Data table name *」(ph「Enter data table name」)+ 单选 **From scratch/Import CSV**——live 验证 label/ph/双单选/Cancel·Create。**Overview 区 P1 收官**(D031/D036/D037/D039/D044/D048)。typecheck+26 tests+build 全绿。
+- ✅ **P1-L**(Credentials CredentialModal/credential-types,基线 live 逐字取证):**D049** Sharing tab 换基线虚线升级卡「Upgrade to collaborate / You can share credentials with others when you upgrade your plan. / View plans」;**D050** Details tab 换 Created/Last modified/ID 三行(相对时间;未存则提示);**D051** OpenAI 凭证字段扩为 API Key* / Organization ID (optional)+hint / Base URL(默认 https://api.openai.com/v1)/ Add Custom Header 开关;**D053** CredentialField 加 required 位 + label 渲染红 *(API Key* 等);**D054** 头部加垃圾桶(已存凭证删除)。live 验证(建 OpenAI 凭证开模态:4 字段/必填星/垃圾桶/Sharing 锁/Details 三行全对)。typecheck+26 tests+build 全绿。
+- ✅ **P1-M**(Chat 壳 ChatView,基线 /home/chat live 逐字取证):**D156** composer 加底栏 +Tools 按钮(左)+ 橙发送(右)(实测基线此版无回形针/麦克风,ledger 过记,未加);**D158** Personal Agents 副标改「Create and manage custom AI agents with specific instructions and behaviors」;**D159** New Agent 从网格虚线卡改右上橙钮「＋ New Agent」;**D160** 加空态「No personal agents available. Create your first custom agent to get started.」。live 验证(Tools/副标/New Agent/空态全对)。⏸ D155(侧栏搜索+折叠)/D157(provider→models 级联)较重,暂缓。typecheck+26 tests+build 全绿。
+- ✅ **P1-N**(Settings SettingsView,基线 live 逐字取证):**D133** Personal 加 Personalisation 分区 + Theme 下拉(System default/Light theme/Dark theme,存 localStorage + 根 data-theme;浅色令牌为后续)——live 验证 3 选项 + 分区渲染;**D137** Usage Unlock 横幅文案改「Unlock selected paid features for free (forever)」(仅 Community 显示,本 enterprise 实例横幅隐藏,code 正确);**D138** 用量行改「Published workflows — N of Unlimited」(N=active 工作流数)+ caption「Published workflows with multiple triggers count multiple times. Error and Sub-workflow triggers are excluded.」——live 验证「Published workflows 0 of Unlimited」+ caption。typecheck+26 tests+build 全绿。
+- ✅ **P1-O**(画布节点 CanvasNode/WorkflowCanvas,基线 live 逐字取证):**D068** 空白画布右键菜单(Add node[N] / Add sticky note[⇧S] / Tidy up workflow[⇧⌥T] / Select all[⌘A,置灰] / Clear selection)——live 验证 5 项;**D073** 移除触发器 ⚡ emoji 旗标(基线仅左弧无外挂)——live 验证无 flag;**D075** AI Agent 子端口标签 Model→**Chat Model**(必填红星)/ Tool / Memory——live 验证 Chat Model*/Tool/Memory。ledger D068 原记「Add node/Paste/Select all」不准(实测无 Paste,有 Add sticky note/Tidy up/Clear selection)。typecheck+26 tests+build 全绿。
+- ✅ **P1-P**(便签 StickyNote/CanvasNode/editor):**D079** 便签默认内容改基线 markdown「## I'm a note \n**Double click** to edit me. [Guide](...)」+ CanvasNode 加极简 markdown 渲染(先转义防 XSS,再变换 标题/粗斜体/行内码/链接/列表/换行);editor.addNode 改为创建时填入各属性 default(便签默认内容才能落到节点)——live 验证(新便签渲染 h2「I'm a note」+ 粗体「Double click」+ 下划线链接「Guide」)。⏸ **D078** 便签 resize(需加 @vue-flow/node-resizer 依赖)/ **D080** 便签右键菜单(需 context-menu 分支)暂缓。typecheck+26 tests+build 全绿。
+- ✅ **P1-Q**(Settings Users SettingsView,基线 live 逐字取证):**D134** Users 顶部加米黄升级条「Upgrade to unlock the ability to create additional admin users」(仅 Community 显示;本 enterprise 实例隐藏,code 正确);**D135** Account Type 列从内联 `<select>` 改纯文本(capitalize 角色;changeUserRole 保留可回退)——roleIsSelect=false 确认非 select。⚠ 测试账号是 member(无权列用户,Users 显 0 users)+ enterprise(升级条隐藏),故用户行/升级条无法 live 渲染验证;改动经 build 保证,基线侧真值已 live 取证。typecheck+26 tests+build 全绿。
+- ✅ **P1-R**(画布顶栏 CanvasView,基线 live 逐字取证):**D064** 面包屑项目名前加人形图标(home-project「Personal」+ 人形 svg)——live 验证有图标 + "Personal";**D065** Add tag 下拉底部加「Manage tags」(眼睛图标,点击去 Overview 工作流列表)——live 验证 Manage tags。typecheck+26 tests+build 全绿。
+- ✅ **P1-S**(Settings Community nodes SettingsView,基线 live 逐字取证):**D139** 标题行右上加常驻 Install 橙钮(有包时显示);**D140** 已装包从表格改**卡片**(包名 + 「N node(s): 节点名」+ 版本 + Uninstall,取代 Package/Version/Nodes 表)。⚠ nomops 无已装社区节点(空态),不装真 npm 包,故卡片/顶部 Install 无法 live 渲染;空态正常 + build 保证,基线侧真值已 live 取证(某社区节点包「1 node: … v1.0.6」等)。typecheck+26 tests+build 全绿。
+- ✅ **P1-T**(Settings API SettingsView,基线 live 逐字取证):**D141** Create API Key 弹窗 Expiration 加「Custom」(选中显 `<input type=date>` + 动态过期文案),Scopes 加「Custom」单选(All/Read only/Custom);createApiKey 处理 custom→按日期换算天数、custom scope 后端未支持提交按 all。live 验证(Expiration 6 项含 Custom + 日期输入 / Scopes All·Read only·Custom)。typecheck+26 tests+build 全绿。
 - ✅ **P1-U**(画布端口 CanvasNode):**D074** 输出端口旁加 **`+` 快捷加节点**(默认隐形、节点 hover 浮出;点击=选中本节点 + 开节点面板,addNode 自动从选中节点接线)——live 验证完整链路(+ 存在 → 面板打开 + 选中 Trigger → 加 HTTP Request 后自动生成 Trigger→HTTP Request 连线)。只读画布不渲染 `+`。typecheck+26 tests+build 全绿。
 - ✅ **P1-V**(画布多选 editor/WorkflowCanvas):**D082** 加多选模型——store 新增 `selectedNames`(多选集,`selectedNodeName` 保留为主选中,供 NDV/自动接线)+ `setSelection`/`selectAll`/`removeSelected`;load/undo/removeNode/renameNode 四处同步维护多选集;WorkflowCanvas 接 Vue Flow `@selection-change`、启用 Shift 框选 + ⌘/Ctrl 点选,打通两个右键菜单的「Select all」「Clear selection」(原置灰)。live 全链路验证:Select all(store 3 + 画布 3 selected)· Clear(0/0)· 点选同步(names=[Node B])· 多选删除(3→0)· **undo 恢复(3)**。typecheck+26 tests+build 全绿。
-- ✅ **P1-W**(Chat model 选择器 ChatView):**D157** 扁平 model 列表改 **provider → models 两级级联**——Agents 两组仍直选;每个已启用 provider 一行带 `›`(hover/点击展开其 models);搜索时退化为扁平跨 provider 匹配(同 n8n)。⚠ n8n 的 model 下拉靠 synthetic click 打不开(同 NDV 类限制),无法 live 复观其**飞出式**子菜单;且 `.model-pop` 有 `overflow:hidden`,故实现为**内联缩进二级展开**(同为两级 + `›` 旋转),结构对齐、形态略异,已如实标注。live 验证(6 provider 行 + 展开 Anthropic → claude-sonnet-5/opus-4-8/haiku-4-5)。typecheck+26 tests+build 全绿。
+- ✅ **P1-W**(Chat model 选择器 ChatView):**D157** 扁平 model 列表改 **provider → models 两级级联**——Agents 两组仍直选;每个已启用 provider 一行带 `›`(hover/点击展开其 models);搜索时退化为扁平跨 provider 匹配(同基线)。⚠ 基线的 model 下拉靠 synthetic click 打不开(同 NDV 类限制),无法 live 复观其**飞出式**子菜单;且 `.model-pop` 有 `overflow:hidden`,故实现为**内联缩进二级展开**(同为两级 + `›` 旋转),结构对齐、形态略异,已如实标注。live 验证(6 provider 行 + 展开 Anthropic → claude-sonnet-5/opus-4-8/haiku-4-5)。typecheck+26 tests+build 全绿。
 - ✅ **P1-X**(连线工具条 CanvasEdge/WorkflowCanvas/editor):**D076** 新增自定义 edge 组件 `CanvasEdge.vue`——贝塞尔线 + 18px 透明加宽命中带 + **中点悬浮工具条(`+` 插入节点 / `✕` 删除连线)**;`toFlowEdges` 给边打 `type:'nomops'`,WorkflowCanvas 挂 `#edge-nomops` 插槽;edge id 反解为连接四元组;store 新增 `pendingInsert`,`addNode` 消费它把新节点插进连线(断原连线→接 source→新→target)。live 全链路验证:edge id `A:main:0->B:0` 正确反解 → `+` 开面板并置 pendingInsert → 加 Set 后重接为 **A→Set + Set→B** → `✕` 删除 `Set:main:0->B:0` 生效。typecheck+26 tests+build 全绿。
 - ✅ **P1-Y**(便签 resize CanvasNode):**D078** 便签可拖拽调宽高——经用户批准新增依赖 `@vue-flow/node-resizer@^1.5.1`(未触发 pnpm allowBuilds 门);便签挂 `NodeResizer`(min 150×80,选中时显八向把手),`@resize-end` 把尺寸写入 `node.parameters.width/height`;`.sticky-note` 宽高改由内联 style 驱动(原固定 240×160,现为默认值)。live 验证:默认 240×160 → 点击选中显 **8 个 `.vue-flow__resize-control` 把手** → 写入 380×260 后便签实际渲染 380×260。typecheck+26 tests+build 全绿。
+- ✅ **P1-Z**(便签右键菜单 WorkflowCanvas/CanvasNode/editor):**D080** 便签右键从「误用普通节点 13 项菜单」改为**便签专属 8 项**——Edit(↵)/ Change color(›,展开 7 色板)/ Copy(⌘C)/ Duplicate(⌘D)/ Tidy up workflow(⇧⌥T)/ Select all(⌘A)/ Clear selection / Delete(Del);store 加 `editingSticky` 标记,CanvasNode 监听后进入行内编辑。live 验证:便签→8 项 + 7 色板且不弹节点菜单;普通节点→仍 13 项且不弹便签菜单。⚠ 基线的便签右键同样不吃 synthetic 事件、无法 live 复观,菜单项按审计记录真值实现。
+  🔧 **同时修复一个自引入的 TDZ 崩溃**:`watch(() => editor.editingSticky)` 被放在 `const editor = useEditorStore()` **之前**,setup 抛错导致**整块画布节点不渲染**(本会话第二次踩同类坑,已在代码里加注释警示)。
+  📌 **注**:本条改动**未单独成 commit**,与仓库去品牌化清理(n→「基线」措辞统一、tokens 文件更名)**混在同一个 commit** 里提交。
 - 🎉 **P0 全部完成**(便签 7 色→D067 右键→D069/D070 面板→D104/D105/D106 参数→D088 NDV Settings→D058/D059 Evaluations→D061/D062 wf settings→D131 MCP OAuth→D154 Shared→D047/D152/D128 锁态→D063 History→D085 执行详情→D127/D129/D130 B 类)。豁免:D103 resourceLocator=N/A;暂缓:D096 Mapping|From AI(待引擎 $fromAI)。
 
 ---
@@ -80,12 +83,12 @@
 | 编号 | 页面 | 组件 | 维度 | 真站表现 | 复刻版表现 | 级别 | 截图路径/证据 |
 |---|---|---|---|---|---|---|---|
 | D001 | 应用壳 | SideBar | 折叠态顶部工具 | 折叠列仍含 `+`/搜索/侧栏开关三图标 | 折叠态 `brand-tools` 整块被 `v-if="!collapsed"` 隐藏,只留展开 chevron | P0 | SideBar.vue:189,214 |
-| D002 | 应用壳 | SideBar | 侧栏宽度 | 固定 **201px**,不可拖拽 | 默认 **244px**,min220/max480,带拖拽调宽把手 | **P1**(43px 可见 + 多出拖拽) | live: n8n 201 / nomops 244;ui.ts:22, SideBar.vue:169,357 |
+| D002 | 应用壳 | SideBar | 侧栏宽度 | 固定 **201px**,不可拖拽 | 默认 **244px**,min220/max480,带拖拽调宽把手 | **P1**(43px 可见 + 多出拖拽) | live: 基线 201 / nomops 244;ui.ts:22, SideBar.vue:169,357 |
 | D003 | 应用壳 | SideBar | 折叠宽度 | 50px | 58px | P2 | SideBar.vue:367 |
 | D004 | 应用壳 | SideBar | 条目枚举 | 无独立 "Personal" 导航项(折叠进 Overview) | 额外渲染独立 "Personal" 行 | P1 | SideBar.vue:232 |
 | D005 | 应用壳 | SideBar | 条目枚举 | 底部无 "Admin Panel" | 底部多 "Admin Panel"(首位) | P1 | SideBar.vue:249 |
 | D006 | 应用壳 | SideBar | Insights 徽标 | Insights 图标右上有红点通知 | 无红点 | P1 | SideBar.vue:257-260 |
-| D007 | 应用壳 | SideBar | Templates 行为 | **外链** n8n.io/workflows(UTM) | 内链路由 `{name:'templates'}` → 内建页 | P1 | SideBar.vue:253, router.ts:24 |
+| D007 | 应用壳 | SideBar | Templates 行为 | **外链** 对标站点模板库(UTM) | 内链路由 `{name:'templates'}` → 内建页 | P1 | SideBar.vue:253, router.ts:24 |
 | D008 | 顶部工具 | SideBar | `+` Add new 项数/顺序 | 4 项:New workflow/credential/data table/project | 6 项(多 New variable、New AI chat),顺序也异 | P1 | SideBar.vue:195-204 |
 | D009 | 顶部工具 | SideBar | New project 徽章 | `Enterprise` 徽章 + 灰置禁用 | `Upgrade` 徽章 + 可点(跳 billing) | P1 | SideBar.vue:199-203 |
 | D010 | 顶部工具 | SideBar | `+` 菜单项尾 chevron | 无尾部 `›` | 每项带尾部 `›` | P2 | SideBar.vue:195-198,412 |
@@ -106,7 +109,7 @@
 | D025 | 命令面板 | CommandPalette | 分组内容 | Workflows/Credentials 组为泛化 "Open workflow/credential" | 直接平铺真实行(带 "N nodes"/类型副行) | P1 | CommandPalette.vue:74-91 |
 | D026 | 命令面板 | CommandPalette | 上下文作用域徽标 | 工作流态 "Workflow · &lt;名&gt;" 徽标 | 无(仅注入分组名) | P1 | CommandPalette.vue:139-151 |
 | D027 | 命令面板 | CommandPalette | 输入行 esc chip | 无 esc 键位 chip | 右侧渲染 `esc` kbd 芯片 | P2 | CommandPalette.vue:150 |
-| D028 | 全局 | index.html | 文档 title | 动态:列表 "Workflows - n8n"/编辑器 "▶️ &lt;名&gt; - n8n"/兜底 "n8n.io - Workflow Automation" | 静态 `&lt;title&gt;nomops&lt;/title&gt;`,全仓无 document.title 赋值 | P0 | index.html;grep 无 document.title |
+| D028 | 全局 | index.html | 文档 title | 动态:列表 "Workflows - 基线"/编辑器 "▶️ &lt;名&gt; - 基线"/兜底 "对标站点 - Workflow Automation" | 静态 `&lt;title&gt;nomops&lt;/title&gt;`,全仓无 document.title 赋值 | P0 | index.html;grep 无 document.title |
 
 ---
 
@@ -114,13 +117,13 @@
 
 | 编号 | 页面 | 组件 | 维度 | 真站表现 | 复刻版表现 | 级别 | 截图路径/证据 |
 |---|---|---|---|---|---|---|---|
-| D029 | Overview | H1 | 行高/位置 | "Overview" 20px/600,**lh 25px**,内容左 origin x=249 | lh **20px**,x=272(右移 23,侧栏差所致) | P2 | live n8n[249,24,431,25]/nomops[272,28,431,20] |
+| D029 | Overview | H1 | 行高/位置 | "Overview" 20px/600,**lh 25px**,内容左 origin x=249 | lh **20px**,x=272(右移 23,侧栏差所致) | P2 | live 基线[249,24,431,25]/nomops[272,28,431,20] |
 | D030 | Overview | 副标题 | 行高 | 14px/400,**lh 18.9px** | lh **14px** | P2 | live |
 | D031 | Overview | KPI 条 | 深链 | 5 格分链 `/insights/total\|failed\|failureRate\|timeSaved\|averageRunTime` | 5 格全链同一 `/insights` | P1 | StatsBar.vue:64;manifest §2.1 |
 | D032 | Overview | KPI 条 | Failure rate 标签 | "Failure rate"(% 独立) | 标签 "Failure rate",% 拼数值上 | P2 | StatsBar.vue:50 |
 | D033 | Overview | KPI 条 | Time saved tooltip | ⓘ 带 tooltip | ⓘ 无 title/aria/tooltip | P2 | StatsBar.vue:67-69 |
-| D034 | Overview | KPI 格 | 格宽 | 227px | 223px | P2 | live n8n[250,101,227,99]/nomops[273,101,223,99] |
-| D035 | Overview | Tab 行 | Tab 高/基线 | 激活 Tab 高 24,pad0 16 8,底线 y≈281 | 高 32,底线 y≈259(KPI→Tab 间距 57→27) | P2 | live n8n[249,257,103,24]/nomops[272,227,103,32] |
+| D034 | Overview | KPI 格 | 格宽 | 227px | 223px | P2 | live 基线[250,101,227,99]/nomops[273,101,223,99] |
+| D035 | Overview | Tab 行 | Tab 高/基线 | 激活 Tab 高 24,pad0 16 8,底线 y≈281 | 高 32,底线 y≈259(KPI→Tab 间距 57→27) | P2 | live 基线[249,257,103,24]/nomops[272,227,103,32] |
 | D036 | Workflows | 工具行 | Sort 选项 | 4 项:last updated/**last created**/name(A-Z)/name(Z-A) | 3 项,缺 "Sort by last created" | P1 | OverviewView.vue:800-802 |
 | D037 | Workflows | Filters | Status 枚举 | All/Published/**Unpublished** | 缺 "Unpublished" | P1 | OverviewView.vue:823-826 |
 | D038 | Workflows | 分页 | 页大小 | 10/25/50/**100**(默50) | 缺 "100/page" | P2 | OverviewView.vue:981-983 |
@@ -203,7 +206,7 @@
 |---|---|---|---|---|---|---|---|
 | D088 | NDV | NdvModal | Settings tab 内容 | Always Output Data/Execute Once/Retry On Fail 三开关+On Error 下拉+Notes+Display Note 开关+版本注记 | 仅 1 裸复选框 "Continue on error"+说明,其余全无 | **P0** | NdvModal.vue:134-147 |
 | D089 | NDV | NdvModal | On Error 语义 | 下拉:Stop Workflow/Continue(error output)/Continue(regular output) | 换成布尔 "Continue on error" | P1 | NdvModal.vue:135-143 |
-| D090 | NDV | NdvModal | Settings 开关控件 | n8n switch(32×16) | 裸 checkbox(与 Parameters pswitch 不一致) | P2 | NdvModal.vue:136-142 |
+| D090 | NDV | NdvModal | Settings 开关控件 | 基线 switch(32×16) | 裸 checkbox(与 Parameters pswitch 不一致) | P2 | NdvModal.vue:136-142 |
 | D091 | NDV | NdvModal | 头带 Docs 链接 | 右侧 `Docs↗` + X | 仅 ✕,无 Docs | P1 | NdvModal.vue:74-77 |
 | D092 | NDV | NdvModal | 相邻节点 chip | 两侧相邻节点切换 chip | 无 | P1 | NdvModal.vue:64-78 |
 | D093 | NDV | NdvModal | 可拖拽分隔条 | 三栏可拖拽调比例(`|||` 拖柄) | 无拖柄;侧 flex/中定宽,4px 边不可拖 | P1 | NdvModal.vue:193-194 |
@@ -247,9 +250,9 @@
 
 | 编号 | 页面 | 组件 | 维度 | 真站表现 | 复刻版表现 | 级别 | 截图路径/证据 |
 |---|---|---|---|---|---|---|---|
-| D127 | Settings/Security & policies | 分区 | **整页替换** | 三分区:2FA 强制 / Data redaction(Redact executions 下拉+Affected scope 指标)/ Personal Space(Sharing/Workflow publishing+指标) | 完全不同:Authentication(SSO)/User provisioning(SCIM)/Accounts,n8n 三区全缺 | **P0** | SettingsView.vue:1232-1279 |
+| D127 | Settings/Security & policies | 分区 | **整页替换** | 三分区:2FA 强制 / Data redaction(Redact executions 下拉+Affected scope 指标)/ Personal Space(Sharing/Workflow publishing+指标) | 完全不同:Authentication(SSO)/User provisioning(SCIM)/Accounts,基线三区全缺 | **P0** | SettingsView.vue:1232-1279 |
 | D128 | Settings/Roles | 主体 | **整页替换** | Enterprise **锁卡**(三权限卡+Upgrade to Enterprise+Learn more↗+Upgrade) | 渲染真实角色表,无锁 | **P0** | SettingsView.vue:1093-1120 |
-| D129 | Settings/OpenTelemetry | 整页 | **页面替换** | 页名 OpenTelemetry + 全字段(Enable/OTLP endpoint/Service name n8n/Custom headers/Trace path /v1/traces/Startup 2000ms/Send test trace/Sample rate/Include node spans…)+Save/Discard | 页名 "Observability" + Prometheus /metrics 配置,OTel 字段全缺 | **P0** | SettingsView.vue:1674-1702 |
+| D129 | Settings/OpenTelemetry | 整页 | **页面替换** | 页名 OpenTelemetry + 全字段(Enable/OTLP endpoint/Service name 默认值/Custom headers/Trace path /v1/traces/Startup 2000ms/Send test trace/Sample rate/Include node spans…)+Save/Discard | 页名 "Observability" + Prometheus /metrics 配置,OTel 字段全缺 | **P0** | SettingsView.vue:1674-1702 |
 | D130 | Settings/Chat | Providers 表 | **枚举** | **15 家**(OpenAI/Anthropic/Google/Azure×2/Ollama/AWS Bedrock/Vercel/xAI/Groq/OpenRouter/DeepSeek/Cohere/Mistral/NVIDIA)带品牌图标 | 仅 **6 家**(Anthropic/DeepSeek/Doubao/Qwen/Kimi/GLM),无品牌图标 | **P0** | assistant-service.ts:42-97;SettingsView.vue:1894 |
 | D131 | Settings/MCP | Tab 体系 | 缺 tab | 三 tab(Workflows/Connected clients/**OAuth settings**) | 仅两 tab,缺 OAuth settings | **P0** | SettingsView.vue:1759-1761 |
 | D132 | Settings 壳 | 左导航 | 多余页 | 无 Languages | 插入自有 "Languages"(导航序号后移) | P1 | settings-nav.ts:26 |
@@ -269,7 +272,7 @@
 | D146 | Settings/Users | Last Active 列 | 取值 | "Today" | 恒 "—"(硬编码) | P2 | SettingsView.vue:1210 |
 | D147 | Settings/SSO | 描述 | 文案 | 提 SAML 2.0/OIDC+documentation 链接 | 仅 "OpenID Connect"(无 SAML/链接) | P2 | SettingsView.vue:1284-1287 |
 | D148 | Settings/LDAP | 描述 | 文案 | 举例 Active Directory/**Okta/Jumpcloud** | Active Directory/OpenLDAP | P2 | SettingsView.vue:1312-1315 |
-| D149 | Settings/API | 空态文案 | 文案 | "Control n8n programmatically using the n8n API"(橙链) | "Control nomops … REST API(header X-Nomops-Api-Key)"(无橙链) | P2 | SettingsView.vue:1450 |
+| D149 | Settings/API | 空态文案 | 文案 | "Control 基线 programmatically using the 基线 API"(橙链) | "Control nomops … REST API(header X-Nomops-Api-Key)"(无橙链) | P2 | SettingsView.vue:1450 |
 | D150 | Settings/MCP | Connected clients 列 | 列名 | Client Name/Connected At | Client/Version/Last seen | P2 | SettingsView.vue:1805 |
 | D151 | Settings/Chat | Configure 弹窗 | 字段 | OpenAI 含 Use Responses API 开关 | 无该开关 | P2 | SettingsView.vue:1920-1990 |
 
@@ -295,17 +298,17 @@
 
 ## 九、产品自有元素(1:1 视角=多余;acceptance-report §三 已"保留"裁决,登记备查,不计入 P 分)
 
-| 元素 | 位置 | n8n 有无 | 复刻版(file:line) |
+| 元素 | 位置 | 基线有无 | 复刻版(file:line) |
 |---|---|---|---|
-| ¥99 Pro / Alipay 购买卡 | Usage and plan | 无(n8n=View plans 外链) | SettingsView.vue:2035-2047 |
+| ¥99 Pro / Alipay 购买卡 | Usage and plan | 无(基线=View plans 外链) | SettingsView.vue:2035-2047 |
 | Admin 项目配额覆盖卡 | Usage and plan | 无 | SettingsView.vue:2050-2082 |
 | Languages 设置页(i18n) | Settings 导航 | 无 | SettingsView.vue:1072-1090 |
 | SignupView 营销双栏页 | `/signup` | 无(自托管仅 /setup+邀请) | SignupView.vue 全文 |
 | Admin Panel 侧栏入口 | 主侧栏底部 | 无 | SideBar.vue:249 |
-| Personal 独立导航项 | 主侧栏 | n8n 折叠于 Overview | SideBar.vue:232 |
+| Personal 独立导航项 | 主侧栏 | 基线折叠于 Overview | SideBar.vue:232 |
 | 卡片 Manage tags / Move to / Active 开关 | 工作流卡片 ⋮ | 无 | OverviewView.vue:888,935-951 |
-| 文件夹免注册可用 | 列表工具行 | n8n 注册门控 | — |
-| 执行行双 Retry "(from node with error)" 后缀 | Executions ⋮ | n8n 相同(两 Retry) | OverviewView.vue:1131-1136 |
+| 文件夹免注册可用 | 列表工具行 | 基线注册门控 | — |
+| 执行行双 Retry "(from node with error)" 后缀 | Executions ⋮ | 基线相同(两 Retry) | OverviewView.vue:1131-1136 |
 | 品牌命名替换 | 全站 | — | About nomops / nomops API / X-Nomops-Api-Key 等 |
 
 ---
@@ -345,7 +348,7 @@
 ## 十一、没能验证到的部分(如实登记,不含糊)
 
 **环境限制类:**
-1. **n8n 侧无法截图**:本会话 claude-in-chrome(全功能扩展)断连,只剩 Control_Chrome(可读 computed style、不能截图)。故**所有 n8n 配对截图缺失**,数值差以 computed-style 值为证。若要补配对截图,需恢复扩展或你在真 Chrome 手动截。
+1. **基线侧无法截图**:本会话 claude-in-chrome(全功能扩展)断连,只剩 Control_Chrome(可读 computed style、不能截图)。故**所有基线配对截图缺失**,数值差以 computed-style 值为证。若要补配对截图,需恢复扩展或你在真 Chrome 手动截。
 2. **nomops 画布 live 深测受限**:本会话 Browser 面板存在视口缩放错位(innerWidth 报 1440 但渲染约占屏左半),坐标点击不稳,画布内 hover 工具条/右键/NDV 的 live 逐像素并排未全部完成;上表画布/NDV 类差异**以代码级证据为主**,数值级偏差(曲率/间距/hover 变色)多数标注"待 live"。
 
 **需 live 手测(合成事件/锁态/需登出/需 provider key)才能定论的项:**
@@ -354,19 +357,19 @@
 5. NDV INPUT/OUTPUT 视图切换在真站是**文本 Schema\|Table\|JSON** 还是图标三连;"or set mock data"链/铅笔精确布局。
 6. 底部 **Logs 执行树**展开态(摘要行/逐节点选中高亮/右详情 Input\|Output)——需真实执行一次工作流并排。
 7. **Settings 5 张 Enterprise 锁卡按钮**真值到底是 "See plans" 还是 "Upgrade"(manifest 混用三种措辞),据以定 nomops "Enter activation key" 的偏差等级。
-8. **各页空态原文**:Credentials 空态(nomops 🔒 疑自撰)、Workflows 空态首屏引导、Executions 空态、Data tables 副说明、Community nodes 空态 —— n8n 实例有数据,空态未取证,需临时过滤/造删取证。
-9. **凭证连接测试区**:n8n 为打开已存凭证**自动运行**+红条 "Couldn't connect…"+More details;nomops 为手动 Test connection 按钮 —— 交互与文案需真站复核。
-10. **/setup 表单字段顺序**、**/signin 并排数值**:需登出 n8n 一次取证(本轮未登出,避免影响 Control_Chrome 会话)。
+8. **各页空态原文**:Credentials 空态(nomops 🔒 疑自撰)、Workflows 空态首屏引导、Executions 空态、Data tables 副说明、Community nodes 空态 —— 基线实例有数据,空态未取证,需临时过滤/造删取证。
+9. **凭证连接测试区**:基线为打开已存凭证**自动运行**+红条 "Couldn't connect…"+More details;nomops 为手动 Test connection 按钮 —— 交互与文案需真站复核。
+10. **/setup 表单字段顺序**、**/signin 并排数值**:需登出基线一次取证(本轮未登出,避免影响 Control_Chrome 会话)。
 11. **画布平移/缩放手势与快捷键映射**(滚轮/Ctrl+滚轮/1=fit/Space/R/D/P 等)、**节点"改动未重跑"橙三角徽章**、**AI 子节点虚线中点菱形+线上 Model 标签** —— 需 live 逐项确认。
-12. **命令面板作用域徽标 / esc chip / +菜单 chevron / KPI Failure rate 后缀 / Help 首项视频图标** —— 需 n8n live 截图逐项核对(见各 agent live 清单)。
+12. **命令面板作用域徽标 / esc chip / +菜单 chevron / KPI Failure rate 后缀 / Help 首项视频图标** —— 需基线 live 截图逐项核对(见各 agent live 清单)。
 13. **Personal / Personal Agents 页 H1 精确大小写**(manifest 仅记 "H1",未逐字)。
 
 ---
 
 ## 十二、审计方法与可信度声明
 
-- **代码级差异(D001-D162 绝大多数)**:基准 = manifest/field-specs/acceptance-report 里**逐页 live 取证过的 n8n 真值**(阶段一至五,40+ 帧截图 + `/rest/*` 导出);比对 = 逐行读 nomops 源码,每条带 `file:line`。可信度高,但真值时点为 2026-07-17/18 侦察时。
+- **代码级差异(D001-D162 绝大多数)**:基准 = manifest/field-specs/acceptance-report 里**逐页 live 取证过的基线真值**(阶段一至五,40+ 帧截图 + `/rest/*` 导出);比对 = 逐行读 nomops 源码,每条带 `file:line`。可信度高,但真值时点为 2026-07-17/18 侦察时。
 - **live 数值差(D002,D029-D030,D034-D035 等)**:本轮在两侧运行实例上用 `getComputedStyle`+`getBoundingClientRect` 实测,同视口 1440×655。
-- **未做**:本轮未修改任何代码;未产出 n8n 配对截图(环境限制);画布/NDV 的 live 逐像素并排未全覆盖(以代码级为主 + 标注待 live)。
+- **未做**:本轮未修改任何代码;未产出基线配对截图(环境限制);画布/NDV 的 live 逐像素并排未全覆盖(以代码级为主 + 标注待 live)。
 
 > 待你确认后,按 **P0 → P1 → P2** 分批修复。P0 集中在:参数控件引擎(IF/Set/HTTP/resourceLocator/凭证/fixedCollection/filter)、节点右键 13 项菜单、Evaluations/History/执行详情/Shared 四整块、NDV Settings 6 项、节点创建面板 7 分类/8 触发器、命令面板 Data tables 组、动态 document.title、Insights 锁态、Variables 锁态、Security&policies/Roles/OpenTelemetry/Chat 四设置页、便签 7 色。

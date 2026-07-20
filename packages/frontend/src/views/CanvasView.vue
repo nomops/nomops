@@ -28,13 +28,13 @@ const logsOpen = ref(false);
 /* 顶栏「⋯」菜单：Download / Duplicate / Import / Delete */
 const menuOpen = ref(false);
 
-/* Workflow settings 弹窗（对标 n8n：Error Workflow + 执行保存策略，均真实生效） */
+/* Workflow settings 弹窗（对标基线：Error Workflow + 执行保存策略，均真实生效） */
 const wfSettingsOpen = ref(false);
 const wfErrorWorkflow = ref(''); // '' = - No Workflow -
 const wfSaveFailed = ref(true);
 const wfSaveSuccess = ref(true);
 const wfSaveManual = ref(true);
-// n8n Workflow settings 补齐字段
+// 基线 Workflow settings 补齐字段
 const wfExecutionOrder = ref('v1'); // Execution Logic
 const wfTimezone = ref(''); // '' = Default - America/New York
 const wfSaveProgress = ref(false); // Save execution progress:默认 Do not save
@@ -132,7 +132,7 @@ async function onImportFile(event: Event) {
   }
 }
 
-/* ── C3 对标 n8n：顶栏内联 tag 编辑器（+ Add tag / 胶囊 / Choose or create a tag） ── */
+/* ── C3 对标基线：顶栏内联 tag 编辑器（+ Add tag / 胶囊 / Choose or create a tag） ── */
 const wfTags = ref<TagRow[]>([]);
 const allTags = ref<TagRow[]>([]);
 const tagEditorOpen = ref(false);
@@ -157,7 +157,7 @@ const filteredTagOptions = computed(() => {
   const q = tagSearch.value.trim().toLowerCase();
   return q ? allTags.value.filter((t) => t.name.toLowerCase().includes(q)) : allTags.value;
 });
-/** 输入了不存在的名字 → 显示 Create tag 'x' 首项（同 n8n）。 */
+/** 输入了不存在的名字 → 显示 Create tag 'x' 首项（同基线）。 */
 const canCreateTag = computed(() => {
   const q = tagSearch.value.trim();
   return q.length > 0 && !allTags.value.some((t) => t.name.toLowerCase() === q.toLowerCase());
@@ -183,7 +183,7 @@ async function createAndSelectTag() {
   }
 }
 
-/** 点击编辑器外部 → 保存并收起（同 n8n 失焦提交）。 */
+/** 点击编辑器外部 → 保存并收起（同基线失焦提交）。 */
 /* D065:Manage tags → 关闭 tag 编辑器并去 Overview(tag 过滤/管理在工作流列表)。 */
 function manageTags() {
   tagEditorOpen.value = false;
@@ -211,7 +211,7 @@ onMounted(() => {
 });
 onUnmounted(() => window.removeEventListener('mousedown', onTagDocClick));
 
-/* ── C5 对标 n8n 画布 ⋯ 菜单 ── */
+/* ── C5 对标基线画布 ⋯ 菜单 ── */
 
 /* Edit description：真实落库（workflows.description），Overview 卡片副行展示 */
 const descModalOpen = ref(false);
@@ -235,7 +235,7 @@ async function saveDescription() {
   }
 }
 
-/* Rename：聚焦顶栏名称输入框（名称本就内联可编，菜单项对齐 n8n 入口） */
+/* Rename：聚焦顶栏名称输入框（名称本就内联可编，菜单项对齐基线入口） */
 function renameWorkflow() {
   closeMenu();
   const input = document.querySelector<HTMLInputElement>('[data-test="workflow-name"]');
@@ -286,7 +286,7 @@ async function pushToGit() {
   }
 }
 
-/* Archive（对标 n8n：画布里没有 Delete；归档自动下线触发器，删除去归档列表） */
+/* Archive（对标基线：画布里没有 Delete；归档自动下线触发器，删除去归档列表） */
 async function archiveFromCanvas() {
   closeMenu();
   if (!editor.id) return;
@@ -294,7 +294,7 @@ async function archiveFromCanvas() {
   void router.push({ name: 'overview' });
 }
 
-/* 版本历史:对标 n8n 跳转整页 /workflow/:id/history(只读斜纹画布 + 版本面板) */
+/* 版本历史:对标基线跳转整页 /workflow/:id/history(只读斜纹画布 + 版本面板) */
 function openHistory() {
   closeMenu();
   if (!editor.id) return;
@@ -304,14 +304,14 @@ function openHistory() {
 const isEmpty = computed(() => editor.nodes.length === 0);
 
 
-/* C9 右侧浮动工具条：打开节点面板 / 命令面板 / 加便签 / Focus panel（对标 n8n canvas buttons） */
+/* C9 右侧浮动工具条：打开节点面板 / 命令面板 / 加便签 / Focus panel（对标基线 canvas buttons） */
 function addStickyNote() {
   const desc = nodeTypes.byType.get('nomops.stickyNote');
   if (!desc) return;
   editor.addNode(desc);
 }
 
-/* ── Command bar（⌘K）：注入既有全局命令面板（与 n8n 一致——侧栏搜索与画布按钮同一面板），
+/* ── Command bar（⌘K）：注入既有全局命令面板（与基线一致——侧栏搜索与画布按钮同一面板），
    画布上下文命令全部映射到真实动作；离开画布时清空 ── */
 const ui = useUiStore();
 const canvasCommands: PaletteCommand[] = [
@@ -332,7 +332,7 @@ const canvasCommands: PaletteCommand[] = [
   { id: 'archive', group: 'Workflow', label: 'Archive workflow', run: () => void archiveFromCanvas() },
 ];
 
-/* ── Focus panel（对标 n8n）：钉住的参数持续可见可编辑 ── */
+/* ── Focus panel（对标基线）：钉住的参数持续可见可编辑 ── */
 const pinnedEntries = computed(() =>
   editor.pinnedParams
     .map((p) => {
@@ -351,7 +351,7 @@ function onKeydown(event: KeyboardEvent) {
     void editor.save();
     return;
   }
-  // Tidy up（Shift+Alt+T，同 n8n）
+  // Tidy up（Shift+Alt+T，同基线）
   if (event.shiftKey && event.altKey && event.code === 'KeyT') {
     const el = event.target as HTMLElement | null;
     if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
@@ -359,7 +359,7 @@ function onKeydown(event: KeyboardEvent) {
     editor.tidyUp();
     return;
   }
-  // Execute workflow（⌘Enter，同 n8n）
+  // Execute workflow（⌘Enter，同基线）
   if (meta && event.key === 'Enter') {
     event.preventDefault();
     void saveAndRun();
@@ -369,7 +369,7 @@ function onKeydown(event: KeyboardEvent) {
     const el = event.target as HTMLElement | null;
     const typing = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
     if (!typing && !meta && !event.altKey && !ui.paletteOpen) {
-      // Add node（N）/ Add sticky（⇧S），同 n8n
+      // Add node（N）/ Add sticky（⇧S），同基线
       if (!event.shiftKey && event.code === 'KeyN') {
         event.preventDefault();
         editor.nodePickerOpen = true;
@@ -407,7 +407,7 @@ onUnmounted(() => {
   ui.clearPaletteContext();
 });
 
-// 文档标题跟随工作流名(对标 n8n "▶️ <名> - n8n"):编辑器页覆盖 router 的兜底标题
+// 文档标题跟随工作流名(对标基线 "▶️ <名> - 基线"):编辑器页覆盖 router 的兜底标题
 watch(
   () => editor.name,
   (name) => {
@@ -440,7 +440,7 @@ const logRows = computed(() => {
   });
 });
 
-/* D123 对标 n8n:底部 Logs = 左树(摘要 + 逐节点行,可选中高亮)+ 右详情(选中节点 Input|Output + DataPane)。 */
+/* D123 对标基线:底部 Logs = 左树(摘要 + 逐节点行,可选中高亮)+ 右详情(选中节点 Input|Output + DataPane)。 */
 const logSummary = computed(() => {
   const total = logRows.value.reduce((s, r) => s + r.time, 0);
   const failed = logRows.value.some((r) => r.status === 'error');
@@ -472,7 +472,7 @@ watch(
   },
 );
 
-/* ── C10 对标 n8n：画布 Chat 面板（Chat Trigger 存在时底部 Chat | Logs 双栏 + Open chat 按钮） ── */
+/* ── C10 对标基线：画布 Chat 面板（Chat Trigger 存在时底部 Chat | Logs 双栏 + Open chat 按钮） ── */
 const hasChatTrigger = computed(() => editor.nodes.some((n) => n.type === 'nomops.chatTrigger' && !n.disabled));
 const chatMessages = ref<Array<{ role: 'user' | 'bot'; text: string; error?: boolean }>>([]);
 const chatDraft = ref('');
@@ -510,7 +510,7 @@ async function sendChat() {
   }
 }
 
-/* C7 对标 n8n：多触发器时 Execute workflow 为 split（主按钮 from X + caret 选 trigger） */
+/* C7 对标基线：多触发器时 Execute workflow 为 split（主按钮 from X + caret 选 trigger） */
 const triggerNodes = computed(() =>
   editor.nodes
     .filter((n) => nodeTypes.byType.get(n.type)?.group?.includes('trigger') && !n.disabled)
@@ -541,14 +541,14 @@ async function toggleActive() {
   }
 }
 
-/* ── C1/C4 对标 n8n：自动保存 + Publish 合并激活语义 ── */
+/* ── C1/C4 对标基线：自动保存 + Publish 合并激活语义 ── */
 
 /** 触发器节点数（webhook/schedule/polling…按 description.group 判定）——顶栏 n/m 指示 + 发布是否顺带激活。 */
 const triggerCount = computed(
   () => editor.nodes.filter((n) => nodeTypes.byType.get(n.type)?.group?.includes('trigger')).length,
 );
 
-/* 自动保存：编辑落定 1.5s 后静默保存（n8n 无 Save 按钮）；保存后短暂显示 Saved */
+/* 自动保存：编辑落定 1.5s 后静默保存（基线无 Save 按钮）；保存后短暂显示 Saved */
 const savedFlash = ref(false);
 let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
 watch(
@@ -587,7 +587,7 @@ const statusColor: Record<string, string> = {
   error: 'var(--err)',
 };
 
-/* ── C2 对标 n8n：画布内 Editor / Executions tabs ── */
+/* ── C2 对标基线：画布内 Editor / Executions tabs ── */
 const canvasTab = ref<'editor' | 'executions' | 'evaluations'>('editor');
 const execList = ref<ExecutionRow[]>([]);
 const execAutoRefresh = ref(true);
@@ -668,8 +668,8 @@ const execRunStatus = computed<Record<string, 'ok' | 'error'>>(() => {
 /* 执行详情底部「Execution data」折叠(保留逐节点 JSON 检视,默认收起) */
 const execDataOpen = ref(false);
 
-/* Copy to editor(对标 n8n):切回 Editor tab 从当前工作流继续编辑。
-   n8n 是把执行时快照拷进编辑器;nomops 执行 API 无快照,退化为切到编辑器。 */
+/* Copy to editor(对标基线):切回 Editor tab 从当前工作流继续编辑。
+   基线是把执行时快照拷进编辑器;nomops 执行 API 无快照,退化为切到编辑器。 */
 function copyExecToEditor() {
   canvasTab.value = 'editor';
 }
@@ -712,7 +712,7 @@ async function loadSavePolicy() {
     <!-- 画布顶栏：面包屑（项目 / 名称）+ Active 开关 + 保存 -->
     <div class="toolbar">
       <div class="breadcrumb">
-        <!-- D064 对标 n8n:项目名前人形图标 -->
+        <!-- D064 对标基线:项目名前人形图标 -->
         <span class="crumb-project" data-test="home-project">
           <svg class="crumb-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c0-3.4 3-5.2 6.5-5.2s6.5 1.8 6.5 5.2" /></svg>
           {{ projects.currentName }}
@@ -721,7 +721,7 @@ async function loadSavePolicy() {
         <input v-model="editor.name" data-test="workflow-name" class="name-input" @input="editor.dirty = true" />
       </div>
 
-      <!-- C3：内联 tag 区（对标 n8n："+ Add tag" / 胶囊；点击展开 Choose or create a tag） -->
+      <!-- C3：内联 tag 区（对标基线："+ Add tag" / 胶囊；点击展开 Choose or create a tag） -->
       <div ref="tagBoxRef" class="wf-tagbox" @click.stop>
         <template v-if="!tagEditorOpen">
           <button v-if="wfTags.length === 0" class="add-tag" data-test="add-tag" @click="openTagEditor">+ Add tag</button>
@@ -755,7 +755,7 @@ async function loadSavePolicy() {
               {{ tg.name }}
             </button>
             <p v-if="!canCreateTag && filteredTagOptions.length === 0" class="tag-empty dim">No tags</p>
-            <!-- D065 对标 n8n:底部 Manage tags(眼睛图标) -->
+            <!-- D065 对标基线:底部 Manage tags(眼睛图标) -->
             <div class="tag-menu-sep" />
             <button class="tag-manage" data-test="manage-tags" @click="manageTags">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="i14"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></svg>
@@ -764,13 +764,13 @@ async function loadSavePolicy() {
           </div>
         </div>
       </div>
-      <!-- 自动保存指示（n8n 无 Save 按钮）：Saving… → Saved 短暂闪现；从不阻塞编辑 -->
+      <!-- 自动保存指示（基线无 Save 按钮）：Saving… → Saved 短暂闪现；从不阻塞编辑 -->
       <span v-if="editor.saving" class="dim save-hint" data-test="autosave-saving">Saving…</span>
       <span v-else-if="savedFlash" class="dim save-hint" data-test="autosave-saved">Saved</span>
       <span v-else-if="editor.dirty" class="dim save-hint">Unsaved</span>
       <span class="spacer" style="flex: 1" />
 
-      <!-- 画布内 tabs（对标 n8n Editor | Executions） -->
+      <!-- 画布内 tabs（对标基线 Editor | Executions） -->
       <div class="canvas-tabs" data-test="canvas-tabs">
         <button class="canvas-tab" :class="{ active: canvasTab === 'editor' }" data-test="tab-editor" @click="canvasTab = 'editor'">Editor</button>
         <button class="canvas-tab" :class="{ active: canvasTab === 'executions' }" data-test="tab-executions" @click="canvasTab = 'executions'">Executions</button>
@@ -779,7 +779,7 @@ async function loadSavePolicy() {
       <span class="spacer" style="flex: 1" />
       <span v-if="activateError" class="error-text" data-test="activate-error">{{ activateError }}</span>
 
-      <!-- 触发器激活指示（对标 n8n 的 0/1）：已激活触发器数 / 触发器总数 -->
+      <!-- 触发器激活指示（对标基线的 0/1）：已激活触发器数 / 触发器总数 -->
       <span v-if="triggerCount > 0" class="pub-count" data-test="trigger-count" :title="editor.active ? 'Triggers are live' : 'Triggers are not active'">
         {{ editor.active ? triggerCount : 0 }} / {{ triggerCount }}
       </span>
@@ -805,7 +805,7 @@ async function loadSavePolicy() {
         </div>
       </div>
 
-      <!-- 版本历史（对标 n8n 顶栏时钟图标） -->
+      <!-- 版本历史（对标基线顶栏时钟图标） -->
       <button class="wf-menu-btn" data-test="wf-history" title="Version history" @click.stop="openHistory">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 2.6-6.3L3 8" /><path d="M3 4v4h4M12 7v5l3.5 2" /></svg>
       </button>
@@ -842,7 +842,7 @@ async function loadSavePolicy() {
 
     <p v-if="editor.loadError" class="error-text" style="padding: 16px">{{ editor.loadError }}</p>
 
-    <!-- Executions 视图（对标 n8n：左执行列表 + 右详情） -->
+    <!-- Executions 视图（对标基线：左执行列表 + 右详情） -->
     <div v-else-if="canvasTab === 'executions'" class="exec-body" data-test="exec-view">
       <aside class="exec-list">
         <div class="exec-list-head">
@@ -889,7 +889,7 @@ async function loadSavePolicy() {
           <p class="dim">Select an execution on the left, or run the workflow to see executions.</p>
         </div>
         <template v-else>
-          <!-- 顶条:执行时间/状态标题 + Copy to editor + 垃圾桶(对标 n8n 执行详情) -->
+          <!-- 顶条:执行时间/状态标题 + Copy to editor + 垃圾桶(对标基线执行详情) -->
           <div class="exec-detail-head" data-test="exec-detail-head">
             <span class="exec-dot" :style="{ background: statusColor[execDetail.execution.status] ?? 'var(--text-dim)' }" />
             <b style="text-transform: capitalize">{{ execDetail.execution.status }}</b>
@@ -936,7 +936,7 @@ async function loadSavePolicy() {
       </section>
     </div>
 
-    <!-- Evaluations Tab：Community 未注册锁态(对标 n8n) -->
+    <!-- Evaluations Tab：Community 未注册锁态(对标基线) -->
     <div v-else-if="canvasTab === 'evaluations'" class="eval-view" data-test="eval-view">
       <div class="eval-left">
         <h2 class="eval-h">Test your AI workflow over multiple inputs</h2>
@@ -961,7 +961,7 @@ async function loadSavePolicy() {
           <span>Add first step…</span>
         </button>
 
-        <!-- 底部居中：执行工作流（主运行入口；多触发器时 split 选择起点 trigger，对标 n8n） -->
+        <!-- 底部居中：执行工作流（主运行入口；多触发器时 split 选择起点 trigger，对标基线） -->
         <div v-if="!isEmpty" class="execute-split" @click.stop>
           <button
             class="execute-workflow"
@@ -999,7 +999,7 @@ async function loadSavePolicy() {
           </div>
         </div>
 
-        <!-- Open chat（C7/C10：Chat Trigger 存在时，对标 n8n） -->
+        <!-- Open chat（C7/C10：Chat Trigger 存在时，对标基线） -->
         <button v-if="!isEmpty && hasChatTrigger" class="open-chat-btn" data-test="open-chat" @click="openChat">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="i15"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.8 8.8 0 0 1-3.5-.7L3 21l1.8-5.5A8.4 8.4 0 1 1 21 11.5z" /></svg>
           Open chat
@@ -1007,7 +1007,7 @@ async function loadSavePolicy() {
 
         <span v-if="execution.runError" class="run-error-toast" data-test="run-error">{{ execution.runError }}</span>
 
-        <!-- C9 右侧浮动工具条（对标 n8n：Open nodes panel / Add sticky note）；节点抽屉打开时让位 -->
+        <!-- C9 右侧浮动工具条（对标基线：Open nodes panel / Add sticky note）；节点抽屉打开时让位 -->
         <div v-show="!editor.nodePickerOpen" class="canvas-side-toolbar" data-test="canvas-side-toolbar">
           <button title="Open nodes panel" data-test="side-add-node" @click="editor.nodePickerOpen = true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="i16"><path d="M12 5v14M5 12h14" /></svg>
@@ -1028,7 +1028,7 @@ async function loadSavePolicy() {
           </button>
         </div>
 
-        <!-- Focus panel（对标 n8n：钉住参数持续可见，可直接编辑） -->
+        <!-- Focus panel（对标基线：钉住参数持续可见，可直接编辑） -->
         <aside v-if="editor.focusPanelOpen" class="focus-panel" data-test="focus-panel">
           <div class="focus-head">
             <span>Focus panel</span>
@@ -1056,7 +1056,7 @@ async function loadSavePolicy() {
         <NodePanel />
         </div>
 
-        <!-- 底部条（C10 对标 n8n：有 Chat Trigger 时 Chat | Logs 双栏，否则 Logs 全宽） -->
+        <!-- 底部条（C10 对标基线：有 Chat Trigger 时 Chat | Logs 双栏，否则 Logs 全宽） -->
         <div class="logs-bar" :class="{ open: logsOpen }" data-test="logs-bar">
           <div class="bottombar-heads">
             <button v-if="hasChatTrigger" class="logs-head chat-head" data-test="chat-head" @click="logsOpen = !logsOpen">
@@ -1102,7 +1102,7 @@ async function loadSavePolicy() {
                 </button>
               </div>
             </div>
-            <!-- Logs 面板(对标 n8n:左树 + 右详情) -->
+            <!-- Logs 面板(对标基线:左树 + 右详情) -->
             <div class="logs-body" :class="{ half: hasChatTrigger }">
               <p v-if="logRows.length === 0" class="dim" style="font-size: 12px; text-align: center; padding: 14px 0">
                 Nothing to display yet. Execute the workflow to see execution logs.
@@ -1157,7 +1157,7 @@ async function loadSavePolicy() {
       </div>
     </div>
 
-    <!-- Edit description 弹窗（对标 n8n） -->
+    <!-- Edit description 弹窗（对标基线） -->
     <div v-if="descModalOpen" class="wfs-mask" data-test="desc-modal" @click.self="descModalOpen = false">
       <div class="wfs-card" style="width: 560px">
         <div style="display: flex; align-items: flex-start; justify-content: space-between">
@@ -1179,7 +1179,7 @@ async function loadSavePolicy() {
       </div>
     </div>
 
-    <!-- Workflow settings 弹窗（对标 n8n：左标签右控件，左下 Save） -->
+    <!-- Workflow settings 弹窗（对标基线：左标签右控件，左下 Save） -->
     <div v-if="wfSettingsOpen" class="wfs-mask" data-test="wf-settings-modal" @click.self="wfSettingsOpen = false">
       <div class="wfs-card">
         <div style="display: flex; align-items: flex-start; justify-content: space-between">
@@ -1243,7 +1243,7 @@ async function loadSavePolicy() {
           </select>
         </div>
 
-        <!-- Redact:Enterprise 锁(对标 n8n:灰置 + Upgrade 徽章) -->
+        <!-- Redact:Enterprise 锁(对标基线:灰置 + Upgrade 徽章) -->
         <div class="wfs-row">
           <label>Redact production execution data <span class="wfs-upgrade">Upgrade</span></label>
           <select disabled data-test="wfs-redact-prod"><option>Default - Do not redact</option></select>
@@ -1372,7 +1372,7 @@ async function loadSavePolicy() {
 .tag-check { width: 14px; color: var(--accent); flex: none; }
 .tag-empty { margin: 0; padding: 8px 10px; font-size: 12px; }
 
-/* 画布内 tabs — n8n 实测：pill 外层 bg neutral-800/圆角 4/衬 2、
+/* 画布内 tabs — 基线实测：pill 外层 bg neutral-800/圆角 4/衬 2、
    浮动居中在头带下缘(y48,压过 65px 头带);格 26px/12px-500,激活 bg light-2 */
 .canvas-tabs {
   position: absolute; left: 50%; top: 48px; transform: translateX(-50%); z-index: 12;
@@ -1389,7 +1389,7 @@ async function loadSavePolicy() {
 /* Executions 视图 */
 .exec-body { flex: 1; display: flex; min-height: 0; }
 
-/* Evaluations 注册锁态(对标 n8n Community):左说明+视频位 / 右虚线框 Register */
+/* Evaluations 注册锁态(对标基线 Community):左说明+视频位 / 右虚线框 Register */
 .eval-view { flex: 1; display: flex; gap: 40px; padding: 56px 64px; align-items: center; justify-content: center; min-height: 0; }
 .eval-left { flex: 1; max-width: 440px; }
 .eval-h { margin: 0; font-size: 22px; font-weight: var(--font-weight--bold); color: var(--color--text--shade-1); }
@@ -1501,7 +1501,7 @@ async function loadSavePolicy() {
 .wfs-row { display: flex; align-items: center; gap: 20px; margin-bottom: 14px; }
 .wfs-row label { flex: 0 0 300px; margin: 0; font-size: 13.5px; color: var(--text-hi); line-height: 1.4; }
 .wfs-row select { flex: 1; }
-/* n8n 实测：头带 65px 高 / bg light-3 / 无下边线(pill 悬浮压过下缘) */
+/* 基线实测：头带 65px 高 / bg light-3 / 无下边线(pill 悬浮压过下缘) */
 .toolbar {
   display: flex; align-items: center; gap: 12px; height: 65px; flex-shrink: 0;
   padding: 0 var(--spacing--sm); background: var(--color--background--light-3);
@@ -1550,7 +1550,7 @@ async function loadSavePolicy() {
 }
 .add-first-step:hover { border-color: var(--accent); color: var(--text); }
 .add-first-step .plus { font-size: 34px; }
-/* n8n 实测：Execute workflow = 36px 高 / 圆角 6 / 衬 0 16 / 14px-500 /
+/* 基线实测：Execute workflow = 36px 高 / 圆角 6 / 衬 0 16 / 14px-500 /
    primary + inset 橙环 + 0 1px 3px -1px 投影（非胶囊、无橙色泛光） */
 .execute-workflow {
   position: absolute; bottom: 56px; left: 50%; transform: translateX(-50%); z-index: 8;
@@ -1567,7 +1567,7 @@ async function loadSavePolicy() {
 }
 /* Logs 条入文档流：展开/收起自然压缩画布区，浮动控件始终保持间距 */
 .canvas-stage { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
-/* n8n 实测：Logs 条 33px(衬 8px 8px 8px 16px)/ bg light-2 / 文案 12px-500 白 */
+/* 基线实测：Logs 条 33px(衬 8px 8px 8px 16px)/ bg light-2 / 文案 12px-500 白 */
 .logs-bar {
   flex: none; z-index: 9;
   background: var(--color--background--light-2); border-top: var(--border-width) var(--border-style) var(--border-color);

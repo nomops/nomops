@@ -28,7 +28,7 @@ function hourKey(d: Date): string {
 
 /**
  * 纯聚合：从执行行算出 Insights 概览（可单测，不碰 DB）。
- * E2 对标 n8n：支持任意日期范围——统计卡与趋势桶都只计 [from, to] 内的执行；
+ * E2 对标基线：支持任意日期范围——统计卡与趋势桶都只计 [from, to] 内的执行；
  * 范围 ≤ 2 天用小时桶（Last 24 hours），否则日桶。默认近 7 日（含今天）。
  */
 export function computeInsights(rows: Execution[], now: Date, range?: { from: Date; to: Date }): InsightsSummary {

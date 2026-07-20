@@ -14,12 +14,12 @@ export const router = createRouter({
     { path: '/credentials', redirect: { path: '/', query: { tab: 'credentials' } } },
     { path: '/executions', redirect: { path: '/', query: { tab: 'executions' } } },
     { path: '/chat', name: 'chat', component: () => import('./views/ChatView.vue') },
-    // Shared with you(对标 n8n /shared/workflows | /shared/credentials)
+    // Shared with you(对标基线 /shared/workflows | /shared/credentials)
     { path: '/shared/workflows', name: 'shared', component: () => import('./views/SharedView.vue') },
     { path: '/shared/credentials', name: 'sharedCredentials', component: () => import('./views/SharedView.vue') },
     { path: '/assistant', redirect: '/chat' },
     { path: '/workflow/:id', name: 'canvas', component: () => import('./views/CanvasView.vue') },
-    // 版本历史整页(对标 n8n /workflow/:id/history/:versionId):只读斜纹画布 + 版本面板
+    // 版本历史整页(对标基线 /workflow/:id/history/:versionId):只读斜纹画布 + 版本面板
     { path: '/workflow/:id/history/:versionId?', name: 'workflowHistory', component: () => import('./views/WorkflowHistoryView.vue') },
     { path: '/datatables/:id', name: 'datatable', component: () => import('./views/DataTableView.vue') },
     { path: '/admin', name: 'admin', component: () => import('./views/AdminView.vue') },
@@ -43,7 +43,7 @@ router.beforeEach((to) => {
 });
 
 /**
- * 动态文档标题(对标 n8n "Workflows - n8n"):按路由/Overview tab 生成
+ * 动态文档标题(对标基线 "Workflows - 基线"):按路由/Overview tab 生成
  * `<页名> - nomops`,兜底 `nomops`。编辑器页由 CanvasView 用工作流名覆盖。
  */
 const OVERVIEW_TAB_TITLE: Record<string, string> = {

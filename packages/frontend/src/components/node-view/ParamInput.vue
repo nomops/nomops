@@ -80,18 +80,18 @@ function toggleExpression() {
   else emit('change', `=${String(current.value ?? '')}`);
 }
 
-/* D109 对标 n8n:几乎所有标量字段都可切 Fixed|Expression(原仅 string)。 */
+/* D109 对标基线:几乎所有标量字段都可切 Fixed|Expression(原仅 string)。 */
 const EXPRESSIONABLE = ['string', 'number', 'options', 'multiOptions', 'dateTime', 'color'];
 const canExpression = computed(() => EXPRESSIONABLE.includes(props.prop.type) && !props.prop.noDataExpression);
 
-/* D111 对标 n8n:string 带 typeOptions.rows 渲染多行 textarea(如 System Message)。 */
+/* D111 对标基线:string 带 typeOptions.rows 渲染多行 textarea(如 System Message)。 */
 const textRows = computed(() => {
   const rows = props.prop.typeOptions?.rows;
   return typeof rows === 'number' && rows > 1 ? rows : 0;
 });
 const isMultiline = computed(() => props.prop.type === 'string' && textRows.value > 0);
 
-/* D117 对标 n8n:上游输入首 item 的 $json 成员路径,喂给表达式编辑器做 `$json.` 变量树补全。 */
+/* D117 对标基线:上游输入首 item 的 $json 成员路径,喂给表达式编辑器做 `$json.` 变量树补全。 */
 const jsonFields = computed<string[]>(() => {
   const first = props.previewItems?.[0]?.json;
   if (!first || typeof first !== 'object') return [];
@@ -108,7 +108,7 @@ const jsonFields = computed<string[]>(() => {
   return out;
 });
 
-/* D108 对标 n8n:multiOptions 多选(值为数组)。 */
+/* D108 对标基线:multiOptions 多选(值为数组)。 */
 const selectedMulti = computed<unknown[]>(() => (Array.isArray(current.value) ? (current.value as unknown[]) : []));
 function toggleMulti(optValue: unknown) {
   const set = selectedMulti.value.slice();
@@ -137,8 +137,8 @@ function commitJson() {
 
 /* ── collection 富控件 ──
    nomops 的 IF/Set 都用 type:'collection',但形态不同:
-   - IF conditions = 数组 [{left,op,right}] → 条件行编辑器(对标 n8n filter)
-   - Set fields = 键值对象 {k:v} → 名/值行编辑器(对标 n8n Set assignments)
+   - IF conditions = 数组 [{left,op,right}] → 条件行编辑器(对标基线 filter)
+   - Set fields = 键值对象 {k:v} → 名/值行编辑器(对标基线 Set assignments)
    据 name/值形态分流,替代原来退化的 JSON 文本框。 */
 const OPERATORS = [
   { value: 'eq', label: 'is equal to' },
@@ -201,7 +201,7 @@ function removeField(i: number) {
 
 <template>
   <div class="param" :data-test-param="prop.name">
-    <!-- D112 对标 n8n:notice 渲染为紫色 Tip 提示条(非灰文本) -->
+    <!-- D112 对标基线:notice 渲染为紫色 Tip 提示条(非灰文本) -->
     <template v-if="prop.type === 'notice'">
       <div class="param-notice" data-test="param-notice">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="pn-icon"><circle cx="12" cy="12" r="9" /><path d="M12 8h.01M11 12h1v4h1" /></svg>
@@ -261,7 +261,7 @@ function removeField(i: number) {
             <span v-else class="er-value" :class="{ err: preview && !preview.ok }">{{ preview?.text }}</span>
           </div>
           <div class="er-tip">
-            Anything inside <code>{{ CURLY }}</code> is JavaScript. <a class="link" href="https://docs.n8n.io/code/expressions/" target="_blank" rel="noopener">Learn more</a>
+            Anything inside <code>{{ CURLY }}</code> is JavaScript. <a class="link" href="https://docs.基线.io/code/expressions/" target="_blank" rel="noopener">Learn more</a>
           </div>
         </div>
       </template>
@@ -299,7 +299,7 @@ function removeField(i: number) {
         @input="emit('change', Number(($event.target as HTMLInputElement).value))"
       />
 
-      <!-- n8n 实测开关：轨 32×16 圆胶囊 / off=light-2+1px neutral-700 边 / knob 12 白 / on=green-500 -->
+      <!-- 基线实测开关：轨 32×16 圆胶囊 / off=light-2+1px neutral-700 边 / knob 12 白 / on=green-500 -->
       <button
         v-else-if="prop.type === 'boolean'"
         type="button"
@@ -322,7 +322,7 @@ function removeField(i: number) {
         </option>
       </select>
 
-      <!-- D108 对标 n8n:multiOptions 多选(勾选芯片),值为数组 -->
+      <!-- D108 对标基线:multiOptions 多选(勾选芯片),值为数组 -->
       <div v-else-if="prop.type === 'multiOptions'" class="multi-opts" data-test="multi-options">
         <button
           v-for="opt in prop.options ?? []"
@@ -338,7 +338,7 @@ function removeField(i: number) {
         </button>
       </div>
 
-      <!-- IF 条件组(对标 n8n filter):左值 + 操作符下拉 + 右值 + Add condition -->
+      <!-- IF 条件组(对标基线 filter):左值 + 操作符下拉 + 右值 + Add condition -->
       <div v-else-if="prop.type === 'collection' && isConditions" class="cond-editor" data-test="conditions-editor">
         <div v-for="(c, i) in conditions" :key="i" class="cond-row" data-test="condition-row">
           <input class="cond-left" :value="String(c.left ?? '')" placeholder="value1" @input="updateCondition(i, 'left', ($event.target as HTMLInputElement).value)" />
@@ -354,7 +354,7 @@ function removeField(i: number) {
         <button class="add-btn" type="button" data-test="add-condition" @click="addCondition">+ Add condition</button>
       </div>
 
-      <!-- Set 赋值区(对标 n8n Set assignments):名/值行 + Add Field -->
+      <!-- Set 赋值区(对标基线 Set assignments):名/值行 + Add Field -->
       <div v-else-if="prop.type === 'collection'" class="kv-editor" data-test="fields-editor">
         <div v-for="(r, i) in fieldRows" :key="i" class="kv-row" data-test="field-row">
           <input class="kv-k" :value="r.k" placeholder="Name" @input="updateField(i, { k: ($event.target as HTMLInputElement).value })" />
@@ -391,7 +391,7 @@ function removeField(i: number) {
 </template>
 
 <style scoped>
-/* n8n 实测（NDV 参数区）：行距 10；label 12px/400 白、下距 8；
+/* 基线实测（NDV 参数区）：行距 10；label 12px/400 白、下距 8；
    文本输入 32px/bg light-2/inset 1px 环/圆角 4/14px 白;
    下拉 30px/1px 边/12px;开关 32×16 */
 .param { margin-bottom: 10px; }
@@ -464,7 +464,7 @@ function removeField(i: number) {
 .multi-chip:hover { box-shadow: inset 0 0 0 1px var(--border-color--strong); }
 .multi-chip.on { box-shadow: inset 0 0 0 1px var(--color--primary); color: var(--color--primary); }
 .multi-check { width: 10px; font-size: 11px; }
-/* n8n 实测：表达式态左侧 = gutter 块，与编辑框拼合(编辑框圆角 0 4 4 0) */
+/* 基线实测：表达式态左侧 = gutter 块，与编辑框拼合(编辑框圆角 0 4 4 0) */
 .expr-row { display: flex; align-items: stretch; }
 .expr-gutter {
   flex-shrink: 0; width: 20px; display: flex; align-items: center; justify-content: center;
@@ -510,7 +510,7 @@ textarea { font-family: ui-monospace, monospace; }
 .er-tip .link { color: var(--accent); text-decoration: none; }
 .er-tip .link:hover { text-decoration: underline; }
 
-/* D112 notice 紫色 Tip 提示条(对标 n8n) */
+/* D112 notice 紫色 Tip 提示条(对标基线) */
 .param-notice {
   display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border-radius: var(--radius);
   background: var(--color--purple-100, rgba(124, 58, 237, 0.1));

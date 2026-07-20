@@ -104,7 +104,7 @@ export const workflows = pgTable('workflows', {
   // 钉住数据（nodeName → 冻结输出 items）；仅手动运行应用
   pinData: jsonb('pin_data').$type<IPinData>(),
   versionId: uuid('version_id'),
-  // 收藏（列表置顶星标）与归档（软删除：默认列表隐藏、触发器下线；n8n 语义 Delete 仅对 archived 开放）
+  // 收藏（列表置顶星标）与归档（软删除：默认列表隐藏、触发器下线；基线语义 Delete 仅对 archived 开放）
   favorite: boolean('favorite').notNull().default(false),
   archived: boolean('archived').notNull().default(false),
   // 发布/草稿分离：生产触发跑 publishedVersionId 指向的版本快照；null = 从未发布（生产退回当前定义，兼容旧数据）

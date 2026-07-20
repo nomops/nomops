@@ -26,7 +26,7 @@ const host = ref<HTMLElement>();
 let view: EditorView | null = null;
 
 /**
- * 自动补全弹层样式 —— 逐值对标 n8n 2.30.4 实测（dark）：
+ * 自动补全弹层样式 —— 逐值对标参考基线 2.30.4 实测（dark）：
  * 面板 bg light-3 / 圆角 4 / 投影 0 2px 12px black-10%；列表 CommitMono 12px、
  * 条目 22px 高(衬 2×8) 白字、选中 = neutral-700 底 + purple-400 字；
  * 分组头 <completion-section> "SUGGESTED" 10px/600 大写；右侧说明卡 280 宽、圆角 0 4 4 0、衬 12。
@@ -112,7 +112,7 @@ const expressionHighlighter = ViewPlugin.fromClass(
 
 /**
  * `$` 全局名补全 —— 只列表达式引擎（@nomops/workflow evaluator）真实注入的作用域，
- * 不提供引擎没有的函数。弹层视觉对标 n8n 2.30.4 实测（SUGGESTED 分组 + 右侧说明卡）。
+ * 不提供引擎没有的函数。弹层视觉对标参考基线 2.30.4 实测（SUGGESTED 分组 + 右侧说明卡）。
  */
 function makeInfo(title: string, desc: string): Node {
   const box = document.createElement('div');

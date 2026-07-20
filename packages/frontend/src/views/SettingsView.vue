@@ -10,7 +10,7 @@ import { credentialTypeMeta } from '../lib/credential-types.js';
 import LicenseModal from '../components/LicenseModal.vue';
 import { LOCALES, locale, setLocale, t, type Locale } from '../lib/i18n.js';
 
-/** Settings：左二级导航（← Settings + 图标项 + 版本号）+ 右内容。结构对标 n8n Settings。 */
+/** Settings：左二级导航（← Settings + 图标项 + 版本号）+ 右内容。结构对标基线 Settings。 */
 type Section =
   | 'billing'
   | 'personal'
@@ -34,7 +34,7 @@ const router = useRouter();
 const projects = useProjectsStore();
 const ui = useUiStore();
 
-const section = ref<Section>((route.query['s'] as Section) ?? 'billing'); // 对标 n8n：默认落在 Usage and plan
+const section = ref<Section>((route.query['s'] as Section) ?? 'billing'); // 对标基线：默认落在 Usage and plan
 const about = ref<Awaited<ReturnType<typeof api.about>> | null>(null);
 
 /* 个人 */
@@ -92,7 +92,7 @@ async function submitChangePassword() {
   }
 }
 
-/** 头像缩写（n8n 风格圆形色块）。 */
+/** 头像缩写（基线风格圆形色块）。 */
 const initialsOf = (first: string | null, last: string | null, email: string): string => {
   const a = (first ?? '').trim().charAt(0);
   const b = (last ?? '').trim().charAt(0);
@@ -192,18 +192,18 @@ const ldapError = ref('');
 const ldapSaved = ref(false);
 const ldapLoading = ref(true);
 
-/* 公共 API 令牌（对标 n8n "Create API Key" 弹窗） */
+/* 公共 API 令牌（对标基线 "Create API Key" 弹窗） */
 const apiKeysList = ref<ApiKeyRow[]>([]);
 const newKeyLabel = ref('');
 const createdToken = ref(''); // 新建令牌明文（仅弹窗内显示一次）
 const apiError = ref('');
 const apiBusy = ref(false);
 const apiModalOpen = ref(false);
-/* 对标 n8n Create API Key：Expiration 下拉 + Scopes 单选（真实生效：过期拒绝、readonly 拦写） */
+/* 对标基线 Create API Key：Expiration 下拉 + Scopes 单选（真实生效：过期拒绝、readonly 拦写） */
 const apiExpireDays = ref<number | null | 'custom'>(30);
 const apiExpireCustom = ref(''); // D141:Custom 过期日期(YYYY-MM-DD)
 const apiScope = ref<'all' | 'readonly' | 'custom'>('all'); // D141:加 Custom scope
-/* D141 对标 n8n:Expiration = 7/30/60/90 days + Custom(No expiration 为 nomops 保留项) */
+/* D141 对标基线:Expiration = 7/30/60/90 days + Custom(No expiration 为 nomops 保留项) */
 const API_EXPIRATIONS: Array<{ label: string; value: number | null | 'custom' }> = [
   { label: '7 days', value: 7 },
   { label: '30 days', value: 30 },
@@ -280,7 +280,7 @@ const communityError = ref('');
 const installName = ref('');
 const installVersion = ref('');
 const installing = ref(false);
-/* 安装弹窗（对标 n8n "Install community nodes"：说明卡 + 包名 + 风险确认） */
+/* 安装弹窗（对标基线 "Install community nodes"：说明卡 + 包名 + 风险确认） */
 const communityModalOpen = ref(false);
 const riskAccepted = ref(false);
 
@@ -388,7 +388,7 @@ onMounted(async () => {
 });
 onUnmounted(() => window.removeEventListener('click', closePopovers));
 
-/* 用户列表搜索（n8n Users 页顶部搜索框） */
+/* 用户列表搜索（基线 Users 页顶部搜索框） */
 const userSearch = ref('');
 const filteredUsers = computed(() => {
   const q = userSearch.value.trim().toLowerCase();
@@ -398,15 +398,15 @@ const filteredUsers = computed(() => {
   );
 });
 
-/* Roles 页（固定内置角色，对标 n8n 的 Instance/Project roles 两个 tab） */
-// Roles 页现为 n8n Enterprise 锁态,仅保留 tab 切换(instance/project 描述已随锁态移除)
+/* Roles 页（固定内置角色，对标基线的 Instance/Project roles 两个 tab） */
+// Roles 页现为基线 Enterprise 锁态,仅保留 tab 切换(instance/project 描述已随锁态移除)
 const rolesTab = ref<'instance' | 'project'>('instance');
 
-/** 企业功能是否已解锁（决定显示真实表单还是 n8n 式锁定卡）。 */
+/** 企业功能是否已解锁（决定显示真实表单还是基线式锁定卡）。 */
 const licensed = (feature: string): boolean => projects.hasFeature(feature);
 
-/* OpenTelemetry 表单本地态(对标 n8n /settings/opentelemetry;后端持久化留后续)。
-   默认值取自 n8n 页面 live 真值(Disabled / :4318 / /v1/traces / 2000ms / 1.00)。 */
+/* OpenTelemetry 表单本地态(对标基线 /settings/opentelemetry;后端持久化留后续)。
+   默认值取自基线页面 live 真值(Disabled / :4318 / /v1/traces / 2000ms / 1.00)。 */
 const otel = ref({
   status: 'Disabled',
   endpoint: 'http://localhost:4318',
@@ -429,7 +429,7 @@ const mcpTab = ref<'workflows' | 'clients' | 'oauth'>('workflows');
 const mcpRedirectUrls = ref(''); // MCP OAuth redirect URL allowlist(前端表单;后端持久化留后续)
 const mcpShowDetails = ref(false);
 const mcpBusy = ref(false);
-/* Enable workflows 弹窗（对标 n8n：搜索 + 多选，仅限已发布的工作流） */
+/* Enable workflows 弹窗（对标基线：搜索 + 多选，仅限已发布的工作流） */
 const mcpModalOpen = ref(false);
 const mcpSearch = ref('');
 const mcpPick = ref<Set<string>>(new Set());
@@ -512,9 +512,9 @@ const chatSaving = ref(false);
 type ProviderRow = Awaited<ReturnType<typeof api.assistant.providers>>[number];
 const chatProviders = ref<ProviderRow[]>([]);
 
-/* B 类锁墙:Chat 页 provider 表 1:1 镜像 n8n 的 15 家(2026-07-19 /settings/chat live 逐字取证)。
-   品牌图标不复制 n8n 的第三方厂商 logo 资源,改用品牌色字母 monogram 芯片(视觉对等)。 */
-const N8N_CHAT_PROVIDERS: Array<{ name: string; mark: string; color: string }> = [
+/* B 类锁墙:Chat 页 provider 表 1:1 镜像基线的 15 家(2026-07-19 /settings/chat live 逐字取证)。
+   品牌图标不复制基线的第三方厂商 logo 资源,改用品牌色字母 monogram 芯片(视觉对等)。 */
+const CHAT_PROVIDERS: Array<{ name: string; mark: string; color: string }> = [
   { name: 'OpenAI', mark: 'O', color: '#10a37f' },
   { name: 'Anthropic', mark: 'A', color: '#d97757' },
   { name: 'Google', mark: 'G', color: '#4285f4' },
@@ -538,7 +538,7 @@ async function loadChatProviders() {
 }
 onMounted(loadChatProviders);
 
-/* Configure provider 弹窗（对标 n8n：Enable {Provider} / Default credential / Context window） */
+/* Configure provider 弹窗（对标基线：Enable {Provider} / Default credential / Context window） */
 const providerMenuFor = ref<string | null>(null);
 const providerModalOpen = ref(false);
 const providerModal = ref<ProviderRow | null>(null);
@@ -747,9 +747,9 @@ async function changeUserRole(id: string, event: Event) {
   }
 }
 
-/* 邀请用户（对标 n8n "Invite new users" 弹窗；无 SMTP：生成可转交的邀请链接） */
+/* 邀请用户（对标基线 "Invite new users" 弹窗；无 SMTP：生成可转交的邀请链接） */
 const inviteModalOpen = ref(false);
-const inviteEmail = ref(''); // 逗号分隔支持多个（对标 n8n）
+const inviteEmail = ref(''); // 逗号分隔支持多个（对标基线）
 const inviteRole = ref<'admin' | 'member'>('member');
 const inviting = ref(false);
 const inviteLinks = ref<Array<{ email: string; link: string }>>([]);
@@ -1007,7 +1007,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
     </nav>
 
     <div class="settings-content">
-      <!-- 个人设置（对标 n8n Personal：右上头像 chip + Basic Information + Security） -->
+      <!-- 个人设置（对标基线 Personal：右上头像 chip + Basic Information + Security） -->
       <section v-if="section === 'personal'" data-test="settings-personal">
         <div class="page-head">
           <h1 class="page-title">{{ t('Personal Settings') }}</h1>
@@ -1108,7 +1108,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           </div>
         </div>
 
-        <!-- D133 Personalisation:Theme 下拉(对标 n8n:System default/Light theme/Dark theme) -->
+        <!-- D133 Personalisation:Theme 下拉(对标基线:System default/Light theme/Dark theme) -->
         <h3 class="sec-title">{{ t('Personalisation') }}</h3>
         <div class="setting-card" style="max-width: 880px">
           <div class="setting-row">
@@ -1151,7 +1151,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         </div>
       </section>
 
-      <!-- Roles（内置角色说明，对标 n8n Roles 页的 Instance/Project 两个 tab） -->
+      <!-- Roles（内置角色说明，对标基线 Roles 页的 Instance/Project 两个 tab） -->
       <section v-else-if="section === 'roles'" data-test="settings-roles">
         <div style="display: flex; align-items: center; gap: 10px">
           <h1 class="page-title" style="margin-bottom: 0">Roles</h1>
@@ -1166,7 +1166,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           <button class="tab" :class="{ active: rolesTab === 'instance' }" data-test="roles-tab-instance" @click="rolesTab = 'instance'">Instance roles</button>
           <button class="tab" :class="{ active: rolesTab === 'project' }" data-test="roles-tab-project" @click="rolesTab = 'project'">Project roles</button>
         </div>
-        <!-- Enterprise 锁卡(对标 n8n Community Roles):三权限卡图形 + Upgrade to Enterprise -->
+        <!-- Enterprise 锁卡(对标基线 Community Roles):三权限卡图形 + Upgrade to Enterprise -->
         <div class="ent-lock" data-test="roles-lock">
           <div class="ent-cards"><span /><span /><span /></div>
           <h2 class="ent-title">Upgrade to Enterprise</h2>
@@ -1178,12 +1178,12 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         </div>
       </section>
 
-      <!-- 用户管理（实例 admin，对标 n8n Users：计数副标题 + 搜索 + 右侧 Invite + 头像表格） -->
+      <!-- 用户管理（实例 admin，对标基线 Users：计数副标题 + 搜索 + 右侧 Invite + 头像表格） -->
       <section v-else-if="section === 'users'" data-test="settings-users">
         <h1 class="page-title" style="margin-bottom: 4px">Users</h1>
         <p class="dim" style="margin: 0 0 18px; font-size: 13.5px">{{ users.length }} user{{ users.length === 1 ? '' : 's' }}</p>
 
-        <!-- D134 对标 n8n Community:顶部米黄升级条 -->
+        <!-- D134 对标基线 Community:顶部米黄升级条 -->
         <div v-if="!isActivated" class="users-upgrade" data-test="users-upgrade">
           Upgrade to unlock the ability to create additional admin users
         </div>
@@ -1199,7 +1199,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
 
         <p v-if="usersError" class="error-text" data-test="users-error">{{ usersError }}</p>
 
-        <!-- 弹窗：Invite new users（对标 n8n） -->
+        <!-- 弹窗：Invite new users（对标基线） -->
         <div v-if="inviteModalOpen" class="modal-mask" data-test="invite-modal" @click.self="inviteModalOpen = false">
           <div class="modal-card" style="width: 560px">
             <div style="display: flex; align-items: flex-start; justify-content: space-between">
@@ -1262,7 +1262,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                     </div>
                   </div>
                 </td>
-                <!-- D135 对标 n8n:Account Type 纯文本(角色变更移到 ⋮ 菜单,changeUserRole 保留) -->
+                <!-- D135 对标基线:Account Type 纯文本(角色变更移到 ⋮ 菜单,changeUserRole 保留) -->
                 <td style="width: 140px">
                   <span :data-test-user-role="u.id" style="text-transform: capitalize">{{ u.role }}</span>
                   <span v-if="u.pending" class="dim"> (Pending)</span>
@@ -1288,10 +1288,10 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         </div>
       </section>
 
-      <!-- 安全（实例 admin，对标 n8n Security & policies 的设置行卡片） -->
+      <!-- 安全（实例 admin，对标基线 Security & policies 的设置行卡片） -->
       <section v-else-if="section === 'security'" data-test="settings-security">
         <h1 class="page-title">Security &amp; policies</h1>
-        <!-- B 类锁墙:对标 n8n Community 的 Security & policies 三分区(全 Enterprise 锁,Upgrade 徽章)。
+        <!-- B 类锁墙:对标基线 Community 的 Security & policies 三分区(全 Enterprise 锁,Upgrade 徽章)。
              注:安全数据 loader(loadSecurity/rotateScimToken)后端接口保留,便于回退到自有实现。 -->
         <!-- 1) Enforce two-factor authentication -->
         <h3 class="sec-title" style="margin-top: 6px">Enforce two-factor authentication</h3>
@@ -1376,7 +1376,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         <div v-if="!licensed('sso')" class="locked-card" data-test="sso-locked">
           <h2>Available on the Enterprise plan</h2>
           <p>Use Single Sign-On to consolidate authentication into a single platform to improve security and agility.</p>
-          <a class="btn primary" href="https://n8n.io/pricing" target="_blank" rel="noopener">See plans</a>
+          <a class="btn primary" href="https://基线.io/pricing" target="_blank" rel="noopener">See plans</a>
         </div>
         <p v-else-if="ssoError" class="error-text" data-test="sso-error">{{ ssoError }}</p>
         <div v-else-if="!ssoLoading" class="card" style="max-width: 580px">
@@ -1404,7 +1404,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         <div v-if="!licensed('ldap')" class="locked-card" data-test="ldap-locked">
           <h2>Available on the Enterprise plan</h2>
           <p>LDAP is available as a paid feature — sign your team in with the corporate directory.</p>
-          <a class="btn primary" href="https://n8n.io/pricing" target="_blank" rel="noopener">See plans</a>
+          <a class="btn primary" href="https://基线.io/pricing" target="_blank" rel="noopener">See plans</a>
         </div>
         <p v-else-if="ldapError" class="error-text" data-test="ldap-error">{{ ldapError }}</p>
         <div v-else-if="!ldapLoading" class="card" style="max-width: 580px">
@@ -1444,7 +1444,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         <div v-if="!licensed('logStreaming')" class="locked-card" data-test="ls-locked">
           <h2>Available on the Enterprise plan</h2>
           <p>Log Streaming is available as a paid feature — push execution and audit events to your SIEM.</p>
-          <a class="btn primary" href="https://n8n.io/pricing" target="_blank" rel="noopener">See plans</a>
+          <a class="btn primary" href="https://基线.io/pricing" target="_blank" rel="noopener">See plans</a>
         </div>
         <p v-else-if="lsError" class="error-text" data-test="ls-error">{{ lsError }}</p>
         <template v-else>
@@ -1499,7 +1499,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         <div v-if="!licensed('externalSecrets')" class="locked-card" data-test="secrets-locked">
           <h2>Available on the Enterprise plan</h2>
           <p>Use External Secrets to keep credentials in an external vault and reference them at run time.</p>
-          <a class="btn primary" href="https://n8n.io/pricing" target="_blank" rel="noopener">See plans</a>
+          <a class="btn primary" href="https://基线.io/pricing" target="_blank" rel="noopener">See plans</a>
         </div>
         <p v-else-if="secretsError" class="error-text" data-test="secrets-error">{{ secretsError }}</p>
         <div v-else-if="secretsStatus" class="card" style="max-width: 580px">
@@ -1529,11 +1529,11 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         </div>
       </section>
 
-      <!-- 公共 API 令牌（对标 n8n API 页：空态虚线卡 + Create API Key 弹窗） -->
+      <!-- 公共 API 令牌（对标基线 API 页：空态虚线卡 + Create API Key 弹窗） -->
       <section v-else-if="section === 'api'" data-test="settings-api">
         <h1 class="page-title">API</h1>
 
-        <!-- 空态：n8n 式虚线卡 -->
+        <!-- 空态：基线式虚线卡 -->
         <div v-if="!apiKeysList.length" class="locked-card" data-test="api-empty">
           <p style="margin-top: 0">Control nomops programmatically using the REST API (header <code>X-Nomops-Api-Key</code>).</p>
           <button class="btn primary" data-test="api-create-open" @click="openApiModal">Create API key</button>
@@ -1563,7 +1563,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           </div>
         </template>
 
-        <!-- 弹窗：Create API Key（对标 n8n） -->
+        <!-- 弹窗：Create API Key（对标基线） -->
         <div v-if="apiModalOpen" class="modal-mask" data-test="api-modal" @click.self="apiModalOpen = false">
           <div class="modal-card" style="width: 560px">
             <div style="display: flex; align-items: flex-start; justify-content: space-between">
@@ -1592,7 +1592,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                 <input v-model="apiScope" type="radio" value="readonly" data-test="api-scope-readonly" />
                 <span>Read only</span>
               </label>
-              <!-- D141 对标 n8n:Custom scope 单选 -->
+              <!-- D141 对标基线:Custom scope 单选 -->
               <label class="radio-row">
                 <input v-model="apiScope" type="radio" value="custom" data-test="api-scope-custom" />
                 <span>Custom</span>
@@ -1620,22 +1620,22 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         </div>
       </section>
 
-      <!-- 社区节点（对标 n8n：空态虚线卡） -->
+      <!-- 社区节点（对标基线：空态虚线卡） -->
       <section v-else-if="section === 'community'" data-test="settings-community">
-        <!-- D139 对标 n8n:标题行右上常驻 Install 橙钮 -->
+        <!-- D139 对标基线:标题行右上常驻 Install 橙钮 -->
         <div class="page-head" style="max-width: 720px; display: flex; align-items: center; justify-content: space-between">
           <h1 class="page-title" style="margin-bottom: 0">Community nodes</h1>
           <button v-if="communityNodes.length" class="btn primary" data-test="community-install-open" @click="openCommunityModal">Install</button>
         </div>
 
-        <!-- 空态：n8n 式虚线卡 -->
+        <!-- 空态：基线式虚线卡 -->
         <div v-if="!communityNodes.length" class="locked-card" data-test="community-empty" style="margin-top: 16px">
           <h2 style="font-weight: 400">Supercharge your workflows with community nodes</h2>
           <p>Install node packages contributed by the community (npm packages exporting a <code>nomopsNodes</code> array).</p>
           <button class="btn primary" data-test="community-empty-install" @click="openCommunityModal">Install a community node</button>
         </div>
 
-        <!-- D140 对标 n8n:包卡片(包名 + "N node(s): 节点名" + 版本 + Uninstall) -->
+        <!-- D140 对标基线:包卡片(包名 + "N node(s): 节点名" + 版本 + Uninstall) -->
         <div v-else class="cn-list" style="max-width: 720px">
           <div v-for="p in communityNodes" :key="p.packageName" class="cn-card" data-test="community-row">
             <div class="cn-main">
@@ -1649,7 +1649,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           </div>
         </div>
 
-        <!-- 弹窗：Install community nodes（对标 n8n：说明卡 + 包名 + 风险确认） -->
+        <!-- 弹窗：Install community nodes（对标基线：说明卡 + 包名 + 风险确认） -->
         <div v-if="communityModalOpen" class="modal-mask" data-test="community-modal" @click.self="communityModalOpen = false">
           <div class="modal-card" style="width: 620px">
             <div style="display: flex; align-items: flex-start; justify-content: space-between">
@@ -1681,7 +1681,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         </div>
       </section>
 
-      <!-- Environments（Git 源码同步，对标 n8n Environments） -->
+      <!-- Environments（Git 源码同步，对标基线 Environments） -->
       <section v-else-if="section === 'sourcecontrol'" data-test="settings-sourcecontrol">
         <h1 class="page-title">Environments</h1>
         <p class="sub">
@@ -1694,8 +1694,8 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           <h2>Available on the Enterprise plan</h2>
           <p>Use multiple instances for different environments (dev, prod, etc.), deploying between them via a Git repository.</p>
           <div class="locked-actions">
-            <a class="btn secondary" href="https://docs.n8n.io/source-control-environments/" target="_blank" rel="noopener">More info</a>
-            <a class="btn primary" href="https://n8n.io/pricing" target="_blank" rel="noopener">See plans</a>
+            <a class="btn secondary" href="https://docs.基线.io/source-control-environments/" target="_blank" rel="noopener">More info</a>
+            <a class="btn primary" href="https://基线.io/pricing" target="_blank" rel="noopener">See plans</a>
           </div>
         </div>
         <p v-else-if="scError" class="error-text" data-test="sc-error">{{ scError }}</p>
@@ -1763,8 +1763,8 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         </template>
       </section>
 
-      <!-- Observability（Prometheus /metrics，对应 n8n 的 OpenTelemetry 观测位） -->
-      <!-- OpenTelemetry(对标 n8n /settings/opentelemetry:Collector connection + Tracing 两区)。
+      <!-- Observability（Prometheus /metrics，对应基线的 OpenTelemetry 观测位） -->
+      <!-- OpenTelemetry(对标基线 /settings/opentelemetry:Collector connection + Tracing 两区)。
            注:原自有 Prometheus /metrics 端点后端保留(promScrape 常量留档),便于回退。 -->
       <section v-else-if="section === 'opentelemetry'" data-test="settings-opentelemetry">
         <h1 class="page-title" style="margin-bottom: 6px">OpenTelemetry</h1>
@@ -1846,7 +1846,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         </div>
       </section>
 
-      <!-- 实例级 MCP（Preview，对标 n8n Instance-level MCP） -->
+      <!-- 实例级 MCP（Preview，对标基线 Instance-level MCP） -->
       <section v-else-if="section === 'mcp'" data-test="settings-mcp">
         <div class="page-head" style="max-width: 1000px">
           <div style="display: flex; align-items: center; gap: 10px">
@@ -1885,7 +1885,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         </p>
         <p v-if="mcpError" class="error-text" data-test="mcp-error">{{ mcpError }}</p>
 
-        <!-- 未启用：n8n 式虚线卡 -->
+        <!-- 未启用：基线式虚线卡 -->
         <div v-if="mcpStatus && !mcpStatus.enabled" class="locked-card" style="max-width: 1000px" data-test="mcp-empty">
           <h2 style="font-weight: 400">Connect AI assistants to run workflows</h2>
           <p>Enable MCP access so clients can list the workflows you expose below and execute them (production semantics, quota enforced).</p>
@@ -1911,7 +1911,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
             </button>
           </div>
 
-          <!-- Workflows：仅列已启用；添加走弹窗（对标 n8n Enable workflows） -->
+          <!-- Workflows：仅列已启用；添加走弹窗（对标基线 Enable workflows） -->
           <template v-if="mcpTab === 'workflows'">
             <div class="card" style="max-width: 1000px; padding: 0">
               <table class="api-table">
@@ -1968,7 +1968,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
             </div>
           </template>
 
-          <!-- OAuth settings：redirect URL 允许清单(对标 n8n MCP OAuth settings tab) -->
+          <!-- OAuth settings：redirect URL 允许清单(对标基线 MCP OAuth settings tab) -->
           <template v-else>
             <div class="card" style="max-width: 1000px; padding: 16px">
               <label class="oauth-label" for="mcp-oauth-urls">Allowed OAuth Redirect URLs</label>
@@ -1992,7 +1992,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           </template>
         </template>
 
-        <!-- Enable workflows 弹窗（对标 n8n Enable workflow MCP access） -->
+        <!-- Enable workflows 弹窗（对标基线 Enable workflow MCP access） -->
         <div v-if="mcpModalOpen" class="modal-mask" data-test="mcp-modal" @click.self="mcpModalOpen = false">
           <div class="modal-card" style="width: 640px">
             <div style="display: flex; align-items: flex-start; justify-content: space-between">
@@ -2024,7 +2024,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         </div>
       </section>
 
-      <!-- Chat 设置（Preview，对标 n8n Chat） -->
+      <!-- Chat 设置（Preview，对标基线 Chat） -->
       <section v-else-if="section === 'chat'" data-test="settings-chat">
         <div style="display: flex; align-items: center; gap: 10px">
           <h1 class="page-title" style="margin-bottom: 0">Chat</h1>
@@ -2032,7 +2032,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         </div>
         <p v-if="chatError" class="error-text" style="margin-top: 14px" data-test="chat-error">{{ chatError }}</p>
         <template v-if="chatSettings">
-          <!-- Enable Chat：无边框设置行 + 胶囊开关（对标 n8n） -->
+          <!-- Enable Chat：无边框设置行 + 胶囊开关（对标基线） -->
           <div class="setting-row" style="max-width: 1000px; margin-top: 20px; border-bottom: none; padding: 0">
             <div class="setting-text">
               <b>Enable Chat</b>
@@ -2056,12 +2056,12 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="i15"><path d="M21 12a9 9 0 1 1-2.6-6.3M21 4v5h-5" /></svg>
             </button>
           </div>
-          <!-- Provider 表:1:1 镜像 n8n 15 家(品牌色 monogram 芯片代替第三方 logo) -->
+          <!-- Provider 表:1:1 镜像基线 15 家(品牌色 monogram 芯片代替第三方 logo) -->
           <div v-if="chatSettings.enabled" class="card" style="max-width: 1000px; padding: 0; margin-top: 10px">
             <table class="api-table">
               <thead><tr><th>Provider</th><th>Models</th><th>Last edited</th></tr></thead>
               <tbody>
-                <tr v-for="p in N8N_CHAT_PROVIDERS" :key="p.name" :data-test="`chat-provider-${p.name}`">
+                <tr v-for="p in CHAT_PROVIDERS" :key="p.name" :data-test="`chat-provider-${p.name}`">
                   <td>
                     <span style="display: inline-flex; align-items: center; gap: 10px">
                       <span class="prov-mark" :style="{ background: p.color }">{{ p.mark }}</span>
@@ -2075,7 +2075,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
             </table>
           </div>
 
-          <!-- Configure Anthropic 弹窗（对标 n8n Configure provider） -->
+          <!-- Configure Anthropic 弹窗（对标基线 Configure provider） -->
           <div v-if="providerModalOpen" class="modal-mask" data-test="chat-provider-modal" @click.self="providerModalOpen = false">
             <div class="modal-card" style="width: 620px">
               <div style="display: flex; align-items: flex-start; justify-content: space-between">
@@ -2092,7 +2092,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                 </label>
               </div>
 
-              <!-- ② Default credential（对标 n8n：凭证卡片 + Create new credential；关闭 provider 时隐藏） -->
+              <!-- ② Default credential（对标基线：凭证卡片 + Create new credential；关闭 provider 时隐藏） -->
               <div v-if="provEnabled" class="prov-section" @click.stop>
                 <div class="prov-label">Default credential</div>
                 <button class="prov-cred-btn" data-test="prov-credential" :class="{ open: provCredOpen }" @click="provCredOpen = !provCredOpen">
@@ -2158,18 +2158,18 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         </template>
       </section>
 
-      <!-- 计费与套餐（对标 n8n Usage and plan） -->
+      <!-- 计费与套餐（对标基线 Usage and plan） -->
       <section v-else data-test="settings-billing">
         <h1 class="page-title">Usage and plan</h1>
         <h3 class="sec-title" style="margin-top: 0" data-test="plan-line">You’re on the {{ planLabel }} Edition</h3>
 
-        <!-- D137 Unlock 横幅(对标 n8n 逐字) -->
+        <!-- D137 Unlock 横幅(对标基线逐字) -->
         <button v-if="!isActivated" class="unlock-banner" data-test="license-open" @click="licenseModalOpen = true">
           <b>Unlock</b>
           <span>selected paid features for free (forever)</span>
         </button>
 
-        <!-- D138 用量行:Published workflows — N of Unlimited(对标 n8n) -->
+        <!-- D138 用量行:Published workflows — N of Unlimited(对标基线) -->
         <div class="usage-row" data-test="usage-row">
           <span class="dim">Published workflows</span>
           <span>{{ publishedWfCount }} of Unlimited</span>
@@ -2178,7 +2178,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           Published workflows with multiple triggers count multiple times. Error and Sub-workflow triggers are excluded.
         </p>
 
-        <!-- 底部按钮行：Enter activation key + View plans（右对齐，对标 n8n） -->
+        <!-- 底部按钮行：Enter activation key + View plans（右对齐，对标基线） -->
         <div class="plan-actions">
           <button v-if="!isActivated" class="btn secondary" data-test="license-open-2" @click="licenseModalOpen = true">Enter activation key</button>
           <button v-else class="btn secondary" data-test="license-remove" :disabled="licenseBusy" @click="removeLicense">
@@ -2281,7 +2281,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
   width: 230px; flex-shrink: 0; border-right: 1px solid var(--border);
   padding: 4px 6px 16px; background: var(--bg); display: flex; flex-direction: column;
 }
-/* n8n 实测：返回行 43px(衬 12px)/文字 14px-500 白;
+/* 基线实测：返回行 43px(衬 12px)/文字 14px-500 白;
    条目与主侧栏同规格 32px/衬 4/圆角 4/gap 4/白字 14px/图标 16;激活 light-1 */
 .settings-back {
   display: flex; align-items: center; gap: 6px; width: 100%; text-align: left;
@@ -2301,7 +2301,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
 .settings-version { margin-top: auto; padding: 12px 10px 4px; font-size: 12px; color: var(--accent); }
 
 .settings-content { flex: 1; overflow-y: auto; padding: 26px 40px 60px; }
-/* n8n 实测：Settings 表单系统 = 输入 36px/圆角 6/bg light-2;主按钮 36px/圆角 6/衬 0 16 */
+/* 基线实测：Settings 表单系统 = 输入 36px/圆角 6/bg light-2;主按钮 36px/圆角 6/衬 0 16 */
 .settings-content :deep(input[type='text']), .settings-content :deep(input[type='email']),
 .settings-content :deep(input[type='password']), .settings-content :deep(input:not([type])),
 .settings-content :deep(select) {
@@ -2350,7 +2350,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
 .token-box code { font-size: 12px; word-break: break-all; color: var(--accent); }
 .danger { color: var(--err); }
 
-/* ── n8n 对齐新增 ── */
+/* ── 基线对齐新增 ── */
 /* a.btn 抵消全局链接样式（如 Observability 的 Open /metrics） */
 a.btn {
   display: inline-flex; align-items: center; text-decoration: none;
@@ -2366,7 +2366,7 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 }
 .nav-badge.preview { color: #a78bfa; border-color: rgba(167, 139, 250, 0.45); background: rgba(167, 139, 250, 0.12); }
 
-/* 胶囊开关标签（Enabled 绿字，对标 n8n） */
+/* 胶囊开关标签（Enabled 绿字，对标基线） */
 .toggle-label { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 13.5px; color: var(--text-dim); cursor: pointer; }
 .toggle-label.on { color: var(--ok); }
 
@@ -2379,7 +2379,7 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 .icon-refresh:hover { color: var(--text-hi); border-color: var(--accent); }
 .icon-refresh .i15 { width: 15px; height: 15px; }
 
-/* 表格内空态（对标 n8n 表格容器内居中空态） */
+/* 表格内空态（对标基线表格容器内居中空态） */
 .table-empty { text-align: center; padding: 48px 24px 52px; }
 /* MCP OAuth settings tab */
 .oauth-label { display: block; font-size: 14px; font-weight: 600; color: var(--text-hi); }
@@ -2391,7 +2391,7 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 .table-empty h3 { margin: 0 0 10px; font-size: 17px; font-weight: 500; color: var(--text-hi); }
 .table-empty p { margin: 0 0 20px; font-size: 13.5px; color: var(--text-dim); }
 
-/* 弹窗（对标 n8n 模态：标题 + × + 右下 Cancel/Confirm） */
+/* 弹窗（对标基线模态：标题 + × + 右下 Cancel/Confirm） */
 .modal-mask {
   position: fixed; inset: 0; z-index: 100; background: rgba(0, 0, 0, 0.55);
   display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh;
@@ -2406,7 +2406,7 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 .modal-x:hover { color: var(--text-hi); }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
 
-/* 弹窗顶部提示卡（左竖条，对标 n8n callout） */
+/* 弹窗顶部提示卡（左竖条，对标基线 callout） */
 .info-callout {
   border: 1px solid var(--border); border-left: 3px solid var(--text-dim);
   border-radius: 6px; padding: 12px 14px; margin-bottom: 14px;
@@ -2468,7 +2468,7 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 .accent-link { color: var(--accent); text-decoration: none; font-size: 13.5px; }
 .accent-link:hover { text-decoration: underline; }
 
-/* Roles 页 tab（对标 n8n 的 Instance roles / Project roles） */
+/* Roles 页 tab（对标基线的 Instance roles / Project roles） */
 .tabs { display: flex; gap: 22px; border-bottom: 1px solid var(--border); margin: 4px 0 18px; max-width: 720px; }
 .tab {
   background: none; border: none; padding: 8px 2px 10px; font-size: 14px; cursor: pointer;
@@ -2476,7 +2476,7 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 }
 .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
-/* 企业功能锁定卡（对标 n8n "Available on the Enterprise plan" 虚线卡） */
+/* 企业功能锁定卡（对标基线 "Available on the Enterprise plan" 虚线卡） */
 .locked-card {
   max-width: 880px; border: 1px dashed var(--border); border-radius: 8px;
   padding: 56px 40px; text-align: center; margin-top: 8px;
@@ -2485,7 +2485,7 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 .locked-card p { margin: 0 0 22px; color: var(--text-dim); font-size: 14px; }
 .locked-actions { display: flex; gap: 10px; justify-content: center; }
 
-/* Roles Enterprise 锁卡(对标 n8n Community):三权限卡图形 + Upgrade to Enterprise */
+/* Roles Enterprise 锁卡(对标基线 Community):三权限卡图形 + Upgrade to Enterprise */
 .ent-lock {
   display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px;
   max-width: 720px; border: 1px dashed var(--border); border-radius: 8px; padding: 40px 24px 36px; margin-top: 8px;
@@ -2509,7 +2509,7 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 }
 .ent-lock .btn-upgrade:hover { background: var(--button--color--background--primary--hover-active-focus); }
 
-/* 设置行卡片（对标 n8n Security & policies / OpenTelemetry 的 row 布局） */
+/* 设置行卡片（对标基线 Security & policies / OpenTelemetry 的 row 布局） */
 .setting-card { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-panel); }
 .setting-row {
   display: flex; align-items: center; gap: 18px; padding: 16px;
@@ -2620,7 +2620,7 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 }
 .prov-stepper input::-webkit-outer-spin-button, .prov-stepper input::-webkit-inner-spin-button { -webkit-appearance: none; }
 
-/* provider 弹窗：凭证下拉（对标 n8n） */
+/* provider 弹窗：凭证下拉（对标基线） */
 .prov-cred-btn {
   display: flex; align-items: center; justify-content: space-between; width: 100%;
   padding: 10px 14px; margin-top: 6px; font-size: 13.5px; text-align: left;

@@ -1,7 +1,7 @@
 /* ==================================================================
- * n8n 设计令牌 — 1:1 逐字提取
+ * 基线设计令牌 — 1:1 逐字提取
  * ------------------------------------------------------------------
- * 事实来源: http://localhost:5679/ (n8n 2.30.4 stable, Community)
+ * 事实来源: http://localhost:5679/ (参考基线 2.30.4 stable, Community)
  * 提取时间: 2026-07-17
  * 提取方式: 脚本直接解析实例下发的 CSS 资产 (assets/index-C_1qkgv2.css 等),
  *   规则原文零手工转写; 两个运行时注入块(z-index 层级表、git-diff-view
@@ -10,7 +10,7 @@
  *
  * 使用铁律:
  *   1. 所有样式只允许引用本文件中的变量, 禁止魔法数字/裸色值。
- *   2. 主题机制(与 n8n 完全一致):
+ *   2. 主题机制(与基线完全一致):
  *      - body[data-theme="dark"]  → 显式深色
  *      - body[data-theme="light"] → 显式浅色
  *      - body:not([data-theme]) + @media (prefers-color-scheme: dark)
@@ -20,7 +20,7 @@
  *        var(--lightningcss-light, X) var(--lightningcss-dark, Y) 使用。
  *   3. body[data-theme="dark"] 与 @media dark 下 body:not([data-theme])
  *      两块声明已核对: 除 color-scheme 外逐字一致。
- *   4. 层级(z-index)表在 n8n 中由 JS 以内联样式写在 <html> 上,
+ *   4. 层级(z-index)表在基线中由 JS 以内联样式写在 <html> 上,
  *      本文件将其落为 :root 块, 值逐字一致。
  * ================================================================== */
 
@@ -1036,7 +1036,7 @@ body:not([data-theme]) {
 
 /* ================================================================== */
 /* 6. 语义层 · 深色覆盖 (388 项 ×2) */
-/* 两块声明逐字一致(仅 color-scheme 差异), 与 n8n 下发结构保持一致 */
+/* 两块声明逐字一致(仅 color-scheme 差异), 与基线下发结构保持一致 */
 /* ================================================================== */
 body[data-theme=dark] {
   --color--danger:var(--color--red-400);
@@ -1824,7 +1824,7 @@ body[data-theme=dark] {
 
 /* ================================================================== */
 /* 7. Chat 挂件令牌 (:root, 114 项) */
-/* @n8n/chat 嵌入式聊天挂件 */
+/* 嵌入式聊天挂件 */
 /* ================================================================== */
 :root {
   --chat--color--primary:#e74266;
@@ -1955,7 +1955,7 @@ body[data-theme=dark] {
 
 /* ================================================================== */
 /* 9. 层级 (z-index) 表 */
-/* n8n 运行时由 JS 写为 <html> 内联样式; 此处逐字落为 :root 块 */
+/* 基线运行时由 JS 写为 <html> 内联样式; 此处逐字落为 :root 块 */
 /* ================================================================== */
 :root {
   --toast--offset: 0px;
@@ -2895,7 +2895,7 @@ body[data-theme=dark] {
 /* ================================================================== */
 /*
  * body:        InterVariable, sans-serif / 16px / 400 / color lab(100 0 0) / bg lab(7.73655 0 0) [= neutral-950 #171717]
- * 页面主标题:  H2.n8n-heading size-xlarge bold → 20px / 600 / line-height 25px
+ * 页面主标题:  H2.heading size-xlarge bold → 20px / 600 / line-height 25px
  * 主按钮:      height 32px / padding 0 12px / radius 4px / bg orange-500 / 字 14px 500
  *              box-shadow: inset 0 0 0 1px orange-500, 0 1px 3px -1px black-alpha-100
  * 搜索输入容器: height 32px / radius 4px / inset 0 0 0 1px white-alpha-100 / bg neutral-950

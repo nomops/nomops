@@ -5,7 +5,7 @@ import { SETTINGS_SECTIONS, SETTINGS_ICONS } from '../../lib/settings-nav.js';
 import { t } from '../../lib/i18n.js';
 
 /**
- * Settings flyout 菜单（对标 n8n）：主侧栏与 Chat 页共用。
+ * Settings flyout 菜单（对标基线）：主侧栏与 Chat 页共用。
  * 内容与 Settings 页专属侧栏完全一致（同一数据源）+ 底部 Sign out。
  */
 const emit = defineEmits<{ close: [] }>();
