@@ -23,6 +23,8 @@ const router = useRouter();
 const collapsed = computed(() => ui.sidebarCollapsed);
 // D002 对标基线:侧栏固定 201px、不可拖拽(移除调宽把手与逻辑)。
 const teamProjects = computed(() => projects.projects.filter((p) => p.type !== 'personal'));
+/* D004:基线主侧栏的 "Personal" 项指向个人项目 */
+const personalProject = computed(() => projects.projects.find((p) => p.type === 'personal') ?? null);
 
 const flyout = ref<'settings' | 'help' | null>(null);
 
@@ -195,6 +197,19 @@ async function openAbout() {
       <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V20h14V9.5" /></svg>
       <span class="lbl">{{ t('Overview') }}</span>
     </RouterLink>
+
+    <!-- D004 对标基线:Overview 之后、Chat 之前有独立的 "Personal" 项(指向个人项目) -->
+    <button
+      v-if="personalProject"
+      class="nav-item"
+      :class="{ active: route.name === 'overview' && route.query.project === personalProject.id }"
+      data-test="nav-personal"
+      :title="t('Personal')"
+      @click="switchProject(personalProject.id)"
+    >
+      <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+      <span class="lbl">{{ t('Personal') }}</span>
+    </button>
 
     <RouterLink v-if="chatEnabled" class="nav-item" :class="{ active: route.name === 'chat' }" :title="t('Chat')" data-test="nav-chat" :to="{ name: 'chat' }">
       <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14a2 2 0 0 1-2 2H8l-4 3.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z" /></svg>
