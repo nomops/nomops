@@ -1374,8 +1374,10 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
       <section v-else-if="section === 'sso'" data-test="settings-sso">
         <h1 class="page-title">Single Sign-On</h1>
         <p class="sub">
-          Configure SSO to let your team sign in using your identity provider. Supports the OpenID Connect protocol —
-          “Sign in with SSO” appears on the login page once enabled.
+          <!-- D147 live 实测基线文案（documentation 按仓库政策指向自有文档） -->
+          Configure SSO to let your team sign in using your identity provider. Supports SAML 2.0 and OpenID Connect
+          protocols. Learn more in the
+          <a class="link" href="https://github.com/nomops/nomops/tree/main/docs" target="_blank" rel="noreferrer">documentation</a>
         </p>
         <div v-if="!licensed('sso')" class="locked-card" data-test="sso-locked">
           <h2>Available on the Enterprise plan</h2>
@@ -1539,7 +1541,11 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
 
         <!-- 空态：基线式虚线卡 -->
         <div v-if="!apiKeysList.length" class="locked-card" data-test="api-empty">
-          <p style="margin-top: 0">Control nomops programmatically using the REST API (header <code>X-Nomops-Api-Key</code>).</p>
+          <!-- D149 live 实测基线句式：Control <产品> programmatically using the <产品> API（尾部橙色链接） -->
+          <p style="margin-top: 0">
+            Control nomops programmatically using the
+            <a class="link" href="https://github.com/nomops/nomops/tree/main/docs" target="_blank" rel="noreferrer">nomops API</a>
+          </p>
           <button class="btn primary" data-test="api-create-open" @click="openApiModal">Create API key</button>
         </div>
 
@@ -1896,7 +1902,8 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           </div>
         </div>
         <p class="sub" style="max-width: 1000px">
-          Connect MCP clients like Claude Code and Cursor to discover and run workflows in this instance.
+          <!-- live 实测基线副标文案 -->
+          Connect MCP clients like Claude Code and Cursor to build, run, and iterate on workflows in your instance.
         </p>
         <p v-if="mcpError" class="error-text" data-test="mcp-error">{{ mcpError }}</p>
 
@@ -1916,6 +1923,18 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
             <code class="api-token" data-test="mcp-new-token">{{ mcpToken }}</code>
           </div>
 
+          <!-- D142 基线实测(2.30.4 运行实例 DOM + 2.31.0 源码结构双重印证):
+               warning 告示条位于**页级**——在 MCP 已启用区块内、Tab 行之上,且不可关闭 -->
+          <div class="warn-callout" data-test="mcp-oauth-warning" style="max-width: 1000px">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="i15">
+              <path d="M12 9v4M12 17h.01" /><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+            </svg>
+            <span>
+              Configure a redirect URL allowlist to control which applications can complete the OAuth consent flow.
+              Without one, a malicious application could register an OAuth client with an attacker-controlled redirect URL
+              and use it to obtain access tokens for your instance.
+            </span>
+          </div>
           <div class="tabs" style="max-width: 1000px">
             <button class="tab" :class="{ active: mcpTab === 'workflows' }" data-test="mcp-tab-workflows" @click="mcpTab = 'workflows'">Workflows</button>
             <button class="tab" :class="{ active: mcpTab === 'clients' }" data-test="mcp-tab-clients" @click="mcpTab = 'clients'">Connected clients</button>
@@ -1936,7 +1955,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                   <tr v-for="w in mcpEnabledWorkflows" :key="w.id" data-test="mcp-wf-row">
                     <td>{{ w.name }}</td>
                     <td class="dim">{{ w.projectName }}</td>
-                    <td class="dim" data-test="mcp-wf-desc">{{ w.description || '—' }}</td>
+                    <td class="dim" data-test="mcp-wf-desc">{{ w.description || t('No description') }}</td>
                     <td style="text-align: right">
                       <button class="btn secondary btn-sm" :data-test-mcp-remove="w.id" @click="removeMcpWorkflow(w.id)">Remove</button>
                     </td>
@@ -1965,7 +1984,8 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           <template v-else-if="mcpTab === 'clients'">
             <div class="card" style="max-width: 1000px; padding: 0">
               <table class="api-table">
-                <thead><tr><th>Client</th><th>Version</th><th>Last seen</th></tr></thead>
+                <!-- D150 live 实测基线列名：Client Name / Connected At（+ 末列留空） -->
+                <thead><tr><th>Client Name</th><th>Connected At</th><th></th></tr></thead>
                 <tbody>
                   <tr v-for="c in mcpStatus.clients" :key="c.name + c.version" data-test="mcp-client-row">
                     <td>{{ c.name }}</td>
@@ -1989,17 +2009,6 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           <template v-else>
             <div class="card" style="max-width: 1000px; padding: 16px">
               <label class="oauth-label" for="mcp-oauth-urls">Allowed OAuth Redirect URLs</label>
-              <!-- D142 对标基线：这段是 warning 主题的告示条，且不可关闭（无 × 按钮） -->
-              <div class="warn-callout" data-test="mcp-oauth-warning">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="i15">
-                  <path d="M12 9v4M12 17h.01" /><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
-                </svg>
-                <span>
-                  Configure a redirect URL allowlist to control which applications can complete the OAuth consent flow.
-                  Without one, a malicious application could register an OAuth client with an attacker-controlled redirect URL
-                  and use it to obtain access tokens for your instance.
-                </span>
-              </div>
               <textarea
                 id="mcp-oauth-urls"
                 v-model="mcpRedirectUrls"
