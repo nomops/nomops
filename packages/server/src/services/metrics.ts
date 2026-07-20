@@ -34,6 +34,11 @@ export function createMetricsRouter(services: AppServices): Router {
       gauge('nomops_workflows_total', 'Workflows on this instance', await services.repos.workflows.countAll());
       gauge('nomops_workflows_active', 'Active (trigger-registered) workflows', await services.repos.workflows.countActive());
       gauge('nomops_users_total', 'Users on this instance', await services.repos.users.count());
+      // 并发闸门(B7):waiting 持续 > 0 说明该调高上限或上 queue 模式了
+      const concurrency = services.executions.concurrencyStats();
+      gauge('nomops_executions_active', 'Production executions currently running', concurrency.active);
+      gauge('nomops_executions_waiting', 'Production executions queued on the concurrency gate', concurrency.waiting);
+
       gauge('nomops_process_uptime_seconds', 'Server process uptime', Math.round((Date.now() - startedAt) / 1000));
       gauge('nomops_process_memory_rss_bytes', 'Resident memory', process.memoryUsage().rss);
 

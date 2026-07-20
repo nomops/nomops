@@ -22,6 +22,7 @@ import type { WorkflowService } from './workflow-service.js';
 import type { QuotaService } from './quota-service.js';
 import type { PushHub } from '../ws/push-hub.js';
 import type { IExecutionQueue } from '../queue/execution-queue.js';
+import { ConcurrencyGate, UNLIMITED } from './concurrency-gate.js';
 
 export interface IRunSummary {
   executionId: string;
@@ -59,7 +60,18 @@ export class ExecutionService {
     }) => void,
     /** 二进制存储（文件系统/S3）；节点 helpers 经它读写字节流。 */
     private readonly binaryStore?: IBinaryDataStore,
+    /** 实例级并发闸门（B7）。缺省不限，由 bootstrap 注入配置值。 */
+    private readonly concurrency: ConcurrencyGate = new ConcurrencyGate(UNLIMITED),
   ) {}
+
+  /** 当前并发占用（/metrics 与运维排查用）。 */
+  concurrencyStats(): { active: number; waiting: number; enabled: boolean } {
+    return {
+      active: this.concurrency.active,
+      waiting: this.concurrency.waiting,
+      enabled: this.concurrency.enabled,
+    };
+  }
 
   /** 二进制下载用（控制器归属校验后取字节）。 */
   getBinaryStore(): IBinaryDataStore | undefined {
@@ -236,11 +248,19 @@ export class ExecutionService {
     const execution = await this.createExecutionRow(row, mode, state as unknown as JsonObject);
 
     if (this.queue) {
+      // queue 模式不过闸门：并发由 worker 的 BullMQ 并发度管，两层会互相打架
       await this.queue.enqueue({ executionId: execution.id });
       return { executionId: execution.id, status: 'queued' };
     }
-    const run = await this.executeStored(execution.id);
-    return this.toSummary(execution.id, run);
+
+    // ★并发闸门：超限时在此排队等待(不拒绝)，避免洪峰把进程打挂
+    await this.concurrency.acquire(mode);
+    try {
+      const run = await this.executeStored(execution.id);
+      return this.toSummary(execution.id, run);
+    } finally {
+      this.concurrency.release(mode);
+    }
   }
 
   /**

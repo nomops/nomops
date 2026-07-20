@@ -24,6 +24,7 @@ import { VariableService } from './services/variable-service.js';
 import { DataTableService } from './services/data-table-service.js';
 import { WaitTracker } from './services/wait-tracker.js';
 import { ExecutionPruner, prunerOptionsFromEnv } from './services/execution-pruner.js';
+import { ConcurrencyGate, concurrencyLimitFromEnv } from './services/concurrency-gate.js';
 import type { IExecutionPrunerOptions } from './services/execution-pruner.js';
 import { ScimService } from './scim/scim-service.js';
 import { QuotaService } from './services/quota-service.js';
@@ -111,6 +112,8 @@ export interface BootstrapOptions {
   waitTrackerIntervalMs?: number;
   /** 执行历史清理配置（测试注入；生产走 NOMOPS_EXECUTIONS_* 环境变量）。 */
   pruner?: IExecutionPrunerOptions;
+  /** 生产执行并发上限；-1 = 不限。缺省走 NOMOPS_CONCURRENCY_PRODUCTION_LIMIT。 */
+  concurrencyLimit?: number;
 }
 
 export interface BootstrapResult {
@@ -220,6 +223,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     queue,
     (evt) => logStreaming.dispatch({ type: 'execution', at: new Date().toISOString(), ...evt }),
     binaryStore,
+    new ConcurrencyGate(opts.concurrencyLimit ?? concurrencyLimitFromEnv(process.env)),
   );
 
   const leader = new LeaderElection(lockStore);
