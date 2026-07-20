@@ -2,7 +2,7 @@ import type { Repositories } from '@nomops/db';
 import type { Credentials } from '@nomops/core';
 import type { JsonObject } from '@nomops/workflow';
 import { OperationalError } from '@nomops/workflow';
-import type { SecretsService } from './secrets-service.js';
+import type { SecretsService } from '../ee/services/secrets-service.js';
 import {
   buildCredentialTest,
   judgeTestResponse,

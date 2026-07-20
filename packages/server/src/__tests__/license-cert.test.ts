@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { generateKeyPairSync } from 'node:crypto';
-import { signLicenseCert, verifyLicenseCert } from '../license/license-cert.js';
-import type { ILicensePayload } from '../license/license-cert.js';
-import { LicenseService } from '../license/license-service.js';
+import { signLicenseCert, verifyLicenseCert } from '../ee/license/license-cert.js';
+import type { ILicensePayload } from '../ee/license/license-cert.js';
+import { LicenseService } from '../ee/license/license-service.js';
 
 /**
  * License 验签与降级（B1）。
@@ -79,8 +79,11 @@ describe('证书验签', () => {
   });
 
   it('签名对但字段不合法 → badPayload（签发端 bug 也要拦）', () => {
+    // ★同一份 payload 上改,不能调两次 payload()——两次 Date.now() 差 1ms
+    // 就会让 validTo > validFrom 从而变成合法证书,测试随机变绿(踩过)
+    const base = payload();
     const bad = signLicenseCert(
-      { ...payload(), validTo: payload().validFrom } as ILicensePayload,
+      { ...base, validTo: base.validFrom } as ILicensePayload,
       KEYS.privateKey,
     );
 

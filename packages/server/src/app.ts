@@ -10,10 +10,10 @@ import {
   createInternalRouter,
   createWebhookRouter,
 } from './controllers/index.js';
-import { createSsoRouter } from './sso/router.js';
+import { createSsoRouter } from './ee/sso/router.js';
 import { createMetricsRouter } from './services/metrics.js';
 import { createOAuth2Router } from './oauth2/router.js';
-import { createScimRouter } from './scim/router.js';
+import { createScimRouter } from './ee/scim/router.js';
 import { createBillingRouter } from './billing/router.js';
 import { createMcpRouter } from './mcp/router.js';
 

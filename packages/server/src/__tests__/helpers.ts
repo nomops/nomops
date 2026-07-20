@@ -1,7 +1,7 @@
 import request from 'supertest';
 import type { Express } from 'express';
 import { generateKeyPairSync } from 'node:crypto';
-import { signLicenseCert } from '../license/license-cert.js';
+import { signLicenseCert } from '../ee/license/license-cert.js';
 
 /**
  * 测试用户创建助手（自托管：首个用户 = owner，其余经邀请）。

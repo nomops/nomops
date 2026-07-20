@@ -1,7 +1,7 @@
 import { OperationalError } from '@nomops/workflow';
 import type { Repositories } from '@nomops/db';
 import type { Credentials } from '@nomops/core';
-import type { AuthService, IAuthResult } from '../auth/auth-service.js';
+import type { AuthService, IAuthResult } from '../../auth/auth-service.js';
 import type { LicenseService } from '../license/license-service.js';
 
 /**

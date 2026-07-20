@@ -20,13 +20,13 @@ import { ApiKeyService } from './services/api-key-service.js';
 import { MfaService } from './services/mfa-service.js';
 import { CommunityNodeService, NpmNodeInstaller } from './services/community-node-service.js';
 import type { INodeInstaller } from './services/community-node-service.js';
-import { GitService } from './services/git-service.js';
+import { GitService } from './ee/services/git-service.js';
 import { PushHub } from './ws/push-hub.js';
 import { ActiveWorkflowManager } from './triggers/active-workflow-manager.js';
-import { LicenseService } from './license/license-service.js';
-import { AuditService } from './services/audit-service.js';
-import { OidcService } from './sso/oidc-service.js';
-import { SamlService } from './sso/saml-service.js';
+import { LicenseService } from './ee/license/license-service.js';
+import { AuditService } from './ee/services/audit-service.js';
+import { OidcService } from './ee/sso/oidc-service.js';
+import { SamlService } from './ee/sso/saml-service.js';
 import { OAuth2Service } from './services/oauth2-service.js';
 import { VariableService } from './services/variable-service.js';
 import { DataTableService } from './services/data-table-service.js';
@@ -34,17 +34,17 @@ import { WaitTracker } from './services/wait-tracker.js';
 import { ExecutionPruner, prunerOptionsFromEnv } from './services/execution-pruner.js';
 import { ConcurrencyGate, concurrencyLimitFromEnv } from './services/concurrency-gate.js';
 import type { IExecutionPrunerOptions } from './services/execution-pruner.js';
-import { ScimService } from './scim/scim-service.js';
-import { QuotaService } from './services/quota-service.js';
+import { ScimService } from './ee/scim/scim-service.js';
+import { QuotaService } from './ee/services/quota-service.js';
 import { ManualPaymentProvider } from './billing/payment-provider.js';
 import { BillingService } from './billing/billing-service.js';
 import { AssistantService } from './services/assistant-service.js';
 import { McpService } from './services/mcp-service.js';
-import { LogStreamingService } from './services/log-streaming-service.js';
-import { EnvSecretsProvider, SecretsService } from './services/secrets-service.js';
-import type { ISecretsProvider } from './services/secrets-service.js';
-import { LdapService } from './ldap/ldap-service.js';
-import type { ILdapAuthenticator } from './ldap/ldap-service.js';
+import { LogStreamingService } from './ee/services/log-streaming-service.js';
+import { EnvSecretsProvider, SecretsService } from './ee/services/secrets-service.js';
+import type { ISecretsProvider } from './ee/services/secrets-service.js';
+import { LdapService } from './ee/ldap/ldap-service.js';
+import type { ILdapAuthenticator } from './ee/ldap/ldap-service.js';
 import { alipayFromEnv, type AlipayProvider } from './billing/alipay-provider.js';
 import { InMemoryLockStore, LeaderElection } from './queue/leader.js';
 import type { ILockStore } from './queue/leader.js';
@@ -105,7 +105,7 @@ export interface BootstrapOptions {
   /** AI 助手的 Claude 调用（缺省真实 HTTP；测试注入假实现）。 */
   callClaude?: import('./services/assistant-service.js').CallClaude;
   /** 日志流的 webhook 推送函数（缺省真实 fetch；测试注入进程内接收器）。 */
-  logStreamPost?: import('./services/log-streaming-service.js').PostFn;
+  logStreamPost?: import('./ee/services/log-streaming-service.js').PostFn;
   /** 外部密钥 provider（缺省 env 变量 provider；测试注入假 provider）。 */
   secretsProvider?: ISecretsProvider;
   /** LDAP 认证器（缺省 ldapts 真实实现；测试注入假实现）。 */

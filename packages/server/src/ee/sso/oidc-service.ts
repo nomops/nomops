@@ -2,7 +2,7 @@ import * as oidc from 'openid-client';
 import { OperationalError } from '@nomops/workflow';
 import type { Repositories } from '@nomops/db';
 import type { Credentials } from '@nomops/core';
-import type { AuthService, IAuthResult } from '../auth/auth-service.js';
+import type { AuthService, IAuthResult } from '../../auth/auth-service.js';
 
 /** 实例级 OIDC 配置（settings['sso.oidc']，clientSecret 加密存储——docs/07）。 */
 export interface ISsoConfig {

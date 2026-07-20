@@ -6,7 +6,7 @@ import { OperationalError } from '@nomops/workflow';
 import type { AppServices } from '../app-services.js';
 import { requireRole } from '../auth/middleware.js';
 import { verifyHandoff } from '../auth/handoff.js';
-import { requireFeature } from '../license/license-service.js';
+import { requireFeature } from '../ee/license/license-service.js';
 import { isProjectRole } from '../auth/rbac.js';
 import { computeInsights } from '../services/insights.js';
 import { CHAT_PROVIDERS } from '../services/assistant-service.js';

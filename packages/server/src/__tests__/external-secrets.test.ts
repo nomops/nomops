@@ -4,7 +4,7 @@ import type { Express } from 'express';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
-import type { ISecretsProvider } from '../services/secrets-service.js';
+import type { ISecretsProvider } from '../ee/services/secrets-service.js';
 import { licensedBoot } from './helpers.js';
 
 /**

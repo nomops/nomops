@@ -4,7 +4,7 @@ import type { Express } from 'express';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
-import type { ILdapAuthenticator, ILdapConfig, ILdapProfile } from '../ldap/ldap-service.js';
+import type { ILdapAuthenticator, ILdapConfig, ILdapProfile } from '../ee/ldap/ldap-service.js';
 import { licensedBoot } from './helpers.js';
 
 /**

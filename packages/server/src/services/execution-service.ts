@@ -19,7 +19,7 @@ import type {
 import { OperationalError, Workflow, createRunExecutionData } from '@nomops/workflow';
 import type { CredentialService } from './credential-service.js';
 import type { WorkflowService } from './workflow-service.js';
-import type { QuotaService } from './quota-service.js';
+import type { QuotaService } from '../ee/services/quota-service.js';
 import type { PushHub } from '../ws/push-hub.js';
 import type { IExecutionQueue } from '../queue/execution-queue.js';
 import { ConcurrencyGate, UNLIMITED } from './concurrency-gate.js';
