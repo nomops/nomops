@@ -694,6 +694,8 @@ async function deleteExecution() {
 
 /* 底部折叠：该工作流的执行保存策略（联动 Workflow settings） */
 const savePolicyOpen = ref(false);
+/* D087：执行页空态折叠块开合 */
+const execEmptyOpen = ref(true);
 const savePolicy = ref({ failed: true, success: true, manual: true });
 async function loadSavePolicy() {
   if (!editor.id) return;
@@ -885,8 +887,25 @@ async function loadSavePolicy() {
 
       <section class="exec-detail">
         <div v-if="!execDetail" class="exec-empty">
+          <!-- D087 对标基线执行页空态：标题 + 提示句 + 「本工作流在存哪些执行」可折叠块 -->
           <h2>Nothing here yet</h2>
-          <p class="dim">Select an execution on the left, or run the workflow to see executions.</p>
+          <p class="dim">New workflow executions will show here</p>
+          <div class="exec-empty-acc" data-test="exec-empty-accordion">
+            <button class="eea-head" type="button" @click="execEmptyOpen = !execEmptyOpen">
+              <svg class="eea-chev" :class="{ open: execEmptyOpen }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6" /></svg>
+              Which executions is this workflow saving?
+            </button>
+            <div v-if="execEmptyOpen" class="eea-body">
+              <span class="eea-row" :class="{ off: !savePolicy.success && !savePolicy.failed }">
+                Production executions
+              </span>
+              <span class="eea-row" :class="{ off: !savePolicy.manual }">Test executions</span>
+              <p class="eea-foot dim">
+                You can change this in
+                <button class="eea-link" type="button" @click="wfSettingsOpen = true">Workflow settings</button>
+              </p>
+            </div>
+          </div>
         </div>
         <template v-else>
           <!-- 顶条:执行时间/状态标题 + Copy to editor + 垃圾桶(对标基线执行详情) -->
@@ -1431,6 +1450,22 @@ async function loadSavePolicy() {
 }
 .exec-policy-body { padding: 0 16px 14px; font-size: 12.5px; display: flex; flex-direction: column; gap: 5px; }
 .exec-detail { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+/* D087 执行页空态折叠块（对标基线 accordion） */
+.exec-empty-acc { margin-top: 18px; max-width: 420px; text-align: left; }
+.eea-head {
+  display: flex; align-items: center; gap: 6px; width: 100%; height: auto;
+  background: none; border: none; padding: 6px 0; font-size: 13px; color: var(--text);
+}
+.eea-chev { width: 14px; height: 14px; flex: none; transition: transform 0.15s; }
+.eea-chev.open { transform: rotate(90deg); }
+.eea-body { padding: 4px 0 0 20px; display: flex; flex-direction: column; gap: 5px; }
+.eea-row { font-size: 12.5px; color: var(--text); }
+.eea-row.off { color: var(--text-dim); text-decoration: line-through; }
+.eea-foot { font-size: 12px; margin: 8px 0 0; }
+.eea-link {
+  background: none; border: none; padding: 0; height: auto;
+  font-size: 12px; color: var(--accent); text-decoration: underline; cursor: pointer;
+}
 .exec-empty { text-align: center; margin-top: 16vh; padding: 0 28px; }
 .exec-empty h2 { font-size: 20px; font-weight: 500; color: var(--text-hi); margin: 0 0 10px; }
 .exec-detail-head { display: flex; align-items: center; gap: 10px; font-size: 14px; padding: 14px 20px; border-bottom: var(--border-width) var(--border-style) var(--border-color); }

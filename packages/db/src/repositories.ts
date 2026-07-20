@@ -240,6 +240,15 @@ export class ProjectRepository extends BaseRepository {
     await this.db.insert(this.schema.projectRelations).values({ projectId, userId, role });
   }
 
+  /** 实例内某类型的 project 总数（license 席位/项目配额守门用，不带归属过滤）。 */
+  async countByType(type: string): Promise<number> {
+    const rows = await this.db
+      .select({ n: sql`count(*)` })
+      .from(this.schema.projects)
+      .where(eq(this.schema.projects.type, type));
+    return Number((rows[0] as { n: unknown } | undefined)?.n ?? 0);
+  }
+
   /** 用户所属的全部 project（经 project_relations）。 */
   async findAllByUser(userId: string): Promise<Project[]> {
     const rows = await this.db

@@ -960,6 +960,8 @@ export function createApiRouter(services: AppServices): Router {
     rbacFeature,
     h(async (req, res) => {
       const body = parseBody(createProjectSchema, req);
+      // 团队项目配额：只数 team，personal project 是每人注册自带的，不占额度
+      services.license.assertQuota('teamProjects', await services.repos.projects.countByType('team'));
       const project = await services.repos.projects.create({ name: body.name, type: 'team' });
       await services.repos.projects.addMember(project.id, auth(req).userId, 'project:owner');
       recordAudit(services, req, 'project.create', { type: 'project', id: project.id }, { name: project.name }, project.id);
@@ -1756,6 +1758,12 @@ export function createApiRouter(services: AppServices): Router {
     h(async (req, res) => {
       await assertInstanceAdmin(req);
       const body = parseBody(inviteSchema, req);
+      // 席位配额：已激活用户 + 待接受邀请都占席，否则可以靠反复邀请绕过上限
+      const [existingUsers, pendingInvites] = await Promise.all([
+        services.repos.users.findAll(),
+        services.repos.invitations.findAll(),
+      ]);
+      services.license.assertQuota('users', existingUsers.length + pendingInvites.length);
       const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
       const base = process.env['NOMOPS_BASE_URL'] ?? `${proto}://${req.headers.host ?? 'localhost'}`;
       const { invitation, link } = await services.auth.invite({
