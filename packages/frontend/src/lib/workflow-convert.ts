@@ -22,6 +22,8 @@ export interface FlowEdge {
   sourceHandle: string; // out-<type>-<outputIndex>
   targetHandle: string; // in-<type>-<inputIndex>
   class?: string;
+  /** D076：自定义连线（中点悬浮工具条）。 */
+  type: 'nomops';
 }
 
 export function toFlowNodes(nodes: INode[]): FlowNode[] {
@@ -45,6 +47,7 @@ export function toFlowEdges(connections: IConnections): FlowEdge[] {
             target: ep.node,
             sourceHandle: `out-${connType}-${outputIndex}`,
             targetHandle: `in-${connType}-${ep.index}`,
+            type: 'nomops',
             ...(connType !== 'main' ? { class: 'edge-ai' } : {}),
           });
         }

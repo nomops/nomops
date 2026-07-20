@@ -30,6 +30,10 @@ export const useEditorStore = defineStore('editor', {
     selectedNodeName: null as string | null,
     /** D082:多选集(框选 / Shift 点选);单选时等于 [selectedNodeName]。 */
     selectedNames: [] as string[],
+    /** D076:从连线中点 + 插入节点时,记住要插进哪条连线;下一次 addNode 消费它。 */
+    pendingInsert: null as
+      | { source: string; sourceIndex: number; target: string; targetIndex: number; type: string }
+      | null,
     /** NDV 模态开关（双击节点打开）。 */
     ndvOpen: false,
     /** 节点选择器抽屉开关（右侧，点「+」或空态打开）。 */
@@ -179,6 +183,24 @@ export const useEditorStore = defineStore('editor', {
         parameters,
       };
       this.nodes.push(node);
+      // D076：从连线 + 插入 —— 断开原连线，改接 source→新节点→target
+      const ins = this.pendingInsert;
+      if (ins) {
+        this.pendingInsert = null;
+        if (desc.inputs.length > 0 && desc.outputs.length > 0) {
+          this.connections = removeConnection(this.connections, ins);
+          this.connections = addConnection(this.connections, {
+            source: ins.source, sourceIndex: ins.sourceIndex, target: name, targetIndex: 0, type: ins.type,
+          });
+          this.connections = addConnection(this.connections, {
+            source: name, sourceIndex: 0, target: ins.target, targetIndex: ins.targetIndex, type: ins.type,
+          });
+          this.selectedNodeName = name;
+          this.selectedNames = [name];
+          this.dirty = true;
+          return node;
+        }
+      }
       // 便捷连线：若当前有选中节点且新节点有输入口，自动从选中节点接一条
       const from = this.selectedNode;
       if (from && desc.inputs.length > 0) {

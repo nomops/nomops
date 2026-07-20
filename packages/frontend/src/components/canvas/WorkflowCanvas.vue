@@ -15,12 +15,40 @@ import { useNodeTypesStore } from '../../stores/node-types.js';
 import { useExecutionStore } from '../../stores/execution.js';
 import { parseHandle, toFlowEdges, toFlowNodes } from '../../lib/workflow-convert.js';
 import CanvasNode from './CanvasNode.vue';
+import CanvasEdge from './CanvasEdge.vue';
 
 const editor = useEditorStore();
 const nodeTypesStore = useNodeTypesStore();
 const execution = useExecutionStore();
 const { screenToFlowCoordinate, zoomIn, zoomOut, zoomTo, fitView, addSelectedNodes, removeSelectedNodes, getNodes } =
   useVueFlow();
+
+/* ── D076:连线中点工具条 —— 由 edge id 反解出连接四元组 ── */
+function parseEdgeId(id: string) {
+  // 形如 "<source>:<connType>:<outIdx>-><target>:<inIdx>"
+  const [left, right] = id.split('->');
+  if (!left || !right) return null;
+  const lastColon = left.lastIndexOf(':');
+  const typeColon = left.lastIndexOf(':', lastColon - 1);
+  const source = left.slice(0, typeColon);
+  const type = left.slice(typeColon + 1, lastColon);
+  const sourceIndex = Number(left.slice(lastColon + 1));
+  const rColon = right.lastIndexOf(':');
+  const target = right.slice(0, rColon);
+  const targetIndex = Number(right.slice(rColon + 1));
+  if (!source || !target || Number.isNaN(sourceIndex) || Number.isNaN(targetIndex)) return null;
+  return { source, sourceIndex, target, targetIndex, type };
+}
+function onEdgeInsert(id: string) {
+  const conn = parseEdgeId(id);
+  if (!conn) return;
+  editor.pendingInsert = conn;
+  editor.nodePickerOpen = true;
+}
+function onEdgeRemove(id: string) {
+  const conn = parseEdgeId(id);
+  if (conn) editor.disconnect(conn);
+}
 
 /* ── D082 对标 n8n:多选(Shift 框选 / ⌘·Ctrl 点选)── */
 function onSelectionChange({ nodes }: { nodes: Node[] }) {
@@ -182,6 +210,10 @@ function ctxDelete() { const n = ctxMenu.value?.node; closeCtx(); if (n) editor.
       <!-- 自定义节点渲染（Vue Flow 官方插槽方式，type: 'nomops'） -->
       <template #node-nomops="nodeProps">
         <CanvasNode :data="nodeProps.data" :selected="nodeProps.selected" />
+      </template>
+      <!-- D076 自定义连线：中点悬浮工具条(+ 插入 / ✕ 删除) -->
+      <template #edge-nomops="edgeProps">
+        <CanvasEdge v-bind="edgeProps" @insert="onEdgeInsert" @remove="onEdgeRemove" />
       </template>
       <Background :gap="18" />
     </VueFlow>
