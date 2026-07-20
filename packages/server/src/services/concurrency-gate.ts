@@ -1,3 +1,4 @@
+import { OperationalError } from '@nomops/workflow';
 import type { TriggerMode } from './execution-service.js';
 
 /**
@@ -5,11 +6,19 @@ import type { TriggerMode } from './execution-service.js';
  *
  * regular 模式下没有任何并发上限：webhook 洪峰会让进程同时跑起成百上千个执行，
  * 每个都在内存里攥着自己的 runData，最终 OOM 把整个实例打挂——已经排队等着的
- * 执行也跟着一起死。这是**熔断器不是限流器**：超限的执行**排队等待**而非被拒绝，
- * 所以对调用方是透明的（慢一点，但不会丢）。
+ * 执行也跟着一起死。
+ *
+ * 两级响应：超出并发上限的**排队等待**（对调用方透明，慢一点但不丢）；
+ * 连队列都满了才**拒绝**（503）。
  *
  * queue 模式下本闸门不生效——那里由 worker 的 BullMQ 并发度管，
  * 再加一层只会互相打架。
+ *
+ * ★等待队列有上界。无界排队不是善意：webhook 调用方（GitHub/Stripe 之类）
+ * 通常 10 秒超时，排队 60 秒的结果是它超时后**重试**，反而放大洪峰；
+ * 而堆在队列里的每个请求仍攥着一条连接和一份工作流状态，依旧是 OOM 路径。
+ * 所以浅队列吸收抖动，深洪峰快速拒绝（503 + Retry-After），
+ * 把退避交给调用方本就有的重试逻辑。
  */
 
 /**
@@ -30,6 +39,27 @@ const GOVERNED_MODES: readonly TriggerMode[] = ['webhook', 'trigger', 'chat', 'm
  */
 export const DEFAULT_PRODUCTION_LIMIT = 100;
 
+/**
+ * 等待队列深度上限，缺省 = 2× 并发上限。
+ * 取 2 倍是让短促抖动（一次批量触发）能被吸收，而持续洪峰很快撞上界。
+ */
+export const DEFAULT_QUEUE_DEPTH_FACTOR = 2;
+
+/** 建议调用方多久后重试（秒）。写进 Retry-After 头。 */
+export const RETRY_AFTER_SECONDS = 5;
+
+/** 队列已满：HTTP 层映射为 503 + Retry-After。 */
+export class ConcurrencyOverloadError extends OperationalError {
+  constructor(active: number, waiting: number) {
+    super('Server is at capacity, please retry', {
+      status: 503,
+      retryAfter: RETRY_AFTER_SECONDS,
+      active,
+      waiting,
+    });
+  }
+}
+
 /** -1 = 不限。 */
 export const UNLIMITED = -1;
 
@@ -38,11 +68,21 @@ export class ConcurrencyGate {
   /** FIFO 等待队列：先到先得，避免后来的执行插队饿死早到的。 */
   private readonly waiters: Array<() => void> = [];
 
+  private readonly maxQueueDepth: number;
+
   /**
    * @param limit 并发上限；-1 = 不限。0 无意义（等于永久阻塞），按不限处理。
+   * @param maxQueueDepth 等待队列上限；缺省 2× limit。<=0 视为不排队（满即拒）。
    */
-  constructor(private readonly limit: number = DEFAULT_PRODUCTION_LIMIT) {
+  constructor(
+    private readonly limit: number = DEFAULT_PRODUCTION_LIMIT,
+    maxQueueDepth?: number,
+  ) {
     if (limit === 0 || limit < UNLIMITED) this.limit = UNLIMITED;
+    this.maxQueueDepth = Math.max(
+      0,
+      maxQueueDepth ?? Math.max(0, this.limit) * DEFAULT_QUEUE_DEPTH_FACTOR,
+    );
   }
 
   get enabled(): boolean {
@@ -63,12 +103,18 @@ export class ConcurrencyGate {
     return this.enabled && GOVERNED_MODES.includes(mode);
   }
 
-  /** 取槽位；满了就在此挂起，直到有执行结束让出槽位。 */
+  /**
+   * 取槽位。有空位直接拿；没有则排队等待；队列也满了则抛 503——
+   * 到这一步继续排队只会把内存耗尽，且调用方早已超时。
+   */
   async acquire(mode: TriggerMode): Promise<void> {
     if (!this.governs(mode)) return;
     if (this.activeCount < this.limit) {
       this.activeCount++;
       return;
+    }
+    if (this.waiters.length >= this.maxQueueDepth) {
+      throw new ConcurrencyOverloadError(this.activeCount, this.waiters.length);
     }
     // 槽位由 release 直接交棒（见下），所以被唤醒时不再自增
     await new Promise<void>((resolve) => this.waiters.push(resolve));
@@ -84,6 +130,14 @@ export class ConcurrencyGate {
     if (next) next();
     else this.activeCount = Math.max(0, this.activeCount - 1);
   }
+}
+
+/** `NOMOPS_CONCURRENCY_QUEUE_DEPTH`：未设置 = 缺省（2× 并发上限）。 */
+export function queueDepthFromEnv(env: NodeJS.ProcessEnv): number | undefined {
+  const raw = env['NOMOPS_CONCURRENCY_QUEUE_DEPTH'];
+  if (raw === undefined || raw === '') return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.trunc(n) : undefined;
 }
 
 /**

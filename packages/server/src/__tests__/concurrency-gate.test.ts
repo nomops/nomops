@@ -4,13 +4,15 @@ import {
   DEFAULT_PRODUCTION_LIMIT,
   UNLIMITED,
   concurrencyLimitFromEnv,
+  queueDepthFromEnv,
 } from '../services/concurrency-gate.js';
 
 /**
  * 实例级并发闸门（B7）。
  *
- * 它是熔断器不是限流器——超限的执行**排队**而非被拒绝。所以这组用例的重点是：
- * 拦得住、不丢执行、不饿死、以及那条不能受管的模式（error）。
+ * 两级响应：超出并发上限的排队等待，连队列也满了才拒绝（503）。所以用例分两组：
+ * 「排队」这一级要证明不丢执行、不饿死；「上界」这一级要证明它真的会拒绝——
+ * 无界排队看着温和，实则仍是 OOM 路径。外加那条不能受管的模式（error）。
  */
 
 /** 跑一个占住槽位 ms 毫秒的执行。 */
@@ -106,7 +108,8 @@ describe('排队而非拒绝', () => {
   });
 
   it('★任意时刻并发不超过上限', async () => {
-    const gate = new ConcurrencyGate(3);
+    // 队列给足,本例只验并发天花板;上界另有一组用例
+    const gate = new ConcurrencyGate(3, 30);
     let inFlight = 0;
     let peak = 0;
 
@@ -126,7 +129,7 @@ describe('排队而非拒绝', () => {
   });
 
   it('FIFO：先到先得，后来的不插队（防饿死）', async () => {
-    const gate = new ConcurrencyGate(1);
+    const gate = new ConcurrencyGate(1, 10);
     const finished: string[] = [];
 
     await gate.acquire('webhook'); // 占满
@@ -161,6 +164,63 @@ describe('排队而非拒绝', () => {
   });
 });
 
+describe('★队列上界', () => {
+  it('队列满了就拒绝，而不是继续堆积（无界排队仍是 OOM 路径）', async () => {
+    const gate = new ConcurrencyGate(1, 2); // 1 并发 + 最多 2 个排队
+    await gate.acquire('webhook'); // 占满槽位
+    void gate.acquire('webhook'); // 排队 1
+    void gate.acquire('webhook'); // 排队 2
+    await new Promise((r) => setTimeout(r, 5));
+    expect(gate.waiting).toBe(2);
+
+    await expect(gate.acquire('webhook')).rejects.toThrow(/at capacity/i);
+    expect(gate.waiting).toBe(2); // 被拒的没有进队列
+  });
+
+  it('拒绝时带 503 + Retry-After，让调用方退避而非立刻重试', async () => {
+    const gate = new ConcurrencyGate(1, 0); // 不排队,满即拒
+    await gate.acquire('webhook');
+
+    try {
+      await gate.acquire('webhook');
+      expect.unreachable('应该抛出');
+    } catch (error) {
+      expect((error as { context: Record<string, unknown> }).context).toMatchObject({
+        status: 503,
+        retryAfter: expect.any(Number),
+        active: 1,
+      });
+    }
+  });
+
+  it('腾出槽位后又能接受新请求（拒绝是暂时的）', async () => {
+    const gate = new ConcurrencyGate(1, 0);
+    await gate.acquire('webhook');
+    await expect(gate.acquire('webhook')).rejects.toThrow();
+
+    gate.release('webhook');
+    await expect(gate.acquire('webhook')).resolves.toBeUndefined();
+  });
+
+  it('缺省队列深度 = 2× 并发上限', async () => {
+    const gate = new ConcurrencyGate(2); // → 队列 4
+    await Promise.all([gate.acquire('webhook'), gate.acquire('webhook')]);
+    for (let i = 0; i < 4; i++) void gate.acquire('webhook');
+    await new Promise((r) => setTimeout(r, 5));
+
+    expect(gate.waiting).toBe(4);
+    await expect(gate.acquire('webhook')).rejects.toThrow(/at capacity/i);
+  });
+
+  it('不受管的模式不受队列上界影响（error 永远放行）', async () => {
+    const gate = new ConcurrencyGate(1, 0);
+    await gate.acquire('webhook');
+
+    await expect(gate.acquire('error')).resolves.toBeUndefined();
+    await expect(gate.acquire('retry')).resolves.toBeUndefined();
+  });
+});
+
 describe('环境变量', () => {
   it('未设置时用缺省上限（不是不限——默认就要有熔断）', () => {
     expect(concurrencyLimitFromEnv({})).toBe(DEFAULT_PRODUCTION_LIMIT);
@@ -178,5 +238,11 @@ describe('环境变量', () => {
     expect(concurrencyLimitFromEnv({ NOMOPS_CONCURRENCY_PRODUCTION_LIMIT: 'abc' })).toBe(
       DEFAULT_PRODUCTION_LIMIT,
     );
+  });
+
+  it('队列深度未设置时返回 undefined，由构造函数按 2× 算', () => {
+    expect(queueDepthFromEnv({})).toBeUndefined();
+    expect(queueDepthFromEnv({ NOMOPS_CONCURRENCY_QUEUE_DEPTH: '50' })).toBe(50);
+    expect(queueDepthFromEnv({ NOMOPS_CONCURRENCY_QUEUE_DEPTH: 'abc' })).toBeUndefined();
   });
 });
