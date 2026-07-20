@@ -152,6 +152,12 @@ const AI_LABELS: Record<string, string> = {
 /** D075:必填能力口(Chat Model)显红星。 */
 const AI_REQUIRED: Record<string, boolean> = { ai_languageModel: true };
 
+/** D074:从输出端口 + 快捷加节点——先选中本节点,再开面板;addNode 会自动从选中节点接线。 */
+function quickAddFrom() {
+  editor.select(props.data.node.name);
+  editor.nodePickerOpen = true;
+}
+
 /** IF 双输出的端口标注。 */
 function outputLabel(index: number): string | null {
   if (mainOutputs.value.length < 2) return null;
@@ -310,6 +316,18 @@ const bottomStyle = (i: number, count: number) => ({
         <span v-if="outputLabel(i)" class="port-label" :style="sideStyle(i, mainOutputs.length)">
           {{ outputLabel(i) }}
         </span>
+        <!-- D074 对标 n8n:输出端口旁 + 快捷加节点(选中本节点后开面板,新节点自动接线) -->
+        <button
+          v-if="!readonly"
+          class="port-plus"
+          :style="sideStyle(i, mainOutputs.length)"
+          title="Add node"
+          data-test="port-plus"
+          @mousedown.stop
+          @click.stop="quickAddFrom"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14" /></svg>
+        </button>
       </template>
 
       <!-- ai 能力输出（子节点）：顶部，上挂宿主 -->
@@ -333,6 +351,18 @@ const bottomStyle = (i: number, count: number) => ({
 .node-wrap { position: relative; display: flex; flex-direction: column; align-items: center; }
 /* D075 Chat Model 必填红星 */
 .ai-req { color: var(--color--danger); margin-left: 2px; }
+/* D074 输出端口旁 + 快捷加节点(默认隐形,节点 hover 浮出) */
+.port-plus {
+  position: absolute; right: -30px; transform: translateY(-50%);
+  width: 18px; height: 18px; padding: 0; display: flex; align-items: center; justify-content: center;
+  background: var(--color--background--light-3);
+  border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--radius); color: var(--color--text--tint-1);
+  opacity: 0; transition: opacity 0.1s; cursor: pointer; z-index: 6;
+}
+.port-plus svg { width: 11px; height: 11px; }
+.nomops-node:hover .port-plus, .port-plus:hover, .port-plus:focus-visible { opacity: 1; }
+.port-plus:hover { border-color: var(--color--primary); color: var(--color--primary); }
 /* n8n 实测（2.30.4 画布 _node_）：96×96、bg --node--color--background(dark #2b2b2b)、
    border 1.5px rgba(255,255,255,.63)（实测 oklch 白/0.632）、圆角 8；图标 48；
    子节点圆 80×80；label 卡下 192px 宽白字 14px */
