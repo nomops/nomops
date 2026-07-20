@@ -17,3 +17,6 @@ coverage/
 cp-data/
 control-plane.db
 .env.cloud.local
+
+# git worktree 工作区（后端与前端并行开发时用来隔离，避免互相卷走提交）
+.claude/worktrees/
