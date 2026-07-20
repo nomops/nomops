@@ -145,6 +145,8 @@ th { color: var(--text-dim); font-weight: 500; }
   background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0;
   color: var(--color--text); padding: 0 var(--spacing--sm) 8px; font-size: var(--font-size--sm);
   font-weight: var(--font-weight--medium); line-height: var(--line-height--xs);
+  /* D035：全局 button 的 height:32px 会把 tab 撑高，基线实测行高 24（14 行高 + 8 内衬 + 2 下划线） */
+  height: auto;
 }
 .tabs-row .tab:hover { color: var(--color--text--shade-1); }
 .tabs-row .tab.active { color: var(--color--primary); border-bottom-color: var(--color--primary); }

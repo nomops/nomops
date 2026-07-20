@@ -48,7 +48,8 @@ const cards = computed(() => {
   return [
     { label: 'Prod. executions', value: d ? String(d.total) : '0', unit: '', dim: false, saved: false, to: '/insights/total' },
     { label: 'Failed prod. executions', value: d ? String(d.error) : '0', unit: '', dim: false, saved: false, to: '/insights/failed' },
-    { label: 'Failure rate', value: d ? `${Math.round(d.failureRate * 100)}%` : '0%', unit: '', dim: false, saved: false, to: '/insights/failureRate' },
+    // D032 对标基线:单位是独立的 <i>(22px/600),不能焊进数值串
+    { label: 'Failure rate', value: d ? String(Math.round(d.failureRate * 100)) : '0', unit: '%', dim: false, saved: false, to: '/insights/failureRate' },
     { label: 'Time saved', value: saved.value, unit: saved.unit, dim: saved.dim, saved: true, to: '/insights/timeSaved' },
     { label: 'Run time (avg.)', value: runtime.value, unit: runtime.unit, dim: false, saved: false, to: '/insights/averageRunTime' },
   ];
@@ -128,8 +129,8 @@ const cards = computed(() => {
   font-weight: var(--font-weight--medium);
 }
 .stat-value .unit {
-  font-size: var(--font-size--lg);
-  font-weight: var(--font-weight--medium);
+  font-size: 22px; /* D032 live 实测基线单位:22px/600(值为 24px/600) */
+  font-weight: var(--font-weight--bold);
   margin-left: 1px;
 }
 .info-i {

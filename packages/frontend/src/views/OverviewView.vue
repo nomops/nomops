@@ -1400,8 +1400,9 @@ const fmtRunTime = (row: ExecutionRow): string => {
 
 /* Header */
 .ov-head { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 34px; }
-.ov-title h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.2px; color: var(--text-hi); }
-.ov-sub { margin: 4px 0 0; color: var(--text-dim); font-size: 14px; }
+/* D029/D030 live 实测基线:H1 20px/600 行高 25px(1.25);副标 14px/400 行高 18.9px(1.35) */
+.ov-title h1 { margin: 0; font-size: 20px; font-weight: 600; line-height: 1.25; letter-spacing: -0.2px; color: var(--text-hi); }
+.ov-sub { margin: 4px 0 0; color: var(--text-dim); font-size: 14px; line-height: 1.35; }
 .ov-actions { margin-left: auto; display: flex; align-items: stretch; gap: 10px; }
 
 /* 基线实测：页头按钮 32px/衬 0 12/圆角 4 */
