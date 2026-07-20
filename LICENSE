@@ -9,6 +9,15 @@ available; you may self-host and use it freely for your own internal business,
 personal, and non-commercial purposes. You may not offer it to third parties as a
 hosted or managed service that competes with the licensor. See the full terms below.
 
+## Scope
+
+⚠ DRAFT CLAUSE — pending legal review; see the notes at the end of LICENSE_EE.
+
+This license covers the whole repository EXCEPT the paths listed in Section 2 of
+the LICENSE_EE file, which are licensed separately and require a subscription.
+Nothing in this license grants any right to use, modify, or circumvent the
+license verification in those paths.
+
 ## Acceptance
 
 By using the software, you agree to all of the terms and conditions below.
