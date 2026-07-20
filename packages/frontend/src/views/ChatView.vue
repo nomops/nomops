@@ -168,6 +168,24 @@ const pickerGroups = computed(() => {
   }
   return order.map((g) => ({ group: g, items: byGroup.get(g)! }));
 });
+/* D157 对标 n8n:provider → models 两级级联。
+   Agents 两组仍是直选;每个 provider 一行带 ›,悬停/点击展开其 models 子菜单。
+   搜索时退化为扁平列表(跨 provider 搜 model),同 n8n。 */
+const isSearching = computed(() => modelSearch.value.trim().length > 0);
+const agentGroups = computed(() =>
+  pickerGroups.value.filter((g) => g.group === 'Personal agents' || g.group === 'Workflow agents'),
+);
+const providerRows = computed(() =>
+  providers.value
+    .filter((p) => p.enabled)
+    .map((p) => ({
+      label: p.label,
+      models: p.models.map((m) => ({ group: p.label, label: m, target: { type: 'model' as const, label: m, model: m } })),
+    }))
+    .filter((p) => p.models.length > 0),
+);
+const expandedProvider = ref<string | null>(null);
+
 function pickTarget(item: PickerItem) {
   const session = activeSession.value ?? (newChat(), activeSession.value!);
   session.target = item.target;
@@ -391,18 +409,59 @@ function chatWith(target: ChatTarget) {
           </button>
           <div v-if="modelPickerOpen" class="model-pop" data-test="model-pop">
             <input v-model="modelSearch" class="model-search" data-test="model-search" placeholder="Search..." autocomplete="off" />
+            <!-- D157:搜索时扁平;否则 Agents 直选 + provider 两级级联 -->
             <div class="model-list">
-              <template v-for="g in pickerGroups" :key="g.group">
-                <div class="model-group dim">{{ g.group }}</div>
-                <button
-                  v-for="item in g.items"
-                  :key="g.group + item.label"
-                  class="model-item"
-                  :data-test-model="item.label"
-                  @click="pickTarget(item)"
+              <template v-if="isSearching">
+                <template v-for="g in pickerGroups" :key="g.group">
+                  <div class="model-group dim">{{ g.group }}</div>
+                  <button
+                    v-for="item in g.items"
+                    :key="g.group + item.label"
+                    class="model-item"
+                    :data-test-model="item.label"
+                    @click="pickTarget(item)"
+                  >
+                    {{ item.label }}
+                  </button>
+                </template>
+              </template>
+              <template v-else>
+                <template v-for="g in agentGroups" :key="g.group">
+                  <div class="model-group dim">{{ g.group }}</div>
+                  <button
+                    v-for="item in g.items"
+                    :key="g.group + item.label"
+                    class="model-item"
+                    :data-test-model="item.label"
+                    @click="pickTarget(item)"
+                  >
+                    {{ item.label }}
+                  </button>
+                </template>
+                <div v-if="providerRows.length" class="model-group dim">Models</div>
+                <div
+                  v-for="p in providerRows"
+                  :key="p.label"
+                  class="model-provider-row"
+                  :data-test-provider="p.label"
+                  @mouseenter="expandedProvider = p.label"
+                  @mouseleave="expandedProvider = null"
                 >
-                  {{ item.label }}
-                </button>
+                  <button class="model-item provider" @click="expandedProvider = expandedProvider === p.label ? null : p.label">
+                    {{ p.label }}<span class="prov-chev">›</span>
+                  </button>
+                  <div v-if="expandedProvider === p.label" class="model-submenu" :data-test-submenu="p.label">
+                    <button
+                      v-for="m in p.models"
+                      :key="m.label"
+                      class="model-item"
+                      :data-test-model="m.label"
+                      @click="pickTarget(m)"
+                    >
+                      {{ m.label }}
+                    </button>
+                  </div>
+                </div>
               </template>
               <p v-if="pickerItems.length === 0" class="dim" style="padding: 12px; font-size: 12px; text-align: center">No matches</p>
             </div>
@@ -531,6 +590,13 @@ function chatWith(target: ChatTarget) {
   padding: 7px 10px; border-radius: 6px; font-size: 13px; color: var(--text); cursor: pointer;
 }
 .model-item:hover { background: var(--hover, rgba(255, 255, 255, 0.07)); }
+/* D157 provider → models 两级级联(内联展开,避免 model-pop overflow 裁切) */
+.model-provider-row { position: relative; }
+.model-item.provider { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.prov-chev { color: var(--text-faint); font-size: 15px; line-height: 1; transition: transform 0.12s; }
+.model-provider-row:hover .prov-chev { transform: rotate(90deg); color: var(--text-dim); }
+.model-submenu { padding-left: 10px; border-left: 1px solid var(--border); margin: 2px 0 4px 10px; }
+.model-submenu .model-item { font-size: 12.5px; padding: 6px 10px; }
 
 /* 消息区 */
 .chat-scroll { flex: 1; overflow-y: auto; }
