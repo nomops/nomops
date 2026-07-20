@@ -19,7 +19,11 @@
         "@nomops/server",
         "dev"
       ],
-      "port": 5678
+      "port": 5680,
+      "env": {
+        "PORT": "5680",
+        "NOMOPS_BASE_URL": "http://localhost:5680"
+      }
     },
     {
       "name": "frontend-verify",
@@ -55,8 +59,10 @@
         "@nomops/server",
         "dev"
       ],
-      "port": 5678,
+      "port": 5680,
       "env": {
+        "PORT": "5680",
+        "NOMOPS_BASE_URL": "http://localhost:5680",
         "LICENSE_KEY": "dev-enterprise",
         "DB_SQLITE_FILE": "nomops-ent.db",
         "NOMOPS_SECRET_OPENAI_KEY": "sk-demo-do-not-log",
