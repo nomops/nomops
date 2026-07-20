@@ -59,18 +59,28 @@ export interface INode {
   credentials?: Record<string, { id: string; name: string }>;
   disabled?: boolean;
   /**
-   * 节点报错时的行为：true = 把错误 item 从「错误输出端口」放出去继续
-   * （错误端口 = 声明输出之后追加的一个端口，索引 = description.outputs.length）；
-   * false/缺省 = 终止整个执行。
+   * @deprecated 用 `onError` 代替。保留仅为兼容历史工作流 JSON。
+   * true 等价于 onError='continueErrorOutput'；二者并存时 onError 优先。
    */
   continueOnError?: boolean;
-  /** 节点级设置(对标基线 NDV Settings tab)。onError 是 continueOnError 的多态版本;
-   *  引擎当前仅消费 continueOnError,其余字段先做存储 + UI(行为深化后续)。 */
+  /**
+   * 节点报错时的行为（三态）：
+   * - `stopWorkflow`（缺省）：终止整个执行；
+   * - `continueErrorOutput`：错误 item 从「错误输出端口」放出去继续
+   *   （错误端口 = 声明输出之后追加的一个端口，索引 = description.outputs.length）；
+   * - `continueRegularOutput`：错误 item 从常规输出端口 0 放出去继续。
+   * 归一化逻辑见 node-settings.ts 的 resolveOnError。
+   */
   onError?: 'stopWorkflow' | 'continueRegularOutput' | 'continueErrorOutput';
+  /** 节点输出为空时，补一个空 item，使下游仍被触发（否则空端口不扩散）。 */
   alwaysOutputData?: boolean;
+  /** 只取第一个输入 item 执行一次（用于「按批只调一次 API」这类场景）。 */
   executeOnce?: boolean;
+  /** 失败自动重试。取值域与默认值见 node-settings.ts 的 resolveRetry。 */
   retryOnFail?: boolean;
+  /** 总尝试次数（含首次），钳制到 [2,5]，缺省 3。 */
   maxTries?: number;
+  /** 两次尝试之间等待毫秒，钳制到 [0,5000]，缺省 1000。 */
   waitBetweenTries?: number;
   notes?: string;
   notesInFlow?: boolean;
@@ -111,6 +121,7 @@ export interface IConnections {
 
 export interface IWorkflowSettings {
   timezone?: string;
+  /** 整次执行的超时**秒**数；缺省/非正数 = 不限时。见 resolveExecutionTimeoutMs。 */
   executionTimeout?: number;
   errorWorkflow?: string;
   /** 执行保存策略（默认全存）：false = 收尾后删除该类执行记录。 */

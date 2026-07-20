@@ -10,6 +10,7 @@ export * from './interfaces.js';
 export * from './execution-interfaces.js';
 export { ExecutionPause, OperationalError, UnexpectedError } from './errors.js';
 export type { IErrorContext } from './errors.js';
+export * from './node-settings.js';
 export { Workflow } from './workflow.js';
 export type { IWorkflowInit, IIncomingConnection } from './workflow.js';
 export { ExpressionError, evaluateInSandbox } from './expression/sandbox.js';

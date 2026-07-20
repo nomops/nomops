@@ -51,6 +51,8 @@ export interface ITaskData {
   source: Array<ISourceData | null>;
   /** true = 本次「运行」用的是钉住数据，节点并未真正执行。 */
   pinned?: boolean;
+  /** 实际尝试次数（含首次）。>1 表示触发过 retryOnFail 重试。 */
+  tryCount?: number;
 }
 
 /** 每个节点的执行结果列表（循环里同一节点可多次运行）。 */

@@ -1,19 +1,25 @@
 import type {
   IExecuteData,
+  IExecutionError,
   INode,
   INodeExecutionData,
+  IPairedItemData,
   IRun,
   IRunExecutionData,
   ITaskData,
   ITaskDataConnections,
   ITaskDataConnectionsSource,
   JsonObject,
+  NodeOnError,
   Workflow,
 } from '@nomops/workflow';
 import {
   ExecutionPause,
   OperationalError,
   createRunExecutionData,
+  resolveExecutionTimeoutMs,
+  resolveOnError,
+  resolveRetry,
   toExecutionError,
 } from '@nomops/workflow';
 import type { INodeLoader } from '../nodes-loader/node-loader.js';
@@ -36,6 +42,24 @@ export interface IWorkflowExecuteOptions {
 
 /** 环保护上限：单节点最大运行次数（防失控循环把进程跑死）。 */
 const MAX_NODE_RUNS = 1000;
+
+/** 超时到点时抛出的内部信号（不外泄；主循环捕获后转成执行级 error）。 */
+class ExecutionTimeout extends Error {
+  constructor(timeoutMs: number) {
+    super(`执行超过设定的超时时间 ${timeoutMs / 1000} 秒`);
+    this.name = 'ExecutionTimeout';
+  }
+}
+
+/** 本轮执行的时限。at=Infinity 表示不限时（timeoutMs 此时无意义）。 */
+interface IDeadline {
+  at: number;
+  timeoutMs: number;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 /**
  * 触发器产物注入（通用机制，非节点特判）：把 node 记为「已执行、输出=output」，
@@ -180,11 +204,24 @@ export class WorkflowExecute {
     const filter = state.startData?.runNodeFilter;
     state.waitTill = undefined; // 本轮起跑即清除旧的等待时刻（完成/再次挂起时重置）
 
+    // 超时以本轮起跑为基准。waiting 恢复后重新计时——挂起等待的时长不该算进执行耗时。
+    const timeoutMs = resolveExecutionTimeoutMs(workflow.settings);
+    const deadline: IDeadline = {
+      at: timeoutMs > 0 ? startedAt + timeoutMs : Infinity,
+      timeoutMs,
+    };
+
     let status: IRun['status'] = 'success';
 
     while (stack.length > 0) {
       if (this.canceled) {
         status = 'canceled';
+        break;
+      }
+
+      if (Date.now() >= deadline.at) {
+        state.resultData.error = toExecutionError(new ExecutionTimeout(timeoutMs));
+        status = 'error';
         break;
       }
 
@@ -233,15 +270,20 @@ export class WorkflowExecute {
       await this.options.hooks?.nodeExecuteBefore?.(node.name);
       const startTime = Date.now();
 
+      // executeOnce：只喂第一个 item（在执行前收窄输入，后续 pairedItem 溯源也用这份）
+      const nodeExec = this.applyExecuteOnce(exec);
+
       let output: INodeExecutionData[][] | null = null;
       let taskData: ITaskData;
       try {
-        output = await this.runNode(workflow, state, exec);
+        const attempt = await this.runNodeWithRetry(workflow, state, nodeExec, deadline);
+        output = this.applyAlwaysOutputData(node, attempt.output, nodeExec);
         taskData = {
           startTime,
           executionTime: Date.now() - startTime,
           data: this.toConnections(output),
-          source: exec.source?.['main'] ?? [],
+          source: nodeExec.source?.['main'] ?? [],
+          ...(attempt.tryCount > 1 ? { tryCount: attempt.tryCount } : {}),
         };
       } catch (error) {
         // 暂停信号（控制流）：当前帧带 resumed 标记压回栈，状态整体可序列化落库等唤醒
@@ -252,27 +294,35 @@ export class WorkflowExecute {
           status = 'waiting';
           break;
         }
+
+        // 超时是执行级终止，不受节点 onError 影响——用户设的是「整次执行的上限」
+        if (error instanceof ExecutionTimeout) {
+          state.resultData.error = toExecutionError(error, { node: node.name });
+          state.resultData.lastNodeExecuted = node.name;
+          status = 'error';
+          break;
+        }
+
         const execError = toExecutionError(error, { node: node.name });
         taskData = {
           startTime,
           executionTime: Date.now() - startTime,
           error: execError,
-          source: exec.source?.['main'] ?? [],
+          source: nodeExec.source?.['main'] ?? [],
         };
-        if (node.continueOnError) {
-          // 错误 item 从「错误输出端口」（索引 = 声明输出数）放出去继续
-          const description = await this.nodeLoader
-            .getByNameAndVersion(node.type, node.typeVersion)
-            .then((n) => n.description);
-          const errorPortIndex = description.outputs.length;
-          const errorItems: INodeExecutionData[] = [
-            { json: { error: execError.message }, pairedItem: { item: 0 } },
-          ];
-          output = [];
-          for (let i = 0; i < errorPortIndex; i++) output.push([]);
-          output.push(errorItems);
-          taskData.data = this.toConnections(output); // 错误已记录在 taskData.error，继续执行
-        } else {
+
+        // 重试等待期间被取消：如实记录这次失败，但整体收束为 canceled 而非 error
+        if (this.canceled) {
+          state.resultData.runData[node.name] ??= [];
+          state.resultData.runData[node.name]!.push(taskData);
+          state.resultData.lastNodeExecuted = node.name;
+          await this.options.hooks?.nodeExecuteAfter?.(node.name, taskData);
+          status = 'canceled';
+          break;
+        }
+
+        const onError = resolveOnError(node);
+        if (onError === 'stopWorkflow') {
           state.resultData.runData[node.name] ??= [];
           state.resultData.runData[node.name]!.push(taskData);
           state.resultData.lastNodeExecuted = node.name;
@@ -281,9 +331,12 @@ export class WorkflowExecute {
           status = 'error';
           break;
         }
+
+        output = await this.buildErrorOutput(node, nodeExec, execError, onError);
+        taskData.data = this.toConnections(output); // 错误已记录在 taskData.error，继续执行
       }
 
-      this.assignPairedItems(exec.data['main']?.[0] ?? [], output);
+      this.assignPairedItems(nodeExec.data['main']?.[0] ?? [], output);
 
       state.resultData.runData[node.name] ??= [];
       state.resultData.runData[node.name]!.push(taskData);
@@ -302,6 +355,134 @@ export class WorkflowExecute {
     }
 
     return { data: state, status, startedAt, stoppedAt: Date.now() };
+  }
+
+  /**
+   * executeOnce：把所有输入端口收窄到第一个 item。
+   * 返回新对象而非就地改——exec 帧可能已被压回栈（wait/resume），不能污染。
+   */
+  private applyExecuteOnce(exec: IExecuteData): IExecuteData {
+    if (exec.node.executeOnce !== true) return exec;
+    const data: ITaskDataConnections = {};
+    for (const [type, ports] of Object.entries(exec.data)) {
+      data[type] = ports.map((port) => (port ? port.slice(0, 1) : port));
+    }
+    return { ...exec, data };
+  }
+
+  /**
+   * alwaysOutputData：节点在端口 0 没产出任何 item 时补一个空 item，
+   * 使下游仍被触发（引擎默认「空端口不扩散」，这是它的逃生阀）。
+   * pairedItem 指向全部输入 item，保持溯源链不断。
+   */
+  private applyAlwaysOutputData(
+    node: INode,
+    output: INodeExecutionData[][],
+    exec: IExecuteData,
+  ): INodeExecutionData[][] {
+    if (node.alwaysOutputData !== true) return output;
+    if (output[0]?.[0] !== undefined) return output;
+
+    const pairedItem: IPairedItemData[] = [];
+    (exec.data['main'] ?? []).forEach((port, input) => {
+      port?.forEach((_item, item) => pairedItem.push({ item, input }));
+    });
+
+    const patched = [...output];
+    patched[0] = [{ json: {}, pairedItem }];
+    return patched;
+  }
+
+  /**
+   * 按 retryOnFail 设置反复尝试。未开启重试时 maxTries=1，等价于直接执行一次。
+   *
+   * 两类异常绝不重试：ExecutionPause 是控制流信号（重试它等于吞掉挂起），
+   * ExecutionTimeout 是执行级终止。取消与超时都会中断剩余尝试。
+   */
+  private async runNodeWithRetry(
+    workflow: Workflow,
+    state: IRunExecutionData,
+    exec: IExecuteData,
+    deadline: IDeadline,
+  ): Promise<{ output: INodeExecutionData[][]; tryCount: number }> {
+    const retry = resolveRetry(exec.node);
+    let lastError: unknown;
+
+    for (let tryCount = 1; tryCount <= retry.maxTries; tryCount++) {
+      try {
+        const output = await this.runNodeWithDeadline(workflow, state, exec, deadline);
+        return { output, tryCount };
+      } catch (error) {
+        if (error instanceof ExecutionPause || error instanceof ExecutionTimeout) throw error;
+        lastError = error;
+        if (tryCount >= retry.maxTries || this.canceled) break;
+        // 等待会跨过时限时就别等了——直接以超时收束，免得白白挂住到期后才发现
+        if (retry.waitBetweenTries >= deadline.at - Date.now()) {
+          throw new ExecutionTimeout(deadline.timeoutMs);
+        }
+        if (retry.waitBetweenTries > 0) await sleep(retry.waitBetweenTries);
+      }
+    }
+    throw lastError;
+  }
+
+  /**
+   * 让节点执行与超时赛跑。节点内部没有中断能力（execute 拿不到 abort signal），
+   * 因此超时只能让**引擎**不再等它——被抛下的 promise 仍在后台跑到自然结束，
+   * 这里挂一个空 catch 防止它变成 unhandled rejection。
+   */
+  private async runNodeWithDeadline(
+    workflow: Workflow,
+    state: IRunExecutionData,
+    exec: IExecuteData,
+    deadline: IDeadline,
+  ): Promise<INodeExecutionData[][]> {
+    const pending = this.runNode(workflow, state, exec);
+    if (deadline.at === Infinity) return pending;
+
+    const remaining = deadline.at - Date.now();
+    if (remaining <= 0) {
+      pending.catch(() => {});
+      throw new ExecutionTimeout(deadline.timeoutMs);
+    }
+
+    let timer: ReturnType<typeof setTimeout>;
+    const expiry = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new ExecutionTimeout(deadline.timeoutMs)), remaining);
+    });
+    try {
+      return await Promise.race([pending, expiry]);
+    } catch (error) {
+      if (error instanceof ExecutionTimeout) pending.catch(() => {});
+      throw error;
+    } finally {
+      clearTimeout(timer!);
+    }
+  }
+
+  /**
+   * 构造「继续执行」时的输出。两态语义不同：
+   * - continueErrorOutput：错误 item 走错误端口（索引 = 声明输出数，即追加的那个端口），
+   *   下游可以显式接错误分支做补偿逻辑；
+   * - continueRegularOutput：输入 items 原样从端口 0 透出，就像这个节点没做任何事。
+   *   错误本身仍记录在 taskData.error，只是不改变数据流。
+   */
+  private async buildErrorOutput(
+    node: INode,
+    exec: IExecuteData,
+    execError: IExecutionError,
+    onError: Exclude<NodeOnError, 'stopWorkflow'>,
+  ): Promise<INodeExecutionData[][]> {
+    if (onError === 'continueRegularOutput') {
+      return [exec.data['main']?.[0] ?? []];
+    }
+
+    const { description } = await this.nodeLoader.getByNameAndVersion(node.type, node.typeVersion);
+    const errorPortIndex = description.outputs.length;
+    const output: INodeExecutionData[][] = [];
+    for (let i = 0; i < errorPortIndex; i++) output.push([]);
+    output.push([{ json: { error: execError.message }, pairedItem: { item: 0 } }]);
+    return output;
   }
 
   /* ── 执行单个节点 ── */
