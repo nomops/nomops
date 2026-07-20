@@ -1398,7 +1398,9 @@ const fmtRunTime = (row: ExecutionRow): string => {
 
 <style scoped>
 /* 基线实测@1440: 内容列 x248..1392(左右 48 gutter)、标题区高≈101 至 KPI */
-.ov { padding: 28px 48px 40px 28px; width: 100%; }
+/* D034 live 实测基线内容容器:max-width 1280 + padding 24px 48px 0 + 居中(内容区因此 1184 宽)。
+   底部 40px 是 nomops 自有的收尾留白(基线走内层 margin),保留以免下缘贴边。 */
+.ov { max-width: 1280px; margin: 0 auto; padding: 24px 48px 40px; width: 100%; }
 
 /* Header */
 .ov-head { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 34px; }
