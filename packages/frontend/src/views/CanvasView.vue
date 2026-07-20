@@ -1296,7 +1296,7 @@ async function loadSavePolicy() {
   position: absolute; bottom: 20px; left: calc(50% + 120px);
   display: inline-flex; align-items: center; gap: 7px; z-index: 30;
   padding: 10px 20px; font-size: 14px; font-weight: 600; border-radius: 22px;
-  background: var(--panel, #2a2a33); color: var(--text); border: 1px solid var(--border); cursor: pointer;
+  background: var(--color--background--light-1); color: var(--text); border: 1px solid var(--border); cursor: pointer;
 }
 .open-chat-btn:hover { border-color: var(--accent); }
 
@@ -1323,7 +1323,7 @@ async function loadSavePolicy() {
 }
 .canvas-side-toolbar button {
   width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center;
-  background: var(--panel, #2a2a33); border: 1px solid var(--border); border-radius: 8px;
+  background: var(--color--background--light-1); border: 1px solid var(--border); border-radius: 8px;
   color: var(--text); cursor: pointer;
 }
 .canvas-side-toolbar button:hover { border-color: var(--accent); color: var(--accent); }
@@ -1345,7 +1345,7 @@ async function loadSavePolicy() {
 .execute-caret:disabled { opacity: 0.6; cursor: default; }
 .execute-menu {
   position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
-  min-width: 260px; background: var(--panel, #2a2a33); border: 1px solid var(--border);
+  min-width: 260px; background: var(--color--background--light-1); border: 1px solid var(--border);
   border-radius: 8px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45); padding: 4px; z-index: 40;
 }
 .menu-label-sm { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.4px; padding: 5px 10px 3px; }
@@ -1363,7 +1363,7 @@ async function loadSavePolicy() {
 .tag-input { width: 220px; padding: 5px 10px; font-size: 12.5px; background: var(--bg-input, transparent); border: 1px solid var(--accent); border-radius: 6px; color: var(--text); outline: none; }
 .tag-menu {
   position: absolute; top: calc(100% + 6px); left: 0; min-width: 220px; max-height: 260px; overflow-y: auto;
-  background: var(--panel, #2a2a33); border: 1px solid var(--border); border-radius: 8px;
+  background: var(--color--background--light-1); border: 1px solid var(--border); border-radius: 8px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45); z-index: 70; padding: 4px;
 }
 .tag-option { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: none; border: none; padding: 7px 10px; font-size: 13px; color: var(--text); cursor: pointer; border-radius: 6px; }

@@ -575,7 +575,7 @@ function chatWith(target: ChatTarget) {
 .model-btn:hover { background: var(--hover, rgba(255, 255, 255, 0.07)); }
 .model-pop {
   position: absolute; top: calc(100% - 4px); left: 14px; z-index: 60; width: 250px;
-  background: var(--panel, #26262e); border: 1px solid var(--border); border-radius: 10px;
+  background: var(--color--background--light-1); border: 1px solid var(--border); border-radius: 10px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5); overflow: hidden;
   display: flex; flex-direction: column; max-height: 60vh;
 }

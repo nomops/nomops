@@ -2669,7 +2669,7 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 .prov-cred-btn.open { border-color: #7c5cd6; }
 .prov-cred-pop {
   margin-top: 8px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
-  background: var(--panel, #26262e); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  background: var(--color--background--light-1); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
 }
 .prov-cred-item {
   display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left;

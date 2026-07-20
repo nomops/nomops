@@ -1690,7 +1690,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
 .exec-bulkbar {
   position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%);
   display: flex; align-items: center; gap: 12px;
-  background: var(--panel, #2a2a33); border: 1px solid var(--border);
+  background: var(--color--background--light-1); border: 1px solid var(--border);
   border-radius: 10px; padding: 10px 16px; font-size: 13px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45); z-index: 60;
 }

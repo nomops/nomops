@@ -442,7 +442,7 @@ async function openAbout() {
 .news-mask { position: fixed; inset: 0; z-index: 110; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; }
 .news-card {
   width: 560px; max-height: 70vh; display: flex; flex-direction: column;
-  background: var(--panel, #26262e); border: 1px solid var(--border); border-radius: 12px;
+  background: var(--color--background--light-1); border: 1px solid var(--border); border-radius: 12px;
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
 }
 .news-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 10px; font-size: 15px; }

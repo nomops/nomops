@@ -47,7 +47,8 @@ function signOut() {
 <style scoped>
 .settings-menu {
   min-width: 250px; max-height: 78vh; overflow-y: auto;
-  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  /* 注意：--panel 在本仓库从未定义过，var(--panel) 会解析为空导致背景透明；直接引真令牌 */
+  background: var(--color--background--light-1); border: 1px solid var(--border); border-radius: var(--radius);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5); padding: 6px;
 }
 /* D020 live 实测基线设置导航：条目 32 高、标签 14px/400、pad 4、圆角 4（与主侧栏同一体系） */
