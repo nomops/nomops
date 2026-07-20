@@ -23,6 +23,8 @@ import { OAuth2Service } from './services/oauth2-service.js';
 import { VariableService } from './services/variable-service.js';
 import { DataTableService } from './services/data-table-service.js';
 import { WaitTracker } from './services/wait-tracker.js';
+import { ExecutionPruner, prunerOptionsFromEnv } from './services/execution-pruner.js';
+import type { IExecutionPrunerOptions } from './services/execution-pruner.js';
 import { ScimService } from './scim/scim-service.js';
 import { QuotaService } from './services/quota-service.js';
 import { ManualPaymentProvider } from './billing/payment-provider.js';
@@ -105,6 +107,8 @@ export interface BootstrapOptions {
   sourceControlDir?: string;
   /** 等待唤醒器扫描间隔毫秒（缺省 10s；测试注入短间隔）。 */
   waitTrackerIntervalMs?: number;
+  /** 执行历史清理配置（测试注入；生产走 NOMOPS_EXECUTIONS_* 环境变量）。 */
+  pruner?: IExecutionPrunerOptions;
 }
 
 export interface BootstrapResult {
@@ -237,6 +241,12 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   // 等待唤醒器：leader 到点唤醒 waiting 执行（wait/resume）
   const waitTracker = new WaitTracker(repos, executions, opts.waitTrackerIntervalMs ?? 10_000);
   if (role === 'main') waitTracker.start();
+  // 执行历史清理：leader 周期删除过期终态执行，防 executions/execution_data 无限增长
+  const executionPruner = new ExecutionPruner(repos, () => leader.isLeader(), {
+    ...prunerOptionsFromEnv(process.env),
+    ...opts.pruner,
+  });
+  if (role === 'main') executionPruner.start();
   const baseUrl = process.env['NOMOPS_BASE_URL'] ?? 'http://localhost:5678';
   const sso = new OidcService(repos, credentials, auth, baseUrl);
   const oauth2 = new OAuth2Service(credentialService, baseUrl);
@@ -285,6 +295,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     variables,
     dataTables,
     waitTracker,
+    executionPruner,
     mcp,
   };
 
@@ -317,6 +328,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     redis,
     shutdown: async () => {
       waitTracker.stop();
+      executionPruner.stop();
       await activeWorkflows.shutdown();
       await leader.stop();
       await queue?.close();

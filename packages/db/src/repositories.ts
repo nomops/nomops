@@ -911,6 +911,44 @@ export class ExecutionRepository extends BaseRepository {
     return rows[0] ? ((rows[0] as ExecutionData).workflowData as JsonObject) : null;
   }
 
+  /**
+   * 清理历史执行（限界增长）。两条策略取并集：
+   * - maxAgeHours：早于该时长的记录删掉；
+   * - maxCount：只保留最近 N 条，更旧的删掉。
+   *
+   * ★只删终态记录。waiting（等唤醒）与 running/new（在跑）绝不能删——
+   * 删了 wait-tracker 就再也唤不醒它，等于静默丢失一次执行。
+   * 返回删除条数（供日志/指标）。
+   */
+  async prune(options: { maxAgeHours?: number; maxCount?: number }): Promise<number> {
+    const terminal = sql`${this.schema.executions.status} IN ('success', 'error', 'canceled')`;
+    const doomed = new Set<string>();
+
+    if (options.maxAgeHours && options.maxAgeHours > 0) {
+      const cutoff = new Date(Date.now() - options.maxAgeHours * 3_600_000);
+      const rows = await this.db
+        .select({ id: this.schema.executions.id })
+        .from(this.schema.executions)
+        .where(and(terminal, lt(this.schema.executions.createdAt, cutoff)));
+      for (const r of rows as Array<{ id: string }>) doomed.add(r.id);
+    }
+
+    if (options.maxCount && options.maxCount > 0) {
+      // 不用 SQL OFFSET：SQLite 要求它与 LIMIT 同现，两方言行为不一致。
+      // id 很小，全取回来在内存里切更可靠。
+      const rows = await this.db
+        .select({ id: this.schema.executions.id })
+        .from(this.schema.executions)
+        .where(terminal)
+        .orderBy(desc(this.schema.executions.createdAt));
+      for (const r of (rows as Array<{ id: string }>).slice(options.maxCount)) doomed.add(r.id);
+    }
+
+    // 逐条删以复用 delete() 的级联语义（execution_data 无 FK 约束，必须手动清）
+    for (const id of doomed) await this.delete(id);
+    return doomed.size;
+  }
+
   /** 读执行记录本体（不带归属过滤，系统内部用）。 */
   async getRecord(id: string): Promise<Execution | null> {
     const rows = await this.db
