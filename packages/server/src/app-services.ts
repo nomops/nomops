@@ -7,7 +7,7 @@ import type { WorkflowService } from './services/workflow-service.js';
 import type { PushHub } from './ws/push-hub.js';
 import type { ActiveWorkflowManager } from './triggers/active-workflow-manager.js';
 import type { LicenseService } from './ee/license/license-service.js';
-import type { AuditService } from './ee/services/audit-service.js';
+import type { AuditService } from './services/audit-service.js';
 import type { OidcService } from './ee/sso/oidc-service.js';
 import type { SamlService } from './ee/sso/saml-service.js';
 import type { ScimService } from './ee/scim/scim-service.js';

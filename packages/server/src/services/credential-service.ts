@@ -2,7 +2,16 @@ import type { Repositories } from '@nomops/db';
 import type { Credentials } from '@nomops/core';
 import type { JsonObject } from '@nomops/workflow';
 import { OperationalError } from '@nomops/workflow';
-import type { SecretsService } from '../ee/services/secrets-service.js';
+/**
+ * 外部密钥解析端口（社区侧定义）。
+ *
+ * 与用量网关不同,`{{ $secrets.X }}` 解析**整体**是付费功能——社区版没有
+ * 「解析一半」的说法。所以社区侧的缺省行为是不注入(原样返回),
+ * ee 侧的 SecretsService 结构上满足本接口。
+ */
+export interface ISecretResolver {
+  resolve<T>(value: T): T;
+}
 import {
   buildCredentialTest,
   judgeTestResponse,
@@ -24,7 +33,7 @@ export class CredentialService {
     private readonly repos: Repositories,
     private readonly credentials: Credentials,
     /** 外部密钥解析（docs/10 B4）。注入后 `{{ $secrets.KEY }}` 引用在注入瞬间物化。 */
-    private readonly secrets?: SecretsService,
+    private readonly secrets?: ISecretResolver,
     /** 连接测试的 HTTP 客户端（缺省真实 fetch；测试注入假实现，不打真网）。 */
     private readonly tester: ICredentialTester = new FetchCredentialTester(),
   ) {}

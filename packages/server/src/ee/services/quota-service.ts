@@ -1,5 +1,7 @@
 import type { Repositories } from '@nomops/db';
 import { OperationalError } from '@nomops/workflow';
+import type { IUsageGate } from '../../services/usage-gate.js';
+import { currentBillingPeriod } from '../../services/usage-gate.js';
 import type { LicenseService } from '../license/license-service.js';
 
 /** 内置套餐（docs/08 第二节，硬契约）。null = 不限。 */
@@ -34,16 +36,17 @@ export class QuotaExceededError extends OperationalError {
  * - 限额只在企业版（quotas 功能）且 project 配了有限套餐时强制
  * - 已知边界：检查与自增间的小竞态窗口（单实例可忽略，多 worker 原子化留给 queue 切片）
  */
-export class QuotaService {
+export class QuotaService implements IUsageGate {
   constructor(
     private readonly repos: Repositories,
     private readonly license: LicenseService,
+    /** 社区侧的计数实现——本类只在它之上加限额检查，不重复计数逻辑。 */
+    private readonly counter: IUsageGate,
   ) {}
 
-  /** 当前计费周期（UTC 自然月，'YYYY-MM'）。 */
+  /** 当前计费周期（UTC 自然月，'YYYY-MM'）。与社区计数同一口径。 */
   currentPeriod(): string {
-    const now = new Date();
-    return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+    return currentBillingPeriod();
   }
 
   /** project 的生效套餐与上限。无配置行 = unlimited；付费套餐过期 → 回落 free（docs/08 支付宝订单式）。 */
@@ -73,8 +76,9 @@ export class QuotaService {
    * 执行开始即计数，失败的执行也计（docs/08）。
    */
   async consume(projectId: string): Promise<void> {
-    const period = this.currentPeriod();
+    // ★只在这里加「付费」的那一半:限额检查。计数交给社区实现,不复制一份
     if (this.license.isFeatureEnabled('quotas')) {
+      const period = this.currentPeriod();
       const { plan, limit } = await this.resolveLimit(projectId);
       if (limit !== null) {
         const used = await this.repos.quotas.getUsage(projectId, period);
@@ -83,6 +87,6 @@ export class QuotaService {
         }
       }
     }
-    await this.repos.quotas.incrementUsage(projectId, period);
+    await this.counter.consume(projectId);
   }
 }

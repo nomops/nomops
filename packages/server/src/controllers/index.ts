@@ -4,6 +4,16 @@ import type { ZodTypeAny, z } from 'zod';
 import type { JsonObject } from '@nomops/workflow';
 import { OperationalError } from '@nomops/workflow';
 import type { AppServices } from '../app-services.js';
+import {
+  assertInstanceAdmin as assertInstanceAdminOf,
+  assertOwnerOf as assertOwnerOfProject,
+  auth,
+  h,
+  param,
+  parseBody,
+  recordAudit,
+} from '../http/route-helpers.js';
+import { registerEeRoutes } from '../ee/routes.js';
 import { requireRole } from '../auth/middleware.js';
 import { verifyHandoff } from '../auth/handoff.js';
 import { requireFeature } from '../ee/license/license-service.js';
@@ -44,50 +54,6 @@ import {
   sourceControlPushSchema,
   licenseActivateSchema,
 } from '../schemas.js';
-
-/** Zod 校验失败 → 400（含字段级错误）。 */
-function parseBody<S extends ZodTypeAny>(schema: S, req: Request): z.infer<S> {
-  const result = schema.safeParse(req.body);
-  if (!result.success) {
-    throw new OperationalError('Request body validation failed', {
-      status: 400,
-      issues: result.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
-    });
-  }
-  return result.data;
-}
-
-/** async handler 包装：错误统一走 error middleware。 */
-const h =
-  (fn: (req: Request, res: Response) => Promise<void>) =>
-  (req: Request, res: Response, next: NextFunction) =>
-    fn(req, res).catch(next);
-
-const auth = (req: Request) => req.auth!; // 路由挂在 authMiddleware 之后，一定存在
-
-/** Express 5 的 params 值类型为 string | string[]（通配符），这里统一取 string。 */
-const param = (req: Request, name: string): string => String(req.params[name]);
-
-/** 审计留痕（docs/06）：fire-and-forget，details 只放元数据（铁律 3）。 */
-function recordAudit(
-  services: AppServices,
-  req: Request,
-  action: string,
-  resource?: { type: string; id: string },
-  details?: JsonObject,
-  /** 项目域动作（成员管理等）按 URL 参数指定项目留痕，而非请求者上下文项目。 */
-  projectId?: string,
-): void {
-  services.audit.log({
-    userId: req.auth?.userId ?? null,
-    projectId: projectId ?? req.auth?.projectId ?? null,
-    action,
-    resourceType: resource?.type ?? null,
-    resourceId: resource?.id ?? null,
-    details: details ?? null,
-    ip: req.ip ?? null,
-  });
-}
 
 /**
  * 免密登录落地页（docs/11 Phase 2.5）：成功则把会话令牌写进 localStorage（与前端 client.ts 同 key）
@@ -320,13 +286,9 @@ export function createApiRouter(services: AppServices): Router {
   const rbacFeature = requireFeature(services.license, 'rbac');
   const auditFeature = requireFeature(services.license, 'auditLogs');
 
-  /** 成员管理等按 URL 参数指定项目操作：校验请求者是该项目 owner。 */
-  async function assertOwnerOf(req: Request, projectId: string): Promise<void> {
-    const role = await services.repos.projects.findMemberRole(projectId, auth(req).userId);
-    if (role !== 'project:owner') {
-      throw new OperationalError('Requires project:owner permission for this project', { status: 403, projectId });
-    }
-  }
+  /** 绑定 services 的项目 owner 检查（实现在 route-helpers，与企业路由共用）。 */
+  const assertOwnerOf = (req: Request, projectId: string) =>
+    assertOwnerOfProject(services, req, projectId);
 
   /* ── workflows ── */
   router.get(
@@ -1079,71 +1041,11 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
-  /* ── audit logs（docs/06：查询需企业版 + owner） ── */
-  router.get(
-    '/audit-logs',
-    auditFeature,
-    h(async (req, res) => {
-      const projectId = typeof req.query['projectId'] === 'string' ? req.query['projectId'] : auth(req).projectId;
-      await assertOwnerOf(req, projectId);
-      const limit = Math.min(Number(req.query['limit'] ?? 50) || 50, 200);
-      const before = typeof req.query['before'] === 'string' ? new Date(req.query['before']) : undefined;
-      res.json(await services.repos.auditLogs.findAllByProject(projectId, { limit, before }));
-    }),
-  );
+  /** 绑定 services 的实例管理员检查（实现在 route-helpers，与企业路由共用）。 */
+  const assertInstanceAdmin = (req: Request) => assertInstanceAdminOf(services, req);
 
-  /* ── 日志流（docs/10 B3，企业功能；密钥绝不出 API） ── */
-  const logStreamFeature = requireFeature(services.license, 'logStreaming');
-  router.get(
-    '/log-streaming/destinations',
-    logStreamFeature,
-    h(async (_req, res) => {
-      res.json(await services.logStreaming.list());
-    }),
-  );
-  router.post(
-    '/log-streaming/destinations',
-    logStreamFeature,
-    h(async (req, res) => {
-      const body = (req.body ?? {}) as {
-        name?: string;
-        url?: string;
-        secret?: string;
-        events?: Array<'execution' | 'audit'>;
-      };
-      const created = await services.logStreaming.create({
-        name: body.name ?? '',
-        url: body.url ?? '',
-        secret: body.secret,
-        events: body.events,
-      });
-      res.status(201).json(created);
-    }),
-  );
-  router.delete(
-    '/log-streaming/destinations/:id',
-    logStreamFeature,
-    h(async (req, res) => {
-      await services.logStreaming.remove(req.params['id'] as string);
-      res.status(204).end();
-    }),
-  );
-  router.post(
-    '/log-streaming/destinations/:id/test',
-    logStreamFeature,
-    h(async (req, res) => {
-      res.json(await services.logStreaming.test(req.params['id'] as string));
-    }),
-  );
-
-  /* ── 外部密钥（docs/10 B4，企业功能；只回 provider + key 名，绝不回值） ── */
-  router.get(
-    '/external-secrets',
-    requireFeature(services.license, 'externalSecrets'),
-    h(async (_req, res) => {
-      res.json(services.secrets.status());
-    }),
-  );
+  // ★企业路由集中注册（C1）：实现在 ee/routes.ts，社区侧只留这一个入口
+  registerEeRoutes(router, services);
 
   /* ── insights（当前 project 执行聚合，任意成员可读） ── */
   router.get(
@@ -1388,79 +1290,6 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
-  /* ── 源码同步（工作流 push/pull 到 git；企业版 + 实例 admin） ── */
-  const sourceControlFeature = requireFeature(services.license, 'sourceControl');
-  router.get(
-    '/source-control',
-    sourceControlFeature,
-    h(async (req, res) => {
-      await assertInstanceAdmin(req);
-      res.json(await services.git.getConfig());
-    }),
-  );
-
-  router.put(
-    '/source-control',
-    sourceControlFeature,
-    h(async (req, res) => {
-      await assertInstanceAdmin(req);
-      const body = parseBody(sourceControlConnectSchema, req);
-      const config = await services.git.connect(body);
-      recordAudit(services, req, 'source-control.connect', undefined, { branch: config.branch });
-      res.json(config);
-    }),
-  );
-
-  router.delete(
-    '/source-control',
-    sourceControlFeature,
-    h(async (req, res) => {
-      await assertInstanceAdmin(req);
-      await services.git.disconnect();
-      recordAudit(services, req, 'source-control.disconnect');
-      res.status(204).end();
-    }),
-  );
-
-  router.get(
-    '/source-control/status',
-    sourceControlFeature,
-    h(async (req, res) => {
-      await assertInstanceAdmin(req);
-      res.json(await services.git.status(auth(req).projectId));
-    }),
-  );
-
-  router.post(
-    '/source-control/push',
-    sourceControlFeature,
-    h(async (req, res) => {
-      await assertInstanceAdmin(req);
-      const { message } = parseBody(sourceControlPushSchema, req);
-      const user = await services.repos.users.findById(auth(req).userId);
-      const authorName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || 'nomops';
-      const result = await services.git.push({
-        projectId: auth(req).projectId,
-        message: message ?? 'Update workflows',
-        authorName,
-        authorEmail: user?.email ?? 'nomops@localhost',
-      });
-      recordAudit(services, req, 'source-control.push', undefined, { committed: result.committed });
-      res.json(result);
-    }),
-  );
-
-  router.post(
-    '/source-control/pull',
-    sourceControlFeature,
-    h(async (req, res) => {
-      await assertInstanceAdmin(req);
-      const result = await services.git.pull(auth(req).projectId);
-      recordAudit(services, req, 'source-control.pull', undefined, { created: result.created, updated: result.updated });
-      res.json(result);
-    }),
-  );
-
   /* ── license ── */
   router.get(
     '/license',
@@ -1614,103 +1443,6 @@ export function createApiRouter(services: AppServices): Router {
       await services.mfa.disable(auth(req).userId, code);
       recordAudit(services, req, 'mfa.disable', { type: 'user', id: auth(req).userId });
       res.json({ ok: true });
-    }),
-  );
-
-  /* ── SSO / SCIM 配置（docs/07：实例 admin + 对应功能） ── */
-
-  /** 实例管理员检查（users.role ∈ owner/admin）。 */
-  async function assertInstanceAdmin(req: Request): Promise<void> {
-    const user = await services.repos.users.findById(auth(req).userId);
-    if (!user || !['owner', 'admin'].includes(user.role)) {
-      throw new OperationalError('Requires instance administrator (owner/admin) permission', { status: 403 });
-    }
-  }
-
-  router.get(
-    '/sso/config',
-    requireFeature(services.license, 'sso'),
-    h(async (req, res) => {
-      await assertInstanceAdmin(req);
-      res.json((await services.sso.getMaskedConfig()) ?? { enabled: false, issuer: '', clientId: '', clientSecret: '' });
-    }),
-  );
-
-  router.put(
-    '/sso/config',
-    requireFeature(services.license, 'sso'),
-    h(async (req, res) => {
-      await assertInstanceAdmin(req);
-      const body = parseBody(ssoConfigSchema, req);
-      // secret 省略 = 保留旧值
-      const existing = await services.sso.getConfig();
-      const clientSecret = body.clientSecret ?? existing?.clientSecret ?? '';
-      if (body.enabled && !clientSecret) {
-        throw new OperationalError('Enabling SSO requires clientSecret', { status: 400 });
-      }
-      await services.sso.setConfig({ ...body, clientSecret });
-      recordAudit(services, req, 'sso.config.update', undefined, { issuer: body.issuer, enabled: body.enabled });
-      res.json(await services.sso.getMaskedConfig());
-    }),
-  );
-
-  /* ── LDAP 配置（docs/10 B5：实例 admin + ldap 功能；bindPassword 绝不出 API） ── */
-  const emptyLdapConfig = {
-    enabled: false,
-    url: '',
-    bindDn: '',
-    bindPassword: '',
-    userSearchBase: '',
-    loginAttribute: 'uid',
-    emailAttribute: 'mail',
-    firstNameAttribute: 'givenName',
-    lastNameAttribute: 'sn',
-  };
-  router.get(
-    '/ldap/config',
-    requireFeature(services.license, 'ldap'),
-    h(async (req, res) => {
-      await assertInstanceAdmin(req);
-      res.json((await services.ldap.getMaskedConfig()) ?? emptyLdapConfig);
-    }),
-  );
-  router.put(
-    '/ldap/config',
-    requireFeature(services.license, 'ldap'),
-    h(async (req, res) => {
-      await assertInstanceAdmin(req);
-      const b = (req.body ?? {}) as Record<string, unknown>;
-      const str = (k: string): string | undefined => (typeof b[k] === 'string' ? (b[k] as string) : undefined);
-      const enabled = b['enabled'] === true;
-      if (enabled && !str('url')) {
-        throw new OperationalError('Enabling LDAP requires a server url', { status: 400 });
-      }
-      await services.ldap.setConfig({
-        enabled,
-        ...(str('url') !== undefined ? { url: str('url')! } : {}),
-        ...(str('bindDn') !== undefined ? { bindDn: str('bindDn')! } : {}),
-        // bindPassword 省略/空 = 保留旧密文
-        ...(str('bindPassword') ? { bindPassword: str('bindPassword')! } : {}),
-        ...(str('userSearchBase') !== undefined ? { userSearchBase: str('userSearchBase')! } : {}),
-        ...(str('loginAttribute') !== undefined ? { loginAttribute: str('loginAttribute')! } : {}),
-        ...(str('emailAttribute') !== undefined ? { emailAttribute: str('emailAttribute')! } : {}),
-        ...(str('firstNameAttribute') !== undefined ? { firstNameAttribute: str('firstNameAttribute')! } : {}),
-        ...(str('lastNameAttribute') !== undefined ? { lastNameAttribute: str('lastNameAttribute')! } : {}),
-      });
-      recordAudit(services, req, 'ldap.config.update', undefined, { enabled });
-      res.json(await services.ldap.getMaskedConfig());
-    }),
-  );
-
-  router.post(
-    '/scim/token',
-    requireFeature(services.license, 'scim'),
-    h(async (req, res) => {
-      await assertInstanceAdmin(req);
-      const token = await services.scim.generateToken();
-      recordAudit(services, req, 'scim.token.create');
-      // 明文仅此一次（docs/07）
-      res.status(201).json({ token, note: 'Save this now; the token will not be shown again' });
     }),
   );
 

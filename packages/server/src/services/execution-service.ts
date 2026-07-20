@@ -19,7 +19,7 @@ import type {
 import { OperationalError, Workflow, createRunExecutionData } from '@nomops/workflow';
 import type { CredentialService } from './credential-service.js';
 import type { WorkflowService } from './workflow-service.js';
-import type { QuotaService } from '../ee/services/quota-service.js';
+import type { IUsageGate } from './usage-gate.js';
 import type { PushHub } from '../ws/push-hub.js';
 import type { IExecutionQueue } from '../queue/execution-queue.js';
 import { ConcurrencyGate, UNLIMITED } from './concurrency-gate.js';
@@ -49,7 +49,7 @@ export class ExecutionService {
     private readonly credentialService: CredentialService,
     private readonly nodeLoader: INodeLoader,
     private readonly pushHub: PushHub,
-    private readonly quota: QuotaService,
+    private readonly quota: IUsageGate,
     private readonly queue: IExecutionQueue | null = null,
     /** 执行结束事件的旁路观察者（docs/10 B3 日志流）。注入后每次收尾都会广播。 */
     private readonly onExecutionFinished?: (evt: {
