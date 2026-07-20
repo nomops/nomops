@@ -26,9 +26,10 @@ describe('ParamInput（schema 驱动控件分发）', () => {
     expect(w.emitted('change')![0]).toEqual(['xyz']);
   });
 
-  it('string 点 fx 切换表达式模式（加 = 前缀）', async () => {
+  it('string 点 Expression 分段切换表达式模式（加 = 前缀）', async () => {
     const w = make({ type: 'string' }, 'hello');
-    await w.find('button.fx').trigger('click');
+    // D110：Fixed|Expression 分段控件，第二个按钮是 Expression
+    await w.findAll('.pt-seg-btn')[1]!.trigger('click');
     expect(w.emitted('change')![0]).toEqual(['=hello']);
   });
 
@@ -37,9 +38,9 @@ describe('ParamInput（schema 驱动控件分发）', () => {
     expect(w.find('[data-test="expression-input"]').exists()).toBe(true);
   });
 
-  it('noDataExpression 的 string 不显示 fx 按钮', () => {
+  it('noDataExpression 的 string 不显示 Fixed|Expression 分段', () => {
     const w = make({ type: 'string', noDataExpression: true }, 'code');
-    expect(w.find('button.fx').exists()).toBe(false);
+    expect(w.find('.pt-seg').exists()).toBe(false);
   });
 
   it('number → number 输入，emits 数值', async () => {

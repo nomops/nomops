@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import type { INodeExecutionData, INodeProperties } from '@nomops/workflow';
 import { resolveParameterValue } from '@nomops/workflow';
 import ExpressionInput from './ExpressionInput.vue';
+import { t } from '../../lib/i18n.js';
 
 /**
  * schema 驱动的单参数控件：按 INodeProperties.type 分发。
@@ -75,6 +76,12 @@ function onDragOverExpr(event: DragEvent) {
 
 /* string / expression */
 const isExpression = computed(() => typeof current.value === 'string' && (current.value as string).startsWith('='));
+/* D116:字段 ⋮ 菜单(基线实测仅一项 "Reset Value") */
+const menuOpen = ref(false);
+function resetValue() {
+  menuOpen.value = false;
+  emit('change', props.prop.default);
+}
 function toggleExpression() {
   if (isExpression.value) emit('change', String(current.value).slice(1));
   else emit('change', `=${String(current.value ?? '')}`);
@@ -213,17 +220,32 @@ function removeField(i: number) {
       <label>
         {{ prop.displayName }}
         <span v-if="prop.required" style="color: var(--err)">*</span>
-        <button
-          v-if="canExpression"
-          class="fx"
-          :class="{ active: isExpression }"
-          type="button"
-          title="Toggle expression mode"
-          data-test="param-fx"
-          @click="toggleExpression"
-        >
-          ƒx
-        </button>
+        <!-- D116 live 实测基线字段悬浮工具条:ⓘ(circle-help) + ⋮(Reset Value) + Fixed|Expression 分段 -->
+        <span class="param-tools">
+          <svg
+            v-if="prop.description"
+            class="pt-help"
+            :aria-label="prop.description"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          ><circle cx="12" cy="12" r="10" /><path d="M12 16v-4m0-4h.01" /></svg>
+          <span class="pt-menu-anchor">
+            <button class="pt-dots" type="button" data-test="param-menu" :aria-label="t('Parameter options')" @click.stop="menuOpen = !menuOpen">
+              <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="12" cy="19" r="1.7" /></svg>
+            </button>
+            <span v-if="menuOpen" class="pt-menu" data-test="param-menu-pop">
+              <button type="button" class="pt-menu-item" data-test="param-reset" @click.stop="resetValue">{{ t('Reset Value') }}</button>
+            </span>
+          </span>
+          <!-- D110 对标基线:Fixed|Expression 是分段控件(10px/500、高 15),不是内联 ƒx 按钮 -->
+          <span v-if="canExpression" class="pt-seg" data-test="param-fx">
+            <button type="button" class="pt-seg-btn" :class="{ active: !isExpression }" @click="isExpression && toggleExpression()">{{ t('Fixed') }}</button>
+            <button type="button" class="pt-seg-btn" :class="{ active: isExpression }" @click="!isExpression && toggleExpression()">{{ t('Expression') }}</button>
+          </span>
+        </span>
       </label>
 
       <!-- D109 表达式态:任意可切字段统一渲染表达式编辑器(接收数据窗格拖来的映射) -->
@@ -474,11 +496,31 @@ function removeField(i: number) {
   color: var(--color--text--tint-1); font-size: var(--font-size--2xs); font-family: var(--font-family--monospace);
 }
 .expr-cm { flex: 1; min-width: 0; }
-.fx {
-  padding: 0 6px; margin-left: 6px; font-size: 11px; border-radius: 4px;
-  background: transparent; border: 1px solid var(--border);
+/* D110/D116 live 实测基线:ⓘ 12×12 dim;⋮ 12×12;分段按钮 10px/500、高 15 */
+.param-tools { display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; }
+.pt-help { width: 12px; height: 12px; color: var(--text-dim); flex: none; }
+.pt-menu-anchor { position: relative; display: inline-flex; }
+.pt-dots {
+  width: 12px; height: 12px; padding: 0; border: none; background: transparent;
+  color: var(--text); display: inline-flex; align-items: center; justify-content: center;
 }
-.fx.active { color: var(--accent); border-color: var(--accent); }
+.pt-dots svg { width: 12px; height: 12px; }
+.pt-menu {
+  position: absolute; top: 100%; right: 0; z-index: 20; min-width: 132px; padding: 4px;
+  background: var(--color--background--light-1); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.pt-menu-item {
+  display: block; width: 100%; height: auto; text-align: left; border: none; background: none;
+  padding: 5px 8px; font-size: 12px; border-radius: 4px; color: var(--text);
+}
+.pt-menu-item:hover { background: var(--color--background--light-3); }
+.pt-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+.pt-seg-btn {
+  height: 15px; padding: 0 4px; border: none; background: transparent; border-radius: 0;
+  font-size: 10px; font-weight: 500; line-height: 15px; color: var(--text-dim);
+}
+.pt-seg-btn.active { background: var(--color--background--light-3); color: var(--text-hi); }
 textarea { font-family: ui-monospace, monospace; }
 /* 拖拽映射落点高亮 */
 .drop-wrap { border-radius: var(--radius); }
