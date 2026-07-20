@@ -47,22 +47,24 @@ function signOut() {
 <style scoped>
 .settings-menu {
   min-width: 250px; max-height: 78vh; overflow-y: auto;
-  background: var(--panel, #26262e); border: 1px solid var(--border); border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5); padding: 6px;
 }
+/* D020 live 实测基线设置导航：条目 32 高、标签 14px/400、pad 4、圆角 4（与主侧栏同一体系） */
 .sm-item {
   display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
-  background: none; border: none; border-radius: 7px; padding: 8px 10px;
-  font-size: 13px; color: var(--text); cursor: pointer; white-space: nowrap;
+  background: none; border: none; border-radius: 4px; padding: 4px; height: 32px;
+  font-size: 14px; font-weight: 400; color: var(--text); cursor: pointer; white-space: nowrap;
 }
 .sm-item:hover { background: var(--hover, rgba(255, 255, 255, 0.07)); }
 .sm-ico { width: 15px; height: 15px; flex: none; color: var(--text-dim); }
 .sm-item:hover .sm-ico { color: var(--text); }
 .sm-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .sm-badge {
-  font-size: 10px; padding: 1px 7px; border-radius: 8px; font-weight: 600;
+  font-size: 10px; padding: 2px 4px; border-radius: 16px; font-weight: 600;
 }
-.sm-badge.new { background: rgba(76, 157, 240, 0.18); color: #7db4f5; }
+/* D019 live 实测基线："New" 是灰底药丸（#bbb 底 / #444 字），不是蓝色 */
+.sm-badge.new { background: #bbbbbb; color: #444444; }
 .sm-badge.preview { background: rgba(139, 92, 246, 0.2); color: #b39df1; }
 .sm-sep { height: 1px; background: var(--border); margin: 5px 4px; }
 </style>

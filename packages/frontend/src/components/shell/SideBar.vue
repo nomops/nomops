@@ -327,9 +327,10 @@ async function openAbout() {
 .sidebar { position: relative; }
 .sidebar:not(.collapsed) { width: 201px; }
 
-.sidebar.collapsed { width: 58px; padding: 10px 8px; align-items: center; }
+/* D003 live 实测基线折叠态：rail 42px，条目 29×32 落在 x=6（即左右各 6px 内边距） */
+.sidebar.collapsed { width: 42px; padding: 10px 6px; align-items: center; }
 .sidebar.collapsed .lbl { display: none; }
-.sidebar.collapsed .nav-item { justify-content: center; padding: 8px 0; }
+.sidebar.collapsed .nav-item { justify-content: center; padding: 0; height: 32px; }
 /* 折叠态:logo 在上,+/搜索/折叠 三键竖排在下(对标基线折叠列) */
 .sidebar.collapsed .brand-row { flex-direction: column; justify-content: center; gap: 4px; }
 .sidebar.collapsed .brand-tools { flex-direction: column; margin-left: 0; gap: 2px; }
