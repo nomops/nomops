@@ -102,20 +102,24 @@ Points a reviewer should decide, which the drafter could not:
    the actual order form / terms of service, once those exist.
 
 3. Section 4(b) prohibits self-signing license certificates. Confirm this is
-   enforceable in the target jurisdictions, and that it does not conflict with
-   any open-source commitments made elsewhere (e.g. in marketing copy that
-   describes nomops as "open source" without qualification — the Sustainable Use
-   License is fair-code, not OSI open source, and the distinction should be
-   stated consistently).
+   enforceable in the target jurisdictions.
 
-4. Section 3 allows reading and forking without a subscription. Confirm this is
-   the intended posture; the alternative (no source availability for Enterprise
-   Code at all) is a different product decision with different tradeoffs.
+   (Marketing consistency was checked separately: the public site consistently
+   says "fair-code: source available" and never claims OSI open source, so that
+   particular conflict does not exist. Two other copy conflicts were found and
+   are tracked in the internal review packet — the licence page currently says
+   "self-hosting is free" without qualification, and never mentions that some
+   features are governed by this separate licence.)
+
+4. Section 3 allows reading and forking without a subscription. This is a
+   BUSINESS decision, not a legal one — it should be settled before review
+   rather than during it. See the internal review packet.
 
 5. (RESOLVED) Enterprise Code now lives under a single directory, so Section 2
    is one glob rather than a hand-maintained list. A test asserts the directory
    is non-empty and that every licence-gated service resides in it.
 
-6. Consider whether a grace period after subscription lapse is wanted. The
-   software currently degrades to community features immediately on expiry,
-   without deleting data; Section 6 matches that behaviour.
+6. Whether to grant a grace period after a subscription lapses is likewise a
+   BUSINESS decision. The software currently degrades to community features
+   immediately on expiry, without deleting data; Section 6 matches that
+   behaviour. Changing it requires a code change, not just a wording change.
