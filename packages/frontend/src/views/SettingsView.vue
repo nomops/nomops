@@ -1159,6 +1159,8 @@ const scPullPreview = ref<Array<{ id: string; name: string; kind: 'new' | 'exist
 const scProtected = ref(false);
 const scColor = ref('#5296D6');
 const scSaved = ref(false);
+/** 有效连接类型：已连接看后端配置，未连接看当前选择——决定是否显示 SSH Key 段。 */
+const scEffType = computed(() => (scConfig.value?.connected ? scConfig.value.connectionType : scConnType.value));
 
 async function loadSourceControl() {
   scError.value = '';
@@ -2485,11 +2487,12 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
       <!-- Environments（Git 源码同步，对标基线 Environments） -->
       <section v-else-if="section === 'sourcecontrol'" data-test="settings-sourcecontrol">
         <h1 class="page-title">Environments</h1>
-        <p class="sub">
-          Use multiple instances for different environments (dev, prod, etc.), deploying between them via a Git
-          repository — push local changes and pull updates. Workflows, variables and tags are synced (no credentials).
-          For SSH, add the generated deploy key below to your Git host; for HTTPS, embed a token in the URL.
-        </p>
+
+        <!-- 信息横幅（对标基线的顶部 info box） -->
+        <div class="sc-info-banner" data-test="sc-info">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="sc-info-i"><circle cx="12" cy="12" r="9" /><path d="M12 8h.01M12 11v5" stroke-linecap="round" /></svg>
+          <span>Use multiple instances for different environments (dev, prod, etc.), deploying between them via a Git repository — push local changes and pull updates. Workflows, variables and tags are synced (no credentials).</span>
+        </div>
 
         <div v-if="!licensed('sourceControl')" class="locked-card" data-test="sc-locked">
           <h2>Available on the Enterprise plan</h2>
@@ -2499,121 +2502,102 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
             <a class="btn primary" :href="LINKS.pricing" target="_blank" rel="noopener">See plans</a>
           </div>
         </div>
-        <p v-else-if="scError" class="error-text" data-test="sc-error">{{ scError }}</p>
 
-        <!-- 未连接：连接表单（对标行式卡片体系） -->
-        <div v-if="scUnlocked && scConfig && !scConfig.connected" class="set-cards">
-          <div class="set-card">
-            <div class="set-item">
-              <div class="set-item-label"><label>Connection Type</label><small>How to authenticate with your Git host</small></div>
-              <div class="set-item-control">
-                <select v-model="scConnType" data-test="sc-conn-type" @change="onScConnTypeChange">
-                  <option value="ssh">SSH</option>
-                  <option value="https">HTTPS</option>
-                </select>
-              </div>
-            </div>
-            <div class="set-item">
-              <div class="set-item-label"><label>Repository URL</label><small>The Git repository to sync workflows with</small></div>
-              <div class="set-item-control">
-                <input v-model="scRepoUrl" data-test="sc-repo" :placeholder="scConnType === 'ssh' ? 'git@github.com:org/workflows.git' : 'https://github.com/org/workflows.git'" />
-              </div>
-            </div>
-            <div class="set-item">
-              <div class="set-item-label"><label>Branch</label><small>The branch to push to and pull from</small></div>
-              <div class="set-item-control"><input v-model="scBranch" data-test="sc-branch" placeholder="main" /></div>
-            </div>
+        <template v-else-if="scConfig">
+          <p v-if="scError" class="error-text" data-test="sc-error">{{ scError }}</p>
+
+          <!-- ── Git configuration（未连接=可编辑连接表单；已连接=只读 + Disconnect Git，同基线统一段）── -->
+          <h2 class="sc-section-title">Git configuration</h2>
+
+          <!-- Connection Type（仅未连接可选） -->
+          <div v-if="!scConfig.connected" class="sc-field">
+            <label class="sc-field-label">Connection Type</label>
+            <select v-model="scConnType" data-test="sc-conn-type" class="sc-field-input" @change="onScConnTypeChange">
+              <option value="ssh">SSH</option>
+              <option value="https">HTTPS</option>
+            </select>
           </div>
 
-          <!-- SSH 部署公钥：粘进 Git 服务端的 Deploy keys（写权限） -->
-          <div v-if="scConnType === 'ssh'" class="set-card">
-            <div class="set-item-label" style="margin-bottom: 8px">
-              <label>SSH Public Key</label>
-              <small>Add this deploy key (with write access) to your Git repository, then Connect</small>
-            </div>
-            <textarea v-model="scPublicKey" class="sc-key" data-test="sc-ssh-key" readonly rows="3" @focus="($event.target as HTMLTextAreaElement).select()" />
-            <div class="set-buttons" style="margin-top: 8px">
-              <button class="btn secondary btn-sm" data-test="sc-key-copy" :disabled="!scPublicKey" @click="scCopyKey">
-                {{ scKeyCopied ? 'Copied' : 'Copy' }}
-              </button>
-              <button class="btn secondary btn-sm" data-test="sc-key-refresh" :disabled="scBusy === 'key'" @click="scRefreshKey">
-                {{ scBusy === 'key' ? 'Refreshing…' : 'Refresh Key' }}
+          <!-- Repository URL（连接后只读 + 行内 Disconnect Git） -->
+          <div class="sc-field">
+            <label class="sc-field-label">{{ scEffType === 'ssh' ? 'SSH Repository URL' : 'HTTPS Repository URL' }}</label>
+            <div class="sc-field-row">
+              <input v-if="!scConfig.connected" v-model="scRepoUrl" class="sc-field-input" data-test="sc-repo" :placeholder="scConnType === 'ssh' ? 'git@github.com:org/workflows.git' : 'https://github.com/org/workflows.git'" />
+              <input v-else class="sc-field-input" data-test="sc-repo" :value="scConfig.repoUrl" readonly />
+              <button v-if="scConfig.connected" class="btn secondary sc-disc-btn" data-test="sc-disconnect" :disabled="scBusy === 'disconnect'" @click="scDisconnect">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width: 14px; height: 14px"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                Disconnect Git
               </button>
             </div>
+            <p v-if="!scConfig.connected && scConnType === 'ssh'" class="sc-hint">Use SSH format: <code>git@github.com:user/repository.git</code></p>
           </div>
 
-          <div class="set-buttons">
-            <button class="btn primary" data-test="sc-connect" :disabled="scBusy === 'connect'" @click="scConnect">
-              {{ scBusy === 'connect' ? 'Connecting…' : 'Connect' }}
-            </button>
+          <!-- SSH Key（SSH 模式）：连接前后都显示（对标基线），供粘进 Git 服务端 Deploy keys（写权限） -->
+          <div v-if="scEffType === 'ssh'" class="sc-field">
+            <label class="sc-field-label">SSH Key</label>
+            <textarea class="sc-key" data-test="sc-ssh-key" :value="scPublicKey" readonly rows="2" @focus="($event.target as HTMLTextAreaElement).select()" />
+            <div class="sc-hint amber">
+              Paste the SSH key in your Git repository's <b>Deploy keys</b> (with write access).
+              <button class="link-btn" data-test="sc-key-copy" :disabled="!scPublicKey" @click="scCopyKey">{{ scKeyCopied ? 'Copied' : 'Copy' }}</button>
+              <button v-if="!scConfig.connected" class="link-btn" data-test="sc-key-refresh" :disabled="scBusy === 'key'" @click="scRefreshKey">{{ scBusy === 'key' ? 'Refreshing…' : 'Refresh Key' }}</button>
+            </div>
           </div>
 
-          <!-- Connect 加载遮罩（对标基线的居中 Connecting 动画） -->
+          <!-- Connect（未连接） -->
+          <div v-if="!scConfig.connected && scBusy !== 'connect'" class="set-buttons" style="margin-top: 6px">
+            <button class="btn primary" data-test="sc-connect" @click="scConnect">Connect</button>
+          </div>
+          <!-- Connect 加载动画（居中，对标基线） -->
           <div v-if="scBusy === 'connect'" class="sc-connecting" data-test="sc-connecting">
             <span class="sc-spinner" />
             <span>Connecting</span>
           </div>
-        </div>
 
-        <!-- 已连接：仓库信息 + Instance settings + push/pull -->
-        <div v-else-if="scUnlocked && scConfig && scConfig.connected" class="set-cards">
-          <div class="set-card">
-            <div style="display: flex; align-items: center; gap: 12px; padding: 14px 0">
-              <div style="min-width: 0">
-                <div class="dim" style="font-size: 12px">Connected repository <code>{{ scConfig.connectionType.toUpperCase() }}</code></div>
-                <div class="mono" style="font-size: 13px; margin-top: 3px; word-break: break-all">{{ scConfig.repoUrl }}</div>
-              </div>
-              <span style="flex: 1" />
-              <button class="btn secondary btn-sm" data-test="sc-disconnect" :disabled="scBusy === 'disconnect'" @click="scDisconnect">
-                🗑 Disconnect Git
-              </button>
-            </div>
-          </div>
+          <!-- ── Instance settings（仅已连接）── -->
+          <template v-if="scConfig.connected">
+            <hr class="sc-divider" />
+            <h2 class="sc-section-title" data-test="sc-instance-settings">Instance settings</h2>
 
-          <!-- Instance settings（对标基线）：Branch + Protected + Color + Save settings -->
-          <div class="set-card" data-test="sc-instance-settings">
-            <h3 class="ps-title" style="margin: 4px 0 14px">Instance settings</h3>
-            <div class="set-item">
-              <div class="set-item-label"><label>Branch connected to this instance</label><small>Which branch this instance pushes to / pulls from</small></div>
-              <div class="set-item-control">
-                <div style="display: flex; gap: 6px; align-items: center; width: 100%">
-                  <select v-model="scBranch" data-test="sc-branch-select" style="flex: 1; min-width: 0">
-                    <option v-for="b in scBranches" :key="b" :value="b">{{ b }}</option>
-                  </select>
-                  <button class="btn secondary btn-sm" data-test="sc-branch-refresh" title="Refresh branches" style="flex: none" @click="loadScBranches">⟳</button>
-                </div>
+            <div class="sc-field">
+              <label class="sc-field-label">Branch connected to this instance</label>
+              <div class="sc-field-row">
+                <select v-model="scBranch" data-test="sc-branch-select" class="sc-field-input">
+                  <option v-for="b in scBranches" :key="b" :value="b">{{ b }}</option>
+                </select>
+                <button class="btn secondary sc-disc-btn" data-test="sc-branch-refresh" title="Refresh branches" @click="loadScBranches">⟳</button>
               </div>
             </div>
-            <label class="sc-check" data-test="sc-protected-label" style="display: flex; align-items: flex-start; gap: 8px; width: 100%; padding: 12px 0; border-bottom: 1px solid var(--border)">
-              <input type="checkbox" v-model="scProtected" data-test="sc-protected" style="flex: none; width: 16px; height: 16px; margin: 2px 0 0" />
-              <span style="font-size: 13px; color: var(--text)"><b>Protected instance</b>: prevent editing workflows (recommended for production environments).</span>
+
+            <label class="sc-check" data-test="sc-protected-label">
+              <input type="checkbox" v-model="scProtected" data-test="sc-protected" />
+              <span><b>Protected instance</b>: prevent editing workflows (recommended for production environments).</span>
             </label>
-            <div class="set-item" style="margin-top: 4px">
-              <div class="set-item-label"><label>Color</label><small>Environment tag color</small></div>
-              <div class="set-item-control" style="display: flex; gap: 8px; align-items: center">
-                <input type="color" v-model="scColor" data-test="sc-color" style="width: 40px; height: 30px; padding: 0; border: none; background: none; cursor: pointer" />
-                <input v-model="scColor" data-test="sc-color-hex" style="width: 120px" />
+
+            <div class="sc-field">
+              <label class="sc-field-label">Color</label>
+              <div style="display: flex; gap: 8px; align-items: center">
+                <input type="color" v-model="scColor" data-test="sc-color" style="width: 40px; height: 32px; padding: 0; border: none; background: none; cursor: pointer" />
+                <input v-model="scColor" data-test="sc-color-hex" class="sc-field-input" style="max-width: 140px" />
               </div>
             </div>
-            <div class="set-buttons" style="margin-top: 14px; align-items: center">
+
+            <div class="set-buttons" style="margin-top: 16px; align-items: center">
               <button class="btn primary" data-test="sc-save-settings" :disabled="scBusy === 'save'" @click="scSaveSettings">
                 {{ scBusy === 'save' ? 'Saving…' : 'Save settings' }}
               </button>
               <span v-if="scSaved" class="dim" data-test="sc-saved" style="font-size: 12.5px; color: var(--ok)">✓ Settings successfully saved</span>
             </div>
-          </div>
 
-          <div class="set-card">
-            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 14px 0">
+            <!-- Push / Pull（基线在编辑器顶栏触发，nomops 这里就近提供） -->
+            <hr class="sc-divider" />
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
               <button class="btn primary" data-test="sc-push" :disabled="!!scBusy" @click="openScPushModal">↑ Push</button>
               <button class="btn secondary" data-test="sc-pull" :disabled="!!scBusy" @click="openScPullModal">↓ Pull</button>
               <span style="flex: 1" />
               <button class="btn secondary btn-sm" data-test="sc-refresh" @click="refreshScStatus">Refresh status</button>
             </div>
             <p v-if="scResult" class="dim" data-test="sc-result" style="font-size: 12.5px; margin-top: 8px; color: var(--ok)">{{ scResult }}</p>
-
-            <!-- 待提交改动 -->
-            <div v-if="scStatus" style="margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px">
+            <div v-if="scStatus" style="margin-top: 12px">
               <div class="dim" style="font-size: 12px; margin-bottom: 8px">
                 {{ scStatus.files.length ? `${scStatus.files.length} local change(s) to push` : 'No local changes — up to date.' }}
               </div>
@@ -2624,8 +2608,8 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                 </li>
               </ul>
             </div>
-          </div>
-        </div>
+          </template>
+        </template>
 
         <!-- Push 弹窗（对标基线：勾选要推的工作流 + commit message） -->
         <div v-if="scPushModal" class="modal-mask" data-test="sc-push-modal" @click.self="scPushModal = false">
@@ -3726,12 +3710,37 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 .mono { font-family: 'SF Mono', ui-monospace, Menlo, monospace; }
 .sc-key { width: 100%; resize: vertical; font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 12px; line-height: 1.5; word-break: break-all; color: var(--text); background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; }
 .sc-key:focus { outline: none; border-color: var(--accent); }
+/* Environments 段：对标基线的 info banner + 分段标题 + 竖排字段(label 在上) */
+.sc-info-banner {
+  display: flex; align-items: flex-start; gap: 10px; max-width: 900px;
+  padding: 12px 16px; margin: 0 0 22px; border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  font-size: 13px; line-height: 1.5; color: var(--text);
+}
+.sc-info-i { width: 18px; height: 18px; flex: none; margin-top: 1px; color: var(--accent); }
+.sc-section-title { max-width: 900px; margin: 22px 0 14px; font-size: 16px; font-weight: 600; color: var(--text-hi); }
+.sc-field { max-width: 900px; margin-bottom: 16px; }
+.sc-field-label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 500; color: var(--text-hi); }
+.sc-field-input { width: 100%; }
+.sc-field-row { display: flex; gap: 8px; align-items: center; }
+.sc-field-row .sc-field-input { flex: 1; min-width: 0; }
+.sc-disc-btn { flex: none; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.sc-hint { max-width: 900px; margin: 6px 0 0; font-size: 12px; color: var(--text-dim); }
+.sc-hint code { font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 11px; background: var(--bg-input); padding: 1px 5px; border-radius: 4px; }
+.sc-hint.amber {
+  padding: 8px 12px; border-radius: var(--radius);
+  background: color-mix(in srgb, var(--warn, #d68a00) 12%, transparent);
+  border-left: 3px solid var(--warn, #d68a00); color: var(--text);
+}
+.sc-hint.amber .link-btn { margin-left: 8px; font-weight: 500; }
+.sc-divider { max-width: 900px; border: none; border-top: 1px solid var(--border); margin: 26px 0; }
 .sc-changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
 .sc-connecting { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 40px 0; color: var(--accent); font-size: 14px; }
 .sc-spinner { width: 34px; height: 34px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: sc-spin 0.8s linear infinite; }
 @keyframes sc-spin { to { transform: rotate(360deg); } }
-.sc-check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--text); margin: 12px 0; cursor: pointer; }
-.sc-check input { margin-top: 2px; }
+.sc-check { display: flex; align-items: flex-start; gap: 8px; max-width: 900px; font-size: 13px; color: var(--text); margin: 4px 0 16px; cursor: pointer; }
+.sc-check input { flex: none; width: 16px; height: 16px; margin: 1px 0 0; }
 .sc-push-list { max-height: 260px; border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; }
 .sc-push-list li { padding: 3px 0; }
 .sc-select-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
