@@ -102,9 +102,10 @@ export const sourceControlConnectSchema = z.object({
   connectionType: z.enum(['ssh', 'https']).optional(),
 });
 
-/** push 提交信息。 */
+/** push 提交信息 + 选择性提交的文件路径（不传=全推）。 */
 export const sourceControlPushSchema = z.object({
   message: z.string().max(500).optional(),
+  files: z.array(z.string().max(300)).max(2000).optional(),
 });
 
 /** 切换分支。 */

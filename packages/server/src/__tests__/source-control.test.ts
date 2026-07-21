@@ -181,6 +181,36 @@ describe('SSH 部署密钥', () => {
   });
 });
 
+describe('选择性 push + pull 预览', () => {
+  it('push 只传部分文件 → 只提交所选，其余仍在待提交', async () => {
+    await request(appA).put('/api/source-control').set(bearer(ownerA)).send({ repoUrl: bareRepo, branch: 'main' }).expect(200);
+    // 先全推一次做基线
+    await request(appA).post('/api/source-control/push').set(bearer(ownerA)).send({ message: 'base' }).expect(200);
+    // 建两个新工作流
+    const a = (await request(appA).post('/api/workflows').set(bearer(ownerA)).send(emptyWf('sel-A')).expect(201)).body.id;
+    (await request(appA).post('/api/workflows').set(bearer(ownerA)).send(emptyWf('sel-B')).expect(201));
+    const st = await request(appA).get('/api/source-control/status').set(bearer(ownerA)).expect(200);
+    const aPath = st.body.files.find((f: { path: string }) => f.path.includes(a)).path;
+    // 只推 A
+    const pushed = await request(appA).post('/api/source-control/push').set(bearer(ownerA)).send({ message: 'only A', files: [aPath] }).expect(200);
+    expect(pushed.body.committed).toBe(true);
+    expect(pushed.body.files).toEqual([aPath]);
+    // B 仍待提交
+    const after = await request(appA).get('/api/source-control/status').set(bearer(ownerA)).expect(200);
+    expect(after.body.files.some((f: { path: string }) => f.path.includes('sel-B') || f.path.endsWith('.json'))).toBe(true);
+    await request(appA).delete('/api/source-control').set(bearer(ownerA)).expect(204);
+  });
+
+  it('pull-preview → 列远端工作流并标 new/existing，不落库', async () => {
+    await request(appA).put('/api/source-control').set(bearer(ownerA)).send({ repoUrl: bareRepo, branch: 'main' }).expect(200);
+    const prev = await request(appA).get('/api/source-control/pull-preview').set(bearer(ownerA)).expect(200);
+    expect(Array.isArray(prev.body.items)).toBe(true);
+    // 之前推过的工作流应被标为 existing（同实例已有）
+    expect(prev.body.items.every((i: { kind: string }) => i.kind === 'new' || i.kind === 'existing')).toBe(true);
+    await request(appA).delete('/api/source-control').set(bearer(ownerA)).expect(204);
+  });
+});
+
 describe('分支下拉 + 切换', () => {
   it('连接 push 后 → listBranches 含 main；切到新分支 dev', async () => {
     await request(appA).put('/api/source-control').set(bearer(ownerA)).send({ repoUrl: bareRepo, branch: 'main' }).expect(200);

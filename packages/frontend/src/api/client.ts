@@ -503,9 +503,11 @@ export const api = {
       http<SourceControlConfig>('PUT', '/api/source-control', { repoUrl, branch, connectionType }),
     disconnect: () => http<void>('DELETE', '/api/source-control'),
     status: () => http<SourceControlStatus>('GET', '/api/source-control/status'),
-    push: (message: string) =>
-      http<{ committed: boolean; pushed: boolean; files: string[] }>('POST', '/api/source-control/push', { message }),
+    push: (message: string, files?: string[]) =>
+      http<{ committed: boolean; pushed: boolean; files: string[] }>('POST', '/api/source-control/push', files ? { message, files } : { message }),
     pull: () => http<{ created: number; updated: number; skipped: string[] }>('POST', '/api/source-control/pull'),
+    pullPreview: () =>
+      http<{ items: Array<{ id: string; name: string; kind: 'new' | 'existing' }> }>('GET', '/api/source-control/pull-preview'),
     getKey: () => http<{ publicKey: string }>('GET', '/api/source-control/key'),
     refreshKey: () => http<{ publicKey: string }>('POST', '/api/source-control/key/refresh'),
     branches: () => http<{ branches: string[]; current: string }>('GET', '/api/source-control/branches'),

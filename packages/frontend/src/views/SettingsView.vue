@@ -1152,6 +1152,10 @@ const scConnType = ref<'ssh' | 'https'>('ssh'); // 未连接时的选择
 const scPublicKey = ref('');
 const scKeyCopied = ref(false);
 const scBranches = ref<string[]>([]);
+const scPushModal = ref(false);
+const scPushSelected = ref<Set<string>>(new Set());
+const scPullModal = ref(false);
+const scPullPreview = ref<Array<{ id: string; name: string; kind: 'new' | 'existing' }> | null>(null);
 
 async function loadSourceControl() {
   scError.value = '';
@@ -1259,14 +1263,29 @@ async function scDisconnect() {
     scBusy.value = '';
   }
 }
-async function scPush() {
+/** 打开 Push 弹窗（对标基线：勾选要推的工作流 + commit message）。 */
+async function openScPushModal() {
+  scError.value = '';
+  scResult.value = '';
+  await refreshScStatus();
+  scPushSelected.value = new Set((scStatus.value?.files ?? []).map((f) => f.path)); // 默认全选
+  scPushModal.value = true;
+}
+function toggleScPushFile(path: string) {
+  const next = new Set(scPushSelected.value);
+  next.has(path) ? next.delete(path) : next.add(path);
+  scPushSelected.value = next;
+}
+async function confirmScPush() {
   scBusy.value = 'push';
   scError.value = '';
   scResult.value = '';
   try {
-    const r = await api.sourceControl.push(scMessage.value.trim() || 'Update workflows');
-    scResult.value = r.committed ? `Pushed ${r.files.length} workflow file(s).` : 'Nothing to push — already up to date.';
+    const files = [...scPushSelected.value];
+    const r = await api.sourceControl.push(scMessage.value.trim() || 'Update workflows', files);
+    scResult.value = r.committed ? `Pushed ${r.files.length} file(s).` : 'Nothing to push — already up to date.';
     scMessage.value = '';
+    scPushModal.value = false;
     await refreshScStatus();
   } catch (e) {
     scError.value = (e as Error).message;
@@ -1274,7 +1293,23 @@ async function scPush() {
     scBusy.value = '';
   }
 }
-async function scPull() {
+/** 打开 Pull 弹窗（对标基线：先预览远端将导入/更新的工作流，再确认应用）。 */
+async function openScPullModal() {
+  scError.value = '';
+  scResult.value = '';
+  scPullPreview.value = null;
+  scPullModal.value = true;
+  scBusy.value = 'pull-preview';
+  try {
+    scPullPreview.value = (await api.sourceControl.pullPreview()).items;
+  } catch (e) {
+    scError.value = (e as Error).message;
+    scPullModal.value = false;
+  } finally {
+    scBusy.value = '';
+  }
+}
+async function confirmScPull() {
   scBusy.value = 'pull';
   scError.value = '';
   scResult.value = '';
@@ -1283,6 +1318,7 @@ async function scPull() {
     const parts = [`${r.created} created`, `${r.updated} updated`];
     if (r.skipped.length) parts.push(`${r.skipped.length} skipped`);
     scResult.value = `Pulled: ${parts.join(', ')}.`;
+    scPullModal.value = false;
     await refreshScStatus();
   } catch (e) {
     scError.value = (e as Error).message;
@@ -2515,22 +2551,16 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           </div>
 
           <div class="set-card">
-            <div style="display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; padding: 14px 0">
-              <div style="flex: 1; min-width: 220px">
-                <label style="font-size: 12px; color: var(--text-dim)">Commit message</label>
-                <input v-model="scMessage" data-test="sc-message" placeholder="Update workflows" style="width: 100%" @keyup.enter="scPush" />
-              </div>
-              <button class="btn primary" data-test="sc-push" :disabled="!!scBusy" @click="scPush">
-                {{ scBusy === 'push' ? 'Pushing…' : '↑ Push' }}
-              </button>
-              <button class="btn secondary" data-test="sc-pull" :disabled="!!scBusy" @click="scPull">
-                {{ scBusy === 'pull' ? 'Pulling…' : '↓ Pull' }}
-              </button>
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 14px 0">
+              <button class="btn primary" data-test="sc-push" :disabled="!!scBusy" @click="openScPushModal">↑ Push</button>
+              <button class="btn secondary" data-test="sc-pull" :disabled="!!scBusy" @click="openScPullModal">↓ Pull</button>
+              <span style="flex: 1" />
+              <button class="btn secondary btn-sm" data-test="sc-refresh" @click="refreshScStatus">Refresh status</button>
             </div>
-            <p v-if="scResult" class="dim" data-test="sc-result" style="font-size: 12.5px; margin-top: 12px; color: var(--ok)">{{ scResult }}</p>
+            <p v-if="scResult" class="dim" data-test="sc-result" style="font-size: 12.5px; margin-top: 8px; color: var(--ok)">{{ scResult }}</p>
 
             <!-- 待提交改动 -->
-            <div v-if="scStatus" style="margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px">
+            <div v-if="scStatus" style="margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px">
               <div class="dim" style="font-size: 12px; margin-bottom: 8px">
                 {{ scStatus.files.length ? `${scStatus.files.length} local change(s) to push` : 'No local changes — up to date.' }}
               </div>
@@ -2540,7 +2570,62 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                   <span class="mono">{{ f.path }}</span>
                 </li>
               </ul>
-              <button class="btn secondary btn-sm" data-test="sc-refresh" style="margin-top: 6px" @click="refreshScStatus">Refresh status</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Push 弹窗（对标基线：勾选要推的工作流 + commit message） -->
+        <div v-if="scPushModal" class="modal-mask" data-test="sc-push-modal" @click.self="scPushModal = false">
+          <div class="modal-card" style="max-width: 620px">
+            <h2 class="modal-title">Push to Git</h2>
+            <p class="dim" style="font-size: 12.5px; margin: 0 0 12px">Select the workflows to commit and push to <code>{{ scConfig?.branch }}</code>.</p>
+            <div v-if="!scStatus?.files.length" class="dim" style="font-size: 13px; padding: 8px 0">No local changes — nothing to push.</div>
+            <template v-else>
+              <div class="sc-select-head">
+                <button class="link-btn" @click="scPushSelected = new Set(scStatus.files.map((f) => f.path))">Select all</button>
+                <button class="link-btn" @click="scPushSelected = new Set()">Deselect all</button>
+                <span class="dim" style="margin-left: auto; font-size: 12px">{{ scPushSelected.size }} / {{ scStatus.files.length }} selected</span>
+              </div>
+              <ul class="sc-changes sc-push-list" data-test="sc-push-list">
+                <li v-for="f in scStatus.files" :key="f.path">
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; width: 100%">
+                    <input type="checkbox" :checked="scPushSelected.has(f.path)" :data-test-sc-file="f.path" @change="toggleScPushFile(f.path)" />
+                    <span class="sc-stat">{{ f.status || '·' }}</span>
+                    <span class="mono">{{ f.path }}</span>
+                  </label>
+                </li>
+              </ul>
+              <label style="font-size: 12px; color: var(--text-dim); display: block; margin-top: 12px">Commit message</label>
+              <input v-model="scMessage" data-test="sc-message" placeholder="Update workflows" style="width: 100%; margin-top: 4px" @keyup.enter="confirmScPush" />
+            </template>
+            <div class="set-buttons" style="margin-top: 16px; justify-content: flex-end">
+              <button class="btn secondary" @click="scPushModal = false">Cancel</button>
+              <button class="btn primary" data-test="sc-push-confirm" :disabled="scBusy === 'push' || !scPushSelected.size" @click="confirmScPush">
+                {{ scBusy === 'push' ? 'Pushing…' : `Push ${scPushSelected.size} selected` }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pull 弹窗（对标基线：先预览远端将导入/更新，再确认） -->
+        <div v-if="scPullModal" class="modal-mask" data-test="sc-pull-modal" @click.self="scPullModal = false">
+          <div class="modal-card" style="max-width: 620px">
+            <h2 class="modal-title">Pull from Git</h2>
+            <p class="dim" style="font-size: 12.5px; margin: 0 0 12px">These workflows will be imported from <code>{{ scConfig?.branch }}</code>. Local versions are overwritten.</p>
+            <div v-if="scBusy === 'pull-preview'" class="dim" style="font-size: 13px; padding: 8px 0">Loading preview…</div>
+            <div v-else-if="!scPullPreview?.length" class="dim" style="font-size: 13px; padding: 8px 0">No workflows on the remote branch.</div>
+            <ul v-else class="sc-changes sc-push-list" data-test="sc-pull-list">
+              <li v-for="it in scPullPreview" :key="it.id">
+                <span class="sc-stat" :style="{ color: it.kind === 'new' ? 'var(--ok)' : 'var(--accent)' }">{{ it.kind === 'new' ? '+' : '~' }}</span>
+                <span>{{ it.name }}</span>
+                <span class="dim" style="margin-left: auto; font-size: 11px">{{ it.kind }}</span>
+              </li>
+            </ul>
+            <div class="set-buttons" style="margin-top: 16px; justify-content: flex-end">
+              <button class="btn secondary" @click="scPullModal = false">Cancel</button>
+              <button class="btn primary" data-test="sc-pull-confirm" :disabled="scBusy === 'pull' || scBusy === 'pull-preview'" @click="confirmScPull">
+                {{ scBusy === 'pull' ? 'Pulling…' : 'Pull' }}
+              </button>
             </div>
           </div>
         </div>
@@ -3589,6 +3674,11 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 .sc-key { width: 100%; resize: vertical; font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 12px; line-height: 1.5; word-break: break-all; color: var(--text); background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; }
 .sc-key:focus { outline: none; border-color: var(--accent); }
 .sc-changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
+.sc-push-list { max-height: 260px; border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; }
+.sc-push-list li { padding: 3px 0; }
+.sc-select-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.link-btn { background: none; border: none; padding: 0; font-size: 12px; color: var(--accent); cursor: pointer; }
+.link-btn:hover { text-decoration: underline; }
 .sc-changes li { display: flex; align-items: center; gap: 10px; font-size: 12.5px; }
 .sc-stat { width: 20px; text-align: center; color: var(--accent); font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 11px; }
 

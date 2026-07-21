@@ -279,19 +279,28 @@ export class GitService {
     return { ...config, files };
   }
 
-  /** 推送：导出 → add → commit（无改动则跳过）→ push。 */
+  /**
+   * 推送：导出 → add → commit（无改动则跳过）→ push。
+   * files 传了 → 只暂存这些路径（选择性提交，对标基线的 push 勾选）；否则全推。
+   */
   async push(input: {
     projectId: string;
     message: string;
     authorName: string;
     authorEmail: string;
+    files?: string[];
   }): Promise<{ committed: boolean; pushed: boolean; files: string[] }> {
     await this.assertConnected();
     const branch = await this.branch();
-    const files = await this.exportProject(input.projectId);
-    await this.git(['add', '-A']);
-    const staged = await this.git(['status', '--porcelain']);
-    if (!staged.trim()) return { committed: false, pushed: false, files };
+    await this.exportProject(input.projectId);
+    if (input.files && input.files.length) {
+      // -A + 指定路径:同时暂存该路径的新增/修改/删除
+      await this.git(['add', '-A', '--', ...input.files]);
+    } else {
+      await this.git(['add', '-A']);
+    }
+    const staged = (await this.git(['diff', '--cached', '--name-only'])).split('\n').filter(Boolean);
+    if (!staged.length) return { committed: false, pushed: false, files: [] };
     await this.git([
       '-c',
       `user.name=${input.authorName}`,
@@ -302,7 +311,41 @@ export class GitService {
       input.message || 'Update workflows',
     ]);
     await this.git(['push', '-u', 'origin', branch]);
-    return { committed: true, pushed: true, files };
+    return { committed: true, pushed: true, files: staged };
+  }
+
+  /**
+   * 拉取预览（对标基线的 pull 确认）：fetch 远端 → 列远端工作流文件，
+   * 按项目内是否已存在标为 new/existing。不落库，仅供确认。
+   */
+  async pullPreview(projectId: string): Promise<{ items: Array<{ id: string; name: string; kind: 'new' | 'existing' }> }> {
+    await this.assertConnected();
+    const branch = await this.branch();
+    await this.git(['fetch', 'origin', branch]);
+    const listed = await this.git(['ls-tree', '-r', '--name-only', `origin/${branch}`]).catch(() => '');
+    // 文件名即工作流 id（workflows/<id>.json）——按 id 分 new/existing，无需逐个 git show（O(1) git 调用）。
+    const ids = listed
+      .split('\n')
+      .filter((f) => f.startsWith(`${WORKFLOWS_SUBDIR}/`) && f.endsWith('.json'))
+      .map((f) => f.slice(WORKFLOWS_SUBDIR.length + 1, -'.json'.length));
+    const nameById = new Map(
+      (await this.repos.workflows.findAllByProject(projectId)).map((w) => [w.id, w.name]),
+    );
+    const items = ids.map((id) => ({
+      id,
+      name: nameById.get(id) ?? id,
+      kind: (nameById.has(id) ? 'existing' : 'new') as 'new' | 'existing',
+    }));
+    // 仅对少量"新"工作流读内容补名称（常见 pull 里新条目很少）。
+    for (const item of items.filter((i) => i.kind === 'new')) {
+      try {
+        const parsed = JSON.parse(await this.git(['show', `origin/${branch}:${WORKFLOWS_SUBDIR}/${item.id}.json`])) as WorkflowFile;
+        if (parsed?.name) item.name = parsed.name;
+      } catch {
+        // 读失败保留 id 作名称
+      }
+    }
+    return { items };
   }
 
   /** 拉取：取远端分支 → 硬重置到远端 → 导入工作流文件到项目。 */

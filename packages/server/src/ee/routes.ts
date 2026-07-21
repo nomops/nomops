@@ -150,7 +150,7 @@ export function registerEeRoutes(router: Router, services: AppServices): void {
     sourceControlFeature,
     h(async (req, res) => {
       await assertInstanceAdmin(services, req);
-      const { message } = parseBody(sourceControlPushSchema, req);
+      const { message, files } = parseBody(sourceControlPushSchema, req);
       const user = await services.repos.users.findById(auth(req).userId);
       const authorName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || 'nomops';
       const result = await services.git.push({
@@ -158,9 +158,20 @@ export function registerEeRoutes(router: Router, services: AppServices): void {
         message: message ?? 'Update workflows',
         authorName,
         authorEmail: user?.email ?? 'nomops@localhost',
+        files,
       });
       recordAudit(services, req, 'source-control.push', undefined, { committed: result.committed });
       res.json(result);
+    }),
+  );
+
+  // 拉取预览（对标基线 pull 确认）：列远端将导入/更新的工作流，不落库
+  router.get(
+    '/source-control/pull-preview',
+    sourceControlFeature,
+    h(async (req, res) => {
+      await assertInstanceAdmin(services, req);
+      res.json(await services.git.pullPreview(auth(req).projectId));
     }),
   );
 
