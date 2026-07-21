@@ -23,8 +23,7 @@
 
 ## P1 · 节点库扩充（工作流表达力短板，最大空白）
 
-- [ ] **5. 数据处理节点五件套：Switch / Filter / SplitOut / Aggregate / Loop(SplitInBatches)** `L`
-  列表加工目前全靠 Code 节点手写。Switch 需引擎多输出已支持（If 即双输出）。
+- [x] **5. 数据处理节点五件套：Switch / Filter / SplitOut / Aggregate / Loop** `L` ✅ 2026-07-21（共享条件库 + outputNames 契约(顺手清掉前端 If 特判) + 引擎 contextData/getContext(Loop 地基,随状态序列化);14 nodes 测 + 1 core 测 + 1 server 引擎全链路测;live 画布标签/面板搜索验证）
 
 - [ ] **6. 触发配套三节点：Error Trigger / Execute Workflow Trigger / RespondToWebhook** `M`
   error workflow 后端链路已通（`fireErrorWorkflow`）缺专用起点节点；子工作流缺被调方触发器；Webhook 无法自定义响应体。

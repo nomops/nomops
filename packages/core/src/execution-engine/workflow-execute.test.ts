@@ -91,6 +91,15 @@ const testNodes: ILoadableNodeType[] = [
   loadable('t.fail', ['main'], async function () {
     throw new Error('boom');
   }),
+  // 节点执行上下文：每次运行自增计数并回显（Loop 类节点的机制地基）
+  loadable('t.counter', ['main', 'main'], async function () {
+    const ctx = this.getContext();
+    const n = (Number(ctx['n']) || 0) + 1;
+    ctx['n'] = n;
+    // 前 2 次走输出1（环回），第 3 次走输出0（退出）
+    const items = [{ json: { n } }];
+    return n < 3 ? [[], items] : [items, []];
+  }),
 ];
 
 /* ────────────── 工具 ────────────── */
@@ -258,6 +267,29 @@ describe('拓扑4 — 循环', () => {
     expect(run.status).toBe('error');
     expect(run.data.resultData.error?.message).toMatch(/疑似死循环/);
   }, 30_000);
+
+  it('节点执行上下文（getContext）跨多次运行持久,且随状态序列化（Loop 机制地基）', async () => {
+    // COUNTER 输出1 → PASS → COUNTER（环回）;第 3 次运行走输出0 → EXIT
+    const build = () =>
+      new Workflow({
+        name: 'ctx-loop',
+        nodes: [node('COUNTER', 't.counter'), node('PASS', 't.pass'), node('EXIT', 't.pass')],
+        connections: {
+          COUNTER: { main: [[to('EXIT')], [to('PASS')]] },
+          PASS: { main: [[to('COUNTER')]] },
+        },
+      });
+
+    const run = await engine().run(build(), build().getNode('COUNTER'), undefined, [{ json: {} }]);
+    expect(run.status).toBe('success');
+    expect(run.data.resultData.runData['COUNTER']).toHaveLength(3); // 上下文计数 1→2→3
+    expect(outputJson(run.data, 'EXIT')).toEqual([{ n: 3 }]);
+    expect(run.data.contextData?.['COUNTER']).toEqual({ n: 3 }); // 序列化态里可见
+
+    // 序列化中断续跑也带着上下文：状态 JSON 往返后 contextData 原样保留
+    const revived = JSON.parse(JSON.stringify(run.data)) as typeof run.data;
+    expect(revived.contextData?.['COUNTER']).toEqual({ n: 3 });
+  });
 });
 
 describe('拓扑5 — 错误处理', () => {

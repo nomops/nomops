@@ -205,11 +205,10 @@ function quickAddFrom() {
   editor.nodePickerOpen = true;
 }
 
-/** IF 双输出的端口标注。 */
+/** 多输出端口标注:schema 的 outputNames 驱动(IF true/false、Switch 0-3、Loop done/loop),缺省序号。 */
 function outputLabel(index: number): string | null {
   if (mainOutputs.value.length < 2) return null;
-  if (props.data.node.type === 'nomops.if') return index === 0 ? 'true' : 'false';
-  return String(index);
+  return desc.value?.outputNames?.[index] ?? String(index);
 }
 
 const sideStyle = (i: number, count: number) => ({

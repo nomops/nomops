@@ -229,6 +229,8 @@ export interface INodeTypeDescription {
   defaults: { name: string };
   inputs: string[]; // 输入端口
   outputs: string[]; // 输出端口（IF 为 ['main','main']）
+  /** 多输出端口的画布标注（如 IF ['true','false']、Loop ['done','loop']）；缺省显序号。 */
+  outputNames?: string[];
   credentials?: INodeCredentialDescription[];
   properties: INodeProperties[];
   polling?: boolean;
@@ -271,6 +273,8 @@ export interface IExecuteContext {
   getNodeParameter(name: string, itemIndex: number, fallback: unknown): unknown;
   getCredentials(type: string): Promise<JsonObject>;
   getWorkflowStaticData(type: string): JsonObject;
+  /** 本节点在**本次执行**内的可变上下文（随执行状态序列化;Loop 等跨多次运行的节点用）。 */
+  getContext(): JsonObject;
   /** true = 本帧是 waiting 恢复后的续跑（Wait 类节点据此放行而非再次挂起）。 */
   isResumed(): boolean;
   /**

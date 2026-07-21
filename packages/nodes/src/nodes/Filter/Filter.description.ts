@@ -1,15 +1,14 @@
 import type { INodeTypeDescription } from '@nomops/workflow';
 
-export const ifDescription: INodeTypeDescription = {
-  displayName: 'IF',
-  name: 'if',
+export const filterDescription: INodeTypeDescription = {
+  displayName: 'Filter',
+  name: 'filter',
   group: ['transform'],
   version: 1,
-  description: 'Route items to the true / false output by condition',
-  defaults: { name: 'IF' },
+  description: 'Keep only the items matching the conditions; the rest are discarded',
+  defaults: { name: 'Filter' },
   inputs: ['main'],
-  outputs: ['main', 'main'], // 输出0 = true，输出1 = false
-  outputNames: ['true', 'false'],
+  outputs: ['main'],
   properties: [
     {
       displayName: 'Conditions',

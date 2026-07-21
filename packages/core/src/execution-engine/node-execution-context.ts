@@ -201,6 +201,8 @@ export function createExecuteContext(args: {
   runData: IRunData;
   staticData: JsonObject;
   additionalData: IWorkflowExecuteAdditionalData;
+  /** 本次执行的节点上下文表（state.contextData;Loop 等跨多次运行的节点用）。 */
+  contextData?: Record<string, JsonObject>;
   /** true = waiting 恢复后的续跑帧。 */
   resumed?: boolean;
   /** 子节点能力解析用的加载器（引擎注入）。 */
@@ -253,6 +255,17 @@ export function createExecuteContext(args: {
         staticData[key] = data;
       }
       return data as JsonObject;
+    },
+
+    getContext(): JsonObject {
+      // 无表可挂（如纯单测桩）时给临时对象——行为可用但不跨运行持久
+      const table = args.contextData ?? {};
+      let data = table[node.name];
+      if (data === undefined || data === null || typeof data !== 'object') {
+        data = {};
+        table[node.name] = data;
+      }
+      return data;
     },
 
     isResumed(): boolean {

@@ -89,6 +89,9 @@ export interface IRunExecutionData {
     waitingExecution: IWaitingForExecution;
     waitingExecutionSource: IWaitingForExecutionSource;
   };
+  /** 节点执行上下文（nodeName → 可变对象）：同一次执行内跨多次运行持久（Loop 批次游标等）。
+      随整体状态序列化（铁律 4），执行结束即弃——与跨执行的 staticData 相区别。 */
+  contextData?: { [nodeName: string]: JsonObject };
   /** waiting 状态的唤醒时刻（epoch 毫秒）；null/undefined = 等外部信号。 */
   waitTill?: number | null;
   resumeToken?: string;

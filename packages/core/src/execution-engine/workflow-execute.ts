@@ -506,6 +506,7 @@ export class WorkflowExecute {
       runData: state.resultData.runData,
       staticData: this.options.staticData ?? {},
       additionalData: this.options.additionalData ?? {},
+      contextData: (state.contextData ??= {}), // 节点执行上下文（随状态序列化）
       resumed: exec.resumed === true,
       resolver: this.nodeLoader, // 能力子节点（ai_*）解析
     });

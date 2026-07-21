@@ -3,6 +3,11 @@ import { setDescription } from './nodes/Set/Set.description.js';
 import { noOpDescription } from './nodes/NoOp/NoOp.description.js';
 import { manualTriggerDescription } from './nodes/ManualTrigger/ManualTrigger.description.js';
 import { ifDescription } from './nodes/If/If.description.js';
+import { switchDescription } from './nodes/Switch/Switch.description.js';
+import { filterDescription } from './nodes/Filter/Filter.description.js';
+import { splitOutDescription } from './nodes/SplitOut/SplitOut.description.js';
+import { aggregateDescription } from './nodes/Aggregate/Aggregate.description.js';
+import { loopDescription } from './nodes/Loop/Loop.description.js';
 import { mergeDescription } from './nodes/Merge/Merge.description.js';
 import { codeDescription } from './nodes/Code/Code.description.js';
 import { httpRequestDescription } from './nodes/HttpRequest/HttpRequest.description.js';
@@ -49,6 +54,31 @@ export const builtinNodeManifest: ILoadableNodeType[] = [
     type: `nomops.${ifDescription.name}`,
     description: ifDescription,
     load: () => import('./nodes/If/If.node.js').then((m) => m.If),
+  },
+  {
+    type: `nomops.${switchDescription.name}`,
+    description: switchDescription,
+    load: () => import('./nodes/Switch/Switch.node.js').then((m) => m.Switch),
+  },
+  {
+    type: `nomops.${filterDescription.name}`,
+    description: filterDescription,
+    load: () => import('./nodes/Filter/Filter.node.js').then((m) => m.Filter),
+  },
+  {
+    type: `nomops.${splitOutDescription.name}`,
+    description: splitOutDescription,
+    load: () => import('./nodes/SplitOut/SplitOut.node.js').then((m) => m.SplitOut),
+  },
+  {
+    type: `nomops.${aggregateDescription.name}`,
+    description: aggregateDescription,
+    load: () => import('./nodes/Aggregate/Aggregate.node.js').then((m) => m.Aggregate),
+  },
+  {
+    type: `nomops.${loopDescription.name}`,
+    description: loopDescription,
+    load: () => import('./nodes/Loop/Loop.node.js').then((m) => m.Loop),
   },
   {
     type: `nomops.${mergeDescription.name}`,
