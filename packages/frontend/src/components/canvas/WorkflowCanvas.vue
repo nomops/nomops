@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import type { IConnections, INode } from '@nomops/workflow';
 import {
   VueFlow,
   useVueFlow,
@@ -92,7 +93,7 @@ function onNodeDragStop(event: NodeDragEvent) {
 }
 
 function onNodesDelete(nodes: Node[]) {
-  for (const n of nodes) editor.removeNode(n.id);
+  editor.removeNodes(nodes.map((n) => n.id)); // 单步撤销（原先逐个 removeNode = N 步）
 }
 
 function onEdgesDelete(edges: Edge[]) {
@@ -195,8 +196,71 @@ function ctxDeactivate() { const n = ctxMenu.value?.node; closeCtx(); if (n) edi
 function ctxDuplicate() { const n = ctxMenu.value?.node; closeCtx(); if (n) editor.duplicateNode(n); }
 async function ctxCopy() {
   const node = ctxNode.value; closeCtx();
-  if (node) await navigator.clipboard?.writeText(JSON.stringify(node, null, 2)).catch(() => undefined);
+  if (!node) return;
+  // 右键目标在多选集内 → 复制整个选中集;否则只复制该节点（backlog #3 统一走载荷格式）
+  const names =
+    editor.selectedNames.includes(node.name) && editor.selectedNames.length > 1
+      ? [...editor.selectedNames]
+      : [node.name];
+  await copySelection(names);
 }
+
+/* ── backlog #3:⌘C 复制 / ⌘V 粘贴 / ⌘A 全选（输入态与 NDV 打开时不劫持）── */
+function isTyping(el: EventTarget | null): boolean {
+  const t = el as HTMLElement | null;
+  return Boolean(t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable));
+}
+async function copySelection(names?: string[]) {
+  const payload = editor.copyPayload(names);
+  if (payload) await navigator.clipboard?.writeText(JSON.stringify(payload, null, 2)).catch(() => undefined);
+}
+function onCanvasKeydown(event: KeyboardEvent) {
+  const meta = event.metaKey || event.ctrlKey;
+  if (!meta || event.shiftKey || event.altKey || editor.ndvOpen || isTyping(event.target)) return;
+  const key = event.key.toLowerCase();
+  if (key === 'a') {
+    event.preventDefault();
+    selectAllNodes();
+  } else if (key === 'c') {
+    if (window.getSelection()?.toString()) return; // 有文本选区:让原生复制优先
+    if (!editor.selectedNames.length && !editor.selectedNodeName) return;
+    event.preventDefault();
+    void copySelection();
+  }
+}
+function onCanvasPaste(event: ClipboardEvent) {
+  if (editor.ndvOpen || isTyping(event.target)) return;
+  const text = event.clipboardData?.getData('text/plain') ?? '';
+  if (!text.trim().startsWith('{')) return;
+  try {
+    const raw = JSON.parse(text) as Record<string, unknown>;
+    const payload = Array.isArray(raw['nodes'])
+      ? { nodes: raw['nodes'] as INode[], connections: (raw['connections'] ?? {}) as IConnections }
+      : typeof raw['name'] === 'string' && typeof raw['type'] === 'string'
+        ? { nodes: [raw as unknown as INode] } // 兼容旧单节点 Copy 格式
+        : null;
+    if (!payload) return;
+    event.preventDefault();
+    if (editor.pasteNodes(payload) > 0) {
+      // store 选中集 → VueFlow 视觉选中
+      void nextTick(() => {
+        const ids = new Set(editor.selectedNames);
+        removeSelectedNodes(getNodes.value);
+        addSelectedNodes(getNodes.value.filter((n) => ids.has(n.id)));
+      });
+    }
+  } catch {
+    /* 非 JSON 粘贴:忽略 */
+  }
+}
+onMounted(() => {
+  window.addEventListener('keydown', onCanvasKeydown);
+  window.addEventListener('paste', onCanvasPaste);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onCanvasKeydown);
+  window.removeEventListener('paste', onCanvasPaste);
+});
 function ctxTidy() { closeCtx(); editor.tidyUp(); void nextTick(() => fitView({ padding: 0.2 })); }
 function ctxClearSelection() { closeCtx(); editor.select(null); }
 function ctxDelete() { const n = ctxMenu.value?.node; closeCtx(); if (n) editor.removeNode(n); }

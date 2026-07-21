@@ -17,10 +17,7 @@
   引擎 `WorkflowExecute.cancel()` 已有，但无任何 API 端点能停掉运行中的执行。
   → 后端 stop 端点（含 queue mode 下的 worker 侧中断）+ 前端执行列表/详情停止按钮 + 批量停止条（ui-audit 遗留项）。
 
-- [ ] **3. 画布复制粘贴 + 快捷键** `M`
-  现状：Copy 只写剪贴板无 Paste；`⌘C/⌘V/⌘A/Delete` 均无键盘绑定（仅菜单）。
-  → 补 Paste（含连线关系、重名处理、粘贴偏移）+ 四个快捷键绑定（input 聚焦时不劫持）。
-  证据：`WorkflowCanvas.vue:196-199`，`CanvasView.vue:346-391` 键盘表。
+- [x] **3. 画布复制粘贴 + 快捷键** `M` ✅ 2026-07-21（store copyPayload/pasteNodes/removeNodes + ⌘A/⌘C/⌘V 绑定;Delete 经查 VueFlow delete-key-code 原已通,升级为单步撤销;8 store 测;live ⌘A→⌘C→⌘V 全链路验证）
 
 - [ ] **4. 节点悬浮菜单补齐** `S`
   节点 overflow 菜单缺 Rename/Pin（两者能力已有：rename 在右键菜单、pin 在 NDV），Replace/Convert-to-subworkflow 视情况。

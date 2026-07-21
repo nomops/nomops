@@ -384,15 +384,93 @@ export const useEditorStore = defineStore('editor', {
     /** 删除全部选中节点(连带清理其连接);无多选时退化为删主选中。 */
     removeSelected() {
       const names = this.selectedNames.length ? [...this.selectedNames] : this.selectedNodeName ? [this.selectedNodeName] : [];
-      if (!names.length) return;
+      this.removeNodes(names);
+    },
+    /** 批量删除（Delete 键多选/removeSelected 共用）:单步撤销,连带清理连接/pin。 */
+    removeNodes(names: string[]) {
+      const existing = names.filter((name) => this.nodes.some((n) => n.name === name));
+      if (!existing.length) return;
       this.pushHistory();
-      for (const name of names) {
+      for (const name of existing) {
         this.nodes = this.nodes.filter((n) => n.name !== name);
         this.connections = removeNodeFromConnections(this.connections, name);
+        if (this.selectedNodeName === name) this.selectedNodeName = null;
+        this.pinnedParams = this.pinnedParams.filter((p) => p.nodeName !== name);
+        this.unpinNodeData(name);
       }
-      this.selectedNames = [];
-      this.selectedNodeName = null;
+      this.selectedNames = this.selectedNames.filter((n) => !existing.includes(n));
       this.dirty = true;
+    },
+
+    /* ── backlog #3:画布复制/粘贴 ── */
+    /** 复制载荷（⌘C / 右键 Copy 共用）:目标节点 + 相互间连线（全部端口类型）。 */
+    copyPayload(names?: string[]): { nomops: true; nodes: INode[]; connections: IConnections } | null {
+      const picked = names?.length
+        ? names
+        : this.selectedNames.length
+          ? this.selectedNames
+          : this.selectedNodeName
+            ? [this.selectedNodeName]
+            : [];
+      const set = new Set(picked);
+      const nodes = this.nodes.filter((n) => set.has(n.name));
+      if (!nodes.length) return null;
+      const connections: IConnections = {};
+      for (const [source, byType] of Object.entries(this.connections)) {
+        if (!set.has(source)) continue;
+        const keptTypes: IConnections[string] = {};
+        for (const [type, ports] of Object.entries(byType ?? {})) {
+          const kept = (ports ?? []).map((port) => (port ?? []).filter((c) => set.has(c.node)));
+          if (kept.some((p) => p.length > 0)) keptTypes[type] = kept;
+        }
+        if (Object.keys(keptTypes).length > 0) connections[source] = keptTypes;
+      }
+      return { nomops: true, nodes: JSON.parse(JSON.stringify(nodes)) as INode[], connections };
+    },
+    /** 粘贴:唯一化改名、右下偏移落位、按改名映射重建内部连线;单步撤销,粘贴集成为选中。 */
+    pasteNodes(payload: { nodes: INode[]; connections?: IConnections }): number {
+      const incoming = (payload.nodes ?? []).filter(
+        (n) => n && typeof n.name === 'string' && typeof n.type === 'string',
+      );
+      if (!incoming.length) return 0;
+      this.pushHistory();
+      const nameMap = new Map<string, string>();
+      const taken = this.nodes.map((n) => n.name);
+      const pasted: INode[] = [];
+      for (const src of incoming) {
+        const clone = JSON.parse(JSON.stringify(src)) as INode;
+        const name = uniqueNodeName(clone.name, taken);
+        taken.push(name);
+        nameMap.set(src.name, name);
+        clone.id = crypto.randomUUID();
+        clone.name = name;
+        clone.position = [Number(clone.position?.[0] ?? 80) + 48, Number(clone.position?.[1] ?? 120) + 48];
+        pasted.push(clone);
+      }
+      this.nodes.push(...pasted);
+      for (const [source, byType] of Object.entries(payload.connections ?? {})) {
+        const newSource = nameMap.get(source);
+        if (!newSource) continue;
+        for (const [type, ports] of Object.entries(byType ?? {})) {
+          (ports ?? []).forEach((port, sourceIndex) => {
+            for (const c of port ?? []) {
+              const newTarget = nameMap.get(c.node);
+              if (!newTarget) continue;
+              this.connections = addConnection(this.connections, {
+                source: newSource,
+                sourceIndex,
+                target: newTarget,
+                targetIndex: c.index ?? 0,
+                type,
+              });
+            }
+          });
+        }
+      }
+      this.selectedNames = pasted.map((n) => n.name);
+      this.selectedNodeName = pasted[0]?.name ?? null;
+      this.dirty = true;
+      return pasted.length;
     },
 
     /** 双击节点：选中并打开 NDV。 */
