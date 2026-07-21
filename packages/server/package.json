@@ -20,7 +20,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "tsx watch src/main.ts",
+    "dev": "PORT=${PORT:-5680} tsx watch src/dev-main.ts",
+    "dev:license": "tsx scripts/dev-license.ts",
     "start": "node dist/main.js",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"

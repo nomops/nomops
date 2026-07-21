@@ -20,3 +20,6 @@ control-plane.db
 
 # git worktree 工作区（后端与前端并行开发时用来隔离，避免互相卷走提交）
 .claude/worktrees/
+
+# 本地开发自签 license（含私钥，绝不进版本库；重跑 dev:license 即换一副）
+.dev-license.json
