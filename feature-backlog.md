@@ -19,9 +19,7 @@
 
 - [x] **3. 画布复制粘贴 + 快捷键** `M` ✅ 2026-07-21（store copyPayload/pasteNodes/removeNodes + ⌘A/⌘C/⌘V 绑定;Delete 经查 VueFlow delete-key-code 原已通,升级为单步撤销;8 store 测;live ⌘A→⌘C→⌘V 全链路验证）
 
-- [ ] **4. 节点悬浮菜单补齐** `S`
-  节点 overflow 菜单缺 Rename/Pin（两者能力已有：rename 在右键菜单、pin 在 NDV），Replace/Convert-to-subworkflow 视情况。
-  证据：`CanvasNode.vue:309-310`。
+- [x] **4. 节点悬浮菜单补齐** `S` ✅ 2026-07-21（⋯ 菜单补 Rename + Pin/Unpin,无运行数据置灰;live 验证菜单/角标/改名连接重写;Replace/Convert-to-subworkflow 仍未实现→并入 #33 后续裁决）
 
 ## P1 · 节点库扩充（工作流表达力短板，最大空白）
 

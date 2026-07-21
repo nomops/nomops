@@ -8,6 +8,7 @@ import { useNodeTypesStore } from '../../stores/node-types.js';
 import { useExecutionStore } from '../../stores/execution.js';
 import { useEditorStore } from '../../stores/editor.js';
 import { nodeIcon } from '../../lib/icons.js';
+import { lastRunOf, outputPorts } from '../../lib/run-data.js';
 import IconSvg from '../IconSvg.vue';
 
 const props = defineProps<{
@@ -160,6 +161,25 @@ function onOpen() {
   closeOverflow();
   editor.openNdv(props.data.node.name);
 }
+/* ── backlog #4:悬浮 ⋯ 菜单补 Rename / Pin（能力早已在 store,只缺此入口）── */
+function onRename() {
+  closeOverflow();
+  const name = props.data.node.name;
+  const next = window.prompt('Rename node', name);
+  if (next) editor.renameNode(name, next);
+}
+/** 本次运行该节点的输出（Pin 数据源,同 NDV Pin 语义）。 */
+const nodeRunOutput = computed(() => {
+  const runData = execution.lastRunData?.resultData.runData ?? {};
+  return outputPorts(lastRunOf(runData, props.data.node.name)).flat();
+});
+/** 已钉可解钉;未钉需有本次运行输出才可钉（无数据不可钉,同 NDV）。 */
+const canTogglePin = computed(() => isOutputPinned.value || nodeRunOutput.value.length > 0);
+function onTogglePin() {
+  closeOverflow();
+  if (isOutputPinned.value) editor.unpinNodeData(props.data.node.name);
+  else if (nodeRunOutput.value.length) editor.pinNodeData(props.data.node.name, nodeRunOutput.value);
+}
 
 /** 便签颜色(对标基线 change-sticky-color;nomops 便签色模型=parameters.color)。
     stickyColorOpen 已在上方(watch 之前)声明,避免 watch getter 同步取值时命中 TDZ。 */
@@ -306,12 +326,23 @@ const bottomStyle = (i: number, count: number) => ({
             <svg viewBox="0 0 24 24" class="tb-i"><path fill="currentColor" d="M4.5 9.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5m7.5 0a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5m7.5 0a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5" /></svg>
           </button>
         </div>
-        <!-- ⋯ 溢出菜单:落地能对应 nomops 真实能力的子集(Open/Execute/Deactivate/Duplicate/Delete);
-             基线的 Rename/Pin/Replace/Convert-to-subworkflow 暂未实现,不放空项 -->
+        <!-- ⋯ 溢出菜单:落地能对应 nomops 真实能力的子集(Open/Execute/Rename/Deactivate/Pin/Duplicate/Delete);
+             基线的 Replace/Convert-to-subworkflow 暂未实现,不放空项 -->
         <div v-if="overflowOpen" class="node-menu" data-test="node-overflow-menu" @click.stop>
           <button class="nm-item" @click="onOpen">Open…</button>
           <button v-if="canExecute" class="nm-item" @click="onExecute">Execute step</button>
+          <button class="nm-item" data-test="node-menu-rename" @click="onRename">Rename</button>
           <button class="nm-item" @click="onToggleDisable">{{ isDisabled ? 'Activate' : 'Deactivate' }}</button>
+          <button
+            v-if="!isSubNode"
+            class="nm-item"
+            data-test="node-menu-pin"
+            :disabled="!canTogglePin"
+            :title="canTogglePin ? undefined : 'Execute the node first to pin its output'"
+            @click="onTogglePin"
+          >
+            {{ isOutputPinned ? 'Unpin' : 'Pin' }}
+          </button>
           <button class="nm-item" @click="onDuplicate">Duplicate</button>
           <div class="nm-sep" />
           <button class="nm-item danger" @click="onDelete">Delete</button>
@@ -492,6 +523,8 @@ const bottomStyle = (i: number, count: number) => ({
   cursor: pointer; white-space: nowrap; font-family: inherit;
 }
 .nm-item:hover { background: var(--color--background--light-1); color: var(--color--text--shade-1); }
+.nm-item:disabled { opacity: 0.45; cursor: not-allowed; }
+.nm-item:disabled:hover { background: none; color: inherit; }
 .nm-item.danger { color: var(--color--danger); }
 .nm-sep { height: 1px; background: var(--border-color); margin: 4px 2px; }
 
