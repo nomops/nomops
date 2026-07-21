@@ -33,8 +33,7 @@ Nomops 前端是 n8n 的**高完成度 1:1 复刻**：路由 IA、Overview 五 T
 | # | 页面 | 组件 | 差异 | 量 | 源码参考 |
 |---|---|---|---|---|---|
 | ~~P2-1~~ ✅**已修** | 执行 | 详情头 | ~~缺 大小 + 执行 ID 元信息~~ | S | `CanvasView.vue` exec-detail-head |<br>**已修（2026-07-21）**：详情头加「· <大小> · ID <短id>」（大小由运行数据 JSON 的 UTF-8 字节估算、`fmtBytes`；ID 取 UUID 前 8 位）。live 复验：显示「· 530 B · ID 7e927e75」。列表 Exec.ID 仍用短哈希（Nomops 用 UUID 非顺序整数，属主键设计，不改）。 |
-| P2-2 | 执行 | 详情操作 | 缺 **Debug in editor**（企业特性，过往执行载入编辑器调试） | M | `/workflow/:id/debug/:execId`（n8n EnterpriseEdition.DebugInEditor） |
-| P2-3 | 执行 | 详情操作 | 缺 **执行标注 👍👎 + 评分 tag + 加入评测数据集**（成套，与 Evaluations 锁态一致） | M | `ANNOTATION_TAGS_MANAGER_MODAL` + `ADD_EXECUTION_TO_DATASET_MODAL` |
+| ~~P2-2 / P2-3~~ → **EPIC-EVAL** | 评测/测试子系统 | Debug in editor + 执行标注 + 评测数据集 + 评测运行 | **重新归类（2026-07-21 复验）**：这不是 P2 小修，而是 **n8n 整套评测/测试子系统**。查实 Nomops **零后端**：无 evaluation/dataset/testrun/metric 服务、无 annotation、无 Debug-in-editor。Nomops Evaluations tab 是「Register to enable」锁态占位（`CanvasView.vue:972`）；n8n 本地实例则显完整 setup 向导（test dataset→eval trigger→quality score→Run in editor）。→ 补齐 = 从零建 dataset/eval-trigger/test-run/metric/annotation/debug 全链（后端+引擎+UI），**epic 级产品倡议，非对齐小修**。**建议单独立项规划**，本对齐任务范围外。 | XL | n8n `features/ai/evaluation.ee/*` + `EnterpriseEdition.DebugInEditor` |
 | ~~P2-4~~ ⊘**不做（复验后收回）** | 凭证 | 字段控件 | ~~凭证字段缺 Fixed/Expression 切换~~ | M | — |<br>**复验（2026-07-21）**：凭证的"表达式"只有 `{{ $secrets.KEY }}`——注入前由 `secrets-service.ts` 物化，**无 `$json`/item 上下文**（凭证在节点执行前解析）。套用节点参数的 `ParamInput`/`ExpressionInput`（面向 `$json` 逐项）会**误导**用户以为支持 item 表达式；且 `$secrets` 现可直接在文本框内联输入、已工作。→ naive 复用不做；真要做需**凭证专属表达式模式**（仅 `$secrets`/env 自动补全），另立独立任务，非小修。 |
 | P2-5 | Settings/Environments | Git 配置 | Nomops 委托宿主 Git（Repository URL + Branch），无 n8n 的**应用内 SSH Key 生成/Refresh** + Connection Type 选择 | M | `SettingsView.vue` sourcecontrol 段 |
 | P2-6 | Settings/Log Streaming | destination | Nomops webhook-only 内联表单（Name/URL/Signing/2 事件）；n8n 多 destination 类型(webhook/syslog/sentinel) + 卡片 + modal + 细粒度事件树 | L | `SettingsView.vue` logstream 段 |
@@ -63,8 +62,16 @@ Nomops 前端是 n8n 的**高完成度 1:1 复刻**：路由 IA、Overview 五 T
 
 ---
 
-## 改造顺序建议
-1. **P0-1**（Agent 画布 Chat 测试闭环）——Nomops 核心卖点，最高优先。
-2. **P1-3**（凭证连接测试体验）+ **P1-4**（变量门控 bug，纯逻辑修复，量小收益高）。
-3. **P1-1 / P1-2**（执行按钮触发器标签、NDV Pin data）。
-4. P2 与"待审"项：先补完未审页面的审计，再与用户确认后批量处理。
+## 最终状态（2026-07-21 收官）
+**UI 对齐工作已实质完成。** 全部真 gap 已处置：
+- ✅ **已修 4**：P1-4 变量墙、P1-2 NDV Pin data、P1-3 凭证自动测连接、P2-1 执行头元信息（均已提交 + 推 origin/main）。
+- ❌ **误报撤销 2**：P0-1 Agent Chat 闭环、P1-1 执行按钮多触发器下拉（功能早已存在，审计截错工作流所致）。
+- ⊘ **复验后收回 2**：P2-4 凭证字段表达式（会误导，无 item 上下文）、C-1 Chat 附件/语音（无后端基建）。
+- 🏔 **归入 EPIC-EVAL**：原 P2-2/P2-3 = n8n 整套评测/测试子系统，Nomops 零后端，**epic 级产品倡议，非对齐 gap**。
+- 🔒 **刻意设计取舍（不动）**：P2-5/6/7（Environments/Log Streaming/External Secrets 自托管简化）、Templates 自托管本地库、Projects 独立管理页。
+
+**结论**：Nomops 与 n8n 基线在信息架构 + 交互行为上已高度对齐；剩余差异要么是自托管刻意取舍，要么是需另立项的企业级 epic（评测子系统）。对齐任务收官。
+
+## 剩余可选细项（非对齐 gap）
+- **EPIC-EVAL**（评测/测试子系统）：如要做，单独立项——建 dataset/eval-trigger/test-run/metric/annotation/Debug-in-editor 全链。
+- 审计边角：凭证 Sharing/Details/OAuth 流、执行批量停止条 + 错误 toast、Data table 详情、认证 SSO 入口、Admin/Audit 字段级——都不影响对齐主结论。

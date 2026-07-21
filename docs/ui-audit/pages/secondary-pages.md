@@ -38,6 +38,11 @@
 - **Audit**（`/audit`，AuditView）：审计日志页（对应 n8n 的 auditLogs 企业特性，但 Nomops 做成独立整页）。
 - 二者是 Nomops 面向自托管运维的增强，下一轮可细看字段级。⏳
 
+## 9. Evaluations（画布 Evaluations Tab）
+- Nomops：`CanvasView.vue:972` 「Register to enable evaluation / Register instance」**Community 锁态占位**，**零后端**（无 dataset/testrun/metric/annotation）。
+- n8n 本地实例：**已解锁**，显完整 setup 向导（1 Wire up test dataset + Add evaluation trigger → 2 Write outputs back → 3 quality score → 4 Run in editor）。
+- **结论**：整套评测/测试子系统在 Nomops 是 greenfield（见 gap-list **EPIC-EVAL**）。Debug in editor（原 P2-2）、执行标注/数据集（原 P2-3）都属这套，一并归入 epic。**非对齐小修**。
+
 ## 差异小结（进 gap-list）
 - **C-1**（P2）：Chat 输入栏缺 附件 + 语音按钮。
 - 其余：Templates（自托管本地库）、Projects（独立管理页）为**刻意设计分歧/增强**，非 gap。
