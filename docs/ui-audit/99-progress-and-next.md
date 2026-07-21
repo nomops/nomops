@@ -1,5 +1,14 @@
 # 99 · 进度摘要 & 下一会话续作指令
 
+## C 轮补审（会话 2 末，未审整页）
+产出 `pages/secondary-pages.md`。结论：**次级页也基本对齐**。
+- **强复刻**：Chat、Insights、版本历史、认证页、命令面板（Nomops palette 覆盖 Workflows/Credentials/Data tables，实际比 n8n 更"列资源"）。
+- **刻意设计分歧（非 gap）**：Templates（Nomops 自托管本地库 4 模板 vs n8n 外部网站）。
+- **Nomops 增项**：Projects 独立管理页（配额+成员）、Admin、Audit——无 n8n 对应。
+- **唯一新 gap C-1（P2）**：Chat 输入栏缺 附件+语音。
+- 剩余细项 ⏳：Evaluations 锁态、Data table 详情、认证 SSO 入口、Admin/Audit 字段级。
+- C 轮审计文档**未提交**（`docs/ui-audit/` 的 secondary-pages.md + 00/90 更新）。
+
 ## 改造阶段进展（会话 2 后半，用户逐项确认后进行）
 - **P1-4 变量墙** ✅ 修完：查实变量在 Nomops 是核心免费功能，付费墙是错的，换成真表格（`OverviewView.vue`）。live 复验通过。
 - **P0-1 Agent Chat 闭环** ❌ 误报撤销：功能早已存在（截错工作流所致）。

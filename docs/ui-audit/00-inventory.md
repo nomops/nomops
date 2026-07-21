@@ -199,11 +199,12 @@ Home（Overview）主区是 **单页 + 顶部 Tab** 结构：Workflows / Credent
 
 | 页面文档 | 状态 |
 |---|---|
-| `pages/canvas-editor.md`（画布编辑器 P0） | ⏳ 进行中 |
-| `pages/executions.md`（执行列表+详情 P0） | ⏳ |
-| `pages/credentials.md`（凭证 P0） | ⏳ |
-| `pages/overview-workflows.md`（工作流列表 P1） | ⏳ |
-| `pages/settings-shell.md`（设置壳 + 各子页 P1） | ⏳ |
-| 其余页面 | 待下一会话 |
+| `pages/canvas-editor.md`（画布编辑器 P0） | ✅ 完成 |
+| `pages/executions.md`（执行列表+详情 P0） | ✅ 完成 |
+| `pages/credentials.md`（凭证 P0） | ✅ 完成 |
+| `pages/overview-workflows.md`（工作流列表 P1） | ✅ 完成 |
+| `pages/settings-shell.md`（设置壳 + 各子页 P1） | ✅ 完成 |
+| `pages/secondary-pages.md`（Chat/Templates/Projects/Insights/版本历史/认证/命令面板/Admin/Audit） | ✅ 完成（C 轮） |
+| Evaluations（社区锁态）/ Data table 详情 / 认证 SSO 入口 / Admin·Audit 字段级 | ⏳ 剩余细项 |
 
-阶段四差异清单：`90-gap-list.md`（待阶段二≥5 页完成后汇总）。
+阶段四差异清单：`90-gap-list.md`（已含误报撤销 + 已修记录 + C 轮新增 C-1）。
