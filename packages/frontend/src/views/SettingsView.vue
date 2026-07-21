@@ -10,6 +10,7 @@ import { credentialTypeMeta } from '../lib/credential-types.js';
 import LicenseModal from '../components/LicenseModal.vue';
 import { LOCALES, locale, setLocale, t, type Locale } from '../lib/i18n.js';
 import { LINKS } from '../lib/links.js';
+import { savedTheme, setTheme, type ThemePref } from '../lib/theme.js';
 
 /** Settings：左二级导航（← Settings + 图标项 + 版本号）+ 右内容。结构对标基线 Settings。 */
 type Section =
@@ -443,12 +444,11 @@ async function uninstallCommunityNode(name: string) {
 const usage = ref<{ used: number; limit: number | null; plan: string } | null>(null);
 const publishedWfCount = ref(0); // D138:已发布工作流数
 
-/* D133 Personalisation → Theme 偏好(存 localStorage;nomops 暗色优先,
-   偏好写到根 data-theme,浅色主题令牌为后续)。 */
-const themePref = ref<string>(localStorage.getItem('nomops.theme') ?? 'system');
+/* D133 Personalisation → Theme 偏好(lib/theme:属性写在 body 才能命中令牌作用域;
+   system=摘属性跟随系统;启动引导在 main.ts)。 */
+const themePref = ref<ThemePref>(savedTheme());
 function applyTheme() {
-  localStorage.setItem('nomops.theme', themePref.value);
-  document.documentElement.setAttribute('data-theme', themePref.value);
+  setTheme(themePref.value);
 }
 const months = ref(1);
 const billingError = ref('');
