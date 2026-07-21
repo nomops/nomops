@@ -2488,6 +2488,8 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
       <section v-else-if="section === 'sourcecontrol'" data-test="settings-sourcecontrol" style="position: relative">
         <h1 class="page-title">Environments</h1>
 
+        <!-- 连接中：整块表单淡化（非盖深色遮罩），spinner 独立清晰居中——对标基线 -->
+        <div class="sc-page" :class="{ 'sc-dim': scBusy === 'connect' }">
         <!-- 信息横幅（对标基线的顶部 info box） -->
         <div class="sc-info-banner" data-test="sc-info">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="sc-info-i"><circle cx="12" cy="12" r="9" /><path d="M12 8h.01M12 11v5" stroke-linecap="round" /></svg>
@@ -2550,13 +2552,9 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
             <div class="sc-hint amber">Paste the SSH key in your Git repository's <b>Deploy keys</b> (with write access).</div>
           </div>
 
-          <!-- Connect（未连接；连接中按钮禁用，居中浮层动画，对标基线） -->
+          <!-- Connect（未连接；连接中按钮禁用，表单淡化 + 独立居中动画） -->
           <div v-if="!scConfig.connected" class="set-buttons" style="margin-top: 6px">
             <button class="btn primary" data-test="sc-connect" :disabled="scBusy === 'connect'" @click="scConnect">Connect</button>
-          </div>
-          <div v-if="scBusy === 'connect'" class="sc-connecting-overlay" data-test="sc-connecting">
-            <span class="sc-spinner" />
-            <span>Connecting</span>
           </div>
 
           <!-- ── Instance settings（仅已连接）── -->
@@ -2616,6 +2614,13 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
             </div>
           </template>
         </template>
+        </div><!-- /.sc-page -->
+
+        <!-- 连接中动画：独立于淡化的表单，正中清晰显示（对标基线） -->
+        <div v-if="scBusy === 'connect'" class="sc-connecting-overlay" data-test="sc-connecting">
+          <span class="sc-spinner" />
+          <span>Connecting</span>
+        </div>
 
         <!-- Push 弹窗（对标基线：勾选要推的工作流 + commit message） -->
         <div v-if="scPushModal" class="modal-mask" data-test="sc-push-modal" @click.self="scPushModal = false">
@@ -3744,13 +3749,13 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 /* SSH Key 行：ED25519 下拉 + 密钥框 + Copy/Refresh 按钮（对标基线） */
 .sc-keytype { flex: none; width: 120px; }
 .sc-keybox { font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 12px; }
-/* Connecting 居中浮层（对标基线：半透明遮罩压暗表单，正中 spinner + Connecting，Connect 按钮仍在但禁用） */
+/* 连接中：表单整体淡化（opacity，跨主题都自然，不是盖深色块），禁交互 */
+.sc-page.sc-dim { opacity: 0.4; pointer-events: none; transition: opacity 0.15s ease; }
+/* Connecting 动画：独立于淡化表单，正中清晰显示 spinner + Connecting（无深色遮罩块） */
 .sc-connecting-overlay {
   position: absolute; inset: 0; z-index: 5;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
-  background: color-mix(in srgb, var(--bg-panel) 55%, transparent);
-  backdrop-filter: blur(1px);
-  color: var(--accent); font-size: 14px; font-weight: 500;
+  color: var(--accent); font-size: 14px; font-weight: 500; pointer-events: none;
 }
 .sc-changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
 .sc-connecting { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 40px 0; color: var(--accent); font-size: 14px; }
