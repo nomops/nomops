@@ -80,11 +80,14 @@ describe('连接 → push → pull 往返', () => {
     expect(status.body.files.some((f: { path: string }) => f.path.includes(wf1))).toBe(true);
   });
 
-  it('push → committed=true，导出两个工作流文件', async () => {
+  it('push → committed=true，导出两个工作流文件 + variables/tags', async () => {
     const res = await request(appA).post('/api/source-control/push').set(bearer(ownerA)).send({ message: 'initial' }).expect(200);
     expect(res.body.committed).toBe(true);
     expect(res.body.pushed).toBe(true);
-    expect(res.body.files).toHaveLength(2);
+    // 2 个工作流 + variables.json + tags.json
+    expect(res.body.files.filter((f: string) => f.startsWith('workflows/'))).toHaveLength(2);
+    expect(res.body.files).toContain('variables.json');
+    expect(res.body.files).toContain('tags.json');
   });
 
   it('无改动再 push → committed=false', async () => {
@@ -178,6 +181,30 @@ describe('SSH 部署密钥', () => {
     const cfg = await request(appA).get('/api/source-control').set(bearer(ownerA)).expect(200);
     expect(JSON.stringify(cfg.body)).not.toContain('PRIVATE KEY');
     expect(JSON.stringify(cfg.body)).not.toContain('BEGIN OPENSSH');
+  });
+});
+
+describe('同步范围：变量 + 标签', () => {
+  it('A 建变量+标签 push → B pull 导入', async () => {
+    await request(appA).put('/api/source-control').set(bearer(ownerA)).send({ repoUrl: bareRepo, branch: 'main' }).expect(200);
+    await request(appA).post('/api/variables').set(bearer(ownerA)).send({ key: 'ENV_SYNC', value: 'prod' }).expect(201);
+    await request(appA).post('/api/tags').set(bearer(ownerA)).send({ name: 'sync-tag' }).expect(201);
+    await request(appA).post('/api/source-control/push').set(bearer(ownerA)).send({ message: 'vars+tags' }).expect(200);
+    await request(appA).delete('/api/source-control').set(bearer(ownerA)).expect(204);
+
+    const bootB = await bootstrap({ dbConfig: { type: 'sqlite' }, ...licensedBoot(), sourceControlDir: join(root, 'workVT') });
+    const appB = createApp(bootB.services);
+    const ownerB = (await setupOwner(appB, 'owner-vt@sc.dev')).token;
+    await request(appB).put('/api/source-control').set(bearer(ownerB)).send({ repoUrl: bareRepo, branch: 'main' }).expect(200);
+    const pull = await request(appB).post('/api/source-control/pull').set(bearer(ownerB)).expect(200);
+    expect(pull.body.variables).toBeGreaterThanOrEqual(1);
+    expect(pull.body.tags).toBeGreaterThanOrEqual(1);
+
+    const vars = await request(appB).get('/api/variables').set(bearer(ownerB)).expect(200);
+    expect(vars.body.find((v: { key: string; value: string }) => v.key === 'ENV_SYNC')?.value).toBe('prod');
+    const tags = await request(appB).get('/api/tags').set(bearer(ownerB)).expect(200);
+    expect(tags.body.some((t: { name: string }) => t.name === 'sync-tag')).toBe(true);
+    await bootB.shutdown();
   });
 });
 

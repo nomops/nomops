@@ -19,6 +19,8 @@ const KEY_CONN_TYPE = 'sourceControl.connectionType'; // 'ssh' | 'https'
 const KEY_SSH_PUBLIC = 'sourceControl.sshPublicKey';
 const KEY_SSH_PRIVATE_ENC = 'sourceControl.sshPrivateKeyEnc'; // 加密存(铁律 5)
 const WORKFLOWS_SUBDIR = 'workflows';
+const VARIABLES_FILE = 'variables.json';
+const TAGS_FILE = 'tags.json';
 
 export type ConnectionType = 'ssh' | 'https';
 
@@ -241,7 +243,11 @@ export class GitService {
     }
   }
 
-  /** 导出项目全部工作流到 workflows/<id>.json（键有序，diff 干净）。返回文件名列表。 */
+  /**
+   * 导出项目到 git 工作树（键有序，diff 干净）：
+   * workflows/<id>.json 逐个 + variables.json + tags.json。返回文件名列表。
+   * 变量/标签同步（对标基线）——变量值非凭证明文，标签仅名称。
+   */
   private async exportProject(projectId: string): Promise<string[]> {
     const dir = join(this.workDir, WORKFLOWS_SUBDIR);
     await rm(dir, { recursive: true, force: true });
@@ -261,7 +267,48 @@ export class GitService {
       await writeFile(join(this.workDir, name), JSON.stringify(file, null, 2) + '\n');
       files.push(name);
     }
+    // 变量（key/value，跨环境部署配置）
+    const vars = (await this.repos.variables.findAllByProject(projectId))
+      .map((v) => ({ key: v.key, value: v.value }))
+      .sort((a, b) => a.key.localeCompare(b.key));
+    await writeFile(join(this.workDir, VARIABLES_FILE), JSON.stringify(vars, null, 2) + '\n');
+    files.push(VARIABLES_FILE);
+    // 标签（仅名称）
+    const tags = (await this.repos.tags.findAllByProject(projectId))
+      .map((t) => ({ name: t.name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    await writeFile(join(this.workDir, TAGS_FILE), JSON.stringify(tags, null, 2) + '\n');
+    files.push(TAGS_FILE);
     return files;
+  }
+
+  /** pull 后导入变量（按 key upsert）+ 标签（按 name 新建缺失）。 */
+  private async importVariablesAndTags(projectId: string): Promise<{ variables: number; tags: number }> {
+    let variables = 0;
+    let tags = 0;
+    const varsFile = join(this.workDir, VARIABLES_FILE);
+    if (existsSync(varsFile)) {
+      const parsed = JSON.parse(await readFile(varsFile, 'utf8')) as Array<{ key: string; value: string }>;
+      const existing = new Map((await this.repos.variables.findAllByProject(projectId)).map((v) => [v.key, v]));
+      for (const v of parsed) {
+        if (!v?.key) continue;
+        const cur = existing.get(v.key);
+        if (!cur) await this.repos.variables.create({ projectId, key: v.key, value: v.value ?? '' });
+        else if (cur.value !== v.value) await this.repos.variables.update(cur.id, { value: v.value ?? '' });
+        variables++;
+      }
+    }
+    const tagsFile = join(this.workDir, TAGS_FILE);
+    if (existsSync(tagsFile)) {
+      const parsed = JSON.parse(await readFile(tagsFile, 'utf8')) as Array<{ name: string }>;
+      const existing = new Set((await this.repos.tags.findAllByProject(projectId)).map((t) => t.name));
+      for (const t of parsed) {
+        if (!t?.name) continue;
+        if (!existing.has(t.name)) await this.repos.tags.create(projectId, t.name);
+        tags++;
+      }
+    }
+    return { variables, tags };
   }
 
   /** 状态：导出当前项目后对比仓库工作树，列出会提交的改动。 */
@@ -348,8 +395,8 @@ export class GitService {
     return { items };
   }
 
-  /** 拉取：取远端分支 → 硬重置到远端 → 导入工作流文件到项目。 */
-  async pull(projectId: string): Promise<{ created: number; updated: number; skipped: string[] }> {
+  /** 拉取：取远端分支 → 硬重置到远端 → 导入工作流 + 变量 + 标签到项目。 */
+  async pull(projectId: string): Promise<{ created: number; updated: number; skipped: string[]; variables: number; tags: number }> {
     await this.assertConnected();
     const branch = await this.branch();
     await this.git(['fetch', 'origin', branch]);
@@ -359,7 +406,8 @@ export class GitService {
     let created = 0;
     let updated = 0;
     const skipped: string[] = [];
-    if (!existsSync(dir)) return { created, updated, skipped };
+    const vt = await this.importVariablesAndTags(projectId);
+    if (!existsSync(dir)) return { created, updated, skipped, ...vt };
     for (const name of (await readdir(dir)).filter((f) => f.endsWith('.json'))) {
       try {
         const parsed = JSON.parse(await readFile(join(dir, name), 'utf8')) as WorkflowFile;
@@ -383,6 +431,6 @@ export class GitService {
         skipped.push(name); // 结构非法 / 未知节点类型 → 跳过，不整体失败
       }
     }
-    return { created, updated, skipped };
+    return { created, updated, skipped, ...vt };
   }
 }

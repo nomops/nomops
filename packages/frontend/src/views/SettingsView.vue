@@ -1317,6 +1317,8 @@ async function confirmScPull() {
     const r = await api.sourceControl.pull();
     const parts = [`${r.created} created`, `${r.updated} updated`];
     if (r.skipped.length) parts.push(`${r.skipped.length} skipped`);
+    if (r.variables) parts.push(`${r.variables} variable(s)`);
+    if (r.tags) parts.push(`${r.tags} tag(s)`);
     scResult.value = `Pulled: ${parts.join(', ')}.`;
     scPullModal.value = false;
     await refreshScStatus();
@@ -2461,7 +2463,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         <h1 class="page-title">Environments</h1>
         <p class="sub">
           Use multiple instances for different environments (dev, prod, etc.), deploying between them via a Git
-          repository — push local changes and pull updates. Only workflows are synced (no credentials).
+          repository — push local changes and pull updates. Workflows, variables and tags are synced (no credentials).
           For SSH, add the generated deploy key below to your Git host; for HTTPS, embed a token in the URL.
         </p>
 
