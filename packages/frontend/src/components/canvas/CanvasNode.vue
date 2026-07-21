@@ -95,6 +95,8 @@ const visual = computed(() => nodeIcon(props.data.node.type));
    - 能力子节点(仅 ai_languageModel/ai_memory 输出,不能单独跑)→ 去掉 ▶,余 3 键
    - 便签 → 🗑 Delete · 🎨 颜色 · ⋯ More(见便签分支) */
 const isDisabled = computed(() => Boolean(props.data.node.disabled));
+/** 输出被钉住（pin data）：节点角标提示，手动执行时引擎用冻结数据代替重跑。 */
+const isOutputPinned = computed(() => editor.isNodeDataPinned(props.data.node.name));
 const canExecute = computed(() => {
   if (isSticky.value) return false;
   if (isSubNode.value && aiOutputs.value.every((t) => t === 'ai_languageModel' || t === 'ai_memory')) return false;
@@ -264,8 +266,13 @@ const bottomStyle = (i: number, count: number) => ({
 
     <div
       class="nomops-node"
-      :class="[{ selected, trigger: isTrigger, subnode: isSubNode, disabled: isDisabled }, status ? `status-${status}` : '']"
+      :class="[{ selected, trigger: isTrigger, subnode: isSubNode, disabled: isDisabled, 'output-pinned': isOutputPinned }, status ? `status-${status}` : '']"
     >
+      <!-- Pin data 角标：输出被钉住时右上角显示（对标基线 pinned 节点指示） -->
+      <div v-if="isOutputPinned && !isSticky" class="pin-badge" data-test="node-pin-badge" title="Output is pinned — manual runs use this frozen data">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="pin-badge-i"><path d="M12 17v5M9 10.8V4h6v6.8l2 3.2H7l2-3.2z" /></svg>
+      </div>
+
       <!-- 悬停工具条(对标基线 canvas-node-toolbar):默认 opacity 0,悬停/聚焦/菜单打开时浮出 -->
       <div v-if="!readonly" ref="toolbarRef" class="node-toolbar" :class="{ pinned: overflowOpen }" @mousedown.stop @dblclick.stop>
         <div class="node-toolbar-items" data-test="canvas-node-toolbar">
@@ -415,6 +422,16 @@ const bottomStyle = (i: number, count: number) => ({
 .nomops-node.status-running { border-color: var(--node--border-color--running); }
 .nomops-node.status-success { border-color: var(--color--success); }
 .nomops-node.status-error { border-color: var(--color--danger); }
+/* Pin data：被钉节点用强调色边（手动执行走冻结数据）+ 右上角图钉角标 */
+.nomops-node.output-pinned { border-color: var(--color--primary); }
+.pin-badge {
+  position: absolute; top: -9px; right: -9px; z-index: 3;
+  width: 20px; height: 20px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--color--primary); color: var(--color--primary--contrast, #fff);
+  box-shadow: 0 1px 3px -1px var(--color--black-alpha-100);
+}
+.pin-badge-i { width: 12px; height: 12px; }
 .node-icon { line-height: 0; }
 .node-label {
   margin-top: 6px; font-size: var(--font-size--md); font-weight: var(--font-weight--regular); /* 基线实测 16px */

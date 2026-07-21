@@ -94,6 +94,7 @@ function onDragField(event: DragEvent, path: string) {
         <button :class="{ on: view === 'table' }" data-test="pane-view-table" @click="view = 'table'">Table</button>
         <button :class="{ on: view === 'json' }" data-test="pane-view-json" @click="view = 'json'">JSON</button>
       </div>
+      <slot name="head-action" />
       <span class="dim" style="font-size: 11px">{{ items.length }} {{ items.length === 1 ? 'item' : 'items' }}</span>
     </div>
 

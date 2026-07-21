@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import type { IConnections, INode } from '@nomops/workflow';
+import type { IConnections, INode, INodeExecutionData, IPinData } from '@nomops/workflow';
 import { api, type NodeTypeInfo } from '../api/client.js';
 import {
   addConnection,
@@ -27,6 +27,8 @@ export const useEditorStore = defineStore('editor', {
     name: 'My workflow',
     nodes: [] as INode[],
     connections: {} as IConnections,
+    /** 钉住的节点输出：手动执行时引擎用此冻结数据代替该节点重跑（生产触发忽略）。落库。 */
+    pinData: {} as IPinData,
     selectedNodeName: null as string | null,
     /** D082:多选集(框选 / Shift 点选);单选时等于 [selectedNodeName]。 */
     selectedNames: [] as string[],
@@ -72,6 +74,7 @@ export const useEditorStore = defineStore('editor', {
         this.name = wf.name;
         this.nodes = wf.nodes;
         this.connections = wf.connections;
+        this.pinData = (wf.pinData as IPinData | null) ?? {};
         this.active = wf.active;
         this.favorite = Boolean(wf.favorite);
         this.publishedAt = wf.publishedAt ?? null;
@@ -96,6 +99,7 @@ export const useEditorStore = defineStore('editor', {
           name: this.name,
           nodes: this.nodes,
           connections: this.connections,
+          pinData: this.pinData as Record<string, INodeExecutionData[]>,
         });
         this.dirty = false;
         this.publishedDirty = true; // 保存只改草稿；生产要等 Publish
@@ -223,6 +227,7 @@ export const useEditorStore = defineStore('editor', {
       if (this.selectedNodeName === name) this.selectedNodeName = null;
       this.selectedNames = this.selectedNames.filter((n) => n !== name);
       this.pinnedParams = this.pinnedParams.filter((p) => p.nodeName !== name);
+      this.unpinNodeData(name);
       this.dirty = true;
     },
 
@@ -270,6 +275,11 @@ export const useEditorStore = defineStore('editor', {
       }
       this.connections = next;
       this.pinnedParams = this.pinnedParams.map((p) => (p.nodeName === oldName ? { ...p, nodeName: unique } : p));
+      if (oldName in this.pinData) {
+        const next: IPinData = {};
+        for (const [k, v] of Object.entries(this.pinData)) next[k === oldName ? unique : k] = v;
+        this.pinData = next;
+      }
       if (this.selectedNodeName === oldName) this.selectedNodeName = unique;
       this.selectedNames = this.selectedNames.map((n) => (n === oldName ? unique : n));
       this.dirty = true;
@@ -286,6 +296,25 @@ export const useEditorStore = defineStore('editor', {
     },
     isParamPinned(nodeName: string, paramName: string): boolean {
       return this.pinnedParams.some((p) => p.nodeName === nodeName && p.paramName === paramName);
+    },
+
+    /** Pin data：钉住某节点的输出数据（冻结，手动执行时代替重跑）。落库，随保存持久化。 */
+    pinNodeData(nodeName: string, items: INodeExecutionData[]) {
+      this.pinData = { ...this.pinData, [nodeName]: items };
+      this.dirty = true;
+    },
+    unpinNodeData(nodeName: string) {
+      if (!(nodeName in this.pinData)) return;
+      const next: IPinData = {};
+      for (const [k, v] of Object.entries(this.pinData)) if (k !== nodeName) next[k] = v;
+      this.pinData = next;
+      this.dirty = true;
+    },
+    isNodeDataPinned(nodeName: string): boolean {
+      return nodeName in this.pinData;
+    },
+    getNodePinData(nodeName: string): INodeExecutionData[] | undefined {
+      return this.pinData[nodeName];
     },
 
     moveNode(name: string, position: [number, number]) {

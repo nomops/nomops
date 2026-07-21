@@ -98,7 +98,21 @@ function openNeighbor(name: string) {
 
 const runData = computed(() => execution.lastRunData?.resultData.runData ?? {});
 const lastRun = computed(() => (node.value ? lastRunOf(runData.value, node.value.name) : null));
-const outputItems = computed(() => outputPorts(lastRun.value).flat());
+const runOutputItems = computed(() => outputPorts(lastRun.value).flat());
+
+/* ── Pin data：钉住节点输出（手动执行时引擎用冻结数据代替该节点重跑；生产触发忽略） ── */
+const isOutputPinned = computed(() => (node.value ? editor.isNodeDataPinned(node.value.name) : false));
+/** 展示：已钉 → 钉住数据；否则 → 本次运行输出。 */
+const outputItems = computed(() =>
+  isOutputPinned.value && node.value ? (editor.getNodePinData(node.value.name) ?? []) : runOutputItems.value,
+);
+/** 有本次运行输出才能钉（无数据不可钉）。 */
+const canPinOutput = computed(() => runOutputItems.value.length > 0);
+function togglePinOutput() {
+  if (!node.value) return;
+  if (isOutputPinned.value) editor.unpinNodeData(node.value.name);
+  else if (canPinOutput.value) editor.pinNodeData(node.value.name, runOutputItems.value);
+}
 const inputItems = computed(() =>
   node.value ? inputItemsFor(editor.connections, runData.value, node.value.name) : [],
 );
@@ -328,11 +342,25 @@ async function executeStep() {
           <DataPane
             title="Output"
             :items="outputItems"
-            empty-title="No output data"
+            :empty-title="isOutputPinned ? 'Pinned data is empty' : 'No output data'"
             empty-action="Execute step"
             empty-caption="to view output data"
             @empty-action="executeStep"
-          />
+          >
+            <template #head-action>
+              <button
+                v-if="canPinOutput || isOutputPinned"
+                class="ndv-pin"
+                :class="{ on: isOutputPinned }"
+                data-test="ndv-pin-output"
+                :title="isOutputPinned ? 'Unpin this output (stop freezing it for manual runs)' : 'Pin this output (freeze it for manual runs so downstream nodes use it without re-running)'"
+                @click="togglePinOutput"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="pin-i"><path d="M12 17v5M9 10.8V4h6v6.8l2 3.2H7l2-3.2z" /></svg>
+                {{ isOutputPinned ? 'Pinned' : 'Pin' }}
+              </button>
+            </template>
+          </DataPane>
         </section>
       </div>
     </div>
@@ -489,4 +517,16 @@ async function executeStep() {
 .param-pin-row:hover .param-pin { opacity: 1; }
 .param-pin.pinned { opacity: 1; color: var(--accent); }
 .param-pin:hover { color: var(--accent); }
+
+/* Output 头「Pin」按钮：钉住节点输出（对标基线的 pin data） */
+.ndv-pin {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 22px; padding: 0 8px; border-radius: 6px;
+  background: none; border: 1px solid var(--border); cursor: pointer;
+  font-size: 11px; font-weight: var(--font-weight--medium); color: var(--text-dim);
+  text-transform: none; letter-spacing: normal;
+}
+.ndv-pin:hover { color: var(--text); border-color: var(--border-strong); }
+.ndv-pin.on { color: var(--accent); border-color: var(--accent); }
+.pin-i { width: 13px; height: 13px; }
 </style>
