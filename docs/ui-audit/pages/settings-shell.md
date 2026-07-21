@@ -42,7 +42,7 @@
 ### B2. Nomops 自有实现（结构性差异，多为自托管务实取舍）⚠️
 | 子页 | n8n | Nomops 现状 | 差异性质 |
 |---|---|---|---|
-| **Environments** | Git 配置：Connection Type(SSH/HTTPS) + SSH Repository URL + **应用内 SSH Key(ED25519 + Refresh Key)** + Connect | Repository URL + Branch(main) + Connect；认证**委托宿主 Git 配置**(SSH deploy key/credential helper)，无应用内密钥管理 | **不一致（IA 简化）**——功能都能连 git，但 n8n 应用内管密钥、Nomops 靠宿主 |
+| **Environments** | Git 配置：Connection Type + 应用内 SSH Key + 分支下拉 + 选择性 Push/Pull + 同步工作流/变量/标签 | **✅ 已全量对齐（2026-07-21）**：Connection Type(SSH/HTTPS) + 应用内 ED25519 部署密钥(展示/Copy/Refresh) + 远端分支下拉/切换 + 选择性 Push 弹窗 + Pull 预览 + 同步 工作流/变量/标签 | **一致**（原判 P2-5"简化不动"经用户指正后提级重做，见 gap-list P2-5）|
 | **Log Streaming** | 多 destination 类型(webhook/syslog/sentinel) + 卡片 + `EventDestinationSettingsModal` + 细粒度事件树（本实例被 license 锁，显 paywall） | 内联单表单：Name + Webhook URL + Signing secret(HMAC-SHA256) + Events(2 勾:Execution finished/Audit events) + Add destination | **不一致（简化）**——webhook-only，无 syslog/sentinel、无事件树、无 modal |
 | **External Secrets** | 多 provider(Vault/AWS/Azure/GCP/Infisical) + 连接 modal | 单 provider「Environment variables」(`NOMOPS_SECRET_<KEY>` env)，只读展示(Provider/Status/Available secrets 名) | **不一致（简化）**——仅 env-var provider |
 
