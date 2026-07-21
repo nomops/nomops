@@ -228,3 +228,13 @@ th { color: var(--text-dim); font-weight: 500; }
 }
 .locked-card h2 { margin: 0 0 14px; font-size: 20px; font-weight: 500; color: var(--text-hi); }
 .locked-card p { margin: 0 0 22px; color: var(--text-dim); font-size: 14px; }
+
+/* 图标尺寸工具类:全仓库 50+ 处使用,必须全局常驻。
+   此前只在 OverviewView/DataTableView 的非 scoped style 里定义,懒加载路由
+   导致直达 Settings 等页时无定义,SVG 按默认尺寸炸开(如 MCP 警示条 995px 高)。 */
+.i13, .i14, .i15, .i16, .i18 { flex-shrink: 0; }
+.i13 { width: 13px; height: 13px; }
+.i14 { width: 14px; height: 14px; }
+.i15 { width: 15px; height: 15px; }
+.i16 { width: 16px; height: 16px; }
+.i18 { width: 18px; height: 18px; }
