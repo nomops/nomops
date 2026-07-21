@@ -12,7 +12,7 @@ import { LINKS } from '../../lib/links.js';
 
 /**
  * 左侧边栏(对标基线):品牌 + 顶栏工具（新建/搜索/折叠）、Overview / Chat(Preview)、
- * 底部 Templates(外链) · Insights · Help · Settings。固定 201px 不可拖拽。
+ * 底部 Templates · Insights · Help · Settings。宽度可拖拽调整(200–500,对标基线 ResizeWrapper)。
  * 折叠态收为窄图标栏；快速新建下拉(4 项)；搜索开命令面板；Help/Settings 弹出子菜单。
  */
 const auth = useAuthStore();
@@ -22,7 +22,33 @@ const route = useRoute();
 const router = useRouter();
 
 const collapsed = computed(() => ui.sidebarCollapsed);
-// D002 对标基线:侧栏固定 201px、不可拖拽(移除调宽把手与逻辑)。
+
+/* 拖拽调宽(对标基线 useSidebarLayout.onResize):x<100 折叠 / 折叠态 x>100 展开 */
+function startResize(down: PointerEvent) {
+  const move = (e: PointerEvent) => {
+    const x = e.clientX;
+    if (ui.sidebarCollapsed) {
+      if (x > 100) ui.toggleSidebar();
+      return;
+    }
+    if (x < 100) {
+      ui.toggleSidebar();
+      return;
+    }
+    ui.setSidebarWidth(x);
+  };
+  const up = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  };
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+  void down;
+}
 const teamProjects = computed(() => projects.projects.filter((p) => p.type !== 'personal'));
 /* D004:基线主侧栏的 "Personal" 项指向个人项目 */
 const personalProject = computed(() => projects.projects.find((p) => p.type === 'personal') ?? null);
@@ -142,9 +168,13 @@ async function openAbout() {
   <aside
     class="sidebar"
     :class="{ collapsed }"
+    :style="collapsed ? undefined : { width: `${ui.sidebarWidth}px` }"
     data-test="sidebar"
     @click="closeAll"
   >
+    <!-- D002 修正(基线 ResizeWrapper):右缘拖拽调宽 200–500;
+         折叠态拖过 100px 自动展开,展开态拖到 100px 内自动折叠 -->
+    <div class="sidebar-resizer" data-test="sidebar-resizer" @pointerdown.prevent="startResize" />
     <!-- 品牌 + 顶栏工具 -->
     <div class="brand-row">
       <RouterLink class="brand" :to="{ name: 'overview' }" title="nomops">
@@ -340,7 +370,13 @@ async function openAbout() {
 <style scoped>
 /* D002 对标基线:侧栏固定 201px、不可拖拽 */
 .sidebar { position: relative; }
-.sidebar:not(.collapsed) { width: 201px; }
+/* 展开态宽度由 :style 驱动(store 200–500);这里只留回退 */
+.sidebar:not(.collapsed) { width: 200px; }
+.sidebar-resizer {
+  position: absolute; top: 0; right: -2px; width: 5px; height: 100%;
+  cursor: col-resize; z-index: 30;
+}
+.sidebar-resizer:hover { background: rgba(255, 255, 255, 0.08); }
 
 /* D003 live 实测基线折叠态：rail 42px，条目 29×32 落在 x=6（即左右各 6px 内边距） */
 .sidebar.collapsed { width: 42px; padding: 10px 6px; align-items: center; }

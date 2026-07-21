@@ -11,15 +11,16 @@ export interface PaletteCommand {
   run: () => void;
 }
 
-export const SIDEBAR_MIN = 220;
-export const SIDEBAR_MAX = 480;
+/* D002 修正:基线主侧栏用 ResizeWrapper,min 200 / max 500,默认 200(量到的 201 = 200 + 1px 边框) */
+export const SIDEBAR_MIN = 200;
+export const SIDEBAR_MAX = 500;
 const storedWidth = Number(localStorage.getItem('nomops.sidebarWidth'));
 
 /** Shell 级 UI 状态：侧栏折叠 / 宽度、命令面板开关。 */
 export const useUiStore = defineStore('ui', {
   state: () => ({
     sidebarCollapsed: localStorage.getItem('nomops.sidebarCollapsed') === '1',
-    sidebarWidth: storedWidth >= SIDEBAR_MIN && storedWidth <= SIDEBAR_MAX ? storedWidth : 244,
+    sidebarWidth: storedWidth >= SIDEBAR_MIN && storedWidth <= SIDEBAR_MAX ? storedWidth : 200,
     paletteOpen: false,
     /** 当前视图注入的上下文命令（离开视图时清空）。 */
     paletteContext: [] as PaletteCommand[],
