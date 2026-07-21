@@ -383,11 +383,15 @@ async function openAbout() {
 .sidebar.collapsed .lbl { display: none; }
 .sidebar.collapsed .nav-item { justify-content: center; padding: 0; height: 32px; }
 /* 折叠态:logo 在上,+/搜索/折叠 三键竖排在下(对标基线折叠列) */
-.sidebar.collapsed .brand-row { flex-direction: column; justify-content: center; gap: 4px; }
+/* 基线折叠态 rail 无 logo:只有 +/搜索/折叠 三工具竖排(logo 仅展开态显示) */
+.sidebar.collapsed .brand { display: none; }
+/* height:auto 必须显式:全局 .sidebar .brand-row 钉了 44px(展开态基线值),折叠态三钮竖排需 ~104px */
+.sidebar.collapsed .brand-row { flex-direction: column; justify-content: center; gap: 4px; padding: 6px 0 10px; height: auto; }
 .sidebar.collapsed .brand-tools { flex-direction: column; margin-left: 0; gap: 2px; }
 .sidebar.collapsed .flyout.quick { left: calc(100% + 4px); top: 0; }
 
-.brand-row { display: flex; align-items: center; gap: 6px; padding: 6px 6px 14px; }
+/* flex-shrink:0:侧栏是 column flex,不锁死会在折叠态被压缩,工具钮溢出屏幕/与 nav 重叠 */
+.brand-row { display: flex; align-items: center; gap: 6px; padding: 6px 6px 14px; flex-shrink: 0; }
 .brand { display: flex; align-items: center; gap: 5px; text-decoration: none; min-width: 0; flex: 1; }
 .brand-word { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .brand-mark { width: 38px; height: 22px; flex-shrink: 0; }

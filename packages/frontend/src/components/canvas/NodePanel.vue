@@ -227,7 +227,8 @@ watch(
 /* 分类/触发器卡(root 层) */
 .cat-item {
   display: flex; align-items: center; gap: var(--spacing--xs); width: calc(100% - 28px); text-align: left;
-  margin: 0 12px 0 16px; padding: 12px; border: none; background: none; border-radius: var(--radius); cursor: pointer;
+  margin: 0 12px 0 16px; padding: 12px; height: auto;
+  border: none; background: none; border-radius: var(--radius); cursor: pointer;
 }
 .cat-item:hover { background: var(--color--background--light-1); }
 .cat-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
@@ -239,6 +240,8 @@ watch(
 .node-item {
   display: flex; align-items: center; gap: var(--spacing--xs); width: calc(100% - 28px); text-align: left;
   margin: 0 12px 0 16px; padding: 12px 8px 12px 0;
+  /* 全局 button 的 height:32px 会把两行内容(标题+描述)压扁叠行,必须放开 */
+  height: auto;
   border: none; background: none; border-radius: var(--radius); cursor: pointer;
 }
 .node-item:hover { background: var(--color--background--light-1); }
