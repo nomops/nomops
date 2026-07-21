@@ -2743,10 +2743,8 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
 
       <!-- Chat 设置（Preview，对标基线 Chat） -->
       <section v-else-if="section === 'chat'" data-test="settings-chat">
-        <div style="display: flex; align-items: center; gap: 10px">
-          <h1 class="page-title" style="margin-bottom: 0">Chat</h1>
-          <span class="nav-badge preview">Preview</span>
-        </div>
+        <!-- 基线 Chat 页标题处无 Preview 徽章(徽章只在侧栏) -->
+        <h1 class="page-title" style="margin-bottom: 26px">Chat</h1>
         <p v-if="chatError" class="error-text" style="margin-top: 14px" data-test="chat-error">{{ chatError }}</p>
         <template v-if="chatSettings">
           <!-- Enable Chat：无边框设置行 + 胶囊开关（对标基线） -->
@@ -3041,11 +3039,12 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
   word-break: break-all; user-select: all; color: var(--text-hi);
 }
 .api-table { width: 100%; border-collapse: collapse; }
+/* 基线实测:表头 12px/600、无大写变换、高 36;行高 48 */
 .api-table th {
-  text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.4px;
-  color: var(--text-dim); font-weight: 500; padding: 10px 14px; border-bottom: 1px solid var(--border);
+  text-align: left; font-size: 12px;
+  color: var(--text-dim); font-weight: 600; padding: 12px 14px; border-bottom: 1px solid var(--border);
 }
-.api-table td { padding: 11px 14px; border-bottom: 1px solid var(--border); font-size: 13px; }
+.api-table td { padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 13px; }
 .api-table tr:last-child td { border-bottom: none; }
 .api-table .mono { font-family: 'SF Mono', ui-monospace, Menlo, monospace; }
 .btn-sm { padding: 4px 10px; font-size: 12px; }
@@ -3085,7 +3084,8 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
 .settings-nav-item.active .nav-ico { color: var(--color--text--shade-1); }
 .settings-version { margin-top: auto; padding: 12px 10px 4px; font-size: 12px; color: var(--accent); }
 
-.settings-content { flex: 1; overflow-y: auto; padding: 26px 40px 60px; }
+/* 基线实测 _contentContainer:padding-top 70px */
+.settings-content { flex: 1; overflow-y: auto; padding: 70px 40px 60px; }
 /* 基线实测：Settings 表单系统 = 输入 36px/圆角 6/bg light-2;主按钮 36px/圆角 6/衬 0 16 */
 .settings-content :deep(input[type='text']), .settings-content :deep(input[type='email']),
 .settings-content :deep(input[type='password']), .settings-content :deep(input:not([type])),
@@ -3101,8 +3101,10 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
 .settings-content :deep(button.primary) {
   height: 36px; border-radius: var(--radius--2xs); padding: 0 var(--spacing--sm);
 }
-.page-title { margin: 0 0 22px; font-size: 28px; font-weight: 400; letter-spacing: -0.3px; color: var(--text-hi); }
-.sec-title { margin: 26px 0 12px; font-size: 18px; font-weight: 400; color: var(--text-hi); }
+/* 基线实测:28px/400,标题→首区块 55px */
+.page-title { margin: 0 0 55px; font-size: 28px; font-weight: 400; letter-spacing: -0.3px; color: var(--text-hi); }
+/* 基线实测(Providers 等区块标题):16px/600 */
+.sec-title { margin: 26px 0 12px; font-size: 16px; font-weight: 600; color: var(--text-hi); }
 .sub { margin: -14px 0 18px; color: var(--text-dim); font-size: 13.5px; max-width: 620px; line-height: 1.6; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
 .field { min-width: 0; }
@@ -3404,7 +3406,8 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 }
 .setting-row:last-child { border-bottom: none; }
 .setting-text { flex: 1; min-width: 0; }
-.setting-text b { font-size: 14px; color: var(--text-hi); }
+/* 基线实测:设置行标题 14px/500(非粗体) */
+.setting-text b { font-size: 14px; font-weight: 500; color: var(--text-hi); }
 .setting-text p { margin: 4px 0 0; font-size: 13px; color: var(--text-dim); }
 .chip-upgrade {
   font-size: 11px; font-weight: 400; padding: 1px 8px; margin-left: 6px;

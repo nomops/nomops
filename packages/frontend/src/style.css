@@ -167,18 +167,19 @@ th { color: var(--text-dim); font-weight: 500; }
 }
 
 /* 基线式开关 */
-.switch { position: relative; width: 34px; height: 19px; flex-shrink: 0; cursor: pointer; }
+/* 基线实测:42×22,knob 16 */
+.switch { position: relative; width: 42px; height: 22px; flex-shrink: 0; cursor: pointer; }
 .switch input { display: none; }
 .switch .slider {
-  position: absolute; inset: 0; border-radius: 10px;
+  position: absolute; inset: 0; border-radius: 11px;
   background: var(--bg-input); border: 1px solid var(--border); transition: background 0.15s;
 }
 .switch .slider::before {
-  content: ''; position: absolute; width: 13px; height: 13px; border-radius: 50%;
+  content: ''; position: absolute; width: 16px; height: 16px; border-radius: 50%;
   background: var(--text-dim); top: 2px; left: 2px; transition: transform 0.15s, background 0.15s;
 }
 .switch input:checked + .slider { background: var(--ok); border-color: var(--ok); }
-.switch input:checked + .slider::before { transform: translateX(15px); background: #fff; }
+.switch input:checked + .slider::before { transform: translateX(20px); background: #fff; }
 
 .page { padding: 24px; max-width: 1000px; margin: 0 auto; width: 100%; overflow-y: auto; }
 
