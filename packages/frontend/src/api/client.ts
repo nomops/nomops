@@ -406,6 +406,8 @@ export const api = {
     /* useOriginal=true 用执行时的定义快照重跑，否则用当前保存的草稿 */
     retry: (id: string, useOriginal: boolean) =>
       http<RunSummary>('POST', `/api/executions/${id}/retry`, { useOriginal }),
+    /* 停止执行：running/waiting/排队 → canceled（已结束 409） */
+    stop: (id: string) => http<RunSummary>('POST', `/api/executions/${id}/stop`),
   },
 
   credentials: {

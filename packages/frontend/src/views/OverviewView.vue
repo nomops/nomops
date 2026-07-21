@@ -625,6 +625,31 @@ async function deleteSelectedExecs() {
   executions.value = executions.value.filter((e) => !ids.includes(e.id));
 }
 
+/* 停止（backlog #2）：new(排队/手动在跑)/running/waiting 可停 */
+const stoppingId = ref<string | null>(null);
+const stoppable = (s: string) => s === 'new' || s === 'running' || s === 'waiting';
+async function stopExec(row: ExecutionRow) {
+  closeMenus();
+  stoppingId.value = row.id;
+  try {
+    await api.executions.stop(row.id);
+    executions.value = (await api.executions.list()).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  } catch (e) {
+    error.value = (e as Error).message;
+  } finally {
+    stoppingId.value = null;
+  }
+}
+const selectedStoppableIds = computed(() =>
+  executions.value.filter((e) => selectedExecIds.value.has(e.id) && stoppable(e.status)).map((e) => e.id),
+);
+async function stopSelectedExecs() {
+  const ids = selectedStoppableIds.value;
+  await Promise.all(ids.map((id) => api.executions.stop(id).catch(() => {})));
+  selectedExecIds.value = new Set();
+  executions.value = (await api.executions.list()).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
 /* 行 ⋮：Retry ×2 / Delete */
 const retryingId = ref<string | null>(null);
 async function retryExec(row: ExecutionRow, useOriginal: boolean) {
@@ -1194,6 +1219,12 @@ const fmtRunTime = (row: ExecutionRow): string => {
                     <svg viewBox="0 0 24 24" fill="currentColor" class="i18"><circle cx="12" cy="5" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="12" cy="19" r="1.7" /></svg>
                   </button>
                   <div v-if="openMenu === `exec-${row.id}`" class="menu row-menu-pop exec-menu-pop" :data-test-exec-menu-pop="row.id">
+                    <template v-if="stoppable(row.status)">
+                      <button class="menu-item" :disabled="stoppingId === row.id" :data-test-exec-stop="row.id" @click="stopExec(row)">
+                        {{ stoppingId === row.id ? t('Stopping…') : t('Stop') }}
+                      </button>
+                      <div class="menu-sep" />
+                    </template>
                     <!-- 基线真值(错误行 ⋮ 实测):两个 Retry 项带 “(from node with error)” 后缀,仅错误执行可重试 -->
                     <template v-if="row.status === 'error'">
                       <button class="menu-item" :disabled="retryingId === row.id" @click="retryExec(row, false)">
@@ -1216,6 +1247,9 @@ const fmtRunTime = (row: ExecutionRow): string => {
       <!-- 多选浮条（对标基线） -->
       <div v-if="selectedExecIds.size > 0" class="exec-bulkbar" data-test="exec-bulkbar">
         <span>{{ t(selectedExecIds.size === 1 ? '{n} row selected' : '{n} rows selected', { n: selectedExecIds.size }) }}</span>
+        <button v-if="selectedStoppableIds.length" class="btn neutral" data-test="exec-bulk-stop" @click="stopSelectedExecs">
+          {{ t('Stop') }}
+        </button>
         <button class="btn danger-solid" data-test="exec-bulk-delete" @click="deleteSelectedExecs">{{ t('Delete') }}</button>
         <button class="btn neutral" data-test="exec-bulk-clear" @click="selectedExecIds = new Set()">{{ t('Clear selection') }}</button>
       </div>

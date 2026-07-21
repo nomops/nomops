@@ -19,6 +19,8 @@ export type NodeRunStatus = 'running' | 'success' | 'error';
 export const useExecutionStore = defineStore('execution', {
   state: () => ({
     running: false,
+    /** 在跑执行的 id（executionStarted 事件携带）；画布 Stop 用它调 stop API。 */
+    currentExecutionId: null as string | null,
     statusByNode: {} as Record<string, NodeRunStatus>,
     lastExecutionId: null as string | null,
     lastRunData: null as IRunExecutionData | null,
@@ -44,6 +46,7 @@ export const useExecutionStore = defineStore('execution', {
         case 'executionStarted':
           this.statusByNode = {};
           this.running = true;
+          this.currentExecutionId = event.executionId;
           break;
         case 'nodeExecuteBefore':
           if (event.nodeName) this.statusByNode[event.nodeName] = 'running';
@@ -55,6 +58,7 @@ export const useExecutionStore = defineStore('execution', {
           break;
         case 'executionFinished':
           this.running = false;
+          this.currentExecutionId = null;
           this.lastExecutionId = event.executionId;
           void this.fetchRunData(event.executionId);
           break;
@@ -81,11 +85,19 @@ export const useExecutionStore = defineStore('execution', {
       }
     },
 
+    /** 停止在跑执行（画布 Stop execution）；收尾状态由 executionFinished 事件回推。 */
+    async stop() {
+      const id = this.currentExecutionId;
+      if (!id) return;
+      await api.executions.stop(id).catch(() => undefined);
+    },
+
     reset() {
       this.statusByNode = {};
       this.lastRunData = null;
       this.runError = null;
       this.running = false;
+      this.currentExecutionId = null;
     },
   },
 });

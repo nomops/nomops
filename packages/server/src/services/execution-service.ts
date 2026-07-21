@@ -64,6 +64,9 @@ export class ExecutionService {
     private readonly concurrency: ConcurrencyGate = new ConcurrencyGate(UNLIMITED),
   ) {}
 
+  /** 本进程在跑的引擎实例（executionId → engine）；stop 经此直达 cancel。 */
+  private readonly running = new Map<string, WorkflowExecute>();
+
   /** 当前并发占用（/metrics 与运维排查用）。 */
   concurrencyStats(): { active: number; waiting: number; enabled: boolean } {
     return {
@@ -323,6 +326,10 @@ export class ExecutionService {
 
     const stored = await this.repos.executions.getRecord(executionId);
     if (!stored) throw new OperationalError('Execution record not found', { executionId });
+    // 已被停止（stop 的跨进程信号）：拒跑，保持 canceled——覆盖「队列里排队时被停」
+    if (stored.status === 'canceled') {
+      return { status: 'canceled', data: data as unknown as IRunExecutionData, startedAt: Date.now() };
+    }
     const projectId = await this.repos.workflows.getOwnerProjectId(stored.workflowId);
     if (!projectId) throw new OperationalError('Workflow has no owning project', { workflowId: stored.workflowId });
     const workflowData = await this.repos.executions.getWorkflowData(executionId);
@@ -345,7 +352,24 @@ export class ExecutionService {
       execution,
       projectId,
       stored.mode,
-      (engine) => engine.processRunExecutionData(workflow, state),
+      async (engine) => {
+        // 跨进程停止看门狗：stop 把状态置 canceled → 这里发现即中断引擎（worker 场景；
+        // 单进程 stop 走 running 注册表直达，不依赖轮询）
+        const watchdog = setInterval(() => {
+          void this.repos.executions
+            .getRecord(executionId)
+            .then((r) => {
+              if (!r || r.status === 'canceled') engine.cancel();
+            })
+            .catch(() => undefined);
+        }, 1000);
+        watchdog.unref?.();
+        try {
+          return await engine.processRunExecutionData(workflow, state);
+        } finally {
+          clearInterval(watchdog);
+        }
+      },
       (freshRow?.staticData as JsonObject | null) ?? {},
     );
     // 生产执行的保存策略跟随已发布定义的 settings（与运行的版本一致）
@@ -551,6 +575,7 @@ export class ExecutionService {
     });
 
     let run: IRun;
+    this.running.set(execution.id, engine); // stop API 经注册表直达 cancel
     try {
       run = await runFn(engine);
     } catch (error) {
@@ -565,6 +590,8 @@ export class ExecutionService {
       this.emitFinished(execution, 'error', projectId);
       this.fireErrorWorkflow(execution, mode, { message: (error as Error).message }, undefined, projectId);
       throw error;
+    } finally {
+      this.running.delete(execution.id);
     }
 
     if (run.status === 'waiting') {
@@ -635,6 +662,41 @@ export class ExecutionService {
     }
     const run = await this.executeStored(executionId);
     return this.toSummary(executionId, run);
+  }
+
+  /**
+   * 停止执行（对标基线 executions Stop）：
+   * - 本进程在跑 → 引擎 cancel()（节点边界收束为 canceled，收尾落库/WS 走 runEngine 正常路径）；
+   * - waiting / 队列排队 / 其他进程在跑 → 状态直接置 canceled：
+   *   wait-tracker 不再唤醒（只扫 waiting）、executeStored 前置守卫拒跑、worker 看门狗中断在跑的。
+   * 已结束（success/error/canceled）→ 409。
+   */
+  async stop(executionId: string, projectId: string): Promise<IRunSummary> {
+    const record = await this.repos.executions.findById(executionId, projectId);
+    if (!record) throw new OperationalError('Execution record not found', { executionId, status: 404 });
+    if (record.status === 'success' || record.status === 'error' || record.status === 'canceled') {
+      throw new OperationalError(`Execution already finished (status: ${record.status})`, {
+        executionId,
+        status: 409,
+      });
+    }
+
+    const engine = this.running.get(executionId);
+    if (engine) {
+      engine.cancel();
+      return { executionId, status: 'canceled' };
+    }
+
+    await this.repos.executions.updateStatus(executionId, 'canceled', new Date());
+    this.pushHub.broadcast({
+      type: 'executionFinished',
+      executionId,
+      workflowId: record.workflowId,
+      status: 'canceled',
+      timestamp: Date.now(),
+    });
+    this.emitFinished({ id: executionId, workflowId: record.workflowId }, 'canceled', projectId);
+    return { executionId, status: 'canceled' };
   }
 
   /** 广播执行结束事件到旁路观察者（日志流），失败不影响主流程。 */

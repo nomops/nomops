@@ -13,7 +13,7 @@
   → 改写目标元素 + 启动引导读偏好 + 移除 index.html 硬编码 dark 或与偏好合并。
   证据：`SettingsView.vue:449-451`、`main.ts`、`index.html:9`。
 
-- [ ] **2. 执行取消/停止** `M`
+- [x] **2. 执行取消/停止** `M` ✅ 2026-07-21（stop API + 注册表 cancel + worker 看门狗 + 画布双态按钮/详情头/行菜单/批量停止;4 server 测;live API+UI 双验证）
   引擎 `WorkflowExecute.cancel()` 已有，但无任何 API 端点能停掉运行中的执行。
   → 后端 stop 端点（含 queue mode 下的 worker 侧中断）+ 前端执行列表/详情停止按钮 + 批量停止条（ui-audit 遗留项）。
 

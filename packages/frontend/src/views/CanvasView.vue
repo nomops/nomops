@@ -524,7 +524,7 @@ watch(triggerNodes, (list) => {
 const execMenuOpen = ref(false);
 
 async function saveAndRun() {
-  if (!editor.id) return;
+  if (!editor.id || execution.running) return; // 在跑时 ⌘↵ 不重入（按钮此时是 Stop 态）
   execMenuOpen.value = false;
   await editor.save();
   // 单触发器/无触发器：引擎自选起点；多触发器：从选中的 trigger 起跑
@@ -684,6 +684,25 @@ const execDataOpen = ref(false);
    基线是把执行时快照拷进编辑器;nomops 执行 API 无快照,退化为切到编辑器。 */
 function copyExecToEditor() {
   canvasTab.value = 'editor';
+}
+
+/* 停止选中执行（详情头 Stop）：new/running/waiting 可停，停后刷新列表与详情 */
+const execStoppable = computed(() => {
+  const s = execDetail.value?.execution.status;
+  return s === 'new' || s === 'running' || s === 'waiting';
+});
+const execStopping = ref(false);
+async function stopExecDetail() {
+  const id = selectedExecId.value;
+  if (!id || execStopping.value) return;
+  execStopping.value = true;
+  try {
+    await api.executions.stop(id).catch(() => undefined);
+    await loadExecList();
+    await selectExec(id);
+  } finally {
+    execStopping.value = false;
+  }
 }
 
 /* 删除该执行(垃圾桶):移除后刷新列表并清空详情 */
@@ -928,6 +947,16 @@ async function loadSavePolicy() {
             <span v-if="execDataSize" class="dim exec-meta" data-test="exec-detail-size">· {{ execDataSize }}</span>
             <span class="dim exec-meta" data-test="exec-detail-id">· ID {{ execDetail.execution.id.slice(0, 8) }}</span>
             <span class="spacer" style="flex: 1" />
+            <button
+              v-if="execStoppable"
+              class="exec-copy-btn"
+              data-test="exec-detail-stop"
+              :disabled="execStopping"
+              title="Stop this execution"
+              @click="stopExecDetail"
+            >
+              ■ {{ execStopping ? 'Stopping…' : 'Stop' }}
+            </button>
             <button class="exec-copy-btn" data-test="exec-copy-editor" title="Copy this execution's workflow to the editor" @click="copyExecToEditor">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg>
               Copy to editor
@@ -996,14 +1025,15 @@ async function loadSavePolicy() {
 
         <!-- 底部居中：执行工作流（主运行入口；多触发器时 split 选择起点 trigger，对标基线） -->
         <div v-if="!isEmpty" class="execute-split" @click.stop>
+          <!-- 双态：在跑时变 Stop execution（stop API → 引擎节点边界收束 canceled） -->
           <button
             class="execute-workflow"
-            :class="{ 'has-caret': triggerNodes.length > 1 }"
+            :class="{ 'has-caret': triggerNodes.length > 1 && !execution.running, 'is-stop': execution.running }"
             data-test="run"
-            :disabled="execution.running || !editor.id"
-            @click="saveAndRun"
+            :disabled="!editor.id || (execution.running && !execution.currentExecutionId)"
+            @click="execution.running ? execution.stop() : saveAndRun()"
           >
-            <span v-if="execution.running">⏳ Executing workflow</span>
+            <span v-if="execution.running">■ Stop execution</span>
             <span v-else-if="triggerNodes.length > 1">▶ Execute workflow from {{ selectedTrigger }}</span>
             <span v-else>▶ Execute workflow</span>
           </button>
@@ -1630,6 +1660,12 @@ async function loadSavePolicy() {
   box-shadow: inset 0 0 0 1px var(--button--border-color--primary), 0 1px 3px -1px var(--color--black-alpha-100);
 }
 .execute-workflow:hover { background: var(--button--color--background--primary--hover-active-focus); }
+/* 在跑 Stop 态：红实底（区分于橙色运行态） */
+.execute-workflow.is-stop {
+  background: var(--color--danger);
+  box-shadow: inset 0 0 0 1px var(--color--danger), 0 1px 3px -1px var(--color--black-alpha-100);
+}
+.execute-workflow.is-stop:hover { background: var(--color--danger); opacity: 0.9; }
 .run-error-toast {
   position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%); z-index: 8;
   color: var(--err); font-size: 12px; background: var(--bg-panel);

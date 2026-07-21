@@ -646,6 +646,17 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
+  // 停止执行（running/waiting/排队 → canceled；已结束 409）
+  router.post(
+    '/executions/:id/stop',
+    editor,
+    h(async (req, res) => {
+      const summary = await services.executions.stop(param(req, 'id'), auth(req).projectId);
+      recordAudit(services, req, 'execution.stop', { type: 'execution', id: param(req, 'id') });
+      res.json(summary);
+    }),
+  );
+
   // 唤醒 waiting 执行（Wait 节点的外部信号模式；到点唤醒由 wait-tracker 负责）
   router.post(
     '/executions/:id/resume',
