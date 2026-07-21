@@ -251,6 +251,8 @@ export interface SourceControlConfig {
   branch: string;
   connectionType: 'ssh' | 'https';
   sshPublicKey: string; // SSH 模式的部署公钥;https 为空
+  protected: boolean; // 受保护(生产)实例：工作流只读
+  color: string; // 环境色标
 }
 export interface SourceControlStatus extends SourceControlConfig {
   files: Array<{ path: string; status: string }>;
@@ -512,6 +514,8 @@ export const api = {
     refreshKey: () => http<{ publicKey: string }>('POST', '/api/source-control/key/refresh'),
     branches: () => http<{ branches: string[]; current: string }>('GET', '/api/source-control/branches'),
     switchBranch: (branch: string) => http<SourceControlConfig>('POST', '/api/source-control/branch', { branch }),
+    saveSettings: (input: { branch?: string; protected?: boolean; color?: string }) =>
+      http<SourceControlConfig>('PATCH', '/api/source-control/settings', input),
   },
 
   insights: (from_?: string, to?: string) =>

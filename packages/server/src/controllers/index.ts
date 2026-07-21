@@ -286,6 +286,16 @@ export function createApiRouter(services: AppServices): Router {
   const rbacFeature = requireFeature(services.license, 'rbac');
   const auditFeature = requireFeature(services.license, 'auditLogs');
 
+  /** 受保护(生产)实例：源码同步开了 Protected 时，工作流只读——拦编辑操作（对标基线）。 */
+  const assertEditable = async (): Promise<void> => {
+    if (await services.git.isProtected()) {
+      throw new OperationalError(
+        'This instance is protected (production environment). Workflow editing is disabled — pull changes from Git instead.',
+        { status: 403 },
+      );
+    }
+  };
+
   /** 绑定 services 的项目 owner 检查（实现在 route-helpers，与企业路由共用）。 */
   const assertOwnerOf = (req: Request, projectId: string) =>
     assertOwnerOfProject(services, req, projectId);
@@ -352,6 +362,7 @@ export function createApiRouter(services: AppServices): Router {
     '/workflows',
     editor,
     h(async (req, res) => {
+      await assertEditable();
       const body = parseBody(workflowBodySchema, req);
       const created = await services.workflows.create(body, auth(req).projectId, auth(req).userId);
       recordAudit(services, req, 'workflow.create', { type: 'workflow', id: created.id }, { name: created.name });
@@ -373,6 +384,7 @@ export function createApiRouter(services: AppServices): Router {
     '/workflows/:id/publish',
     editor,
     h(async (req, res) => {
+      await assertEditable();
       const row = await services.workflows.publish(param(req, 'id'), auth(req).projectId, auth(req).userId);
       // 激活中的工作流重发布 → 重注册触发器（webhook 路径/轮询间隔可能变了）
       if (row.active) await services.activeWorkflows.add(row);
@@ -385,6 +397,7 @@ export function createApiRouter(services: AppServices): Router {
     '/workflows/:id',
     editor,
     h(async (req, res) => {
+      await assertEditable();
       const body = parseBody(workflowPatchSchema, req);
       const updated = await services.workflows.update(param(req, 'id'), body, auth(req).projectId, auth(req).userId);
       recordAudit(services, req, 'workflow.update', { type: 'workflow', id: updated.id }, { name: updated.name });
@@ -396,6 +409,7 @@ export function createApiRouter(services: AppServices): Router {
     '/workflows/:id',
     editor,
     h(async (req, res) => {
+      await assertEditable();
       await services.workflows.delete(param(req, 'id'), auth(req).projectId);
       recordAudit(services, req, 'workflow.delete', { type: 'workflow', id: param(req, 'id') });
       res.status(204).end();

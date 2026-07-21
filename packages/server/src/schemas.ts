@@ -113,6 +113,13 @@ export const sourceControlBranchSchema = z.object({
   branch: z.string().min(1).max(200),
 });
 
+/** Instance settings：分支 + 受保护(只读) + 环境色标。 */
+export const sourceControlSettingsSchema = z.object({
+  branch: z.string().min(1).max(200).optional(),
+  protected: z.boolean().optional(),
+  color: z.string().max(20).optional(),
+});
+
 /** 激活许可证（实例 admin）。 */
 export const licenseActivateSchema = z.object({
   activationKey: z.string().min(1, 'Activation key is required').max(5000),

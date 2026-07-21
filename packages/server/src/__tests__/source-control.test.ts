@@ -184,6 +184,35 @@ describe('SSH 部署密钥', () => {
   });
 });
 
+describe('Instance settings：Protected + Color', () => {
+  it('Save protected=true → 工作流编辑被拦(403)；断开后恢复', async () => {
+    await request(appA).put('/api/source-control').set(bearer(ownerA)).send({ repoUrl: bareRepo, branch: 'main' }).expect(200);
+    const saved = await request(appA)
+      .patch('/api/source-control/settings')
+      .set(bearer(ownerA))
+      .send({ protected: true, color: '#FF0000' })
+      .expect(200);
+    expect(saved.body.protected).toBe(true);
+    expect(saved.body.color).toBe('#FF0000');
+
+    // 受保护 → 建/删工作流 403
+    await request(appA).post('/api/workflows').set(bearer(ownerA)).send(emptyWf('blocked')).expect(403);
+
+    // 关掉 protected → 恢复可编辑
+    await request(appA).patch('/api/source-control/settings').set(bearer(ownerA)).send({ protected: false }).expect(200);
+    const wf = await request(appA).post('/api/workflows').set(bearer(ownerA)).send(emptyWf('editable-again')).expect(201);
+    await request(appA).delete(`/api/workflows/${wf.body.id}`).set(bearer(ownerA)).expect(204);
+
+    // 断开 → protected 归零
+    await request(appA).delete('/api/source-control').set(bearer(ownerA)).expect(204);
+    const cfg = await request(appA).get('/api/source-control').set(bearer(ownerA)).expect(200);
+    expect(cfg.body.protected).toBe(false);
+    // 断开后也可编辑
+    const wf2 = await request(appA).post('/api/workflows').set(bearer(ownerA)).send(emptyWf('after-disconnect')).expect(201);
+    await request(appA).delete(`/api/workflows/${wf2.body.id}`).set(bearer(ownerA)).expect(204);
+  });
+});
+
 describe('同步范围：变量 + 标签', () => {
   it('A 建变量+标签 push → B pull 导入', async () => {
     await request(appA).put('/api/source-control').set(bearer(ownerA)).send({ repoUrl: bareRepo, branch: 'main' }).expect(200);

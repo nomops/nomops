@@ -15,6 +15,7 @@ import {
   sourceControlBranchSchema,
   sourceControlConnectSchema,
   sourceControlPushSchema,
+  sourceControlSettingsSchema,
   ssoConfigSchema,
 } from '../schemas.js';
 import { requireFeature } from './license/license-service.js';
@@ -205,6 +206,19 @@ export function registerEeRoutes(router: Router, services: AppServices): void {
       const { branch } = parseBody(sourceControlBranchSchema, req);
       const config = await services.git.switchBranch(branch);
       recordAudit(services, req, 'source-control.branch', undefined, { branch: config.branch });
+      res.json(config);
+    }),
+  );
+
+  // Instance settings：分支 + 受保护(只读) + 环境色标（对标基线 Save settings）
+  router.patch(
+    '/source-control/settings',
+    sourceControlFeature,
+    h(async (req, res) => {
+      await assertInstanceAdmin(services, req);
+      const body = parseBody(sourceControlSettingsSchema, req);
+      const config = await services.git.saveSettings(body);
+      recordAudit(services, req, 'source-control.settings', undefined, { protected: config.protected });
       res.json(config);
     }),
   );

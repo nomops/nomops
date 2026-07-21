@@ -1156,6 +1156,9 @@ const scPushModal = ref(false);
 const scPushSelected = ref<Set<string>>(new Set());
 const scPullModal = ref(false);
 const scPullPreview = ref<Array<{ id: string; name: string; kind: 'new' | 'existing' }> | null>(null);
+const scProtected = ref(false);
+const scColor = ref('#5296D6');
+const scSaved = ref(false);
 
 async function loadSourceControl() {
   scError.value = '';
@@ -1167,6 +1170,8 @@ async function loadSourceControl() {
       scBranch.value = scConfig.value.branch;
       scConnType.value = scConfig.value.connectionType;
       scPublicKey.value = scConfig.value.sshPublicKey;
+      scProtected.value = scConfig.value.protected;
+      scColor.value = scConfig.value.color || '#5296D6';
       await Promise.all([refreshScStatus(), loadScBranches()]);
     } else if (scConnType.value === 'ssh') {
       await loadScKey(); // 未连接 + SSH → 预取部署公钥供粘贴
@@ -1208,6 +1213,25 @@ async function loadScBranches() {
     scBranches.value = (await api.sourceControl.branches()).branches;
   } catch {
     scBranches.value = scConfig.value ? [scConfig.value.branch] : [];
+  }
+}
+/** Instance settings 保存：分支 + 受保护 + 色标（对标基线 Save settings + toast）。 */
+async function scSaveSettings() {
+  scBusy.value = 'save';
+  scError.value = '';
+  try {
+    scConfig.value = await api.sourceControl.saveSettings({
+      branch: scBranch.value,
+      protected: scProtected.value,
+      color: scColor.value,
+    });
+    scBranch.value = scConfig.value.branch;
+    scSaved.value = true;
+    setTimeout(() => (scSaved.value = false), 2500);
+  } catch (e) {
+    scError.value = (e as Error).message;
+  } finally {
+    scBusy.value = '';
   }
 }
 async function scSwitchBranch(branch: string) {
@@ -2523,9 +2547,15 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
               {{ scBusy === 'connect' ? 'Connecting…' : 'Connect' }}
             </button>
           </div>
+
+          <!-- Connect 加载遮罩（对标基线的居中 Connecting 动画） -->
+          <div v-if="scBusy === 'connect'" class="sc-connecting" data-test="sc-connecting">
+            <span class="sc-spinner" />
+            <span>Connecting</span>
+          </div>
         </div>
 
-        <!-- 已连接：状态 + push/pull -->
+        <!-- 已连接：仓库信息 + Instance settings + push/pull -->
         <div v-else-if="scUnlocked && scConfig && scConfig.connected" class="set-cards">
           <div class="set-card">
             <div style="display: flex; align-items: center; gap: 12px; padding: 14px 0">
@@ -2534,21 +2564,42 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                 <div class="mono" style="font-size: 13px; margin-top: 3px; word-break: break-all">{{ scConfig.repoUrl }}</div>
               </div>
               <span style="flex: 1" />
-              <div style="display: flex; align-items: center; gap: 6px">
-                <label class="dim" style="font-size: 12px">Branch</label>
-                <select
-                  :value="scConfig.branch"
-                  data-test="sc-branch-select"
-                  style="min-width: 120px"
-                  :disabled="scBusy === 'branch'"
-                  @change="scSwitchBranch(($event.target as HTMLSelectElement).value)"
-                >
-                  <option v-for="b in scBranches" :key="b" :value="b">{{ b }}</option>
-                </select>
-              </div>
               <button class="btn secondary btn-sm" data-test="sc-disconnect" :disabled="scBusy === 'disconnect'" @click="scDisconnect">
-                Disconnect
+                🗑 Disconnect Git
               </button>
+            </div>
+          </div>
+
+          <!-- Instance settings（对标基线）：Branch + Protected + Color + Save settings -->
+          <div class="set-card" data-test="sc-instance-settings">
+            <h3 class="ps-title" style="margin: 4px 0 14px">Instance settings</h3>
+            <div class="set-item">
+              <div class="set-item-label"><label>Branch connected to this instance</label><small>Which branch this instance pushes to / pulls from</small></div>
+              <div class="set-item-control">
+                <div style="display: flex; gap: 6px; align-items: center; width: 100%">
+                  <select v-model="scBranch" data-test="sc-branch-select" style="flex: 1; min-width: 0">
+                    <option v-for="b in scBranches" :key="b" :value="b">{{ b }}</option>
+                  </select>
+                  <button class="btn secondary btn-sm" data-test="sc-branch-refresh" title="Refresh branches" style="flex: none" @click="loadScBranches">⟳</button>
+                </div>
+              </div>
+            </div>
+            <label class="sc-check" data-test="sc-protected-label" style="display: flex; align-items: flex-start; gap: 8px; width: 100%; padding: 12px 0; border-bottom: 1px solid var(--border)">
+              <input type="checkbox" v-model="scProtected" data-test="sc-protected" style="flex: none; width: 16px; height: 16px; margin: 2px 0 0" />
+              <span style="font-size: 13px; color: var(--text)"><b>Protected instance</b>: prevent editing workflows (recommended for production environments).</span>
+            </label>
+            <div class="set-item" style="margin-top: 4px">
+              <div class="set-item-label"><label>Color</label><small>Environment tag color</small></div>
+              <div class="set-item-control" style="display: flex; gap: 8px; align-items: center">
+                <input type="color" v-model="scColor" data-test="sc-color" style="width: 40px; height: 30px; padding: 0; border: none; background: none; cursor: pointer" />
+                <input v-model="scColor" data-test="sc-color-hex" style="width: 120px" />
+              </div>
+            </div>
+            <div class="set-buttons" style="margin-top: 14px; align-items: center">
+              <button class="btn primary" data-test="sc-save-settings" :disabled="scBusy === 'save'" @click="scSaveSettings">
+                {{ scBusy === 'save' ? 'Saving…' : 'Save settings' }}
+              </button>
+              <span v-if="scSaved" class="dim" data-test="sc-saved" style="font-size: 12.5px; color: var(--ok)">✓ Settings successfully saved</span>
             </div>
           </div>
 
@@ -3676,6 +3727,11 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 .sc-key { width: 100%; resize: vertical; font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 12px; line-height: 1.5; word-break: break-all; color: var(--text); background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; }
 .sc-key:focus { outline: none; border-color: var(--accent); }
 .sc-changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
+.sc-connecting { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 40px 0; color: var(--accent); font-size: 14px; }
+.sc-spinner { width: 34px; height: 34px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: sc-spin 0.8s linear infinite; }
+@keyframes sc-spin { to { transform: rotate(360deg); } }
+.sc-check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--text); margin: 12px 0; cursor: pointer; }
+.sc-check input { margin-top: 2px; }
 .sc-push-list { max-height: 260px; border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; }
 .sc-push-list li { padding: 3px 0; }
 .sc-select-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }

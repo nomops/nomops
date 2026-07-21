@@ -18,6 +18,8 @@ const KEY_CONNECTED = 'sourceControl.connected';
 const KEY_CONN_TYPE = 'sourceControl.connectionType'; // 'ssh' | 'https'
 const KEY_SSH_PUBLIC = 'sourceControl.sshPublicKey';
 const KEY_SSH_PRIVATE_ENC = 'sourceControl.sshPrivateKeyEnc'; // 加密存(铁律 5)
+const KEY_PROTECTED = 'sourceControl.protected'; // 生产环境：禁止本地编辑工作流
+const KEY_COLOR = 'sourceControl.color'; // 环境色标
 const WORKFLOWS_SUBDIR = 'workflows';
 const VARIABLES_FILE = 'variables.json';
 const TAGS_FILE = 'tags.json';
@@ -35,6 +37,8 @@ export interface SourceControlConfig {
   branch: string;
   connectionType: ConnectionType;
   sshPublicKey: string; // SSH 模式下的部署公钥(粘进 GitHub);https 模式为空
+  protected: boolean; // 受保护(生产)实例：工作流只读
+  color: string; // 环境色标(如 #5296D6)
 }
 
 interface WorkflowFile {
@@ -132,12 +136,14 @@ export class GitService {
   }
 
   async getConfig(): Promise<SourceControlConfig> {
-    const [repoUrl, branch, connected, connType, sshPublicKey] = await Promise.all([
+    const [repoUrl, branch, connected, connType, sshPublicKey, protectedVal, color] = await Promise.all([
       this.repos.settings.get(KEY_URL),
       this.repos.settings.get(KEY_BRANCH),
       this.repos.settings.get(KEY_CONNECTED),
       this.connectionType(),
       this.repos.settings.get(KEY_SSH_PUBLIC),
+      this.repos.settings.get(KEY_PROTECTED),
+      this.repos.settings.get(KEY_COLOR),
     ]);
     return {
       connected: connected === 'true',
@@ -145,7 +151,29 @@ export class GitService {
       branch: branch || 'main',
       connectionType: connType,
       sshPublicKey: connType === 'ssh' ? (sshPublicKey ?? '') : '',
+      protected: protectedVal === 'true',
+      color: color ?? '',
     };
+  }
+
+  /** 受保护(生产)实例：连接中且开了 protected → 工作流只读（对标基线 Protected instance）。 */
+  async isProtected(): Promise<boolean> {
+    const [connected, prot] = await Promise.all([
+      this.repos.settings.get(KEY_CONNECTED),
+      this.repos.settings.get(KEY_PROTECTED),
+    ]);
+    return connected === 'true' && prot === 'true';
+  }
+
+  /** 保存 Instance settings：切分支(如变) + 存 protected + color。 */
+  async saveSettings(input: { branch?: string; protected?: boolean; color?: string }): Promise<SourceControlConfig> {
+    await this.assertConnected();
+    if (typeof input.protected === 'boolean') await this.repos.settings.set(KEY_PROTECTED, String(input.protected));
+    if (typeof input.color === 'string') await this.repos.settings.set(KEY_COLOR, input.color);
+    if (input.branch && input.branch.trim() && input.branch.trim() !== (await this.branch())) {
+      await this.switchBranch(input.branch.trim());
+    }
+    return this.getConfig();
   }
 
   private async rawRepoUrl(): Promise<string> {
@@ -187,6 +215,8 @@ export class GitService {
   async disconnect(): Promise<void> {
     await this.repos.settings.set(KEY_CONNECTED, 'false');
     await this.repos.settings.set(KEY_URL, '');
+    await this.repos.settings.set(KEY_PROTECTED, 'false'); // 断开即解除只读
+    await this.repos.settings.set(KEY_COLOR, '');
     await rm(this.workDir, { recursive: true, force: true });
   }
 
