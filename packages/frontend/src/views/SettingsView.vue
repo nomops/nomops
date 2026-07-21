@@ -654,6 +654,11 @@ onMounted(loadChatProviders);
 
 /* Configure provider 弹窗（对标基线：Enable {Provider} / Default credential / Context window） */
 const providerMenuFor = ref<string | null>(null);
+/** 品牌 monogram(色表来自 CHAT_PROVIDERS 静态镜像;未知家用首字母灰芯片)。 */
+function provMark(label: string): { mark: string; color: string } {
+  const hit = CHAT_PROVIDERS.find((c) => c.name.toLowerCase().startsWith(label.toLowerCase().slice(0, 4)));
+  return hit ?? { mark: label.slice(0, 1).toUpperCase(), color: '#5a5a5a' };
+}
 const providerModalOpen = ref(false);
 const providerModal = ref<ProviderRow | null>(null);
 const provEnabled = ref(true);
@@ -2394,7 +2399,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           <div class="set-card">
             <div style="display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; padding: 14px 0">
               <div style="flex: 1; min-width: 220px">
-                <label style="font-size: 12px; color: var(--dim)">Commit message</label>
+                <label style="font-size: 12px; color: var(--text-dim)">Commit message</label>
                 <input v-model="scMessage" data-test="sc-message" placeholder="Update workflows" style="width: 100%" @keyup.enter="scPush" />
               </div>
               <button class="btn primary" data-test="sc-push" :disabled="!!scBusy" @click="scPush">
@@ -2527,14 +2532,14 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
               </button>
               <div v-if="mcpShowDetails" class="mcp-pop" data-test="mcp-pop">
                 <!-- D143 对标基线：认证方式是 OAuth | Access token 分段控件，Server URL 两种模式都显示 -->
-                <div class="seg" data-test="mcp-conn-seg">
-                  <button class="seg-btn" :class="{ active: mcpConnMode === 'oauth' }" data-test="mcp-conn-oauth" @click="mcpConnMode = 'oauth'">OAuth</button>
-                  <button class="seg-btn" :class="{ active: mcpConnMode === 'token' }" data-test="mcp-conn-token" @click="mcpConnMode = 'token'">Access token</button>
+                <div class="mcp-seg" data-test="mcp-conn-seg">
+                  <button class="mcp-seg-btn" :class="{ active: mcpConnMode === 'oauth' }" data-test="mcp-conn-oauth" @click="mcpConnMode = 'oauth'">OAuth</button>
+                  <button class="mcp-seg-btn" :class="{ active: mcpConnMode === 'token' }" data-test="mcp-conn-token" @click="mcpConnMode = 'token'">Access token</button>
                 </div>
-                <label style="font-size: 12px; color: var(--dim); display: block; margin-top: 12px">Server URL</label>
+                <label style="font-size: 12px; color: var(--text-dim); display: block; margin-top: 12px">Server URL</label>
                 <code class="api-token" style="margin-top: 4px">{{ mcpServerUrl }}</code>
                 <template v-if="mcpConnMode === 'token'">
-                  <label style="font-size: 12px; color: var(--dim); display: block; margin-top: 12px">Access token</label>
+                  <label style="font-size: 12px; color: var(--text-dim); display: block; margin-top: 12px">Access token</label>
                   <code v-if="mcpToken" class="api-token" data-test="mcp-token" style="margin-top: 4px">{{ mcpToken }}</code>
                   <p v-else class="dim" style="font-size: 12px; margin: 4px 0 0">
                     Shown once when MCP access is enabled. Toggle off and on again to rotate the token.
@@ -2637,10 +2642,11 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                 <!-- D150 live 实测基线列名：Client Name / Connected At（+ 末列留空） -->
                 <thead><tr><th>Client Name</th><th>Connected At</th><th></th></tr></thead>
                 <tbody>
+                  <!-- 行与表头对齐:Client Name / Connected At(lastSeen)/ 空操作列 -->
                   <tr v-for="c in mcpStatus.clients" :key="c.name + c.version" data-test="mcp-client-row">
-                    <td>{{ c.name }}</td>
-                    <td class="dim">{{ c.version || '—' }}</td>
+                    <td>{{ c.name }}<span v-if="c.version" class="dim" style="margin-left: 6px; font-size: 12px">v{{ c.version }}</span></td>
                     <td class="dim">{{ new Date(c.lastSeen).toLocaleString() }}</td>
+                    <td></td>
                   </tr>
                   <tr v-if="!mcpStatus.clients.length">
                     <td colspan="3">
@@ -2738,20 +2744,35 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="i15"><path d="M21 12a9 9 0 1 1-2.6-6.3M21 4v5h-5" /></svg>
             </button>
           </div>
-          <!-- Provider 表:1:1 镜像基线 15 家(品牌色 monogram 芯片代替第三方 logo) -->
+          <!-- Provider 表:配置驱动、可编辑(对标基线 ChatProvidersTable:每行 ⋮ → Edit provider)。
+               batch8 曾误改成静态 15 家镜像并删掉编辑入口 —— 基线 i18n 有 action.editProvider,表本就可编辑。 -->
           <div v-if="chatSettings.enabled" class="card" style="max-width: 1000px; padding: 0; margin-top: 10px">
             <table class="api-table">
-              <thead><tr><th>Provider</th><th>Models</th><th>Last edited</th></tr></thead>
+              <thead><tr><th>Provider</th><th>Models</th><th>Last edited</th><th style="width: 44px"></th></tr></thead>
               <tbody>
-                <tr v-for="p in CHAT_PROVIDERS" :key="p.name" :data-test="`chat-provider-${p.name}`">
+                <tr v-for="p in chatProviders" :key="p.id" :data-test="`chat-provider-${p.id}`">
                   <td>
                     <span style="display: inline-flex; align-items: center; gap: 10px">
-                      <span class="prov-mark" :style="{ background: p.color }">{{ p.mark }}</span>
-                      <b>{{ p.name }}</b>
+                      <span class="prov-mark" :style="{ background: provMark(p.label).color }">{{ provMark(p.label).mark }}</span>
+                      <b>{{ p.label }}</b>
                     </span>
                   </td>
-                  <td class="dim">All models</td>
-                  <td class="dim">-</td>
+                  <!-- 基线 modelsText:Disabled / All models / N models -->
+                  <td class="dim">{{ !p.enabled ? 'Disabled' : p.models.length ? `${p.models.length} models` : 'All models' }}</td>
+                  <td class="dim">{{ p.lastEditedAt ? new Date(p.lastEditedAt).toLocaleDateString() : '-' }}</td>
+                  <td style="text-align: right; position: relative" @click.stop>
+                    <button class="row-dots" :data-test="`chat-provider-menu-${p.id}`" @click="providerMenuFor = providerMenuFor === p.id ? null : p.id">
+                      <svg viewBox="0 0 24 24" fill="currentColor" class="i18"><circle cx="12" cy="5" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="12" cy="19" r="1.7" /></svg>
+                    </button>
+                    <div v-if="providerMenuFor === p.id" class="menu row-menu-pop">
+                      <button class="menu-item" :data-test="`chat-provider-edit-${p.id}`" @click="openProviderModal(p)">Edit provider</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="!chatProviders.length">
+                  <td colspan="4">
+                    <div class="table-empty"><h3>No chat providers configured</h3></div>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -2959,7 +2980,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
 .api-table { width: 100%; border-collapse: collapse; }
 .api-table th {
   text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.4px;
-  color: var(--dim); font-weight: 500; padding: 10px 14px; border-bottom: 1px solid var(--border);
+  color: var(--text-dim); font-weight: 500; padding: 10px 14px; border-bottom: 1px solid var(--border);
 }
 .api-table td { padding: 11px 14px; border-bottom: 1px solid var(--border); font-size: 13px; }
 .api-table tr:last-child td { border-bottom: none; }
@@ -2967,7 +2988,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
 .btn-sm { padding: 4px 10px; font-size: 12px; }
 
 /* ── 两步验证 ── */
-.mfa-badge { font-size: 12px; padding: 2px 10px; border-radius: 10px; border: 1px solid var(--border); color: var(--dim); }
+.mfa-badge { font-size: 12px; padding: 2px 10px; border-radius: 10px; border: 1px solid var(--border); color: var(--text-dim); }
 .mfa-badge.on { color: var(--ok, #3ecf8e); border-color: var(--ok, #3ecf8e); }
 .mfa-backup { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
 .mfa-backup code {
@@ -3202,12 +3223,13 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 .warn-callout svg { flex: 0 0 auto; margin-top: 1px; color: var(--accent); }
 
 /* 分段控件（MCP 连接详情：OAuth | Access token） */
-.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
-.seg-btn {
+/* 注意:.seg 已被 SSO 页占用(3127 行一带),MCP 分段用独立类名避免互相覆盖 */
+.mcp-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.mcp-seg-btn {
   border: 0; background: transparent; cursor: pointer;
   padding: 5px 12px; font-size: 12.5px; color: var(--text-dim);
 }
-.seg-btn.active { background: var(--surface-3, rgba(255, 255, 255, 0.07)); color: var(--text-hi); }
+.mcp-seg-btn.active { background: var(--color--background--light-3); color: var(--text-hi); }
 
 .info-callout {
   border: 1px solid var(--border); border-left: 3px solid var(--text-dim);
