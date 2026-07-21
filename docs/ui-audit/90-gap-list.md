@@ -40,7 +40,7 @@ Nomops 前端是 n8n 的**高完成度 1:1 复刻**：路由 IA、Overview 五 T
 | P2-6 | Settings/Log Streaming | destination | Nomops webhook-only 内联表单（Name/URL/Signing/2 事件）；n8n 多 destination 类型(webhook/syslog/sentinel) + 卡片 + modal + 细粒度事件树 | L | `SettingsView.vue` logstream 段 |
 | P2-7 | Settings/External Secrets | provider | Nomops 仅 env-var provider（`NOMOPS_SECRET_<KEY>`）；n8n 多 vault provider(Vault/AWS/Azure/GCP/Infisical) | L | `SettingsView.vue` secrets 段 |
 | P2-8 | 画布 | 顶栏 `⋯` | 菜单项需补齐核对（Settings / Push to git 等），当前 Download/Duplicate/Import/Delete | S | `features/canvas/.../CanvasHeaderMenu` |
-| C-1 | Chat | 输入栏 | 缺 附件(📎) + 语音(🎤) 按钮（Nomops 只有 `+Tools`+发送；`ChatView.vue:511`） | S | `views/ChatView.vue` composer |
+| ~~C-1~~ ⊘**不做（复验后收回）** | Chat | 输入栏 | ~~缺 附件 + 语音按钮~~ | — | — |<br>**复验（2026-07-21）**：附件/语音在 Nomops **无任何后端/基建**——chat 流不支持附件（`attachments` 是 n8n DB 字段非 Nomops）、全库无 transcription/speech。加空按钮=P2-4 式误导；真做要上多模态(附件)+STT(语音)，**远超 P2 小修**，语音还牵扯"自托管是否依赖浏览器云端 STT"的架构取舍。Nomops chat 属**刻意纯文本**设计。→ 收回；多模态/语音如需，另立独立大任务。 |
 
 > **P2-5/6/7 性质**：多为 Nomops 自托管务实取舍（用宿主 git、env-var secrets、webhook 日志），**功能可用**，非必改；若目标是 100% 对齐 n8n 的 IA/能力面才列改造。
 

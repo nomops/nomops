@@ -5,7 +5,7 @@
 - **强复刻**：Chat、Insights、版本历史、认证页、命令面板（Nomops palette 覆盖 Workflows/Credentials/Data tables，实际比 n8n 更"列资源"）。
 - **刻意设计分歧（非 gap）**：Templates（Nomops 自托管本地库 4 模板 vs n8n 外部网站）。
 - **Nomops 增项**：Projects 独立管理页（配额+成员）、Admin、Audit——无 n8n 对应。
-- **唯一新 gap C-1（P2）**：Chat 输入栏缺 附件+语音。
+- **C-1（Chat 附件/语音）** ⊘ 复验后收回：Nomops 无附件/STT 基建，加空按钮=P2-4 式误导，真做需多模态+STT（非小修）。chat 属刻意纯文本设计。
 - 剩余细项 ⏳：Evaluations 锁态、Data table 详情、认证 SSO 入口、Admin/Audit 字段级。
 - C 轮审计文档**未提交**（`docs/ui-audit/` 的 secondary-pages.md + 00/90 更新）。
 

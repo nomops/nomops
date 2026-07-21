@@ -6,7 +6,7 @@
 ## 1. Chat（AI 会话整页）
 - 路由：n8n `/home/chat`（+ `/:id` `/workflow-agents` `/personal-agents`）；Nomops `/chat`（`ChatView.vue`）
 - **强复刻** ✅：左栏 New chat / Personal agents / Workflow agents；顶「Select model」下拉；空态「Select a model to start chatting」；底部「Please select a model…」紫条 + 输入框 + `+ Tools` + 发送。
-- **差异**：n8n chat 输入栏有 **附件(📎) + 语音(🎤)** 按钮；Nomops 只有 `+Tools` + 发送（`ChatView.vue:511` 无 attach/mic）。→ **gap C-1（P2 细节）**。
+- **差异**：n8n chat 输入栏有 **附件(📎) + 语音(🎤)** 按钮；Nomops 只有 `+Tools` + 发送（`ChatView.vue:511` 无 attach/mic）。~~gap C-1~~ **复验后收回**：附件/语音在 Nomops 无任何后端/基建（chat 流不支持附件、全库无 STT），加空按钮会误导；真做需多模态+STT，远超 P2。Nomops chat 属刻意纯文本设计。见 `90-gap-list.md` C-1。
 
 ## 2. Templates（模板）
 - 路由：n8n `/templates`（无自定义 host 时 `window.location.href` 跳 **n8n.io 外部网站**）；Nomops `/templates`（`TemplatesView.vue`）
