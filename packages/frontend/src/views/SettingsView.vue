@@ -2485,7 +2485,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
       </section>
 
       <!-- Environments（Git 源码同步，对标基线 Environments） -->
-      <section v-else-if="section === 'sourcecontrol'" data-test="settings-sourcecontrol">
+      <section v-else-if="section === 'sourcecontrol'" data-test="settings-sourcecontrol" style="position: relative">
         <h1 class="page-title">Environments</h1>
 
         <!-- 信息横幅（对标基线的顶部 info box） -->
@@ -2532,23 +2532,29 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
             <p v-if="!scConfig.connected && scConnType === 'ssh'" class="sc-hint">Use SSH format: <code>git@github.com:user/repository.git</code></p>
           </div>
 
-          <!-- SSH Key（SSH 模式）：连接前后都显示（对标基线），供粘进 Git 服务端 Deploy keys（写权限） -->
+          <!-- SSH Key（SSH 模式）：一行 = [ED25519 下拉] + [密钥框] + [Copy] + [Refresh Key]（对标基线），供粘进 Git 服务端 Deploy keys -->
           <div v-if="scEffType === 'ssh'" class="sc-field">
             <label class="sc-field-label">SSH Key</label>
-            <textarea class="sc-key" data-test="sc-ssh-key" :value="scPublicKey" readonly rows="2" @focus="($event.target as HTMLTextAreaElement).select()" />
-            <div class="sc-hint amber">
-              Paste the SSH key in your Git repository's <b>Deploy keys</b> (with write access).
-              <button class="link-btn" data-test="sc-key-copy" :disabled="!scPublicKey" @click="scCopyKey">{{ scKeyCopied ? 'Copied' : 'Copy' }}</button>
-              <button v-if="!scConfig.connected" class="link-btn" data-test="sc-key-refresh" :disabled="scBusy === 'key'" @click="scRefreshKey">{{ scBusy === 'key' ? 'Refreshing…' : 'Refresh Key' }}</button>
+            <div class="sc-field-row">
+              <select v-if="!scConfig.connected" class="sc-keytype" aria-label="Key type" disabled><option>ED25519</option></select>
+              <input class="sc-field-input sc-keybox" data-test="sc-ssh-key" :value="scPublicKey" readonly @focus="($event.target as HTMLInputElement).select()" />
+              <button class="btn secondary sc-disc-btn" data-test="sc-key-copy" :disabled="!scPublicKey" @click="scCopyKey">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width: 13px; height: 13px"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" stroke-linecap="round" /></svg>
+                {{ scKeyCopied ? 'Copied' : 'Copy' }}
+              </button>
+              <button v-if="!scConfig.connected" class="btn secondary sc-disc-btn" data-test="sc-key-refresh" :disabled="scBusy === 'key'" @click="scRefreshKey">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width: 13px; height: 13px"><path d="M21 12a9 9 0 1 1-3-6.7M21 4v4h-4" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                {{ scBusy === 'key' ? 'Refreshing…' : 'Refresh Key' }}
+              </button>
             </div>
+            <div class="sc-hint amber">Paste the SSH key in your Git repository's <b>Deploy keys</b> (with write access).</div>
           </div>
 
-          <!-- Connect（未连接） -->
-          <div v-if="!scConfig.connected && scBusy !== 'connect'" class="set-buttons" style="margin-top: 6px">
-            <button class="btn primary" data-test="sc-connect" @click="scConnect">Connect</button>
+          <!-- Connect（未连接；连接中按钮禁用，居中浮层动画，对标基线） -->
+          <div v-if="!scConfig.connected" class="set-buttons" style="margin-top: 6px">
+            <button class="btn primary" data-test="sc-connect" :disabled="scBusy === 'connect'" @click="scConnect">Connect</button>
           </div>
-          <!-- Connect 加载动画（居中，对标基线） -->
-          <div v-if="scBusy === 'connect'" class="sc-connecting" data-test="sc-connecting">
+          <div v-if="scBusy === 'connect'" class="sc-connecting-overlay" data-test="sc-connecting">
             <span class="sc-spinner" />
             <span>Connecting</span>
           </div>
@@ -3735,6 +3741,15 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 }
 .sc-hint.amber .link-btn { margin-left: 8px; font-weight: 500; }
 .sc-divider { max-width: 900px; border: none; border-top: 1px solid var(--border); margin: 26px 0; }
+/* SSH Key 行：ED25519 下拉 + 密钥框 + Copy/Refresh 按钮（对标基线） */
+.sc-keytype { flex: none; width: 120px; }
+.sc-keybox { font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 12px; }
+/* Connecting 居中浮层（对标基线：表单变暗，中央 spinner + Connecting，Connect 按钮仍在但禁用） */
+.sc-connecting-overlay {
+  position: absolute; left: 0; right: 0; top: 300px;
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  color: var(--accent); font-size: 14px; pointer-events: none;
+}
 .sc-changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
 .sc-connecting { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 40px 0; color: var(--accent); font-size: 14px; }
 .sc-spinner { width: 34px; height: 34px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: sc-spin 0.8s linear infinite; }
