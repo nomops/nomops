@@ -1310,8 +1310,9 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           <div style="margin-top: 22px" data-test="settings-mfa">
             <b style="font-size: 14px">{{ t('Two-factor authentication (2FA)') }}</b>
             <p class="dim" style="font-size: 13px; margin: 6px 0 0">
+              <!-- 基线原文:仅状态句 + Learn more 链接(无自有补充说明) -->
               {{ t(me?.mfaEnabled ? 'Two-factor authentication is currently enabled.' : 'Two-factor authentication is currently disabled.') }}
-              {{ t('Use an authenticator app (Google Authenticator / Authy…) to protect sign-in.') }}
+              <a class="link" :href="LINKS.docs" target="_blank" rel="noreferrer">{{ t('Learn more') }}</a>
             </p>
 
             <!-- 未开启 & 未开始设置 -->
@@ -1541,6 +1542,11 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
       <!-- 安全（实例 admin，对标基线 Security & policies 的设置行卡片） -->
       <section v-else-if="section === 'security'" data-test="settings-security">
         <h1 class="page-title">Security &amp; policies</h1>
+        <!-- 基线 settings.security.description 原句 -->
+        <p class="sub" style="max-width: 760px">
+          Manage workspace security requirements. Enforce two-factor authentication and control personal space actions
+          like publishing workflows and sharing resources.
+        </p>
         <!-- B 类锁墙:对标基线 Community 的 Security & policies 三分区(全 Enterprise 锁,Upgrade 徽章)。
              注:安全数据 loader(loadSecurity/rotateScimToken)后端接口保留,便于回退到自有实现。 -->
         <!-- 1) Enforce two-factor authentication -->
@@ -2079,9 +2085,10 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
       <!-- 日志流（企业） -->
       <section v-else-if="section === 'logstream'" data-test="settings-logstream">
         <h1 class="page-title">Log Streaming</h1>
+        <!-- 基线 settings.log-streaming.infoText 原句(More info 按政策指自有文档) -->
         <p class="sub">
-          Send logs to external endpoints of your choice (SIEM / data lake / alerting) in real time. Each event is
-          signed with the destination secret via HMAC-SHA256 in the <code>x-nomops-signature</code> header.
+          Send logs to external endpoints of your choice. You can also write logs to a file or the console using
+          environment variables. <a class="link" :href="LINKS.docs" target="_blank" rel="noreferrer">More info</a>
         </p>
         <div v-if="!licensed('logStreaming')" class="locked-card" data-test="ls-locked">
           <h2>Available on the Enterprise plan</h2>
@@ -2292,7 +2299,8 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         <!-- 空态：基线式虚线卡 -->
         <div v-if="!communityNodes.length" class="locked-card" data-test="community-empty" style="margin-top: 16px">
           <h2 style="font-weight: 400">Supercharge your workflows with community nodes</h2>
-          <p>Install node packages contributed by the community (npm packages exporting a <code>nomopsNodes</code> array).</p>
+          <!-- 基线 settings.communityNodes.empty.description.no-packages 原句 -->
+          <p>Install node packages contributed by our community.</p>
           <button class="btn primary" data-test="community-empty-install" @click="openCommunityModal">Install a community node</button>
         </div>
 
@@ -2433,11 +2441,19 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
            注:原自有 Prometheus /metrics 端点后端保留(promScrape 常量留档),便于回退。 -->
       <section v-else-if="section === 'opentelemetry'" data-test="settings-opentelemetry">
         <h1 class="page-title" style="margin-bottom: 6px">OpenTelemetry</h1>
+        <!-- 基线 settings.opentelemetry.description + docsLink -->
+        <p class="sub" style="max-width: 760px">
+          Export workflow and node spans to any OTLP collector. Every setting mirrors an environment variable.
+          <a class="link" :href="LINKS.docs" target="_blank" rel="noreferrer">Learn more in the documentation</a>
+        </p>
+        <!-- 基线形态:标签 "Enable OpenTelemetry" + 开关(非 Disabled|Enabled 下拉) -->
         <div class="otel-status">
-          <select class="sec-select" v-model="otel.status" data-test="otel-status">
-            <option value="Disabled">Disabled</option>
-            <option value="Enabled">Enabled</option>
-          </select>
+          <span style="font-size: 14px; font-weight: 600">Enable OpenTelemetry</span>
+          <button
+            type="button" class="ee-switch" :class="{ on: otel.status === 'Enabled' }" role="switch"
+            :aria-checked="otel.status === 'Enabled'" data-test="otel-status"
+            @click="otel.status = otel.status === 'Enabled' ? 'Disabled' : 'Enabled'"
+          ><span class="ee-knob" /></button>
           <span class="dim otel-status-hint">When disabled, no traces leave this instance.</span>
         </div>
 
@@ -2619,7 +2635,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                     <td colspan="4">
                       <div class="table-empty" data-test="mcp-wf-empty">
                         <h3>No workflows enabled</h3>
-                        <p>Add published workflows so MCP clients can discover and execute them</p>
+                        <p>Add compatible workflows so MCP clients can discover and execute them</p>
                         <button class="btn primary" data-test="mcp-open-enable" @click="openMcpModal">Enable workflows</button>
                       </div>
                     </td>
@@ -2724,7 +2740,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           <div class="setting-row" style="max-width: 1000px; margin-top: 20px; border-bottom: none; padding: 0">
             <div class="setting-text">
               <b>Enable Chat</b>
-              <p>When disabled, the AI Assistant is hidden across the app and its API endpoints are turned off. You can re-enable it here at any time.</p>
+              <p>When disabled, Chat is hidden across the app and its API endpoints are turned off. You can re-enable it here at any time.</p>
             </div>
             <!-- 必须是 label：全局 .switch 把 input 藏了，点滑块靠 label 联动 -->
             <label class="switch" data-test="chat-toggle" style="margin: 0">
@@ -2888,12 +2904,14 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         </p>
 
         <!-- 底部按钮行：Enter activation key + View plans（右对齐，对标基线） -->
+        <!-- 基线按钮体系:Enter activation key 恒显 + 有 license 时 Manage plan(无则 View plans)。
+             Remove license 为自有能力(基线无),保留为次级钮。 -->
         <div class="plan-actions">
-          <button v-if="!isActivated" class="btn secondary" data-test="license-open-2" @click="licenseModalOpen = true">Enter activation key</button>
-          <button v-else class="btn secondary" data-test="license-remove" :disabled="licenseBusy" @click="removeLicense">
+          <button class="btn secondary" data-test="license-open-2" @click="licenseModalOpen = true">Enter activation key</button>
+          <button v-if="isActivated" class="btn secondary" data-test="license-remove" :disabled="licenseBusy" @click="removeLicense">
             {{ licenseBusy ? 'Removing…' : 'Remove license' }}
           </button>
-          <button class="btn primary" data-test="billing-upgrade" @click="upgrade">View plans</button>
+          <button class="btn primary" data-test="billing-upgrade" @click="upgrade">{{ isActivated ? 'Manage plan' : 'View plans' }}</button>
         </div>
         <p v-if="licenseError" class="error-text" data-test="license-remove-error">{{ licenseError }}</p>
         <p v-if="billingError" class="error-text" data-test="billing-error">{{ billingError }}</p>
