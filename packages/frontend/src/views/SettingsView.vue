@@ -3744,11 +3744,13 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 /* SSH Key 行：ED25519 下拉 + 密钥框 + Copy/Refresh 按钮（对标基线） */
 .sc-keytype { flex: none; width: 120px; }
 .sc-keybox { font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 12px; }
-/* Connecting 居中浮层（对标基线：表单变暗，中央 spinner + Connecting，Connect 按钮仍在但禁用） */
+/* Connecting 居中浮层（对标基线：半透明遮罩压暗表单，正中 spinner + Connecting，Connect 按钮仍在但禁用） */
 .sc-connecting-overlay {
-  position: absolute; left: 0; right: 0; top: 300px;
-  display: flex; flex-direction: column; align-items: center; gap: 12px;
-  color: var(--accent); font-size: 14px; pointer-events: none;
+  position: absolute; inset: 0; z-index: 5;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  background: color-mix(in srgb, var(--bg-panel) 55%, transparent);
+  backdrop-filter: blur(1px);
+  color: var(--accent); font-size: 14px; font-weight: 500;
 }
 .sc-changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
 .sc-connecting { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 40px 0; color: var(--accent); font-size: 14px; }
