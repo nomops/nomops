@@ -12,6 +12,7 @@ import {
 } from '../http/route-helpers.js';
 import {
   samlConfigSchema,
+  sourceControlBranchSchema,
   sourceControlConnectSchema,
   sourceControlPushSchema,
   ssoConfigSchema,
@@ -171,6 +172,29 @@ export function registerEeRoutes(router: Router, services: AppServices): void {
       const result = await services.git.pull(auth(req).projectId);
       recordAudit(services, req, 'source-control.pull', undefined, { created: result.created, updated: result.updated });
       res.json(result);
+    }),
+  );
+
+  // 远端分支列表（对标基线的分支下拉）
+  router.get(
+    '/source-control/branches',
+    sourceControlFeature,
+    h(async (req, res) => {
+      await assertInstanceAdmin(services, req);
+      res.json(await services.git.listBranches());
+    }),
+  );
+
+  // 切换分支
+  router.post(
+    '/source-control/branch',
+    sourceControlFeature,
+    h(async (req, res) => {
+      await assertInstanceAdmin(services, req);
+      const { branch } = parseBody(sourceControlBranchSchema, req);
+      const config = await services.git.switchBranch(branch);
+      recordAudit(services, req, 'source-control.branch', undefined, { branch: config.branch });
+      res.json(config);
     }),
   );
 

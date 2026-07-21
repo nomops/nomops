@@ -1151,6 +1151,7 @@ const scResult = ref('');
 const scConnType = ref<'ssh' | 'https'>('ssh'); // 未连接时的选择
 const scPublicKey = ref('');
 const scKeyCopied = ref(false);
+const scBranches = ref<string[]>([]);
 
 async function loadSourceControl() {
   scError.value = '';
@@ -1162,7 +1163,7 @@ async function loadSourceControl() {
       scBranch.value = scConfig.value.branch;
       scConnType.value = scConfig.value.connectionType;
       scPublicKey.value = scConfig.value.sshPublicKey;
-      await refreshScStatus();
+      await Promise.all([refreshScStatus(), loadScBranches()]);
     } else if (scConnType.value === 'ssh') {
       await loadScKey(); // 未连接 + SSH → 预取部署公钥供粘贴
     }
@@ -1197,6 +1198,28 @@ async function scCopyKey() {
 async function onScConnTypeChange() {
   scPublicKey.value = '';
   if (scConnType.value === 'ssh') await loadScKey();
+}
+async function loadScBranches() {
+  try {
+    scBranches.value = (await api.sourceControl.branches()).branches;
+  } catch {
+    scBranches.value = scConfig.value ? [scConfig.value.branch] : [];
+  }
+}
+async function scSwitchBranch(branch: string) {
+  if (!branch || branch === scConfig.value?.branch) return;
+  scBusy.value = 'branch';
+  scError.value = '';
+  scResult.value = '';
+  try {
+    scConfig.value = await api.sourceControl.switchBranch(branch);
+    scBranch.value = scConfig.value.branch;
+    await refreshScStatus();
+  } catch (e) {
+    scError.value = (e as Error).message;
+  } finally {
+    scBusy.value = '';
+  }
 }
 async function refreshScStatus() {
   try {
@@ -2469,11 +2492,22 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           <div class="set-card">
             <div style="display: flex; align-items: center; gap: 12px; padding: 14px 0">
               <div style="min-width: 0">
-                <div class="dim" style="font-size: 12px">Connected repository</div>
+                <div class="dim" style="font-size: 12px">Connected repository <code>{{ scConfig.connectionType.toUpperCase() }}</code></div>
                 <div class="mono" style="font-size: 13px; margin-top: 3px; word-break: break-all">{{ scConfig.repoUrl }}</div>
-                <div class="dim" style="font-size: 12px; margin-top: 3px">Branch: <code>{{ scConfig.branch }}</code></div>
               </div>
               <span style="flex: 1" />
+              <div style="display: flex; align-items: center; gap: 6px">
+                <label class="dim" style="font-size: 12px">Branch</label>
+                <select
+                  :value="scConfig.branch"
+                  data-test="sc-branch-select"
+                  style="min-width: 120px"
+                  :disabled="scBusy === 'branch'"
+                  @change="scSwitchBranch(($event.target as HTMLSelectElement).value)"
+                >
+                  <option v-for="b in scBranches" :key="b" :value="b">{{ b }}</option>
+                </select>
+              </div>
               <button class="btn secondary btn-sm" data-test="sc-disconnect" :disabled="scBusy === 'disconnect'" @click="scDisconnect">
                 Disconnect
               </button>

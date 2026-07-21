@@ -508,6 +508,8 @@ export const api = {
     pull: () => http<{ created: number; updated: number; skipped: string[] }>('POST', '/api/source-control/pull'),
     getKey: () => http<{ publicKey: string }>('GET', '/api/source-control/key'),
     refreshKey: () => http<{ publicKey: string }>('POST', '/api/source-control/key/refresh'),
+    branches: () => http<{ branches: string[]; current: string }>('GET', '/api/source-control/branches'),
+    switchBranch: (branch: string) => http<SourceControlConfig>('POST', '/api/source-control/branch', { branch }),
   },
 
   insights: (from_?: string, to?: string) =>

@@ -188,6 +188,38 @@ export class GitService {
     await rm(this.workDir, { recursive: true, force: true });
   }
 
+  /** 列远端分支（对标基线的分支下拉）；返回名称列表 + 当前分支。 */
+  async listBranches(): Promise<{ branches: string[]; current: string }> {
+    await this.assertConnected();
+    const out = await this.git(['ls-remote', '--heads', 'origin']);
+    const branches = out
+      .split('\n')
+      .map((l) => l.split('\t')[1])
+      .filter((r): r is string => Boolean(r?.startsWith('refs/heads/')))
+      .map((r) => r.replace('refs/heads/', ''))
+      .sort();
+    const current = await this.branch();
+    // 当前分支可能是本地未推的新分支，远端列表里没有 → 也纳入
+    if (!branches.includes(current)) branches.unshift(current);
+    return { branches, current };
+  }
+
+  /** 切换分支：fetch → checkout（无则建跟踪）→ reset 到远端。存为新目标分支。 */
+  async switchBranch(branch: string): Promise<SourceControlConfig> {
+    await this.assertConnected();
+    const target = branch.trim();
+    if (!target) throw new OperationalError('Branch is required', { status: 400 });
+    await this.git(['fetch', 'origin']);
+    try {
+      await this.git(['checkout', '-B', target, `origin/${target}`]);
+    } catch {
+      // 远端没有该分支 → 建本地新分支
+      await this.git(['checkout', '-B', target]);
+    }
+    await this.repos.settings.set(KEY_BRANCH, target);
+    return this.getConfig();
+  }
+
   /** 切到分支：已存在则 checkout，否则新建（空仓库也可，落到 unborn 分支）。 */
   private async checkoutBranch(branch: string): Promise<void> {
     try {

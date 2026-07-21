@@ -107,6 +107,11 @@ export const sourceControlPushSchema = z.object({
   message: z.string().max(500).optional(),
 });
 
+/** 切换分支。 */
+export const sourceControlBranchSchema = z.object({
+  branch: z.string().min(1).max(200),
+});
+
 /** 激活许可证（实例 admin）。 */
 export const licenseActivateSchema = z.object({
   activationKey: z.string().min(1, 'Activation key is required').max(5000),

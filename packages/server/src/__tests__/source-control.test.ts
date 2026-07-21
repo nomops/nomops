@@ -180,3 +180,21 @@ describe('SSH 部署密钥', () => {
     expect(JSON.stringify(cfg.body)).not.toContain('BEGIN OPENSSH');
   });
 });
+
+describe('分支下拉 + 切换', () => {
+  it('连接 push 后 → listBranches 含 main；切到新分支 dev', async () => {
+    await request(appA).put('/api/source-control').set(bearer(ownerA)).send({ repoUrl: bareRepo, branch: 'main' }).expect(200);
+    await request(appA).post('/api/source-control/push').set(bearer(ownerA)).send({ message: 'seed branches' }).expect(200);
+
+    const list = await request(appA).get('/api/source-control/branches').set(bearer(ownerA)).expect(200);
+    expect(list.body.branches).toContain('main');
+    expect(list.body.current).toBe('main');
+
+    const sw = await request(appA).post('/api/source-control/branch').set(bearer(ownerA)).send({ branch: 'dev' }).expect(200);
+    expect(sw.body.branch).toBe('dev');
+    const cfg = await request(appA).get('/api/source-control').set(bearer(ownerA)).expect(200);
+    expect(cfg.body.branch).toBe('dev');
+
+    await request(appA).delete('/api/source-control').set(bearer(ownerA)).expect(204);
+  });
+});
