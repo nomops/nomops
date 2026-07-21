@@ -235,6 +235,8 @@ export class ExecutionService {
     mode: TriggerMode,
     seedData: INodeExecutionData[],
     startNodeName: string,
+    /** webhook 自定义响应回调（单进程模式;队列模式入队即返、不生效）。 */
+    extras?: { onWebhookResponse?: (response: JsonObject) => void },
   ): Promise<IRunSummary> {
     const projectId = await this.repos.workflows.getOwnerProjectId(workflowId);
     if (!projectId) throw new OperationalError('Workflow has no owning project', { workflowId });
@@ -265,7 +267,7 @@ export class ExecutionService {
         await this.queue.enqueue({ executionId: execution.id });
         return { executionId: execution.id, status: 'queued' };
       }
-      const run = await this.executeStored(execution.id);
+      const run = await this.executeStored(execution.id, extras);
       return this.toSummary(execution.id, run);
     } finally {
       if (gated) this.concurrency.release(mode);
@@ -298,7 +300,11 @@ export class ExecutionService {
       const errorRow = await this.workflowService.productionRow(
         await this.workflowService.getById(errorWorkflowId, projectId),
       );
-      const startNode = this.toWorkflow(errorRow).getStartNode();
+      // 有 Error Trigger 节点则以它为起点（专用起点语义）,否则退回默认起点
+      const errWorkflow = this.toWorkflow(errorRow);
+      const startNode =
+        [...errWorkflow.nodes.values()].find((n) => n.type === 'nomops.errorTrigger' && !n.disabled) ??
+        errWorkflow.getStartNode();
       if (!startNode) return;
 
       const seed: INodeExecutionData[] = [
@@ -320,7 +326,10 @@ export class ExecutionService {
    * 执行一条已落库的 execution（初始状态或中断状态均可）。
    * worker 进程的唯一入口；单进程模式复用同一路径。
    */
-  async executeStored(executionId: string): Promise<IRun> {
+  async executeStored(
+    executionId: string,
+    extras?: { onWebhookResponse?: (response: JsonObject) => void },
+  ): Promise<IRun> {
     const data = await this.repos.executions.getData(executionId);
     if (!data) throw new OperationalError('Execution data not found', { executionId });
 
@@ -371,6 +380,7 @@ export class ExecutionService {
         }
       },
       (freshRow?.staticData as JsonObject | null) ?? {},
+      extras,
     );
     // 生产执行的保存策略跟随已发布定义的 settings（与运行的版本一致）
     if (freshRow) {
@@ -493,7 +503,11 @@ export class ExecutionService {
     const engine = new WorkflowExecute(this.nodeLoader, {
       additionalData: await this.buildAdditionalData(projectId, depth + 1, production),
     });
-    const run = await engine.run(workflow, undefined, undefined, seedItems);
+    // 有 Execute Workflow Trigger 节点则以它为被调方起点,否则引擎自选
+    const startNode = [...workflow.nodes.values()].find(
+      (n) => n.type === 'nomops.executeWorkflowTrigger' && !n.disabled,
+    );
+    const run = await engine.run(workflow, startNode, undefined, seedItems);
     if (run.status !== 'success') {
       throw new OperationalError(
         `Sub-workflow ${row.name} failed: ${run.data.resultData.error?.message ?? run.status}`,
@@ -536,6 +550,7 @@ export class ExecutionService {
     mode: string,
     runFn: (engine: WorkflowExecute) => Promise<IRun>,
     staticData?: JsonObject,
+    extras?: { onWebhookResponse?: (response: JsonObject) => void },
   ): Promise<IRun> {
     const staticDataBefore = staticData ? JSON.stringify(staticData) : null;
     const push = (event: Parameters<PushHub['broadcast']>[0]) => this.pushHub.broadcast(event);
@@ -547,7 +562,10 @@ export class ExecutionService {
     });
 
     const engine = new WorkflowExecute(this.nodeLoader, {
-      additionalData: await this.buildAdditionalData(projectId, 0, mode !== 'manual'),
+      additionalData: {
+        ...(await this.buildAdditionalData(projectId, 0, mode !== 'manual')),
+        ...(extras?.onWebhookResponse ? { setWebhookResponse: extras.onWebhookResponse } : {}),
+      },
       ...(staticData ? { staticData } : {}),
       hooks: {
         nodeExecuteBefore: (nodeName) =>

@@ -1663,12 +1663,13 @@ export function createWebhookRouter(services: AppServices): Router {
           },
         },
       ];
-      const summary = await services.executions.runTriggered(
-        entity.workflowId,
-        'webhook',
-        seed,
-        entity.node,
-      );
+      // RespondToWebhook 节点设置的自定义响应（单进程模式;队列模式入队即返默认摘要）
+      let custom: { statusCode?: number; contentType?: string; body?: unknown } | null = null;
+      const summary = await services.executions.runTriggered(entity.workflowId, 'webhook', seed, entity.node, {
+        onWebhookResponse: (r) => {
+          custom = r as typeof custom;
+        },
+      });
       // 系统触发：无用户上下文（docs/06）
       services.audit.log({
         projectId: await services.repos.workflows.getOwnerProjectId(entity.workflowId),
@@ -1678,6 +1679,14 @@ export function createWebhookRouter(services: AppServices): Router {
         details: { mode: 'webhook', executionId: summary.executionId },
         ip: req.ip ?? null,
       });
+      const c = custom as { statusCode?: number; contentType?: string; body?: unknown } | null;
+      if (c) {
+        res.status(c.statusCode ?? 200);
+        if (c.body === null || c.body === undefined) res.end();
+        else if (c.contentType === 'text/plain') res.type('text/plain').send(String(c.body));
+        else res.json(c.body);
+        return;
+      }
       res.json(summary);
     }),
   );

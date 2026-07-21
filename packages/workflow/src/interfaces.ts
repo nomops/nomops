@@ -260,6 +260,11 @@ export interface INodeExecutionHelpers {
    * 纯引擎环境（无 DB）下不可用。
    */
   executeSubWorkflow?(workflowId: string, items: INodeExecutionData[]): Promise<INodeExecutionData[]>;
+  /**
+   * 设置本次 webhook 触发的自定义 HTTP 响应（RespondToWebhook 节点用）。
+   * 仅 webhook 路由注入（单进程模式）；手动运行/队列模式下缺省为 no-op。
+   */
+  setWebhookResponse?(response: JsonObject): void;
   /** 二进制 → 字节（引用形态经 store 取回；内联形态解 base64）。 */
   binaryToBuffer(binary: IBinaryData): Promise<Uint8Array>;
   /** 字节 → 二进制引用（有 store 落 store；无 store 退化为内联 base64）。 */

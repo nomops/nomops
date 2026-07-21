@@ -25,8 +25,7 @@
 
 - [x] **5. 数据处理节点五件套：Switch / Filter / SplitOut / Aggregate / Loop** `L` ✅ 2026-07-21（共享条件库 + outputNames 契约(顺手清掉前端 If 特判) + 引擎 contextData/getContext(Loop 地基,随状态序列化);14 nodes 测 + 1 core 测 + 1 server 引擎全链路测;live 画布标签/面板搜索验证）
 
-- [ ] **6. 触发配套三节点：Error Trigger / Execute Workflow Trigger / RespondToWebhook** `M`
-  error workflow 后端链路已通（`fireErrorWorkflow`）缺专用起点节点；子工作流缺被调方触发器；Webhook 无法自定义响应体。
+- [x] **6. 触发配套三节点：Error Trigger / Execute Workflow Trigger / RespondToWebhook** `M` ✅ 2026-07-21（错误流/子流优先专用起点;webhook 自定义响应经 helpers.setWebhookResponse 回调线程,队列模式退默认摘要;7 server 测;live webhook 201 自定义 body 验证）
 
 - [ ] **7. Google Sheets + Telegram 集成节点** `M`
   凭证类型已定义（`credential-types.ts`），用声明式 routing 工厂量产即可。注意 Telegram token 在 URL path，需扩展 credentialInjection 支持 path 注入。

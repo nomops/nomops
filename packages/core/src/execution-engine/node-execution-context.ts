@@ -157,6 +157,8 @@ export interface IWorkflowExecuteAdditionalData {
   executeSubWorkflow?: (workflowId: string, items: INodeExecutionData[]) => Promise<INodeExecutionData[]>;
   /** 二进制存储（server 注入文件系统/S3 实现；缺省内联 base64 退化模式）。 */
   binaryStore?: IBinaryDataStore;
+  /** webhook 自定义响应回调（webhook 路由注入;RespondToWebhook 节点经 helpers 调用）。 */
+  setWebhookResponse?: (response: JsonObject) => void;
 }
 
 export async function defaultHttpRequest(options: IHttpRequestOptions): Promise<unknown> {
@@ -305,6 +307,9 @@ export function createExecuteContext(args: {
       httpRequest: additionalData.httpRequest ?? defaultHttpRequest,
       ...(additionalData.executeSubWorkflow
         ? { executeSubWorkflow: additionalData.executeSubWorkflow }
+        : {}),
+      ...(additionalData.setWebhookResponse
+        ? { setWebhookResponse: additionalData.setWebhookResponse }
         : {}),
 
       async binaryToBuffer(binary: IBinaryData): Promise<Uint8Array> {
