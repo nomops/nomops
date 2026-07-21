@@ -214,8 +214,9 @@ export interface IWebhookDescription {
  */
 export interface ICredentialInjection {
   credentialName: string; // 对应 credentials[].name
-  in: 'header' | 'query';
-  key: string; // header 名或 query 参数名
+  /** path = 替换 URL 里的 {key} 占位符（如 Telegram 的 /bot{botToken}/…）。 */
+  in: 'header' | 'query' | 'path';
+  key: string; // header 名 / query 参数名 / URL 占位符名
   template: string; // 如 'Bearer {{apiKey}}' / '{{token}}'
 }
 

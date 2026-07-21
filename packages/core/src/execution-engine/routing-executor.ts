@@ -72,7 +72,7 @@ export async function executeRoutingNode(
 
     const rawUrl = String(resolve(routing.url));
     const base = description.requestDefaults?.baseUrl ?? '';
-    const url = /^https?:\/\//.test(rawUrl) ? rawUrl : `${base.replace(/\/$/, '')}${rawUrl}`;
+    let url = /^https?:\/\//.test(rawUrl) ? rawUrl : `${base.replace(/\/$/, '')}${rawUrl}`;
 
     const headers: Record<string, string> = {
       ...(description.requestDefaults?.headers ?? {}),
@@ -94,10 +94,12 @@ export async function executeRoutingNode(
       }
     }
 
+    let injected: string | null = null;
     if (injection && credential) {
-      const value = renderCredentialTemplate(injection.template, credential);
-      if (injection.in === 'header') headers[injection.key] = value;
-      else qs[injection.key] = value;
+      injected = renderCredentialTemplate(injection.template, credential);
+      if (injection.in === 'header') headers[injection.key] = injected;
+      else if (injection.in === 'query') qs[injection.key] = injected;
+      else url = url.split(`{${injection.key}}`).join(injected); // path:URL 占位符
     }
 
     const options: IHttpRequestOptions = {
@@ -108,7 +110,14 @@ export async function executeRoutingNode(
       ...(body ? { body } : {}),
     };
 
-    const response = await ctx.helpers.httpRequest(options);
+    let response: unknown;
+    try {
+      response = await ctx.helpers.httpRequest(options);
+    } catch (error) {
+      // 注入的凭证值绝不进错误消息/执行数据（铁律 3;path 注入时 URL 含明文,必须打码后再抛）
+      const redact = (s: string) => (injected && injected.length >= 4 ? s.split(injected).join('***') : s);
+      throw new OperationalError(redact(String((error as Error).message)), { url: redact(url) });
+    }
     out.push({
       json:
         response !== null && typeof response === 'object' && !Array.isArray(response)

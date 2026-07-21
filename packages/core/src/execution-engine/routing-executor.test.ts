@@ -119,3 +119,79 @@ describe('声明式 routing 执行器', () => {
     expect(run.data.resultData.error?.message).toContain('routing');
   });
 });
+
+/* ── path 注入（Telegram 形态:token 在 URL）+ 错误打码（铁律 3） ── */
+
+const botDescription: INodeTypeDescription = {
+  displayName: 'Bot Service',
+  name: 'botService',
+  group: ['output'],
+  version: 1,
+  description: 'path-injection test node',
+  defaults: { name: 'Bot Service' },
+  inputs: ['main'],
+  outputs: ['main'],
+  credentials: [{ name: 'botApi', required: true }],
+  requestDefaults: { baseUrl: 'https://bot.example.com' },
+  credentialInjection: { credentialName: 'botApi', in: 'path', key: 'botToken', template: '{{accessToken}}' },
+  properties: [
+    {
+      displayName: 'Operation',
+      name: 'operation',
+      type: 'options',
+      default: 'send',
+      options: [{ name: 'Send', value: 'send', routing: { method: 'POST', url: '/bot{botToken}/send' } }],
+    },
+  ],
+};
+
+const botLoadable: ILoadableNodeType = {
+  type: 't.bot',
+  description: botDescription,
+  load: async () =>
+    class implements INodeType {
+      description = botDescription;
+    },
+};
+
+describe('凭证 path 注入', () => {
+  const SECRET = '99887:AAsecret-token';
+  const botWf = () =>
+    new Workflow({
+      name: 'b',
+      nodes: [{ id: 'Bot', name: 'Bot', type: 't.bot', typeVersion: 1, position: [0, 0], parameters: { operation: 'send' } }],
+      connections: {},
+    });
+
+  it('URL 占位符 {key} 被凭证模板值替换', async () => {
+    const calls: IHttpRequestOptions[] = [];
+    const engine = new WorkflowExecute(new NodeLoader([botLoadable]), {
+      additionalData: {
+        getCredentials: async () => ({ accessToken: SECRET }),
+        httpRequest: async (o) => {
+          calls.push(o);
+          return { ok: true };
+        },
+      },
+    });
+    const run = await engine.run(botWf(), undefined, undefined, [{ json: {} }]);
+    expect(run.status).toBe('success');
+    expect(calls[0]!.url).toBe(`https://bot.example.com/bot${SECRET}/send`);
+  });
+
+  it('HTTP 失败:错误消息与 url 里的凭证值被打码,明文不进执行数据', async () => {
+    const engine = new WorkflowExecute(new NodeLoader([botLoadable]), {
+      additionalData: {
+        getCredentials: async () => ({ accessToken: SECRET }),
+        httpRequest: async (o) => {
+          throw new Error(`HTTP 401 Unauthorized at ${o.url}`);
+        },
+      },
+    });
+    const run = await engine.run(botWf(), undefined, undefined, [{ json: {} }]);
+    expect(run.status).toBe('error');
+    // 整份可序列化执行状态里都不许出现明文 token
+    expect(JSON.stringify(run.data)).not.toContain(SECRET);
+    expect(run.data.resultData.error?.message).toContain('***');
+  });
+});

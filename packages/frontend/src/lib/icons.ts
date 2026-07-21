@@ -223,6 +223,17 @@ const NODE: Record<string, IconVisual> = {
   notion: { svg: BRAND.notion, color: '' },
   hackerNews: { svg: BRAND.hackerNews, color: '' },
   stickyNote: { svg: GLYPH.note, color: '#f3d34a' },
+  // backlog #5-#7 新节点
+  switch: { svg: GLYPH.branch, color: '#4cc38a' },
+  filter: { svg: GLYPH.funnel, color: '#4cc38a' },
+  splitOut: { svg: GLYPH.branch, color: '#4c9df0' },
+  aggregate: { svg: GLYPH.merge, color: '#4c9df0' },
+  loop: { svg: GLYPH.arrowRight, color: '#8b5cf6' },
+  errorTrigger: { svg: GLYPH.broadcast, color: '#e5484d' },
+  executeWorkflowTrigger: { svg: GLYPH.subflow, color: '#f5a623' },
+  respondToWebhook: { svg: GLYPH.webhook, color: '#4c9df0' },
+  telegram: { svg: BRAND.telegram, color: '' },
+  googleSheets: { svg: GLYPH.grid, color: '#0F9D58' },
 };
 
 // ── 凭证类型 → 图标 ──────────────────────────────────────────────────────

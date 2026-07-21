@@ -27,8 +27,7 @@
 
 - [x] **6. 触发配套三节点：Error Trigger / Execute Workflow Trigger / RespondToWebhook** `M` ✅ 2026-07-21（错误流/子流优先专用起点;webhook 自定义响应经 helpers.setWebhookResponse 回调线程,队列模式退默认摘要;7 server 测;live webhook 201 自定义 body 验证）
 
-- [ ] **7. Google Sheets + Telegram 集成节点** `M`
-  凭证类型已定义（`credential-types.ts`），用声明式 routing 工厂量产即可。注意 Telegram token 在 URL path，需扩展 credentialInjection 支持 path 注入。
+- [x] **7. Google Sheets + Telegram 集成节点** `M` ✅ 2026-07-21（credentialInjection 加 path 注入(URL 占位符)+HTTP 错误里注入值打码(铁律 3);Telegram sendMessage/getMe、Sheets getValues/appendRow(OAuth2 Bearer access_token);2 core 测+结构守卫扩 path 校验;dev 实例 node-types 34 个含两新节点）
 
 ## P2 · 现成后端的前端拆墙 / 接线
 

@@ -304,6 +304,138 @@ export const hackerNewsDescription: INodeTypeDescription = {
   ],
 };
 
+export const telegramDescription: INodeTypeDescription = {
+  displayName: 'Telegram',
+  name: 'telegram',
+  group: ['output'],
+  version: 1,
+  description: 'Send messages via a Telegram bot',
+  defaults: { name: 'Telegram' },
+  inputs: ['main'],
+  outputs: ['main'],
+  credentials: [{ name: 'telegramApi', required: true }],
+  requestDefaults: { baseUrl: 'https://api.telegram.org', headers: { 'content-type': 'application/json' } },
+  // bot token 在 URL path（Telegram API 形态）：注入替换 {botToken} 占位符
+  credentialInjection: { credentialName: 'telegramApi', in: 'path', key: 'botToken', template: '{{accessToken}}' },
+  properties: [
+    {
+      displayName: 'Operation',
+      name: 'operation',
+      type: 'options',
+      default: 'sendMessage',
+      options: [
+        {
+          name: 'Send Message',
+          value: 'sendMessage',
+          routing: {
+            method: 'POST',
+            url: '/bot{botToken}/sendMessage',
+            body: { chat_id: '={{ $parameter.chatId }}', text: '={{ $parameter.text }}' },
+          },
+        },
+        {
+          name: 'Get Bot Info',
+          value: 'getMe',
+          routing: { method: 'GET', url: '/bot{botToken}/getMe' },
+        },
+      ],
+    },
+    {
+      displayName: 'Chat ID',
+      name: 'chatId',
+      type: 'string',
+      default: '',
+      required: true,
+      placeholder: '@channelname or numeric chat ID',
+      displayOptions: { show: { operation: ['sendMessage'] } },
+    },
+    {
+      displayName: 'Text',
+      name: 'text',
+      type: 'string',
+      default: '',
+      required: true,
+      placeholder: 'Supports expressions, e.g. =Order {{ $json.id }} shipped',
+      displayOptions: { show: { operation: ['sendMessage'] } },
+    },
+  ],
+};
+
+export const googleSheetsDescription: INodeTypeDescription = {
+  displayName: 'Google Sheets',
+  name: 'googleSheets',
+  group: ['transform'],
+  version: 1,
+  description: 'Read and append rows in a Google Sheet',
+  defaults: { name: 'Google Sheets' },
+  inputs: ['main'],
+  outputs: ['main'],
+  credentials: [{ name: 'googleSheetsOAuth2Api', required: true }],
+  requestDefaults: {
+    baseUrl: 'https://sheets.googleapis.com/v4',
+    headers: { 'content-type': 'application/json' },
+  },
+  // OAuth2 凭证：授权码回调换到的 access_token（oauth2-service 落库字段名）
+  credentialInjection: {
+    credentialName: 'googleSheetsOAuth2Api',
+    in: 'header',
+    key: 'authorization',
+    template: 'Bearer {{access_token}}',
+  },
+  properties: [
+    {
+      displayName: 'Operation',
+      name: 'operation',
+      type: 'options',
+      default: 'getValues',
+      options: [
+        {
+          name: 'Get Values',
+          value: 'getValues',
+          routing: {
+            method: 'GET',
+            url: '={{ "/spreadsheets/" + $parameter.spreadsheetId + "/values/" + $parameter.range }}',
+          },
+        },
+        {
+          name: 'Append Row',
+          value: 'appendRow',
+          routing: {
+            method: 'POST',
+            url: '={{ "/spreadsheets/" + $parameter.spreadsheetId + "/values/" + $parameter.range + ":append" }}',
+            qs: { valueInputOption: 'USER_ENTERED' },
+            body: { values: '={{ [ $parameter.rowValues.split(",") ] }}' },
+          },
+        },
+      ],
+    },
+    {
+      displayName: 'Spreadsheet ID',
+      name: 'spreadsheetId',
+      type: 'string',
+      default: '',
+      required: true,
+      placeholder: 'From the sheet URL: /spreadsheets/d/<ID>/edit',
+    },
+    {
+      displayName: 'Range',
+      name: 'range',
+      type: 'string',
+      default: 'Sheet1!A:Z',
+      required: true,
+      placeholder: 'Sheet1!A:Z',
+    },
+    {
+      displayName: 'Row Values (comma-separated)',
+      name: 'rowValues',
+      type: 'string',
+      default: '',
+      placeholder: 'Supports expressions, e.g. ={{ $json.name + "," + $json.email }}',
+      displayOptions: { show: { operation: ['appendRow'] } },
+    },
+  ],
+};
+
 export const integrationDescriptions: INodeTypeDescription[] = [
   slackDescription,
   githubDescription,
@@ -311,4 +443,6 @@ export const integrationDescriptions: INodeTypeDescription[] = [
   stripeDescription,
   notionDescription,
   hackerNewsDescription,
+  telegramDescription,
+  googleSheetsDescription,
 ];

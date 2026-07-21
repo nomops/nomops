@@ -50,8 +50,15 @@ describe('声明式集成节点结构守卫', () => {
     if (desc.credentialInjection) {
       const declared = new Set((desc.credentials ?? []).map((c) => c.name));
       expect(declared.has(desc.credentialInjection.credentialName)).toBe(true);
-      expect(['header', 'query']).toContain(desc.credentialInjection.in);
+      expect(['header', 'query', 'path']).toContain(desc.credentialInjection.in);
       expect(desc.credentialInjection.template).toMatch(/\{\{\s*\w+\s*\}\}/);
+      // path 注入:每个 operation 的 url 必须带 {key} 占位符（否则 token 无处可落）
+      if (desc.credentialInjection.in === 'path') {
+        const placeholder = `{${desc.credentialInjection.key}}`;
+        for (const option of opProp!.options ?? []) {
+          expect(option.routing!.url, `操作 ${String(option.value)} 缺 url 占位符 ${placeholder}`).toContain(placeholder);
+        }
+      }
     }
 
     // displayOptions 引用的参数存在
@@ -62,8 +69,8 @@ describe('声明式集成节点结构守卫', () => {
     }
   });
 
-  it('清单里共 6 个集成节点，且 HackerNews 无需凭证', () => {
-    expect(integrationDescriptions).toHaveLength(6);
+  it('清单里共 8 个集成节点，且 HackerNews 无需凭证', () => {
+    expect(integrationDescriptions).toHaveLength(8);
     const hn = integrationDescriptions.find((d) => d.name === 'hackerNews')!;
     expect(hn.credentials ?? []).toHaveLength(0);
     expect(hn.credentialInjection).toBeUndefined();
