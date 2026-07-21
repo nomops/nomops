@@ -5,8 +5,11 @@
 - **P0-1 Agent Chat 闭环** ❌ 误报撤销：功能早已存在（截错工作流所致）。
 - **P1-1 执行按钮 from/下拉** ❌ 误报撤销：`triggerNodes>1` 时已有。
 - **P1-2 NDV Pin data** ✅ 修完：引擎/后端本就支持，补齐前端（editor store pinData + NDV OUTPUT Pin 按钮 + 节点角标 + autosave 落库 + 6 单测）。live 复验通过。
-- **方法论教训**：单工作流截图漏条件渲染功能，导致 2 个误报。后续 gap 落地前务必按对应条件（单/多触发器、chat、执行态）live 复验。
-- **未提交**：改动在 `packages/frontend/src`（OverviewView/CanvasNode/DataPane/NdvModal/editor.ts + pin-data.test.ts），尚未 commit。
+- **P1-3 凭证自动测连接** ✅ 修完：结果条本就有，加 `autoTestOnOpen`（编辑态开即测已存在凭证，不 re-save）。live 复验通过。
+- **P2-1 执行头元信息** ✅ 修完：详情头加「· 大小 · ID 短id」（`CanvasView.vue`）。live 复验通过。
+- **P2-4 凭证字段表达式** ⊘ 复验后不做：credentials 只支持 `$secrets`（注入前解析、无 item 上下文），套节点参数的 Fixed/Expression 会误导；`$secrets` 现可内联输入已工作。真要做需凭证专属表达式模式，另立任务。
+- **方法论教训**：单工作流截图漏条件渲染功能，导致 2 个误报（P0-1/P1-1）。后续 gap 落地前务必按对应条件（单/多触发器、chat、执行态）live 复验。
+- **分支**：`fix/ui-align-variables-pindata`（从 main 拉）。已 commit P1-4/P1-2/审计文档；P1-3/P2-1 待 commit。未 push、未合 main。
 
 ## 本会话完成（会话 2 —— 续审）
 在会话 1 基础上，把大部分 ⏳ 项核实转正/修正：

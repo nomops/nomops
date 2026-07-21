@@ -23,7 +23,7 @@ Nomops 前端是 n8n 的**高完成度 1:1 复刻**：路由 IA、Overview 五 T
 |---|---|---|---|---|---|
 | ~~P1-1~~ 撤销 | 画布 | 执行按钮 | **误报（已复验）**：多触发器下拉 + 「from &lt;触发器&gt;」标签**已存在**（`CanvasView.vue:993` `triggerNodes.length>1` → `Execute workflow from {selectedTrigger}` + 997 caret + 1005 「Start from trigger」菜单）。单触发器时显示纯 `Execute workflow`（与 n8n 一致）。审计误报同 P0-1（截了单触发器工作流）。 | — | — |
 | ~~P1-2~~ ✅**已修** | NDV | OUTPUT 面板 | ~~缺 Pin data（钉住节点输出）UI~~ | M | `NdvModal.vue` + `DataPane.vue` + `stores/editor.ts` + `CanvasNode.vue` |<br>**已修（2026-07-21）**：引擎/后端/持久化本就齐（`workflow-execute.ts:241` applyPinData、schema/`assertPinTargets`/`pin-data.test.ts` 全有），只缺前端入口。已补：editor store `pinData` 状态 + load/save(自动保存落库) + `pinNodeData/unpinNodeData/isNodeDataPinned/getNodePinData` + 增删改节点同步维护；`DataPane` 加 `head-action` 槽；NDV OUTPUT 头「Pin/Pinned」按钮（钉后展示冻结数据）；画布节点强调色边 + 图钉角标。live 复验：执行→NDV Pin→角标出现→autosave 落库（`{"Seed Data":[{amount:150},…]}`）→刷新仍钉，引擎手动执行用冻结数据。6 个新 store 单测 + 57 前端测试全绿、vue-tsc 无错。 |
-| **P1-3** ✅复验为真 | 凭证 | CredentialEdit | 缺**打开即自动连接测试** + 红/绿**结果状态条**（More details/Retry）；现仅手动 `Test connection`（`CredentialModal.vue:223` 手动、`onMounted:243` 无自动测试）。**性质：UX nicety，可降 P2** | S | `CredentialModal.vue:223/243` + `/api/credentials/test` |
+| ~~P1-3~~ ✅**已修** | 凭证 | CredentialEdit | ~~缺打开即自动连接测试~~ | S | `CredentialModal.vue` |<br>**已修（2026-07-21）**：结果条(✓/✕/message)本就有，缺的是自动触发。加 `autoTestOnOpen`——编辑态打开即测**已存在凭证**（不 re-save、不 emit、失败静默，手动 Test connection 仍可重试）。live 复验：开 DeepSeek 凭证即显「✓ Connection successful.」。 |
 | ~~P1-4~~ ✅已修 | Variables | Overview 变量 Tab | ~~升级墙**写死无条件渲染**（`OverviewView.vue:1272` `v-else-if tab==='variables'` 直出锁态，注释自述「仅前端呈锁态」）——后端 `/api/variables` 已通、Usage 又自称 Enterprise，UI 却永远显示 Community 付费墙。**改造=给锁态加 license 判断**：授权时渲染真正的变量列表/新建行~~ | S | `OverviewView.vue:1272-1282` |<br>**已修（2026-07-21）**：查实变量在 Nomops 是**核心免费功能**（后端路由在 `controllers/index.ts` 非 `ee/routes.ts`，无 license feature key），付费墙是错的 n8n-Community 拟态。已换成真正的 Key/Value/Usage 表格 + 行内新建/编辑/删除（复用已存在的 `.var-table` 样式）。live 复验：empty→add→save(`$vars.KEY`)→delete 全通，57 前端测试全绿，vue-tsc 无错。 |
 
 ---
@@ -32,10 +32,10 @@ Nomops 前端是 n8n 的**高完成度 1:1 复刻**：路由 IA、Overview 五 T
 
 | # | 页面 | 组件 | 差异 | 量 | 源码参考 |
 |---|---|---|---|---|---|
-| P2-1 | 执行 | 详情头 | 缺 大小(`21KB`) + 执行 ID(`ID#8`) 元信息；列表 Exec.ID 用短哈希（n8n 顺序整数） | S | 执行详情头 + `ExecutionsList` 列格式化 |
+| ~~P2-1~~ ✅**已修** | 执行 | 详情头 | ~~缺 大小 + 执行 ID 元信息~~ | S | `CanvasView.vue` exec-detail-head |<br>**已修（2026-07-21）**：详情头加「· <大小> · ID <短id>」（大小由运行数据 JSON 的 UTF-8 字节估算、`fmtBytes`；ID 取 UUID 前 8 位）。live 复验：显示「· 530 B · ID 7e927e75」。列表 Exec.ID 仍用短哈希（Nomops 用 UUID 非顺序整数，属主键设计，不改）。 |
 | P2-2 | 执行 | 详情操作 | 缺 **Debug in editor**（企业特性，过往执行载入编辑器调试） | M | `/workflow/:id/debug/:execId`（n8n EnterpriseEdition.DebugInEditor） |
 | P2-3 | 执行 | 详情操作 | 缺 **执行标注 👍👎 + 评分 tag + 加入评测数据集**（成套，与 Evaluations 锁态一致） | M | `ANNOTATION_TAGS_MANAGER_MODAL` + `ADD_EXECUTION_TO_DATASET_MODAL` |
-| P2-4 | 凭证 | 字段控件 | **凭证 modal 字段**缺 Fixed/Expression 切换（节点参数已有；仅凭证自渲染字段未接 `ParamInput`） | M | 让 `CredentialModal` 字段复用 `ParamInput.vue` |
+| ~~P2-4~~ ⊘**不做（复验后收回）** | 凭证 | 字段控件 | ~~凭证字段缺 Fixed/Expression 切换~~ | M | — |<br>**复验（2026-07-21）**：凭证的"表达式"只有 `{{ $secrets.KEY }}`——注入前由 `secrets-service.ts` 物化，**无 `$json`/item 上下文**（凭证在节点执行前解析）。套用节点参数的 `ParamInput`/`ExpressionInput`（面向 `$json` 逐项）会**误导**用户以为支持 item 表达式；且 `$secrets` 现可直接在文本框内联输入、已工作。→ naive 复用不做；真要做需**凭证专属表达式模式**（仅 `$secrets`/env 自动补全），另立独立任务，非小修。 |
 | P2-5 | Settings/Environments | Git 配置 | Nomops 委托宿主 Git（Repository URL + Branch），无 n8n 的**应用内 SSH Key 生成/Refresh** + Connection Type 选择 | M | `SettingsView.vue` sourcecontrol 段 |
 | P2-6 | Settings/Log Streaming | destination | Nomops webhook-only 内联表单（Name/URL/Signing/2 事件）；n8n 多 destination 类型(webhook/syslog/sentinel) + 卡片 + modal + 细粒度事件树 | L | `SettingsView.vue` logstream 段 |
 | P2-7 | Settings/External Secrets | provider | Nomops 仅 env-var provider（`NOMOPS_SECRET_<KEY>`）；n8n 多 vault provider(Vault/AWS/Azure/GCP/Infisical) | L | `SettingsView.vue` secrets 段 |
