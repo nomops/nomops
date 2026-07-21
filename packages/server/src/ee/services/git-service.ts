@@ -70,8 +70,10 @@ export class GitService {
   /**
    * 跑 git。SSH 模式:把加密存的部署私钥解密写进临时 0600 文件,
    * 经 GIT_SSH_COMMAND 让本次 git 用它认证,用完即删(明文私钥不常驻磁盘)。
+   * BatchMode/ConnectTimeout:认证/连接问题快速报错,不傻等到超时。
    */
-  private async git(args: string[]): Promise<string> {
+  private async git(args: string[], opts: { timeoutMs?: number } = {}): Promise<string> {
+    const timeoutMs = opts.timeoutMs ?? 120_000;
     const env: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
     let keyDir: string | undefined;
     if ((await this.connectionType()) === 'ssh') {
@@ -81,19 +83,27 @@ export class GitService {
         const keyFile = join(keyDir, 'id');
         await writeFile(keyFile, (await this.cipher.decrypt(priv)) + '\n');
         await chmod(keyFile, 0o600);
-        env['GIT_SSH_COMMAND'] = `ssh -i ${keyFile} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new`;
+        env['GIT_SSH_COMMAND'] = `ssh -i ${keyFile} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=10`;
       }
     }
     try {
       const { stdout } = await execFileAsync('git', ['-C', this.workDir, ...args], {
-        timeout: 60_000,
+        timeout: timeoutMs,
         maxBuffer: 16 * 1024 * 1024,
         env,
       });
       return stdout;
     } catch (e) {
-      const err = e as { stderr?: string; message?: string };
-      throw new OperationalError(`git ${args[0]} failed: ${(err.stderr || err.message || '').trim()}`, {
+      const err = e as { stderr?: string; message?: string; killed?: boolean; signal?: string };
+      const detail = (err.stderr || '').trim();
+      // execFile 超时是 kill 进程:stderr 往往只有第一行(如 Cloning into '.'...),要明说超时
+      if (err.killed || err.signal === 'SIGTERM') {
+        throw new OperationalError(
+          `git ${args[0]} timed out after ${Math.round(timeoutMs / 1000)}s — large repository or slow connection to the Git host. Try again, or use a smaller dedicated repository for workflow sync. ${detail}`,
+          { status: 400 },
+        );
+      }
+      throw new OperationalError(`git ${args[0]} failed: ${detail || (err.message ?? '').trim()}`, {
         status: 400,
       });
     } finally {
@@ -202,8 +212,8 @@ export class GitService {
 
     await rm(this.workDir, { recursive: true, force: true });
     await mkdir(this.workDir, { recursive: true });
-    // clone 到工作目录（. = 当前目录，此前已 -C workDir）
-    await this.git(['clone', repoUrl, '.']);
+    // clone 到工作目录（. = 当前目录，此前已 -C workDir）；大仓库/慢链路给足 5 分钟
+    await this.git(['clone', repoUrl, '.'], { timeoutMs: 300_000 });
     await this.checkoutBranch(branch);
 
     await this.repos.settings.set(KEY_URL, repoUrl);
@@ -268,7 +278,7 @@ export class GitService {
     if (!existsSync(join(this.workDir, '.git'))) {
       // 配置在但工作目录没了（重启/换机）：按存的 URL 重新 clone
       await mkdir(this.workDir, { recursive: true });
-      await this.git(['clone', await this.rawRepoUrl(), '.']);
+      await this.git(['clone', await this.rawRepoUrl(), '.'], { timeoutMs: 300_000 });
       await this.checkoutBranch(await this.branch());
     }
   }
