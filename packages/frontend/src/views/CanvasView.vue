@@ -639,6 +639,18 @@ const fmtWhen = (iso: string | null): string => (iso ? new Date(iso).toLocaleStr
 const fmtRunTime = (e: ExecutionRow): string =>
   e.startedAt && e.stoppedAt ? `${new Date(e.stoppedAt).getTime() - new Date(e.startedAt).getTime()}ms` : '—';
 
+/** 执行数据大小(对标基线 21KB):由运行数据 JSON 的 UTF-8 字节数估算。 */
+function fmtBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10 * 1024 ? 1 : 0)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+const execDataSize = computed<string | null>(() => {
+  const d = execDetail.value?.data;
+  if (!d) return null;
+  return fmtBytes(new TextEncoder().encode(JSON.stringify(d)).length);
+});
+
 /** 选中执行的逐节点结果（名称/耗时/错误/输出 items）。 */
 const execNodeRows = computed(() => {
   const runData = execDetail.value?.data?.resultData?.runData ?? {};
@@ -913,6 +925,8 @@ async function loadSavePolicy() {
             <span class="exec-dot" :style="{ background: statusColor[execDetail.execution.status] ?? 'var(--text-dim)' }" />
             <b style="text-transform: capitalize">{{ execDetail.execution.status }}</b>
             <span class="dim">{{ execDetail.execution.mode }} · started {{ fmtWhen(execDetail.execution.startedAt) }} · {{ fmtRunTime(execDetail.execution) }}</span>
+            <span v-if="execDataSize" class="dim exec-meta" data-test="exec-detail-size">· {{ execDataSize }}</span>
+            <span class="dim exec-meta" data-test="exec-detail-id">· ID {{ execDetail.execution.id.slice(0, 8) }}</span>
             <span class="spacer" style="flex: 1" />
             <button class="exec-copy-btn" data-test="exec-copy-editor" title="Copy this execution's workflow to the editor" @click="copyExecToEditor">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg>
