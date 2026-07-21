@@ -239,3 +239,12 @@ th { color: var(--text-dim); font-weight: 500; }
 .i15 { width: 15px; height: 15px; }
 .i16 { width: 16px; height: 16px; }
 .i18 { width: 18px; height: 18px; }
+
+/* ⚠️ --border 必须是「颜色」:vendored design-tokens 在深色作用域(body[data-theme=dark]
+   与 prefers-color-scheme 媒体块)把它覆盖成完整简写「1px solid <color>」,导致全仓库
+   135 处 `border: 1px solid var(--border)` 展开为非法值、整条边框被浏览器丢弃
+   (表单输入框/弹窗步进器/卡片描边全部消失)。本文件加载最晚,在所有作用域重钉为颜色。 */
+body, body[data-theme=dark], body[data-theme=light] { --border: var(--border-color); }
+@media (prefers-color-scheme: dark) {
+  body, body[data-theme=dark] { --border: var(--border-color); }
+}
