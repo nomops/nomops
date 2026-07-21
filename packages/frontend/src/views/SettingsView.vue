@@ -664,6 +664,9 @@ const providerModal = ref<ProviderRow | null>(null);
 const provEnabled = ref(true);
 const provCredentialId = ref<string>('');
 const provContextWindow = ref(20);
+/* 基线 Configure 弹窗:Limit models 开关 + Allowed models 多选(空 = All models) */
+const provLimitModels = ref(false);
+const provAllowedModels = ref<string[]>([]);
 const provSaving = ref(false);
 const provError = ref('');
 /** 该 provider 类型下项目内可选的凭证列表。 */
@@ -687,6 +690,8 @@ function openProviderModal(p: ProviderRow) {
   provEnabled.value = p.enabled;
   provCredentialId.value = p.credentialId ?? '';
   provContextWindow.value = p.contextWindow;
+  provAllowedModels.value = [...(p.allowedModels ?? [])];
+  provLimitModels.value = provAllowedModels.value.length > 0;
   provError.value = '';
   provCredOpen.value = false;
   providerModalOpen.value = true;
@@ -705,6 +710,7 @@ async function confirmProvider() {
       enabled: provEnabled.value,
       credentialId: provCredentialId.value || null,
       contextWindow: provContextWindow.value,
+      allowedModels: provLimitModels.value ? provAllowedModels.value : [],
     });
     providerModalOpen.value = false;
     await loadChatProviders();
@@ -1292,18 +1298,24 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
             <a href="#" class="accent-link" data-test="change-password" @click.prevent="showPassForm = true">{{ t('Change password') }}</a>
             <span v-if="passSaved" class="saved-hint" style="margin-left: 10px">{{ t('Password updated ✓') }}</span>
           </div>
-          <div v-else class="card" style="margin-top: 10px; max-width: 480px">
-            <label>{{ t('Current password') }}</label>
-            <input v-model="passCurrent" data-test="pass-current" type="password" autocomplete="current-password" />
-            <label>{{ t('New password') }}</label>
-            <input v-model="passNew" data-test="pass-new" type="password" autocomplete="new-password" />
-            <p class="dim" style="font-size: 12px; margin: 4px 0 0">{{ t('8+ characters') }}</p>
-            <label>{{ t('Confirm new password') }}</label>
-            <input v-model="passNew2" data-test="pass-new2" type="password" autocomplete="new-password" @keyup.enter="submitChangePassword" />
-            <p v-if="passError" class="error-text">{{ passError }}</p>
-            <div style="display: flex; gap: 10px; margin-top: 14px">
-              <button class="btn primary" data-test="pass-save" @click="submitChangePassword">{{ t('Save password') }}</button>
-              <button class="btn secondary" @click="showPassForm = false; passError = ''">{{ t('Cancel') }}</button>
+          <!-- 基线 changePassword-modal:弹窗形态,字段/提示/按钮逐字对齐 -->
+          <div v-if="showPassForm" class="modal-mask" data-test="pass-modal" @click.self="showPassForm = false; passError = ''">
+            <div class="modal-card" style="width: 460px">
+              <div style="display: flex; align-items: flex-start; justify-content: space-between">
+                <h2 class="modal-title">{{ t('Change password') }}</h2>
+                <button class="modal-x" @click="showPassForm = false; passError = ''">×</button>
+              </div>
+              <label>{{ t('Current password') }} <span style="color: var(--err)">*</span></label>
+              <input v-model="passCurrent" data-test="pass-current" type="password" autocomplete="current-password" />
+              <label>{{ t('New password') }} <span style="color: var(--err)">*</span></label>
+              <input v-model="passNew" data-test="pass-new" type="password" autocomplete="new-password" />
+              <p class="dim" style="font-size: 12px; margin: 4px 0 0">{{ t('8+ characters, at least 1 number and 1 capital letter') }}</p>
+              <label>{{ t('Re-enter new password') }} <span style="color: var(--err)">*</span></label>
+              <input v-model="passNew2" data-test="pass-new2" type="password" autocomplete="new-password" @keyup.enter="submitChangePassword" />
+              <p v-if="passError" class="error-text">{{ passError }}</p>
+              <div style="display: flex; justify-content: flex-end; margin-top: 14px">
+                <button class="btn primary" data-test="pass-save" @click="submitChangePassword">{{ t('Change password') }}</button>
+              </div>
             </div>
           </div>
 
@@ -2326,14 +2338,15 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
               <button class="modal-x" @click="communityModalOpen = false">×</button>
             </div>
             <div class="info-callout" style="display: flex; align-items: center; gap: 14px">
-              <span style="flex: 1">Find community nodes to add on the npm public registry.</span>
+              <span style="flex: 1">Find community nodes to add on the npm public registry. <a class="link" :href="LINKS.docs" target="_blank" rel="noreferrer">More info</a></span>
               <a class="btn primary btn-sm" style="text-decoration: none; display: inline-flex; align-items: center" href="https://www.npmjs.com/search?q=nomops-nodes" target="_blank" rel="noopener">Browse</a>
             </div>
             <label class="modal-label">npm Package Name</label>
             <input v-model="installName" data-test="community-name" placeholder="e.g. nomops-nodes-weather" style="width: 100%" @keyup.enter="installCommunityNode" />
             <label class="check-row" style="margin-top: 16px; font-size: 13.5px">
               <input v-model="riskAccepted" type="checkbox" data-test="community-risk" />
-              <span>I understand the risks of installing unverified code from a public source — installed nodes run with full server privileges.</span>
+              <span>I understand the risks of installing unverified code from a public source.
+                <a class="link" :href="LINKS.docs" target="_blank" rel="noreferrer">More info</a></span>
             </label>
             <p v-if="communityError" class="error-text" data-test="community-error">{{ communityError }}</p>
             <div style="margin-top: 20px">
@@ -2774,7 +2787,8 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                     </span>
                   </td>
                   <!-- 基线 modelsText:Disabled / All models / N models -->
-                  <td class="dim">{{ !p.enabled ? 'Disabled' : p.models.length ? `${p.models.length} models` : 'All models' }}</td>
+                  <!-- 基线 modelsText:Disabled / All models(未限制)/ N models(Limit models 生效) -->
+                  <td class="dim">{{ !p.enabled ? 'Disabled' : p.allowedModels.length ? `${p.allowedModels.length} models` : 'All models' }}</td>
                   <td class="dim">{{ p.lastEditedAt ? new Date(p.lastEditedAt).toLocaleDateString() : '-' }}</td>
                   <td style="text-align: right; position: relative" @click.stop>
                     <button class="row-dots" :data-test="`chat-provider-menu-${p.id}`" @click="providerMenuFor = providerMenuFor === p.id ? null : p.id">
@@ -2814,10 +2828,16 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
               <!-- ② Default credential（对标基线：凭证卡片 + Create new credential；关闭 provider 时隐藏） -->
               <div v-if="provEnabled" class="prov-section" @click.stop>
                 <div class="prov-label">Default credential</div>
-                <button class="prov-cred-btn" data-test="prov-credential" :class="{ open: provCredOpen }" @click="provCredOpen = !provCredOpen">
-                  {{ provSelectedCredName || 'Select' }}
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width: 14px; height: 14px"><path :d="provCredOpen ? 'M18 15l-6-6-6 6' : 'M6 9l6 6 6-6'" /></svg>
-                </button>
+                <div style="display: flex; align-items: center; gap: 8px">
+                  <button class="prov-cred-btn" data-test="prov-credential" :class="{ open: provCredOpen }" @click="provCredOpen = !provCredOpen">
+                    {{ provSelectedCredName || 'Select' }}
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width: 14px; height: 14px"><path :d="provCredOpen ? 'M18 15l-6-6-6 6' : 'M6 9l6 6 6-6'" /></svg>
+                  </button>
+                  <!-- 基线 credential.clearButton:已选凭证时可清除 -->
+                  <button v-if="provCredentialId" class="btn secondary btn-sm" data-test="prov-cred-clear" @click="provCredentialId = ''; provLimitModels = false; provAllowedModels = []">
+                    Clear
+                  </button>
+                </div>
                 <div v-if="provCredOpen" class="prov-cred-pop" data-test="prov-cred-pop">
                   <button
                     v-for="c in provCredOptions"
@@ -2836,6 +2856,31 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                     ＋ Create new credential
                   </button>
                 </div>
+              </div>
+
+              <!-- 基线:Limit models 开关(选了凭证才显示);开启后 Allowed models 多选,空 = All models -->
+              <div v-if="provEnabled && provCredentialId" class="prov-section">
+                <div class="prov-label" style="display: flex; align-items: center; gap: 8px">
+                  Limit models
+                  <label class="switch" data-test="prov-limit-models">
+                    <input type="checkbox" :checked="provLimitModels" @change="provLimitModels = !provLimitModels; if (!provLimitModels) provAllowedModels = []" />
+                    <span class="slider" />
+                  </label>
+                </div>
+                <template v-if="provLimitModels">
+                  <p class="dim" style="font-size: 12.5px; margin: 4px 0 8px">Only the selected models are available in Chat.</p>
+                  <div class="prov-models" data-test="prov-allowed-models">
+                    <label v-for="m in providerModal?.models ?? []" :key="m" class="check-row" style="font-size: 13px">
+                      <input
+                        type="checkbox"
+                        :checked="provAllowedModels.includes(m)"
+                        :data-test-prov-model="m"
+                        @change="provAllowedModels = provAllowedModels.includes(m) ? provAllowedModels.filter((x) => x !== m) : [...provAllowedModels, m]"
+                      />
+                      {{ m }}
+                    </label>
+                  </div>
+                </template>
               </div>
 
               <!-- ③ Context window (messages)；关闭 provider 时隐藏 -->

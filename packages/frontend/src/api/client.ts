@@ -23,6 +23,8 @@ export interface ChatProviderRow {
   enabled: boolean;
   credentialId: string | null;
   contextWindow: number;
+  /** Limit models(基线 Configure 弹窗):空数组 = All models。 */
+  allowedModels: string[];
   lastEditedAt: string | null;
 }
 
@@ -674,7 +676,10 @@ export const api = {
     /* Chat provider 注册表 + 各家配置（Select model 与 Settings 数据源） */
     providers: () => http<ChatProviderRow[]>('GET', '/api/assistant/providers'),
     /* Configure provider（Settings → Chat 弹窗）：Enable / Default credential / Context window */
-    updateProvider: (id: string, body: { enabled?: boolean; credentialId?: string | null; contextWindow?: number }) =>
+    updateProvider: (
+      id: string,
+      body: { enabled?: boolean; credentialId?: string | null; contextWindow?: number; allowedModels?: string[] },
+    ) =>
       http<ChatProviderRow>('PATCH', `/api/assistant/providers/${id}`, body),
     chat: (
       messages: Array<{ role: 'user' | 'assistant'; content: string }>,

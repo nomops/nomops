@@ -1066,13 +1066,31 @@ export function createApiRouter(services: AppServices): Router {
   );
 
   /* Chat provider 注册表 + 各家已存配置（Chat 页与 Settings 数据源；不含任何密钥） */
-  const providerConfig = async (id: string): Promise<{ enabled: boolean; credentialId: string | null; contextWindow: number; lastEditedAt: string | null }> => {
+  const providerConfig = async (
+    id: string,
+  ): Promise<{
+    enabled: boolean;
+    credentialId: string | null;
+    contextWindow: number;
+    /** 基线 Configure 弹窗的 Limit models:空数组 = 不限(All models)。 */
+    allowedModels: string[];
+    lastEditedAt: string | null;
+  }> => {
     const raw = await services.repos.settings.get(`chat.provider.${id}`);
-    const parsed = raw ? (JSON.parse(raw) as { enabled?: boolean; credentialId?: string | null; contextWindow?: number; lastEditedAt?: string }) : {};
+    const parsed = raw
+      ? (JSON.parse(raw) as {
+          enabled?: boolean;
+          credentialId?: string | null;
+          contextWindow?: number;
+          allowedModels?: string[];
+          lastEditedAt?: string;
+        })
+      : {};
     return {
       enabled: parsed.enabled !== false,
       credentialId: parsed.credentialId ?? null,
       contextWindow: parsed.contextWindow ?? 20,
+      allowedModels: Array.isArray(parsed.allowedModels) ? parsed.allowedModels : [],
       lastEditedAt: parsed.lastEditedAt ?? null,
     };
   };
@@ -1102,7 +1120,12 @@ export function createApiRouter(services: AppServices): Router {
       const id = param(req, 'id');
       const provider = CHAT_PROVIDERS.find((p) => p.id === id);
       if (!provider) throw new OperationalError('Unknown provider', { status: 404 });
-      const body = (req.body ?? {}) as { enabled?: boolean; credentialId?: string | null; contextWindow?: number };
+      const body = (req.body ?? {}) as {
+        enabled?: boolean;
+        credentialId?: string | null;
+        contextWindow?: number;
+        allowedModels?: string[];
+      };
       const current = await providerConfig(id);
       // 凭证归属 + 类型校验（防把别家凭证配给它）
       let credentialId = body.credentialId !== undefined ? body.credentialId : current.credentialId;
@@ -1119,6 +1142,10 @@ export function createApiRouter(services: AppServices): Router {
           typeof body.contextWindow === 'number' && body.contextWindow >= 1 && body.contextWindow <= 100
             ? Math.round(body.contextWindow)
             : current.contextWindow,
+        // Limit models:只收本家注册表内的模型名,空数组 = All models
+        allowedModels: Array.isArray(body.allowedModels)
+          ? body.allowedModels.filter((m) => provider.models.includes(m))
+          : current.allowedModels,
         lastEditedAt: new Date().toISOString(),
       };
       await services.repos.settings.set(`chat.provider.${id}`, JSON.stringify(next));
