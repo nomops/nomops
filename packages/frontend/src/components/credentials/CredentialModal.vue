@@ -235,6 +235,19 @@ async function testConnection() {
   }
 }
 
+/** 编辑态打开即自动测一次连接(对标基线):仅测已存在凭证,不保存、不 emit;失败静默(用户仍可手动 Test connection 重试)。 */
+async function autoTestOnOpen() {
+  if (!props.edit || !credId.value || meta.value?.oauth) return;
+  testing.value = true;
+  try {
+    testResult.value = await api.credentials.test(credId.value);
+  } catch {
+    // 自动测失败不打断编辑流；手动 Test connection 仍可用
+  } finally {
+    testing.value = false;
+  }
+}
+
 function onDocClick(e: MouseEvent) {
   if (pickerOpen.value && comboRef.value && !comboRef.value.contains(e.target as Node)) {
     pickerOpen.value = false;
@@ -251,6 +264,7 @@ onMounted(() => {
     values.value = {};
     tab.value = 'connection';
     step.value = 'config';
+    void autoTestOnOpen(); // 对标基线:编辑态打开即自动测连接
   } else if (props.createType) {
     pickType(props.createType); // 直达该类型的 config 步
   }
