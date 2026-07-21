@@ -23,6 +23,8 @@ export interface ISamlConfig {
   idpSsoUrl: string;
   /** IdP 签名证书（PEM，可多份以支持轮换）。 */
   idpCertificates: string[];
+  /** IdP 元数据地址（仅回显：UI 里 Metadata URL 输入框的重填值，验证逻辑不消费）。 */
+  idpMetadataUrl?: string;
   /** 属性名映射；缺省走常见的 SAML 属性 URN。 */
   attributeMapping?: { email?: string; firstName?: string; lastName?: string };
   /** SP 私钥（PEM）——签 AuthnRequest 用；内存态明文，落库前必经 Cipher。 */

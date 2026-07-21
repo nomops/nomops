@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api, type ApiKeyRow, type CommunityNode, type LicenseInfo } from '../api/client.js';
 import { useProjectsStore } from '../stores/projects.js';
@@ -160,21 +160,74 @@ const ssoError = ref('');
 const ssoSaved = ref(false);
 const ssoLoading = ref(true);
 
-/* B2:SSO 两协议并存,各自独立启用。分段只切表单,不影响对方的启用状态。 */
-const ssoProtocol = ref<'oidc' | 'saml'>('oidc');
-const saml = ref({
-  enabled: false,
-  idpEntityId: '',
-  idpSsoUrl: '',
-  /** 证书在 UI 上是多行文本(一份一行),提交前拆成数组。 */
-  certsText: '',
-  spPrivateKey: '',
-  spCertificate: '',
-});
+/* B2:SSO 两协议并存,各自独立启用。协议下拉只切表单,不影响对方的启用状态。
+   基线缺省停在 SAML,跟随。 */
+const ssoProtocol = ref<'oidc' | 'saml'>('saml');
+/* OIDC 仅展示字段(基线有、nomops 后端暂未消费:Prompt/ACR/Additional scopes)——
+   本地态,保存不发送;接线后改走 API。 */
+const oidcPrompt = ref<'login' | 'none' | 'consent' | 'select_account' | 'create'>('select_account');
+const oidcAcr = ref('');
+const oidcScopes = ref('');
+const oidcScopesInvalid = computed(() => [',', ';'].some((c) => oidcScopes.value.includes(c)));
+
+/* SAML:基线是元数据驱动(Metadata URL | XML 二选一),解析出 entityId/ssoUrl/certs
+   后走既有 PUT。手填字段从 UI 移除,后端契约不变。 */
+const saml = ref({ enabled: false, idpEntityId: '', idpSsoUrl: '', idpCertificates: [] as string[] });
+const samlIpsMode = ref<'url' | 'xml'>('url');
+const samlMetaUrl = ref('');
+const samlMetaXml = ref('');
 const samlError = ref('');
 const samlSaved = ref(false);
-/** SP 元数据地址:交给 IdP 导入,比手抄 EntityID/回调地址可靠。 */
+const samlBusy = ref(false);
+/** SP 元数据地址 = Entity ID URL(基线同语义:复制给 IdP)。 */
 const samlMetadataUrl = computed(() => `${location.origin}/sso/saml/metadata`);
+/** SAML ACS 回调 = 基线的 Redirect URL。 */
+const samlAcsUrl = computed(() => `${location.origin}/sso/saml/callback`);
+/** OIDC 回调 = 基线 OIDC 表单的 Redirect URL。 */
+const oidcRedirectUrl = computed(() => `${location.origin}/sso/callback`);
+/** 复制行反馈(✓ 态 2s 复位),key 区分多个复制行。 */
+const copiedKey = ref('');
+async function copyText(key: string, value: string) {
+  try {
+    await navigator.clipboard.writeText(value);
+    copiedKey.value = key;
+    setTimeout(() => (copiedKey.value = ''), 2000);
+  } catch {
+    // 剪贴板不可用(非 https / 权限)时静默:值本就明文可见,可手选复制
+  }
+}
+
+/**
+ * 解析 IdP 元数据 XML → { entityId, ssoUrl, certs }。
+ * 命名空间用 getElementsByTagNameNS('*',…) 兜底(各家 IdP 前缀千奇百怪);
+ * SSO 端点优先 HTTP-Redirect 绑定(与后端 SAML 客户端一致),缺了退第一个。
+ */
+function parseSamlMetadata(xml: string): { entityId: string; ssoUrl: string; certs: string[] } {
+  const doc = new DOMParser().parseFromString(xml, 'text/xml');
+  if (doc.getElementsByTagName('parsererror').length > 0) {
+    throw new Error('Metadata is not valid XML');
+  }
+  const entity = doc.getElementsByTagNameNS('*', 'EntityDescriptor')[0];
+  const entityId = entity?.getAttribute('entityID') ?? '';
+  if (!entityId) throw new Error('Metadata is missing an EntityDescriptor entityID');
+
+  const services = Array.from(doc.getElementsByTagNameNS('*', 'SingleSignOnService'));
+  const redirect = services.find((s) => (s.getAttribute('Binding') ?? '').endsWith('HTTP-Redirect'));
+  const ssoUrl = (redirect ?? services[0])?.getAttribute('Location') ?? '';
+  if (!ssoUrl) throw new Error('Metadata is missing a SingleSignOnService endpoint');
+
+  const certs: string[] = [];
+  for (const kd of Array.from(doc.getElementsByTagNameNS('*', 'KeyDescriptor'))) {
+    const use = kd.getAttribute('use');
+    if (use && use !== 'signing') continue; // encryption 密钥不用于验签
+    for (const c of Array.from(kd.getElementsByTagNameNS('*', 'X509Certificate'))) {
+      const pem = (c.textContent ?? '').replace(/\s+/g, '');
+      if (pem && !certs.includes(pem)) certs.push(pem);
+    }
+  }
+  if (certs.length === 0) throw new Error('Metadata contains no signing certificate');
+  return { entityId, ssoUrl, certs };
+}
 
 /* 用户管理 */
 const users = ref<Awaited<ReturnType<typeof api.instanceUsers.list>>>([]);
@@ -201,19 +254,51 @@ const secretsStatus = ref<Awaited<ReturnType<typeof api.externalSecrets>> | null
 const secretsError = ref('');
 const secretRefExample = '{{ $secrets.KEY }}'; // 字面量，避免模板里 {{ }} 嵌套
 
-/* LDAP（企业） */
+/* LDAP（企业）:字段集对标基线表单。带 ◆ 的映射到后端配置;其余仅展示
+   (基线有、nomops 后端暂未消费),本地态,保存不发送。 */
 const ldap = ref({
-  enabled: false,
-  url: '',
-  bindDn: '',
-  bindPassword: '',
-  userSearchBase: '',
-  loginAttribute: 'uid',
-  emailAttribute: 'mail',
+  loginEnabled: false, // ◆ enabled
+  loginLabel: '',
+  serverAddress: '', // ◆ url 的 host 段
+  port: 389, // ◆ url 的端口段
+  connectionSecurity: 'none' as 'none' | 'tls' | 'startTls', // ◆ tls → ldaps://
+  allowUnauthorizedCerts: false,
+  baseDn: '', // ◆ userSearchBase
+  bindingType: 'admin' as 'admin' | 'anonymous',
+  adminDn: '', // ◆ bindDn
+  adminPassword: '', // ◆ bindPassword(留空=保留旧值)
+  userFilter: '',
+  ldapId: 'uid',
+  loginId: 'mail', // ◆ loginAttribute
+  email: 'mail', // ◆ emailAttribute
+  firstName: 'givenName', // ◆ firstNameAttribute
+  lastName: 'sn', // ◆ lastNameAttribute
+  synchronizationEnabled: false,
+  synchronizationInterval: 60,
+  pageSize: 50,
+  searchTimeout: 60,
+  enforceEmailUniqueness: true,
 });
-const ldapError = ref('');
+const ldapError = ref(''); // 保存/校验错误(表单内联展示)
+const ldapLoadError = ref(''); // 配置拉取失败(403 等,替代整个表单)
 const ldapSaved = ref(false);
 const ldapLoading = ref(true);
+const ldapDirty = ref(false);
+const ldapTesting = ref(false);
+const ldapTestResult = ref(''); // 'ok' | 错误消息
+
+/** 存量 url ⇄ 表单三件套(address/port/security)。 */
+function ldapUrlFromForm(): string {
+  const scheme = ldap.value.connectionSecurity === 'tls' ? 'ldaps' : 'ldap';
+  return `${scheme}://${ldap.value.serverAddress}:${ldap.value.port}`;
+}
+function ldapFormFromUrl(url: string) {
+  const m = /^(ldaps?):\/\/([^:/]+)(?::(\d+))?$/.exec(url.trim());
+  if (!m) return;
+  ldap.value.connectionSecurity = m[1] === 'ldaps' ? 'tls' : 'none';
+  ldap.value.serverAddress = m[2]!;
+  ldap.value.port = m[3] ? Number(m[3]) : m[1] === 'ldaps' ? 636 : 389;
+}
 
 /* 公共 API 令牌（对标基线 "Create API Key" 弹窗） */
 const apiKeysList = ref<ApiKeyRow[]>([]);
@@ -676,10 +761,11 @@ async function loadSection() {
           enabled: cfg.enabled,
           idpEntityId: cfg.idpEntityId,
           idpSsoUrl: cfg.idpSsoUrl,
-          certsText: (cfg.idpCertificates ?? []).join('\n'),
-          spPrivateKey: '', // 掩码不回填,留空 = 不改
-          spCertificate: cfg.spCertificate ?? '',
+          idpCertificates: cfg.idpCertificates ?? [],
         };
+        // 元数据地址回显;有 URL 停在 URL 模式,只有手动解析史的停 XML 模式
+        samlMetaUrl.value = cfg.idpMetadataUrl ?? '';
+        samlIpsMode.value = 'url';
       } catch (e) {
         samlError.value = (e as Error).message;
       }
@@ -707,12 +793,26 @@ async function loadSection() {
     }
   } else if (section.value === 'ldap') {
     ldapError.value = '';
+    ldapLoadError.value = '';
     ldapLoading.value = true;
     try {
       const cfg = await api.ldap.config();
-      ldap.value = { ...cfg, bindPassword: '' }; // 掩码不回填，留空表示不改
+      ldap.value = {
+        ...ldap.value,
+        loginEnabled: cfg.enabled,
+        baseDn: cfg.userSearchBase,
+        adminDn: cfg.bindDn,
+        adminPassword: '', // 掩码不回填,留空表示不改
+        loginId: cfg.loginAttribute,
+        email: cfg.emailAttribute,
+        firstName: cfg.firstNameAttribute,
+        lastName: cfg.lastNameAttribute,
+      };
+      ldapFormFromUrl(cfg.url);
+      ldapTestResult.value = '';
+      void nextTick(() => (ldapDirty.value = false)); // 回填不算脏
     } catch (e) {
-      ldapError.value = (e as Error).message; // 社区版 403 / 非 admin 403
+      ldapLoadError.value = (e as Error).message; // 社区版 403 / 非 admin 403
     } finally {
       ldapLoading.value = false;
     }
@@ -859,31 +959,54 @@ async function rotateScimToken() {
 async function saveSaml() {
   samlError.value = '';
   samlSaved.value = false;
-  const certs = saml.value.certsText
-    .split(/\r?\n/)
-    .map((c) => c.trim())
-    .filter(Boolean);
-  if (saml.value.enabled && certs.length === 0) {
-    samlError.value = 'At least one IdP signing certificate is required to enable SAML';
-    return;
-  }
+  samlBusy.value = true;
   try {
+    // 有新元数据(URL 或 XML)就解析覆盖;都没填则沿用已保存的 IdP 三件套(只切换启用态)
+    let parsed: { entityId: string; ssoUrl: string; certs: string[] } | null = null;
+    if (samlIpsMode.value === 'url' && samlMetaUrl.value.trim()) {
+      const { xml } = await api.saml.fetchMetadata(samlMetaUrl.value.trim());
+      parsed = parseSamlMetadata(xml);
+    } else if (samlIpsMode.value === 'xml' && samlMetaXml.value.trim()) {
+      parsed = parseSamlMetadata(samlMetaXml.value);
+    }
+
+    const idpEntityId = parsed?.entityId ?? saml.value.idpEntityId;
+    const idpSsoUrl = parsed?.ssoUrl ?? saml.value.idpSsoUrl;
+    const idpCertificates = parsed?.certs ?? saml.value.idpCertificates;
+    if (!idpEntityId || !idpSsoUrl || idpCertificates.length === 0) {
+      samlError.value = 'Provide your Identity Provider metadata (URL or XML) before saving';
+      return;
+    }
+
     const body: import('../api/client.js').SamlConfigInput = {
       enabled: saml.value.enabled,
-      idpEntityId: saml.value.idpEntityId.trim(),
-      idpSsoUrl: saml.value.idpSsoUrl.trim(),
-      idpCertificates: certs,
-      ...(saml.value.spCertificate.trim() ? { spCertificate: saml.value.spCertificate.trim() } : {}),
-      // 私钥留空 = 保留旧值,前端因此不必持有明文
-      ...(saml.value.spPrivateKey ? { spPrivateKey: saml.value.spPrivateKey } : {}),
+      idpEntityId,
+      idpSsoUrl,
+      idpCertificates,
+      // Metadata URL 存下来仅为回显;XML 模式覆盖后清掉旧 URL 避免误导
+      ...(samlIpsMode.value === 'url' && samlMetaUrl.value.trim()
+        ? { idpMetadataUrl: samlMetaUrl.value.trim() }
+        : {}),
+      // ★spPrivateKey 从不出现在 UI/请求里:留空 = 后端保留旧值
     };
     const saved = await api.saml.save(body);
-    saml.value.spPrivateKey = '';
-    saml.value.certsText = (saved.idpCertificates ?? []).join('\n');
+    saml.value = {
+      enabled: saved.enabled,
+      idpEntityId: saved.idpEntityId,
+      idpSsoUrl: saved.idpSsoUrl,
+      idpCertificates: saved.idpCertificates ?? [],
+    };
     samlSaved.value = true;
   } catch (e) {
     samlError.value = (e as Error).message;
+  } finally {
+    samlBusy.value = false;
   }
+}
+
+/** Test connection(SAML):走真实登录流程——新标签打开 IdP 登录页。需已保存并启用。 */
+function testSaml() {
+  window.open(`${location.origin}/sso/saml/login`, '_blank');
 }
 
 async function saveSso() {
@@ -904,26 +1027,59 @@ async function saveSso() {
   }
 }
 
+/** Test connection(OIDC):走真实登录流程——新标签打开 IdP 登录页。需已保存并启用。 */
+function testOidc() {
+  window.open(`${location.origin}/sso/login`, '_blank');
+}
+
 async function saveLdap() {
   ldapError.value = '';
   ldapSaved.value = false;
   try {
+    if (ldap.value.loginEnabled && !ldap.value.serverAddress.trim()) {
+      ldapError.value = 'LDAP Server Address is required';
+      return;
+    }
     const body = {
-      enabled: ldap.value.enabled,
-      url: ldap.value.url,
-      bindDn: ldap.value.bindDn,
-      userSearchBase: ldap.value.userSearchBase,
-      loginAttribute: ldap.value.loginAttribute,
-      emailAttribute: ldap.value.emailAttribute,
-      ...(ldap.value.bindPassword ? { bindPassword: ldap.value.bindPassword } : {}),
+      enabled: ldap.value.loginEnabled,
+      url: ldap.value.serverAddress.trim() ? ldapUrlFromForm() : '',
+      // Anonymous 绑定:后端当前只支持服务账号 bind,匿名即清空 DN/密码
+      bindDn: ldap.value.bindingType === 'admin' ? ldap.value.adminDn : '',
+      userSearchBase: ldap.value.baseDn,
+      loginAttribute: ldap.value.loginId,
+      emailAttribute: ldap.value.email,
+      firstNameAttribute: ldap.value.firstName,
+      lastNameAttribute: ldap.value.lastName,
+      ...(ldap.value.bindingType === 'admin' && ldap.value.adminPassword
+        ? { bindPassword: ldap.value.adminPassword }
+        : {}),
     };
     const saved = await api.ldap.save(body);
-    ldap.value = { ...ldap.value, enabled: saved.enabled, bindPassword: '' };
+    ldap.value = { ...ldap.value, loginEnabled: saved.enabled, adminPassword: '' };
     ldapSaved.value = true;
+    ldapTestResult.value = '';
+    void nextTick(() => (ldapDirty.value = false));
   } catch (e) {
     ldapError.value = (e as Error).message;
   }
 }
+
+/** Test connection(LDAP):对**已保存**配置做服务账号 bind(与基线同语义)。 */
+async function testLdap() {
+  ldapTesting.value = true;
+  ldapTestResult.value = '';
+  try {
+    await api.ldap.test();
+    ldapTestResult.value = 'ok';
+  } catch (e) {
+    ldapTestResult.value = (e as Error).message;
+  } finally {
+    ldapTesting.value = false;
+  }
+}
+
+// 表单任何改动即标脏:Save 由禁用变可点、Test connection 反向禁用(基线同逻辑)
+watch(ldap, () => (ldapDirty.value = true), { deep: true });
 
 async function upgrade() {
   billingError.value = '';
@@ -1469,124 +1625,449 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           <p>Use Single Sign-On to consolidate authentication into a single platform to improve security and agility.</p>
           <a class="btn primary" :href="LINKS.pricing" target="_blank" rel="noopener">See plans</a>
         </div>
-        <!-- B2:两协议独立启用,分段只切表单,不影响对方的启用状态 -->
+        <!-- B2：两协议独立启用；协议下拉切表单，互不影响对方启用态。
+             结构逐项对标基线:协议卡与首卡视觉融合、SAML 行式/OIDC 堆叠、
+             Role assignment 卡、SSO Enabled 下拉带绿点、Save settings + Test connection。 -->
         <template v-else>
-          <div class="proto-tabs" role="tablist" aria-label="SSO protocol" data-test="sso-protocol">
-            <button
-              class="proto-tab" :class="{ on: ssoProtocol === 'oidc' }" role="tab"
-              :aria-selected="ssoProtocol === 'oidc'" data-test="sso-tab-oidc"
-              @click="ssoProtocol = 'oidc'"
-            >
-              OpenID Connect
-              <span v-if="sso.enabled" class="proto-on" title="Enabled">●</span>
-            </button>
-            <button
-              class="proto-tab" :class="{ on: ssoProtocol === 'saml' }" role="tab"
-              :aria-selected="ssoProtocol === 'saml'" data-test="sso-tab-saml"
-              @click="ssoProtocol = 'saml'"
-            >
-              SAML 2.0
-              <span v-if="saml.enabled" class="proto-on" title="Enabled">●</span>
-            </button>
-          </div>
-
-          <!-- OpenID Connect -->
-          <template v-if="ssoProtocol === 'oidc'">
-            <p v-if="ssoError" class="error-text" data-test="sso-error">{{ ssoError }}</p>
-            <div v-else-if="!ssoLoading" class="card" style="max-width: 580px">
-              <label class="inline-check"><input type="checkbox" v-model="sso.enabled" /> Enable SSO login</label>
-              <label>Issuer (discovery URL)</label>
-              <input v-model="sso.issuer" placeholder="https://idp.example.com" />
-              <label>Client ID</label>
-              <input v-model="sso.clientId" placeholder="nomops-client" />
-              <label>Client Secret (leave blank to keep)</label>
-              <input v-model="sso.clientSecret" type="password" placeholder="••••••••" />
-              <p v-if="ssoSaved" class="saved-hint">Saved ✓</p>
-              <div style="margin-top: 14px">
-                <button class="btn primary" data-test="sso-save" @click="saveSso">Save</button>
-              </div>
-            </div>
-          </template>
-
-          <!-- SAML 2.0：独立功能位，可能单独未授权 -->
-          <template v-else>
-            <div v-if="!licensed('saml')" class="locked-card" data-test="saml-locked">
-              <h2>Available on the Enterprise plan</h2>
-              <p>Connect a SAML 2.0 identity provider such as Okta, Entra ID or OneLogin.</p>
-              <a class="btn primary" :href="LINKS.pricing" target="_blank" rel="noopener">See plans</a>
-            </div>
-            <template v-else>
-              <p v-if="samlError" class="error-text" data-test="saml-error">{{ samlError }}</p>
-              <div class="card" style="max-width: 580px" data-test="saml-form">
-                <label class="inline-check"><input type="checkbox" v-model="saml.enabled" /> Enable SAML login</label>
-
-                <label>IdP Entity ID (Issuer)</label>
-                <input v-model="saml.idpEntityId" placeholder="https://idp.example.com/entity" data-test="saml-entity" />
-
-                <label>IdP SSO URL</label>
-                <input v-model="saml.idpSsoUrl" placeholder="https://idp.example.com/sso/saml" data-test="saml-sso-url" />
-
-                <label>IdP signing certificate — one per line to support rotation</label>
-                <textarea
-                  v-model="saml.certsText" class="set-mono" rows="5" data-test="saml-certs"
-                  placeholder="MIIDBzCCAe+gAwIBAgIU..."
-                />
-
-                <label>SP private key (leave blank to keep) — only needed to sign requests</label>
-                <input v-model="saml.spPrivateKey" type="password" placeholder="••••••••" data-test="saml-key" />
-
-                <p class="sub" style="margin-top: 14px">
-                  Give your IdP this metadata URL instead of copying values by hand:
-                  <a class="link" :href="samlMetadataUrl" target="_blank" rel="noopener" data-test="saml-metadata">{{ samlMetadataUrl }}</a>
-                </p>
-
-                <p v-if="samlSaved" class="saved-hint">Saved ✓</p>
-                <div style="margin-top: 14px">
-                  <button class="btn primary" data-test="saml-save" @click="saveSaml">Save</button>
+          <div class="set-cards">
+            <!-- 协议选择卡（与下方首卡融合为一张，对标基线 protocolCard/firstCard） -->
+            <div class="set-card fused-top">
+              <div class="set-item">
+                <div class="set-item-label">
+                  <label>Authentication protocol</label>
+                  <small>Choose your SSO protocol</small>
+                </div>
+                <div class="set-item-control">
+                  <select class="sec-select set-select" v-model="ssoProtocol" data-test="sso-protocol">
+                    <option value="saml">SAML</option>
+                    <option value="oidc">OIDC</option>
+                  </select>
                 </div>
               </div>
+            </div>
+
+            <!-- SAML 2.0：独立功能位，可能单独未授权 -->
+            <template v-if="ssoProtocol === 'saml'">
+              <div v-if="!licensed('saml')" class="locked-card" data-test="saml-locked" style="margin-top: 16px">
+                <h2>Available on the Enterprise plan</h2>
+                <p>Connect a SAML 2.0 identity provider such as Okta, Entra ID or OneLogin.</p>
+                <a class="btn primary" :href="LINKS.pricing" target="_blank" rel="noopener">See plans</a>
+              </div>
+              <template v-else>
+                <div class="set-card fused-bottom" data-test="saml-form">
+                  <div class="set-item">
+                    <div class="set-item-label">
+                      <label>Redirect URL</label>
+                      <small>Copy the Redirect URL to configure your SAML provider</small>
+                    </div>
+                    <div class="set-item-control">
+                      <div class="set-copy">
+                        <input :value="samlAcsUrl" readonly data-test="saml-redirect-url" />
+                        <button type="button" title="Copy" @click="copyText('saml-acs', samlAcsUrl)">
+                          <span v-if="copiedKey === 'saml-acs'">✓</span><span v-else>⧉</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="set-item">
+                    <div class="set-item-label">
+                      <label>Entity ID URL</label>
+                      <small>Copy the Entity ID URL to configure your SAML provider</small>
+                    </div>
+                    <div class="set-item-control">
+                      <div class="set-copy">
+                        <input :value="samlMetadataUrl" readonly data-test="saml-entity-url" />
+                        <button type="button" title="Copy" @click="copyText('saml-entity', samlMetadataUrl)">
+                          <span v-if="copiedKey === 'saml-entity'">✓</span><span v-else>⧉</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="ips-block">
+                    <div class="set-item" style="border-bottom: none">
+                      <div class="set-item-label"><label>Identity Provider Settings</label></div>
+                      <div class="set-item-control" style="width: auto">
+                        <div class="seg" role="tablist" data-test="saml-ips-mode">
+                          <button type="button" :class="{ on: samlIpsMode === 'url' }" @click="samlIpsMode = 'url'">Metadata URL</button>
+                          <button type="button" :class="{ on: samlIpsMode === 'xml' }" @click="samlIpsMode = 'xml'">XML</button>
+                        </div>
+                      </div>
+                    </div>
+                    <div v-if="samlIpsMode === 'url'">
+                      <input
+                        v-model="samlMetaUrl" type="text" style="width: 100%"
+                        placeholder="e.g. https://samltest.id/saml/idp" data-test="saml-metadata-url"
+                      />
+                      <small>Paste here the Identity Provider Metadata URL</small>
+                    </div>
+                    <div v-else>
+                      <textarea
+                        v-model="samlMetaXml" class="set-mono" :rows="4" style="width: 100%"
+                        data-test="saml-metadata-xml"
+                      />
+                      <small>Paste here the raw Metadata XML provided by your Identity Provider</small>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Role assignment（对标基线;当前仅手动分配一种,选项即真实现状） -->
+                <div class="set-card">
+                  <div class="set-item" style="border-bottom: none">
+                    <div class="set-item-label">
+                      <label>Role assignment</label>
+                      <small>Choose how roles are assigned to SSO users</small>
+                    </div>
+                    <div class="set-item-control">
+                      <select class="sec-select set-select" data-test="saml-role-assignment">
+                        <option value="manual">Assigned manually in nomops</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="set-card">
+                  <div class="set-item" style="border-bottom: none">
+                    <div class="set-item-label">
+                      <label>Single sign-on (SSO)</label>
+                      <small>Allow users to sign in through your identity provider</small>
+                    </div>
+                    <div class="set-item-control">
+                      <div class="sel-dot-wrap">
+                        <span v-if="saml.enabled" class="green-dot" />
+                        <select
+                          class="sec-select set-select" data-test="saml-enabled" :class="{ 'has-dot': saml.enabled }"
+                          :value="saml.enabled ? 'enabled' : 'disabled'"
+                          @change="saml.enabled = ($event.target as HTMLSelectElement).value === 'enabled'"
+                        >
+                          <option value="enabled">Enabled</option>
+                          <option value="disabled">Disabled</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <p v-if="samlError" class="error-text" data-test="saml-error">{{ samlError }}</p>
+                <p v-if="samlSaved" class="saved-hint">Saved ✓</p>
+                <div class="set-buttons">
+                  <button class="btn primary" data-test="saml-save" :disabled="samlBusy" @click="saveSaml">
+                    {{ samlBusy ? 'Saving…' : 'Save settings' }}
+                  </button>
+                  <button
+                    class="btn secondary" data-test="saml-test"
+                    :disabled="!saml.enabled || !saml.idpSsoUrl" title="Opens your IdP sign-in in a new tab"
+                    @click="testSaml"
+                  >
+                    Test connection
+                  </button>
+                </div>
+              </template>
             </template>
-          </template>
+
+            <!-- OIDC（基线该表单为堆叠 group 布局，非行式） -->
+            <template v-else>
+              <p v-if="ssoError" class="error-text" data-test="sso-error">{{ ssoError }}</p>
+              <template v-else-if="!ssoLoading">
+                <div class="set-card fused-bottom" data-test="oidc-form">
+                  <div class="ee-group">
+                    <label>Redirect URL</label>
+                    <div class="set-copy" style="max-width: 480px">
+                      <input :value="oidcRedirectUrl" readonly data-test="oidc-redirect-url" />
+                      <button type="button" title="Copy" @click="copyText('oidc-redirect', oidcRedirectUrl)">
+                        <span v-if="copiedKey === 'oidc-redirect'">✓</span><span v-else>⧉</span>
+                      </button>
+                    </div>
+                    <small>Copy the Redirect URL to configure your OIDC provider</small>
+                  </div>
+                  <div class="ee-group">
+                    <label>Discovery Endpoint</label>
+                    <input
+                      v-model="sso.issuer" type="text"
+                      placeholder="https://accounts.google.com/.well-known/openid-configuration"
+                    />
+                    <small>Paste here your discovery endpoint</small>
+                  </div>
+                  <div class="ee-group">
+                    <label>Client ID</label>
+                    <input v-model="sso.clientId" type="text" />
+                    <small>The client ID you received when registering your application with your provider</small>
+                  </div>
+                  <div class="ee-group">
+                    <label>Client Secret</label>
+                    <input v-model="sso.clientSecret" type="password" />
+                    <small>The client Secret you received when registering your application with your provider</small>
+                  </div>
+                  <div class="ee-group">
+                    <label>Prompt</label>
+                    <select class="sec-select" v-model="oidcPrompt">
+                      <option value="login">Login (Force the user to log in)</option>
+                      <option value="none">None (Silent authentication)</option>
+                      <option value="consent">Consent (Ask the user to consent)</option>
+                      <option value="select_account">Select Account (Allow the user to select an account)</option>
+                      <option value="create">Create (Ask the OP to show the registration page first)</option>
+                    </select>
+                    <small>The prompt parameter to use when authenticating with the OIDC provider</small>
+                  </div>
+                </div>
+
+                <div class="set-card">
+                  <div class="set-item">
+                    <div class="set-item-label">
+                      <label>Role assignment</label>
+                      <small>Choose how roles are assigned to SSO users</small>
+                    </div>
+                    <div class="set-item-control">
+                      <select class="sec-select set-select" data-test="oidc-role-assignment">
+                        <option value="manual">Assigned manually in nomops</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="ee-group">
+                    <label>Authentication Context Class Reference</label>
+                    <textarea v-model="oidcAcr" :rows="2" placeholder="mfa, phrh, pwd" style="width: 100%" />
+                    <small>
+                      ACR values to include in the authorization request (acr_values parameter), separated by commas in
+                      order of preference.
+                    </small>
+                  </div>
+                  <div class="ee-group">
+                    <label>Additional scopes <span class="ee-optional">(Optional)</span></label>
+                    <input v-model="oidcScopes" type="text" placeholder="e.g. groups roles" />
+                    <small v-if="oidcScopesInvalid" class="error-text">
+                      Use spaces to separate scopes. Commas and semicolons are not allowed.
+                    </small>
+                    <small v-else>
+                      By default nomops requests <code>openid</code>, <code>profile</code> and <code>email</code>. If you
+                      need other scopes, define them here space separated.
+                    </small>
+                  </div>
+                </div>
+
+                <div class="set-card">
+                  <div class="set-item" style="border-bottom: none">
+                    <div class="set-item-label">
+                      <label>Single sign-on (SSO)</label>
+                      <small>Allow users to sign in through your identity provider</small>
+                    </div>
+                    <div class="set-item-control">
+                      <div class="sel-dot-wrap">
+                        <span v-if="sso.enabled" class="green-dot" />
+                        <select
+                          class="sec-select set-select" data-test="sso-enabled" :class="{ 'has-dot': sso.enabled }"
+                          :value="sso.enabled ? 'enabled' : 'disabled'"
+                          @change="sso.enabled = ($event.target as HTMLSelectElement).value === 'enabled'"
+                        >
+                          <option value="enabled">Enabled</option>
+                          <option value="disabled">Disabled</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <p v-if="ssoSaved" class="saved-hint">Saved ✓</p>
+                <div class="set-buttons">
+                  <button class="btn primary" data-test="sso-save" @click="saveSso">Save settings</button>
+                  <button
+                    class="btn secondary" data-test="sso-test"
+                    :disabled="!sso.enabled || !sso.issuer" title="Opens your IdP sign-in in a new tab"
+                    @click="testOidc"
+                  >
+                    Test connection
+                  </button>
+                </div>
+              </template>
+            </template>
+          </div>
         </template>
       </section>
 
       <!-- LDAP 配置（企业） -->
+      <!-- LDAP：对标基线堆叠表单(标签在上/橙星必填/帮助文案在下/绿色开关)。
+           字段全集 = 基线;带映射的走真实 API,其余仅展示(见脚本区 ldap 注释)。 -->
       <section v-else-if="section === 'ldap'" data-test="settings-ldap">
         <h1 class="page-title">LDAP</h1>
-        <p class="sub">
-          LDAP allows users to authenticate with their centralized account. It’s compatible with services that provide
-          an LDAP interface like Active Directory and OpenLDAP; first login provisions the account automatically.
+        <p class="ee-infotip">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M12 11v5"/></svg>
+          Learn more about
+          <a class="link" href="https://github.com/nomops/nomops/tree/main/docs" target="_blank" rel="noreferrer">LDAP in the Docs</a>
         </p>
         <div v-if="!licensed('ldap')" class="locked-card" data-test="ldap-locked">
           <h2>Available on the Enterprise plan</h2>
-          <p>LDAP is available as a paid feature — sign your team in with the corporate directory.</p>
+          <p>LDAP is available as a paid feature. Learn more about it.</p>
           <a class="btn primary" :href="LINKS.pricing" target="_blank" rel="noopener">See plans</a>
         </div>
-        <p v-else-if="ldapError" class="error-text" data-test="ldap-error">{{ ldapError }}</p>
-        <div v-else-if="!ldapLoading" class="card" style="max-width: 580px">
-          <label class="inline-check"><input type="checkbox" v-model="ldap.enabled" data-test="ldap-enabled" /> Enable LDAP login</label>
-          <label>Server URL</label>
-          <input v-model="ldap.url" data-test="ldap-url" placeholder="ldap://ldap.corp.com:389" />
-          <label>Bind DN (service account)</label>
-          <input v-model="ldap.bindDn" placeholder="cn=svc,dc=corp,dc=com" />
-          <label>Bind password (leave blank to keep)</label>
-          <input v-model="ldap.bindPassword" data-test="ldap-password" type="password" placeholder="••••••••" />
-          <label>User search base</label>
-          <input v-model="ldap.userSearchBase" placeholder="ou=people,dc=corp,dc=com" />
-          <div style="display: flex; gap: 12px">
-            <div style="flex: 1">
-              <label>Login attribute</label>
-              <input v-model="ldap.loginAttribute" placeholder="uid / sAMAccountName" />
-            </div>
-            <div style="flex: 1">
-              <label>Email attribute</label>
-              <input v-model="ldap.emailAttribute" placeholder="mail" />
-            </div>
+        <p v-else-if="ldapLoadError" class="error-text" data-test="ldap-error">{{ ldapLoadError }}</p>
+        <div v-else-if="!ldapLoading" class="ee-stack">
+          <div class="ee-field">
+            <label>Enable LDAP Login <span class="ee-req">*</span></label>
+            <button
+              type="button" class="ee-switch" :class="{ on: ldap.loginEnabled }" role="switch"
+              :aria-checked="ldap.loginEnabled" data-test="ldap-enabled"
+              @click="ldap.loginEnabled = !ldap.loginEnabled"
+            ><span class="ee-knob" /></button>
           </div>
+
+          <template v-if="ldap.loginEnabled">
+            <div class="ee-field">
+              <label>LDAP Login <span class="ee-req">*</span></label>
+              <input v-model="ldap.loginLabel" type="text" placeholder="e.g. LDAP Username or email address" />
+              <small>The placeholder text that appears in the login field on the login page</small>
+            </div>
+            <div class="ee-field">
+              <label>LDAP Server Address <span class="ee-req">*</span></label>
+              <input v-model="ldap.serverAddress" type="text" placeholder="123.123.123.123" data-test="ldap-address" />
+              <small>IP or domain of the LDAP server</small>
+            </div>
+            <div class="ee-field">
+              <label>LDAP Server Port</label>
+              <input v-model.number="ldap.port" type="number" data-test="ldap-port" />
+              <small>Port used to connect to the LDAP server</small>
+            </div>
+            <div class="ee-field">
+              <label>Connection Security <span class="ee-req">*</span></label>
+              <select class="sec-select" v-model="ldap.connectionSecurity" data-test="ldap-security">
+                <option value="none">None</option>
+                <option value="tls">TLS</option>
+                <option value="startTls">STARTTLS</option>
+              </select>
+              <small>Type of connection security</small>
+            </div>
+            <div v-if="ldap.connectionSecurity !== 'none'" class="ee-field">
+              <label>Ignore SSL/TLS Issues</label>
+              <button
+                type="button" class="ee-switch" :class="{ on: ldap.allowUnauthorizedCerts }" role="switch"
+                :aria-checked="ldap.allowUnauthorizedCerts"
+                @click="ldap.allowUnauthorizedCerts = !ldap.allowUnauthorizedCerts"
+              ><span class="ee-knob" /></button>
+            </div>
+            <div class="ee-field">
+              <label>Base DN <span class="ee-req">*</span></label>
+              <input v-model="ldap.baseDn" type="text" placeholder="o=acme,dc=example,dc=com" data-test="ldap-basedn" />
+              <small>Distinguished Name of the location where nomops should start its search for user in the AD/LDAP tree</small>
+            </div>
+            <div class="ee-field">
+              <label>Binding as</label>
+              <select class="sec-select" v-model="ldap.bindingType">
+                <option value="admin">Admin</option>
+                <option value="anonymous">Anonymous</option>
+              </select>
+              <small>Type of binding used to connection to the LDAP server</small>
+            </div>
+            <template v-if="ldap.bindingType === 'admin'">
+              <div class="ee-field">
+                <label>Binding DN</label>
+                <input v-model="ldap.adminDn" type="text" placeholder="uid=2da2de69435c,ou=Users,o=Acme,dc=com" data-test="ldap-binddn" />
+                <small>Distinguished Name of the user to perform the search</small>
+              </div>
+              <div class="ee-field">
+                <label>Binding Password</label>
+                <input v-model="ldap.adminPassword" type="password" data-test="ldap-password" />
+                <small>Password of the user provided in the Binding DN field above</small>
+              </div>
+            </template>
+            <div class="ee-field">
+              <label>User Filter</label>
+              <input v-model="ldap.userFilter" type="text" placeholder="(ObjectClass=user)" />
+              <small>LDAP query to use when searching for user. Only users returned by this filter will be allowed to sign-in in nomops</small>
+            </div>
+
+            <h3 class="ee-section-title">Attribute mapping</h3>
+            <div class="ee-field">
+              <label>ID <span class="ee-req">*</span></label>
+              <input v-model="ldap.ldapId" type="text" placeholder="uid" />
+              <small>The attribute in the LDAP server used as a unique identifier in nomops. It should be an unique LDAP attribute like uid</small>
+            </div>
+            <div class="ee-field">
+              <label>Login ID <span class="ee-req">*</span></label>
+              <input v-model="ldap.loginId" type="text" placeholder="mail" data-test="ldap-loginid" />
+              <small>The attribute in the LDAP server used to log-in in nomops</small>
+            </div>
+            <div class="ee-field">
+              <label>Email <span class="ee-req">*</span></label>
+              <input v-model="ldap.email" type="text" placeholder="mail" data-test="ldap-email" />
+              <small>The attribute in the LDAP server used to populate the email in nomops</small>
+            </div>
+            <div class="ee-field">
+              <label>First Name <span class="ee-req">*</span></label>
+              <input v-model="ldap.firstName" type="text" placeholder="givenName" />
+              <small>The attribute in the LDAP server used to populate the first name in nomops</small>
+            </div>
+            <div class="ee-field">
+              <label>Last Name <span class="ee-req">*</span></label>
+              <input v-model="ldap.lastName" type="text" placeholder="sn" />
+              <small>The attribute in the LDAP server used to populate the last name in nomops</small>
+            </div>
+
+            <div class="ee-field">
+              <label>Enable periodic LDAP synchronization <span class="ee-req">*</span></label>
+              <button
+                type="button" class="ee-switch" :class="{ on: ldap.synchronizationEnabled }" role="switch"
+                :aria-checked="ldap.synchronizationEnabled"
+                @click="ldap.synchronizationEnabled = !ldap.synchronizationEnabled"
+              ><span class="ee-knob" /></button>
+            </div>
+            <template v-if="ldap.synchronizationEnabled">
+              <div class="ee-field">
+                <label>Synchronization Interval (Minutes)</label>
+                <input v-model.number="ldap.synchronizationInterval" type="number" />
+                <small>How often the synchronization should run</small>
+              </div>
+              <div class="ee-field">
+                <label>Page Size</label>
+                <input v-model.number="ldap.pageSize" type="number" />
+                <small>Max number of records to return per page during synchronization. 0 for unlimited</small>
+              </div>
+              <div class="ee-field">
+                <label>Search Timeout (Seconds)</label>
+                <input v-model.number="ldap.searchTimeout" type="number" />
+                <small>The timeout value for queries to the AD/LDAP server. Increase if you are getting timeout errors caused by a slow AD/LDAP server</small>
+              </div>
+            </template>
+            <div class="ee-field">
+              <label>Enforce Email Uniqueness</label>
+              <button
+                type="button" class="ee-switch" :class="{ on: ldap.enforceEmailUniqueness }" role="switch"
+                :aria-checked="ldap.enforceEmailUniqueness"
+                @click="ldap.enforceEmailUniqueness = !ldap.enforceEmailUniqueness"
+              ><span class="ee-knob" /></button>
+            </div>
+          </template>
+
+          <p v-if="ldapError" class="error-text" data-test="ldap-error">{{ ldapError }}</p>
           <p v-if="ldapSaved" class="saved-hint">Saved ✓</p>
-          <div style="margin-top: 14px">
-            <button class="btn primary" data-test="ldap-save" @click="saveLdap">Save</button>
+          <p v-if="ldapTestResult" :class="ldapTestResult === 'ok' ? 'saved-hint' : 'error-text'" data-test="ldap-test-result">
+            {{ ldapTestResult === 'ok' ? 'LDAP connection tested ✓' : ldapTestResult }}
+          </p>
+          <div class="set-buttons">
+            <button
+              v-if="ldap.loginEnabled" class="btn primary" data-test="ldap-test"
+              :disabled="ldapDirty || ldapTesting" title="Tests the saved connection settings"
+              @click="testLdap"
+            >
+              {{ ldapTesting ? 'Testing…' : 'Test connection' }}
+            </button>
+            <button class="btn primary" data-test="ldap-save" :disabled="!ldapDirty" @click="saveLdap">Save connection</button>
           </div>
+
+          <!-- Synchronization（对标基线;同步执行后端未实现,按钮禁用） -->
+          <template v-if="ldap.loginEnabled">
+            <h3 class="ee-section-title" style="margin-top: 40px">Synchronization</h3>
+            <div class="ee-sync-table">
+              <table>
+                <thead>
+                  <tr><th>Status</th><th>Ended At</th><th>Run Mode</th><th>Run Time</th><th>Details</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td colspan="5" class="ee-sync-empty">Test synchronization to preview updates</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="set-buttons">
+              <button class="btn secondary" disabled title="LDAP synchronization is not available yet">Test synchronization</button>
+              <button class="btn primary" disabled title="LDAP synchronization is not available yet">Run synchronization</button>
+            </div>
+          </template>
         </div>
       </section>
 
@@ -1603,45 +2084,54 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           <a class="btn primary" :href="LINKS.pricing" target="_blank" rel="noopener">See plans</a>
         </div>
         <p v-else-if="lsError" class="error-text" data-test="ls-error">{{ lsError }}</p>
-        <template v-else>
-          <div v-if="destinations.length" class="card" style="max-width: 680px; margin-bottom: 16px">
+        <div v-else class="set-cards">
+          <div v-if="destinations.length" class="set-card">
             <div
               v-for="d in destinations"
               :key="d.id"
               data-test="ls-row"
-              style="display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border)"
+              class="set-item"
             >
-              <div style="flex: 1; min-width: 0">
+              <div style="min-width: 0; flex: 1">
                 <b>{{ d.name }}</b>
                 <div class="dim" style="font-size: 12px; word-break: break-all">{{ d.url }}</div>
                 <div class="dim" style="font-size: 11px">
                   Events: {{ d.events.join(' / ') }} · Secret: {{ d.secretConfigured ? 'configured' : 'none' }}
                 </div>
               </div>
-              <span v-if="lsTestResult[d.id]" style="font-size: 12px">{{ lsTestResult[d.id] }}</span>
-              <button class="btn secondary btn-sm" data-test="ls-test" @click="testDestination(d.id)">Test</button>
-              <button class="btn secondary btn-sm danger" data-test="ls-remove" @click="removeDestination(d.id)">Delete</button>
+              <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0">
+                <span v-if="lsTestResult[d.id]" style="font-size: 12px">{{ lsTestResult[d.id] }}</span>
+                <button class="btn secondary btn-sm" data-test="ls-test" @click="testDestination(d.id)">Test</button>
+                <button class="btn secondary btn-sm danger" data-test="ls-remove" @click="removeDestination(d.id)">Delete</button>
+              </div>
             </div>
           </div>
 
-          <div class="card" style="max-width: 680px">
-            <h3 style="margin: 0 0 12px">Add destination</h3>
-            <label>Name</label>
-            <input v-model="lsForm.name" data-test="ls-name" placeholder="Splunk / internal alerts" />
-            <label>Webhook URL</label>
-            <input v-model="lsForm.url" data-test="ls-url" placeholder="https://siem.example.com/ingest" />
-            <label>Signing secret (optional)</label>
-            <input v-model="lsForm.secret" data-test="ls-secret" type="password" placeholder="••••••••" />
-            <label style="margin-top: 10px">Events</label>
-            <div style="display: flex; gap: 16px; margin-top: 4px">
-              <label class="inline-check" style="font-weight: 400"><input type="checkbox" value="execution" v-model="lsForm.events" /> Execution finished</label>
-              <label class="inline-check" style="font-weight: 400"><input type="checkbox" value="audit" v-model="lsForm.events" /> Audit events</label>
+          <div class="set-card">
+            <div class="set-item">
+              <div class="set-item-label"><label>Name</label><small>A label for this destination</small></div>
+              <div class="set-item-control"><input v-model="lsForm.name" data-test="ls-name" placeholder="Splunk / internal alerts" /></div>
             </div>
-            <div style="margin-top: 14px">
-              <button class="btn primary" data-test="ls-add" :disabled="!lsForm.name || !lsForm.url" @click="addDestination">Add</button>
+            <div class="set-item">
+              <div class="set-item-label"><label>Webhook URL</label><small>Where events are POSTed in real time</small></div>
+              <div class="set-item-control"><input v-model="lsForm.url" data-test="ls-url" placeholder="https://siem.example.com/ingest" /></div>
+            </div>
+            <div class="set-item">
+              <div class="set-item-label"><label>Signing secret</label><small>Optional — signs each event via HMAC-SHA256</small></div>
+              <div class="set-item-control"><input v-model="lsForm.secret" data-test="ls-secret" type="password" placeholder="••••••••" /></div>
+            </div>
+            <div class="set-item">
+              <div class="set-item-label"><label>Events</label><small>Which event types to forward</small></div>
+              <div class="set-item-control" style="gap: 16px; justify-content: flex-end; width: auto">
+                <label class="inline-check" style="font-weight: 400; width: auto; white-space: nowrap"><input type="checkbox" value="execution" v-model="lsForm.events" /> Execution finished</label>
+                <label class="inline-check" style="font-weight: 400; width: auto; white-space: nowrap"><input type="checkbox" value="audit" v-model="lsForm.events" /> Audit events</label>
+              </div>
             </div>
           </div>
-        </template>
+          <div class="set-buttons">
+            <button class="btn primary" data-test="ls-add" :disabled="!lsForm.name || !lsForm.url" @click="addDestination">Add destination</button>
+          </div>
+        </div>
       </section>
 
       <!-- 外部密钥（企业） -->
@@ -1658,29 +2148,35 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           <a class="btn primary" :href="LINKS.pricing" target="_blank" rel="noopener">See plans</a>
         </div>
         <p v-else-if="secretsError" class="error-text" data-test="secrets-error">{{ secretsError }}</p>
-        <div v-else-if="secretsStatus" class="card" style="max-width: 580px">
-          <div style="display: flex; justify-content: space-between; padding: 8px 0">
-            <span class="dim">Provider</span><b>{{ secretsStatus.provider }}</b>
-          </div>
-          <div style="display: flex; justify-content: space-between; padding: 8px 0">
-            <span class="dim">Status</span>
-            <b :style="{ color: secretsStatus.available ? 'var(--ok)' : 'var(--text-dim)' }">
-              {{ secretsStatus.available ? 'Ready' : 'No secrets configured' }}
-            </b>
-          </div>
-          <div style="padding: 8px 0">
-            <div class="dim" style="margin-bottom: 8px">Available secrets (names only — values never shown)</div>
-            <div v-if="secretsStatus.keys.length" style="display: flex; flex-wrap: wrap; gap: 6px">
-              <code
-                v-for="k in secretsStatus.keys"
-                :key="k"
-                data-test="secret-key"
-                style="background: var(--bg-input); padding: 3px 8px; border-radius: 6px; font-size: 12px"
-              >$secrets.{{ k }}</code>
+        <div v-else-if="secretsStatus" class="set-cards">
+          <div class="set-card">
+            <div class="set-item">
+              <div class="set-item-label"><label>Provider</label><small>The backend resolving secret references</small></div>
+              <div class="set-item-control" style="justify-content: flex-end"><b>{{ secretsStatus.provider }}</b></div>
             </div>
-            <p v-else class="dim" style="font-size: 12px">
-              Set <code>NOMOPS_SECRET_MY_KEY=xxx</code> and restart the instance to see <code>MY_KEY</code> here.
-            </p>
+            <div class="set-item">
+              <div class="set-item-label"><label>Status</label><small>Whether any secrets are currently available</small></div>
+              <div class="set-item-control" style="justify-content: flex-end">
+                <b :style="{ color: secretsStatus.available ? 'var(--ok)' : 'var(--text-dim)' }">
+                  {{ secretsStatus.available ? 'Ready' : 'No secrets configured' }}
+                </b>
+              </div>
+            </div>
+            <div class="set-field">
+              <label>Available secrets</label>
+              <div v-if="secretsStatus.keys.length" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px">
+                <code
+                  v-for="k in secretsStatus.keys"
+                  :key="k"
+                  data-test="secret-key"
+                  style="background: var(--bg-input); padding: 3px 8px; border-radius: 6px; font-size: 12px"
+                >$secrets.{{ k }}</code>
+              </div>
+              <p v-else class="dim" style="font-size: 12px; margin-top: 4px">
+                Set <code>NOMOPS_SECRET_MY_KEY=xxx</code> and restart the instance to see <code>MY_KEY</code> here.
+              </p>
+              <small>Names only — values are never shown.</small>
+            </div>
           </div>
         </div>
       </section>
@@ -1860,15 +2356,19 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         </div>
         <p v-else-if="scError" class="error-text" data-test="sc-error">{{ scError }}</p>
 
-        <!-- 未连接：连接表单 -->
-        <div v-if="scUnlocked && scConfig && !scConfig.connected" class="card" style="max-width: 620px; margin-top: 16px">
-          <label style="font-size: 12px; color: var(--dim)">Repository URL</label>
-          <input v-model="scRepoUrl" data-test="sc-repo" placeholder="git@github.com:org/workflows.git" style="width: 100%; margin-bottom: 12px" />
-          <div style="display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap">
-            <div style="width: 180px">
-              <label style="font-size: 12px; color: var(--dim)">Branch</label>
-              <input v-model="scBranch" data-test="sc-branch" placeholder="main" style="width: 100%" />
+        <!-- 未连接：连接表单（对标行式卡片体系） -->
+        <div v-if="scUnlocked && scConfig && !scConfig.connected" class="set-cards">
+          <div class="set-card">
+            <div class="set-item">
+              <div class="set-item-label"><label>Repository URL</label><small>The Git repository to sync workflows with</small></div>
+              <div class="set-item-control"><input v-model="scRepoUrl" data-test="sc-repo" placeholder="git@github.com:org/workflows.git" /></div>
             </div>
+            <div class="set-item">
+              <div class="set-item-label"><label>Branch</label><small>The branch to push to and pull from</small></div>
+              <div class="set-item-control"><input v-model="scBranch" data-test="sc-branch" placeholder="main" /></div>
+            </div>
+          </div>
+          <div class="set-buttons">
             <button class="btn primary" data-test="sc-connect" :disabled="scBusy === 'connect'" @click="scConnect">
               {{ scBusy === 'connect' ? 'Connecting…' : 'Connect' }}
             </button>
@@ -1876,9 +2376,9 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         </div>
 
         <!-- 已连接：状态 + push/pull -->
-        <template v-else-if="scUnlocked && scConfig && scConfig.connected">
-          <div class="card" style="max-width: 620px; margin-top: 16px">
-            <div style="display: flex; align-items: center; gap: 12px">
+        <div v-else-if="scUnlocked && scConfig && scConfig.connected" class="set-cards">
+          <div class="set-card">
+            <div style="display: flex; align-items: center; gap: 12px; padding: 14px 0">
               <div style="min-width: 0">
                 <div class="dim" style="font-size: 12px">Connected repository</div>
                 <div class="mono" style="font-size: 13px; margin-top: 3px; word-break: break-all">{{ scConfig.repoUrl }}</div>
@@ -1891,8 +2391,8 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
             </div>
           </div>
 
-          <div class="card" style="max-width: 620px; margin-top: 16px">
-            <div style="display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap">
+          <div class="set-card">
+            <div style="display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; padding: 14px 0">
               <div style="flex: 1; min-width: 220px">
                 <label style="font-size: 12px; color: var(--dim)">Commit message</label>
                 <input v-model="scMessage" data-test="sc-message" placeholder="Update workflows" style="width: 100%" @keyup.enter="scPush" />
@@ -1920,7 +2420,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
               <button class="btn secondary btn-sm" data-test="sc-refresh" style="margin-top: 6px" @click="refreshScStatus">Refresh status</button>
             </div>
           </div>
-        </template>
+        </div>
       </section>
 
       <!-- Observability（Prometheus /metrics，对应基线的 OpenTelemetry 观测位） -->
@@ -2550,6 +3050,90 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
 .token-box { background: var(--bg-input); border-radius: 8px; padding: 12px; margin: 4px 0 12px; }
 .token-box code { font-size: 12px; word-break: break-all; color: var(--accent); }
 .danger { color: var(--err); }
+
+/* ── EE 设置页共享行式卡片(对标基线 sso-form.module.scss:label 左 / 控件右、64px 行、分隔线) ── */
+.set-cards { max-width: 900px; }
+.set-card {
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 2px 18px; margin-bottom: 16px;
+}
+.set-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 24px;
+  min-height: 64px; padding: 14px 0; border-bottom: 1px solid var(--border);
+}
+.set-item:last-child { border-bottom: none; }
+.set-item-label { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; width: 320px; }
+.set-item-label label { font-size: 14px; font-weight: 600; color: var(--text-hi); }
+.set-item-label small { font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+.set-item-control { width: 300px; flex-shrink: 0; display: flex; justify-content: flex-end; }
+.set-item-control > * { width: 100%; }
+.set-item-control input, .set-item-control select { width: 100%; }
+/* 只读复制行(对标基线 Redirect/Entity URL 复制组) */
+.set-copy {
+  display: flex; align-items: stretch; width: 100%;
+  border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--bg-input);
+}
+.set-copy input {
+  flex: 1; min-width: 0; border: none; background: transparent;
+  font-family: monospace; font-size: 12px; color: var(--text); padding: 8px 10px;
+}
+.set-copy button {
+  border: none; border-left: 1px solid var(--border); background: transparent;
+  color: var(--text-dim); width: 40px; cursor: pointer; font-size: 14px;
+}
+.set-copy button:hover { color: var(--text-hi); }
+.set-select { height: 38px; }
+/* 卡内全宽堆叠字段(证书/大文本,行式放不下时用) */
+.set-field { padding: 14px 0; border-bottom: 1px solid var(--border); }
+.set-field:last-child { border-bottom: none; }
+.set-field > label { display: block; font-size: 14px; font-weight: 600; color: var(--text-hi); margin-bottom: 8px; }
+.set-field > small { display: block; font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+/* 底部按钮行(对标基线 .buttons) */
+.set-buttons { display: flex; gap: 12px; padding: 22px 0 4px; }
+
+/* ── 基线 SSO/LDAP 表单细节(对标基线 SSO 表单样式模块与表单组件) ── */
+/* 协议卡与首卡融合(基线 protocolCard/firstCard:上卡去下边下圆角,下卡去上边上圆角) */
+.fused-top { margin-bottom: 0; border-bottom: none; border-bottom-left-radius: 0; border-bottom-right-radius: 0; padding-bottom: 0; }
+.fused-bottom { border-top: none; border-top-left-radius: 0; border-top-right-radius: 0; padding-top: 0; }
+.fused-bottom > :first-child { border-top: 1px solid var(--border); }
+/* 卡内堆叠字段(基线 OIDC 的 .group:label 上/控件中/灰 small 下,行间分隔线) */
+.ee-group { padding: 14px 0; border-bottom: 1px solid var(--border); }
+.ee-group:last-child { border-bottom: none; }
+.ee-group > label { display: inline-block; font-size: 14px; font-weight: 600; color: var(--text-hi); padding-bottom: 8px; }
+.ee-group > input, .ee-group > select, .ee-group > textarea { width: 100%; }
+.ee-group small { display: block; padding-top: 6px; font-size: 12px; color: var(--text-dim); }
+.ee-optional { font-weight: 400; color: var(--text-dim); }
+/* Metadata URL | XML 分段开关(基线分段单选组件) */
+.seg { display: inline-flex; gap: 2px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px; padding: 2px; }
+.seg button { padding: 5px 12px; font-size: 12.5px; font-weight: 500; border: none; background: transparent; color: var(--text-dim); border-radius: 6px; cursor: pointer; }
+.seg button.on { background: var(--bg-panel); color: var(--text-hi); }
+.ips-block { padding-bottom: 14px; }
+.ips-block small { display: block; padding-top: 6px; font-size: 12px; color: var(--text-dim); }
+/* Enabled 下拉左侧绿点(基线 greenDot) */
+.sel-dot-wrap { position: relative; width: 100%; }
+.sel-dot-wrap .green-dot { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 8px; height: 8px; border-radius: 50%; background: var(--ok); pointer-events: none; }
+.sel-dot-wrap select { width: 100%; }
+.sel-dot-wrap select.has-dot { padding-left: 28px; }
+/* LDAP 堆叠表单(基线表单组件纵排:label 上/全宽输入/帮助文案下/橙星必填) */
+.ee-infotip { display: flex; align-items: center; gap: 6px; margin: -10px 0 26px; font-size: 13px; color: var(--text); }
+.ee-infotip svg { color: var(--text-dim); flex-shrink: 0; }
+.ee-stack { max-width: 1213px; }
+.ee-field { margin-bottom: 22px; }
+.ee-field > label { display: block; font-size: 14px; font-weight: 600; color: var(--text-hi); margin-bottom: 8px; }
+.ee-req { color: var(--accent); }
+.ee-field > input, .ee-field > select { width: 100%; }
+.ee-field > small { display: block; margin-top: 6px; font-size: 12px; color: var(--text-dim); }
+.ee-section-title { margin: 34px 0 18px; font-size: 17px; font-weight: 600; color: var(--text-hi); }
+/* 绿色开关(基线 el-switch:40×20,ON 绿) */
+.ee-switch { position: relative; width: 40px; height: 20px; border-radius: 10px; border: none; background: var(--bg-input); cursor: pointer; padding: 0; transition: background 0.2s; }
+.ee-switch .ee-knob { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left 0.2s; }
+.ee-switch.on { background: var(--ok); }
+.ee-switch.on .ee-knob { left: 22px; }
+/* Synchronization 表(基线 el-table bordered) */
+.ee-sync-table table { width: 100%; border-collapse: collapse; }
+.ee-sync-table th { background: var(--bg-input); border: 1px solid var(--border); padding: 10px 12px; text-align: left; font-size: 13px; font-weight: 600; color: var(--text-hi); }
+.ee-sync-table td { border: 1px solid var(--border); padding: 14px 12px; font-size: 13px; }
+.ee-sync-empty { text-align: center; color: var(--text); }
 
 /* ── 基线对齐新增 ── */
 /* a.btn 抵消全局链接样式（如 Observability 的 Open /metrics） */

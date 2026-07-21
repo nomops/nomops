@@ -231,6 +231,8 @@ export interface SamlConfigInput {
   idpEntityId: string;
   idpSsoUrl: string;
   idpCertificates: string[];
+  /** IdP 元数据地址（仅回显：下次打开时重填 Metadata URL 输入框）。 */
+  idpMetadataUrl?: string;
   /** 省略 = 保留旧值（前端因此不必持有明文私钥）。 */
   spPrivateKey?: string;
   spCertificate?: string;
@@ -551,6 +553,9 @@ export const api = {
   saml: {
     config: () => http<SamlConfig>('GET', '/api/sso/saml/config'),
     save: (body: SamlConfigInput) => http<SamlConfig>('PUT', '/api/sso/saml/config', body),
+    /** 服务端代取 IdP 元数据 XML（浏览器直抓会被 CORS 拦）。 */
+    fetchMetadata: (url: string) =>
+      http<{ xml: string }>('GET', `/api/sso/saml/fetch-metadata?url=${encodeURIComponent(url)}`),
   },
 
   billing: {
@@ -656,7 +661,11 @@ export const api = {
       userSearchBase: string;
       loginAttribute: string;
       emailAttribute: string;
+      firstNameAttribute?: string;
+      lastNameAttribute?: string;
     }) => http<{ enabled: boolean; url: string; bindPassword: string }>('PUT', '/api/ldap/config', body),
+    /** 对已保存配置做服务账号 bind（Test connection 按钮）。 */
+    test: () => http<{ ok: boolean }>('POST', '/api/ldap/test'),
     login: (username: string, password: string) =>
       http<AuthResult>('POST', '/auth/ldap/login', { username, password }),
   },

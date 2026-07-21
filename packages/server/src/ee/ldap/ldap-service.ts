@@ -39,6 +39,8 @@ export interface ILdapProfile {
 /** 认证器抽象：把 ldapts 的网络细节隔离出去，便于单测注入。 */
 export interface ILdapAuthenticator {
   authenticate(config: ILdapConfig, login: string, password: string): Promise<ILdapProfile | null>;
+  /** 服务账号 bind 连通性测试（Test connection 按钮用）。可选：假实现可不提供。 */
+  testBind?(config: ILdapConfig): Promise<void>;
 }
 
 const SETTINGS_KEY = 'ldap.config';
@@ -77,6 +79,17 @@ export class LdaptsAuthenticator implements ILdapAuthenticator {
       const email = attr(config.emailAttribute);
       if (!email) return null;
       return { email, firstName: attr(config.firstNameAttribute), lastName: attr(config.lastNameAttribute) };
+    } finally {
+      await client.unbind().catch(() => undefined);
+    }
+  }
+
+  /** 只做服务账号 bind——不搜索不改动，验证地址/DN/密码三件事是否对。 */
+  async testBind(config: ILdapConfig): Promise<void> {
+    const { Client } = await import('ldapts');
+    const client = new Client({ url: config.url });
+    try {
+      await client.bind(config.bindDn, config.bindPassword);
     } finally {
       await client.unbind().catch(() => undefined);
     }
@@ -141,6 +154,23 @@ export class LdapService {
   async isEnabled(): Promise<boolean> {
     if (!this.featureEnabled()) return false;
     return (await this.getConfig())?.enabled ?? false;
+  }
+
+  /**
+   * 连通性测试（Test connection 按钮）：用**已保存**的配置做一次服务账号 bind。
+   * 与基线同语义——测的是存量配置，所以 UI 在有未保存改动时禁用该按钮。
+   */
+  async testConnection(): Promise<void> {
+    const config = await this.getConfig();
+    if (!config?.url) throw new OperationalError('LDAP is not configured', { status: 400 });
+    if (!this.authenticator.testBind) {
+      throw new OperationalError('LDAP connection test is not supported by this authenticator', { status: 501 });
+    }
+    try {
+      await this.authenticator.testBind(config);
+    } catch (error) {
+      throw new OperationalError(`LDAP connection failed: ${(error as Error).message}`, { status: 400 });
+    }
   }
 
   /** LDAP 登录：校验凭据 → JIT 预配 → 签发 JWT。 */

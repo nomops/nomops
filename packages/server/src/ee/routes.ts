@@ -240,6 +240,47 @@ export function registerEeRoutes(router: Router, services: AppServices): void {
     }),
   );
 
+  /**
+   * IdP 元数据取回代理（SSO 页 Metadata URL 模式）：浏览器直接抓 IdP 元数据会被
+   * CORS 拦，由服务端代取后把 XML 原文回给前端解析。仅管理员 + saml 功能位可用，
+   * 只允许 http(s)，10s 超时 + 1MB 上限，抑制 SSRF 滥用面。
+   */
+  router.get(
+    '/sso/saml/fetch-metadata',
+    requireFeature(services.license, 'saml'),
+    h(async (req, res) => {
+      await assertInstanceAdmin(services, req);
+      const raw = typeof req.query['url'] === 'string' ? req.query['url'] : '';
+      let url: URL;
+      try {
+        url = new URL(raw);
+      } catch {
+        throw new OperationalError('Invalid metadata URL', { status: 400 });
+      }
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        throw new OperationalError('Metadata URL must use http or https', { status: 400 });
+      }
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10_000);
+      try {
+        const resp = await fetch(url, { signal: controller.signal, redirect: 'follow' });
+        if (!resp.ok) {
+          throw new OperationalError(`Metadata fetch failed: HTTP ${resp.status}`, { status: 400 });
+        }
+        const xml = await resp.text();
+        if (xml.length > 1_000_000) {
+          throw new OperationalError('Metadata document too large', { status: 400 });
+        }
+        res.json({ xml });
+      } catch (error) {
+        if (error instanceof OperationalError) throw error;
+        throw new OperationalError('Could not fetch metadata from that URL', { status: 400 });
+      } finally {
+        clearTimeout(timer);
+      }
+    }),
+  );
+
   /* ── LDAP 配置（docs/10 B5：实例 admin + ldap 功能；bindPassword 绝不出 API） ── */
   const emptyLdapConfig = {
     enabled: false,
@@ -285,6 +326,17 @@ export function registerEeRoutes(router: Router, services: AppServices): void {
       });
       recordAudit(services, req, 'ldap.config.update', undefined, { enabled });
       res.json(await services.ldap.getMaskedConfig());
+    }),
+  );
+
+  /** LDAP 连通性测试：对已保存配置做服务账号 bind（Test connection 按钮）。 */
+  router.post(
+    '/ldap/test',
+    requireFeature(services.license, 'ldap'),
+    h(async (req, res) => {
+      await assertInstanceAdmin(services, req);
+      await services.ldap.testConnection();
+      res.json({ ok: true });
     }),
   );
 

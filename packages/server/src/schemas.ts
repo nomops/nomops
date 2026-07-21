@@ -194,6 +194,8 @@ export const samlConfigSchema = z.object({
   idpSsoUrl: z.string().url(),
   /** IdP 签名证书(裸 base64 或 PEM,可多份以支持轮换)。 */
   idpCertificates: z.array(z.string().min(1)).min(1),
+  /** IdP 元数据地址(仅回显用:UI 下次打开时重填 Metadata URL 输入框)。 */
+  idpMetadataUrl: z.string().url().optional(),
   attributeMapping: z
     .object({
       email: z.string().optional(),
