@@ -1,8 +1,10 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import type { Cipher } from '@nomops/core';
 import type { Repositories } from '@nomops/db';
 import type { IConnections, INode, IWorkflowSettings } from '@nomops/workflow';
 import { OperationalError } from '@nomops/workflow';
@@ -13,7 +15,12 @@ const execFileAsync = promisify(execFile);
 const KEY_URL = 'sourceControl.repoUrl';
 const KEY_BRANCH = 'sourceControl.branch';
 const KEY_CONNECTED = 'sourceControl.connected';
+const KEY_CONN_TYPE = 'sourceControl.connectionType'; // 'ssh' | 'https'
+const KEY_SSH_PUBLIC = 'sourceControl.sshPublicKey';
+const KEY_SSH_PRIVATE_ENC = 'sourceControl.sshPrivateKeyEnc'; // 加密存(铁律 5)
 const WORKFLOWS_SUBDIR = 'workflows';
+
+export type ConnectionType = 'ssh' | 'https';
 
 /** 仓库 URL 里若嵌了凭证（https://user:pass@host），掩码后再出 API/日志（铁律 3 延伸）。 */
 export function maskRepoUrl(url: string): string {
@@ -24,6 +31,8 @@ export interface SourceControlConfig {
   connected: boolean;
   repoUrl: string; // 已掩码
   branch: string;
+  connectionType: ConnectionType;
+  sshPublicKey: string; // SSH 模式下的部署公钥(粘进 GitHub);https 模式为空
 }
 
 interface WorkflowFile {
@@ -45,13 +54,35 @@ export class GitService {
     private readonly repos: Repositories,
     private readonly workflows: WorkflowService,
     private readonly workDir: string,
+    private readonly cipher: Cipher,
   ) {}
 
+  private async connectionType(): Promise<ConnectionType> {
+    return (await this.repos.settings.get(KEY_CONN_TYPE)) === 'https' ? 'https' : 'ssh';
+  }
+
+  /**
+   * 跑 git。SSH 模式:把加密存的部署私钥解密写进临时 0600 文件,
+   * 经 GIT_SSH_COMMAND 让本次 git 用它认证,用完即删(明文私钥不常驻磁盘)。
+   */
   private async git(args: string[]): Promise<string> {
+    const env: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
+    let keyDir: string | undefined;
+    if ((await this.connectionType()) === 'ssh') {
+      const priv = await this.repos.settings.get(KEY_SSH_PRIVATE_ENC);
+      if (priv) {
+        keyDir = await mkdtemp(join(tmpdir(), 'nomops-sc-'));
+        const keyFile = join(keyDir, 'id');
+        await writeFile(keyFile, (await this.cipher.decrypt(priv)) + '\n');
+        await chmod(keyFile, 0o600);
+        env['GIT_SSH_COMMAND'] = `ssh -i ${keyFile} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new`;
+      }
+    }
     try {
       const { stdout } = await execFileAsync('git', ['-C', this.workDir, ...args], {
         timeout: 60_000,
         maxBuffer: 16 * 1024 * 1024,
+        env,
       });
       return stdout;
     } catch (e) {
@@ -59,19 +90,59 @@ export class GitService {
       throw new OperationalError(`git ${args[0]} failed: ${(err.stderr || err.message || '').trim()}`, {
         status: 400,
       });
+    } finally {
+      if (keyDir) await rm(keyDir, { recursive: true, force: true });
+    }
+  }
+
+  /** 生成/取部署 SSH 公钥(ED25519):无则新建一对,私钥加密落库,公钥明存。返回公钥(可粘进 GitHub)。 */
+  async ensureSshKey(): Promise<string> {
+    const existing = await this.repos.settings.get(KEY_SSH_PUBLIC);
+    if (existing) return existing;
+    return this.generateSshKey();
+  }
+
+  /** 重新生成部署密钥(旧的作废;需在 GitHub 换成新公钥)。 */
+  async refreshSshKey(): Promise<string> {
+    return this.generateSshKey();
+  }
+
+  private async generateSshKey(): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), 'nomops-keygen-'));
+    try {
+      const keyFile = join(dir, 'id_ed25519');
+      await execFileAsync('ssh-keygen', ['-t', 'ed25519', '-N', '', '-C', 'nomops-deploy-key', '-f', keyFile, '-q'], {
+        timeout: 15_000,
+      });
+      const [priv, pub] = await Promise.all([
+        readFile(keyFile, 'utf8'),
+        readFile(`${keyFile}.pub`, 'utf8'),
+      ]);
+      const pubTrimmed = pub.trim();
+      await this.repos.settings.set(KEY_SSH_PRIVATE_ENC, await this.cipher.encrypt(priv.trim()), true);
+      await this.repos.settings.set(KEY_SSH_PUBLIC, pubTrimmed);
+      return pubTrimmed;
+    } catch (e) {
+      throw new OperationalError(`SSH key generation failed: ${(e as Error).message}`, { status: 500 });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
     }
   }
 
   async getConfig(): Promise<SourceControlConfig> {
-    const [repoUrl, branch, connected] = await Promise.all([
+    const [repoUrl, branch, connected, connType, sshPublicKey] = await Promise.all([
       this.repos.settings.get(KEY_URL),
       this.repos.settings.get(KEY_BRANCH),
       this.repos.settings.get(KEY_CONNECTED),
+      this.connectionType(),
+      this.repos.settings.get(KEY_SSH_PUBLIC),
     ]);
     return {
       connected: connected === 'true',
       repoUrl: repoUrl ? maskRepoUrl(repoUrl) : '',
       branch: branch || 'main',
+      connectionType: connType,
+      sshPublicKey: connType === 'ssh' ? (sshPublicKey ?? '') : '',
     };
   }
 
@@ -85,11 +156,19 @@ export class GitService {
     return (await this.repos.settings.get(KEY_BRANCH)) || 'main';
   }
 
-  /** 连接仓库：clone 到工作目录并切到目标分支；存配置。 */
-  async connect(input: { repoUrl: string; branch?: string }): Promise<SourceControlConfig> {
+  /** 连接仓库：clone 到工作目录并切到目标分支；存配置。SSH 模式先确保部署密钥就绪。 */
+  async connect(input: {
+    repoUrl: string;
+    branch?: string;
+    connectionType?: ConnectionType;
+  }): Promise<SourceControlConfig> {
     const repoUrl = input.repoUrl.trim();
     if (!repoUrl) throw new OperationalError('Repository URL is required', { status: 400 });
     const branch = (input.branch || 'main').trim();
+    const connType: ConnectionType = input.connectionType === 'https' ? 'https' : 'ssh';
+
+    await this.repos.settings.set(KEY_CONN_TYPE, connType);
+    if (connType === 'ssh') await this.ensureSshKey(); // git() 依赖它认证
 
     await rm(this.workDir, { recursive: true, force: true });
     await mkdir(this.workDir, { recursive: true });

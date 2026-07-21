@@ -249,6 +249,8 @@ export interface SourceControlConfig {
   connected: boolean;
   repoUrl: string; // 已掩码
   branch: string;
+  connectionType: 'ssh' | 'https';
+  sshPublicKey: string; // SSH 模式的部署公钥;https 为空
 }
 export interface SourceControlStatus extends SourceControlConfig {
   files: Array<{ path: string; status: string }>;
@@ -497,13 +499,15 @@ export const api = {
 
   sourceControl: {
     config: () => http<SourceControlConfig>('GET', '/api/source-control'),
-    connect: (repoUrl: string, branch: string) =>
-      http<SourceControlConfig>('PUT', '/api/source-control', { repoUrl, branch }),
+    connect: (repoUrl: string, branch: string, connectionType: 'ssh' | 'https' = 'ssh') =>
+      http<SourceControlConfig>('PUT', '/api/source-control', { repoUrl, branch, connectionType }),
     disconnect: () => http<void>('DELETE', '/api/source-control'),
     status: () => http<SourceControlStatus>('GET', '/api/source-control/status'),
     push: (message: string) =>
       http<{ committed: boolean; pushed: boolean; files: string[] }>('POST', '/api/source-control/push', { message }),
     pull: () => http<{ created: number; updated: number; skipped: string[] }>('POST', '/api/source-control/pull'),
+    getKey: () => http<{ publicKey: string }>('GET', '/api/source-control/key'),
+    refreshKey: () => http<{ publicKey: string }>('POST', '/api/source-control/key/refresh'),
   },
 
   insights: (from_?: string, to?: string) =>

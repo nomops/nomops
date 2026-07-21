@@ -219,6 +219,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     opts.sourceControlDir ??
       process.env['NOMOPS_SOURCE_CONTROL_DIR'] ??
       join(process.cwd(), '.nomops', 'source-control'),
+    new Cipher(new SettingsKeyProvider(repos.settings)),
   );
   // 外部密钥（docs/10 B4）：凭证解密后物化 {{ $secrets.KEY }} 引用
   const secrets = new SecretsService(opts.secretsProvider ?? new EnvSecretsProvider(), license);

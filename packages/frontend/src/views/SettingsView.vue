@@ -1148,6 +1148,9 @@ const scMessage = ref('');
 const scError = ref('');
 const scBusy = ref(''); // 当前进行中的操作名，用于按钮 loading
 const scResult = ref('');
+const scConnType = ref<'ssh' | 'https'>('ssh'); // 未连接时的选择
+const scPublicKey = ref('');
+const scKeyCopied = ref(false);
 
 async function loadSourceControl() {
   scError.value = '';
@@ -1157,12 +1160,43 @@ async function loadSourceControl() {
     scConfig.value = await api.sourceControl.config();
     if (scConfig.value.connected) {
       scBranch.value = scConfig.value.branch;
+      scConnType.value = scConfig.value.connectionType;
+      scPublicKey.value = scConfig.value.sshPublicKey;
       await refreshScStatus();
+    } else if (scConnType.value === 'ssh') {
+      await loadScKey(); // 未连接 + SSH → 预取部署公钥供粘贴
     }
   } catch (e) {
     scError.value = (e as Error).message; // 社区版 / 非 admin → 403
     scConfig.value = null;
   }
+}
+async function loadScKey() {
+  try {
+    scPublicKey.value = (await api.sourceControl.getKey()).publicKey;
+  } catch (e) {
+    scError.value = (e as Error).message;
+  }
+}
+async function scRefreshKey() {
+  if (!confirm('Regenerate the deploy key? The old key stops working — you must replace it in your Git host.')) return;
+  scBusy.value = 'key';
+  try {
+    scPublicKey.value = (await api.sourceControl.refreshKey()).publicKey;
+  } catch (e) {
+    scError.value = (e as Error).message;
+  } finally {
+    scBusy.value = '';
+  }
+}
+async function scCopyKey() {
+  await navigator.clipboard.writeText(scPublicKey.value).catch(() => undefined);
+  scKeyCopied.value = true;
+  setTimeout(() => (scKeyCopied.value = false), 1500);
+}
+async function onScConnTypeChange() {
+  scPublicKey.value = '';
+  if (scConnType.value === 'ssh') await loadScKey();
 }
 async function refreshScStatus() {
   try {
@@ -1179,7 +1213,7 @@ async function scConnect() {
   }
   scBusy.value = 'connect';
   try {
-    scConfig.value = await api.sourceControl.connect(scRepoUrl.value.trim(), scBranch.value.trim() || 'main');
+    scConfig.value = await api.sourceControl.connect(scRepoUrl.value.trim(), scBranch.value.trim() || 'main', scConnType.value);
     scRepoUrl.value = '';
     await refreshScStatus();
   } catch (e) {
@@ -2369,7 +2403,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         <p class="sub">
           Use multiple instances for different environments (dev, prod, etc.), deploying between them via a Git
           repository — push local changes and pull updates. Only workflows are synced (no credentials).
-          Authentication uses the host's Git configuration (SSH deploy key or credential helper).
+          For SSH, add the generated deploy key below to your Git host; for HTTPS, embed a token in the URL.
         </p>
 
         <div v-if="!licensed('sourceControl')" class="locked-card" data-test="sc-locked">
@@ -2386,14 +2420,43 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         <div v-if="scUnlocked && scConfig && !scConfig.connected" class="set-cards">
           <div class="set-card">
             <div class="set-item">
+              <div class="set-item-label"><label>Connection Type</label><small>How to authenticate with your Git host</small></div>
+              <div class="set-item-control">
+                <select v-model="scConnType" data-test="sc-conn-type" @change="onScConnTypeChange">
+                  <option value="ssh">SSH</option>
+                  <option value="https">HTTPS</option>
+                </select>
+              </div>
+            </div>
+            <div class="set-item">
               <div class="set-item-label"><label>Repository URL</label><small>The Git repository to sync workflows with</small></div>
-              <div class="set-item-control"><input v-model="scRepoUrl" data-test="sc-repo" placeholder="git@github.com:org/workflows.git" /></div>
+              <div class="set-item-control">
+                <input v-model="scRepoUrl" data-test="sc-repo" :placeholder="scConnType === 'ssh' ? 'git@github.com:org/workflows.git' : 'https://github.com/org/workflows.git'" />
+              </div>
             </div>
             <div class="set-item">
               <div class="set-item-label"><label>Branch</label><small>The branch to push to and pull from</small></div>
               <div class="set-item-control"><input v-model="scBranch" data-test="sc-branch" placeholder="main" /></div>
             </div>
           </div>
+
+          <!-- SSH 部署公钥：粘进 Git 服务端的 Deploy keys（写权限） -->
+          <div v-if="scConnType === 'ssh'" class="set-card">
+            <div class="set-item-label" style="margin-bottom: 8px">
+              <label>SSH Public Key</label>
+              <small>Add this deploy key (with write access) to your Git repository, then Connect</small>
+            </div>
+            <textarea v-model="scPublicKey" class="sc-key" data-test="sc-ssh-key" readonly rows="3" @focus="($event.target as HTMLTextAreaElement).select()" />
+            <div class="set-buttons" style="margin-top: 8px">
+              <button class="btn secondary btn-sm" data-test="sc-key-copy" :disabled="!scPublicKey" @click="scCopyKey">
+                {{ scKeyCopied ? 'Copied' : 'Copy' }}
+              </button>
+              <button class="btn secondary btn-sm" data-test="sc-key-refresh" :disabled="scBusy === 'key'" @click="scRefreshKey">
+                {{ scBusy === 'key' ? 'Refreshing…' : 'Refresh Key' }}
+              </button>
+            </div>
+          </div>
+
           <div class="set-buttons">
             <button class="btn primary" data-test="sc-connect" :disabled="scBusy === 'connect'" @click="scConnect">
               {{ scBusy === 'connect' ? 'Connecting…' : 'Connect' }}
@@ -3489,6 +3552,8 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 
 /* 源码同步 */
 .mono { font-family: 'SF Mono', ui-monospace, Menlo, monospace; }
+.sc-key { width: 100%; resize: vertical; font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 12px; line-height: 1.5; word-break: break-all; color: var(--text); background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; }
+.sc-key:focus { outline: none; border-color: var(--accent); }
 .sc-changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
 .sc-changes li { display: flex; align-items: center; gap: 10px; font-size: 12.5px; }
 .sc-stat { width: 20px; text-align: center; color: var(--accent); font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 11px; }

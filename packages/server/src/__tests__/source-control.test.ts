@@ -135,3 +135,48 @@ describe('连接 → push → pull 往返', () => {
     expect(res.body.connected).toBe(false);
   });
 });
+
+describe('SSH 部署密钥', () => {
+  it('GET /key → 生成有效 ED25519 公钥，重复取稳定', async () => {
+    const first = await request(appA).get('/api/source-control/key').set(bearer(ownerA)).expect(200);
+    expect(first.body.publicKey).toMatch(/^ssh-ed25519 [A-Za-z0-9+/=]+ nomops-deploy-key$/);
+    const second = await request(appA).get('/api/source-control/key').set(bearer(ownerA)).expect(200);
+    expect(second.body.publicKey).toBe(first.body.publicKey); // 不重生成
+  });
+
+  it('POST /key/refresh → 换新公钥', async () => {
+    const before = (await request(appA).get('/api/source-control/key').set(bearer(ownerA)).expect(200)).body.publicKey;
+    const refreshed = await request(appA).post('/api/source-control/key/refresh').set(bearer(ownerA)).expect(200);
+    expect(refreshed.body.publicKey).toMatch(/^ssh-ed25519 /);
+    expect(refreshed.body.publicKey).not.toBe(before);
+  });
+
+  it('SSH 连接 → config 带 connectionType=ssh + 公钥', async () => {
+    const res = await request(appA)
+      .put('/api/source-control')
+      .set(bearer(ownerA))
+      .send({ repoUrl: bareRepo, branch: 'main', connectionType: 'ssh' })
+      .expect(200);
+    expect(res.body.connectionType).toBe('ssh');
+    expect(res.body.sshPublicKey).toMatch(/^ssh-ed25519 /);
+    await request(appA).delete('/api/source-control').set(bearer(ownerA)).expect(204);
+  });
+
+  it('HTTPS 连接 → config.connectionType=https，公钥不外露', async () => {
+    const res = await request(appA)
+      .put('/api/source-control')
+      .set(bearer(ownerA))
+      .send({ repoUrl: bareRepo, branch: 'main', connectionType: 'https' })
+      .expect(200);
+    expect(res.body.connectionType).toBe('https');
+    expect(res.body.sshPublicKey).toBe('');
+    await request(appA).delete('/api/source-control').set(bearer(ownerA)).expect(204);
+  });
+
+  it('私钥加密落库，绝不出 API/config', async () => {
+    await request(appA).get('/api/source-control/key').set(bearer(ownerA)).expect(200);
+    const cfg = await request(appA).get('/api/source-control').set(bearer(ownerA)).expect(200);
+    expect(JSON.stringify(cfg.body)).not.toContain('PRIVATE KEY');
+    expect(JSON.stringify(cfg.body)).not.toContain('BEGIN OPENSSH');
+  });
+});

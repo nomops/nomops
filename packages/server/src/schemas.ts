@@ -99,6 +99,7 @@ export const communityNodeInstallSchema = z.object({
 export const sourceControlConnectSchema = z.object({
   repoUrl: z.string().min(1).max(500),
   branch: z.string().min(1).max(200).optional(),
+  connectionType: z.enum(['ssh', 'https']).optional(),
 });
 
 /** push 提交信息。 */

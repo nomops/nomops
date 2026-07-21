@@ -174,6 +174,28 @@ export function registerEeRoutes(router: Router, services: AppServices): void {
     }),
   );
 
+  // 部署 SSH 公钥：取（无则生成）
+  router.get(
+    '/source-control/key',
+    sourceControlFeature,
+    h(async (req, res) => {
+      await assertInstanceAdmin(services, req);
+      res.json({ publicKey: await services.git.ensureSshKey() });
+    }),
+  );
+
+  // 部署 SSH 公钥：重新生成（旧的作废，需在 Git 服务端换新公钥）
+  router.post(
+    '/source-control/key/refresh',
+    sourceControlFeature,
+    h(async (req, res) => {
+      await assertInstanceAdmin(services, req);
+      const publicKey = await services.git.refreshSshKey();
+      recordAudit(services, req, 'source-control.key-refresh');
+      res.json({ publicKey });
+    }),
+  );
+
 
   /* ── SSO / SCIM 配置（docs/07：实例 admin + 对应功能） ── */
 
