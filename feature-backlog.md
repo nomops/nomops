@@ -74,7 +74,7 @@
 - [ ] **25. MCP OAuth 鉴权** `M/L`（现仅 access token；前端分段控件已画好）
 - [ ] **26. Public API 独立面 + 细粒度 scopes** `L`（现 readonly/all 两档、复用内部 /api；API key Custom scopes 前端已画、提交降级 all）
 - [ ] **27. OpenTelemetry 后端** `L`（现为零，前端整页本地态假表单；OTLP 导出 + 表单接线）
-- [ ] **28. SCIM Groups** `M`（Users 已实现；Groups→projects 映射按 docs/07 延后项）
+- [x] **28. SCIM Groups** `M` ✅ 2026-07-22（SCIM Group → team 项目,成员=project_relations(默认 project:editor);GET/POST/PUT/PATCH(add/remove/replace members + rename)/DELETE(空组删项目,持有资源 FK→409);displayName eq filter;toScimGroup 资源;ProjectRepository findAllByType/findByNameAndType/rename/deleteWithRelations;4 server 测(建组进 project_relations/PATCH 增删/PUT 替换/DELETE)）
 - [ ] **29. 自定义角色（custom roles）** `L`（现固定枚举；Roles 页锁卡）
 - [x] **30. lastActive 字段（D146）** `S` ✅ 2026-07-22（users.last_active_at 双方言列(迁移 0024);touchLastActive 进程内 60s 节流打点,鉴权中间件 fire-and-forget 调用;instance/users 暴露给 admin;前端 Users 表 Last Active 列相对时间(Never/Xm/Xh/Xd/日期);3 server 测(打点/节流/pending null)）
 

@@ -1,7 +1,7 @@
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import { OperationalError } from '@nomops/workflow';
 import type { AppServices } from '../../app-services.js';
-import { toScimUser } from './scim-service.js';
+import { toScimGroup, toScimUser } from './scim-service.js';
 
 /** SCIM 错误响应（RFC 7644 §3.12）。 */
 function scimError(res: Response, status: number, detail: string): void {
@@ -169,6 +169,75 @@ export function createScimRouter(services: AppServices): Router {
         resourceType: 'user',
         resourceId: String(req.params['id']),
       });
+      res.status(204).end();
+    }),
+  );
+
+  /* ── Groups 资源（→ team 项目；backlog #28） ── */
+  router.get(
+    '/Groups',
+    h(async (req, res) => {
+      const filter = typeof req.query['filter'] === 'string' ? req.query['filter'] : undefined;
+      const groups = await services.scim.listGroups(filter);
+      res.json({
+        schemas: ['urn:ietf:params:scim:api:messages:2.0:ListResponse'],
+        totalResults: groups.length,
+        startIndex: 1,
+        itemsPerPage: groups.length,
+        Resources: groups.map((g) => toScimGroup(g.project, g.members)),
+      });
+    }),
+  );
+
+  router.get(
+    '/Groups/:id',
+    h(async (req, res) => {
+      const g = await services.scim.getGroup(String(req.params['id']));
+      res.json(toScimGroup(g.project, g.members));
+    }),
+  );
+
+  router.post(
+    '/Groups',
+    h(async (req, res) => {
+      const body = req.body as { displayName?: string; members?: Array<{ value?: string } | string> };
+      const members = (body.members ?? [])
+        .map((m) => (typeof m === 'string' ? m : m?.value))
+        .filter((v): v is string => typeof v === 'string');
+      const g = await services.scim.createGroup({ displayName: body.displayName ?? '', members });
+      services.audit.log({ action: 'scim.group.create', resourceType: 'project', resourceId: g.project.id, details: { displayName: g.project.name } });
+      res.status(201).json(toScimGroup(g.project, g.members));
+    }),
+  );
+
+  router.put(
+    '/Groups/:id',
+    h(async (req, res) => {
+      const body = req.body as { displayName?: string; members?: Array<{ value?: string } | string> };
+      const members = (body.members ?? [])
+        .map((m) => (typeof m === 'string' ? m : m?.value))
+        .filter((v): v is string => typeof v === 'string');
+      const g = await services.scim.replaceGroup(String(req.params['id']), { displayName: body.displayName, members });
+      services.audit.log({ action: 'scim.group.update', resourceType: 'project', resourceId: g.project.id });
+      res.json(toScimGroup(g.project, g.members));
+    }),
+  );
+
+  router.patch(
+    '/Groups/:id',
+    h(async (req, res) => {
+      const body = req.body as { Operations?: Array<{ op: string; path?: string; value?: unknown }> };
+      const g = await services.scim.patchGroup(String(req.params['id']), body.Operations ?? []);
+      services.audit.log({ action: 'scim.group.update', resourceType: 'project', resourceId: g.project.id });
+      res.json(toScimGroup(g.project, g.members));
+    }),
+  );
+
+  router.delete(
+    '/Groups/:id',
+    h(async (req, res) => {
+      await services.scim.deleteGroup(String(req.params['id']));
+      services.audit.log({ action: 'scim.group.delete', resourceType: 'project', resourceId: String(req.params['id']) });
       res.status(204).end();
     }),
   );

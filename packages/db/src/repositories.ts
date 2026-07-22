@@ -254,6 +254,31 @@ export class ProjectRepository extends BaseRepository {
     await this.db.insert(this.schema.projectRelations).values({ projectId, userId, role });
   }
 
+  /** 某类型的全部 project（SCIM Groups 列 team 项目用）。 */
+  async findAllByType(type: string): Promise<Project[]> {
+    return (await this.db.select().from(this.schema.projects).where(eq(this.schema.projects.type, type))) as Project[];
+  }
+
+  /** 按 name + type 查（SCIM Group displayName eq 过滤）。 */
+  async findByNameAndType(name: string, type: string): Promise<Project | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.projects)
+      .where(and(eq(this.schema.projects.name, name), eq(this.schema.projects.type, type)))
+      .limit(1);
+    return (rows[0] as Project | undefined) ?? null;
+  }
+
+  async rename(id: string, name: string): Promise<void> {
+    await this.db.update(this.schema.projects).set({ name }).where(eq(this.schema.projects.id, id));
+  }
+
+  /** 删项目 + 其成员关系（SCIM Group delete）。有工作流/凭证共享行时 FK 阻止,调用方转 409。 */
+  async deleteWithRelations(id: string): Promise<void> {
+    await this.db.delete(this.schema.projectRelations).where(eq(this.schema.projectRelations.projectId, id));
+    await this.db.delete(this.schema.projects).where(eq(this.schema.projects.id, id));
+  }
+
   /** 实例内某类型的 project 总数（license 席位/项目配额守门用，不带归属过滤）。 */
   async countByType(type: string): Promise<number> {
     const rows = await this.db

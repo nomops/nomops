@@ -280,6 +280,78 @@ describe('企业版 SSO + SCIM', () => {
       expect(actions.has('scim.user.deactivate')).toBe(true);
     });
   });
+
+  describe('SCIM Groups → team 项目（#28）', () => {
+    let groupId: string;
+    let u1: string;
+    let u2: string;
+
+    it('POST 建组 → team 项目 + 成员;filter 查到;成员进 project_relations', async () => {
+      u1 = (await boot.services.repos.users.findByEmail('scim-user@corp.dev'))!.id;
+      // 建第二个 SCIM 用户当成员
+      const created = await request(app)
+        .post('/scim/v2/Users')
+        .set(scim())
+        .send({ userName: 'grp-member@corp.dev', name: { givenName: 'Grp', familyName: 'Member' } })
+        .expect(201);
+      u2 = created.body.id;
+
+      const group = await request(app)
+        .post('/scim/v2/Groups')
+        .set(scim())
+        .send({ displayName: 'Engineering', members: [{ value: u1 }, { value: u2 }] })
+        .expect(201);
+      expect(group.body.schemas).toContain('urn:ietf:params:scim:schemas:core:2.0:Group');
+      expect(group.body.displayName).toBe('Engineering');
+      expect(group.body.members.map((m: { value: string }) => m.value).sort()).toEqual([u1, u2].sort());
+      groupId = group.body.id;
+
+      // 真的进了 project_relations（team 项目成员）
+      expect(await boot.services.repos.projects.findMemberRole(groupId, u1)).toBe('project:editor');
+
+      const list = await request(app)
+        .get('/scim/v2/Groups?filter=displayName%20eq%20%22Engineering%22')
+        .set(scim())
+        .expect(200);
+      expect(list.body.totalResults).toBe(1);
+      expect(list.body.Resources[0].id).toBe(groupId);
+
+      await request(app).post('/scim/v2/Groups').set(scim()).send({ displayName: 'Engineering' }).expect(409);
+    });
+
+    it('PATCH remove/add 成员', async () => {
+      await request(app)
+        .patch(`/scim/v2/Groups/${groupId}`)
+        .set(scim())
+        .send({ Operations: [{ op: 'remove', path: `members[value eq "${u2}"]` }] })
+        .expect(200);
+      expect(await boot.services.repos.projects.findMemberRole(groupId, u2)).toBeNull();
+
+      const added = await request(app)
+        .patch(`/scim/v2/Groups/${groupId}`)
+        .set(scim())
+        .send({ Operations: [{ op: 'add', path: 'members', value: [{ value: u2 }] }] })
+        .expect(200);
+      expect(added.body.members.map((m: { value: string }) => m.value)).toContain(u2);
+    });
+
+    it('PUT 全量替换 displayName + 成员', async () => {
+      const res = await request(app)
+        .put(`/scim/v2/Groups/${groupId}`)
+        .set(scim())
+        .send({ displayName: 'Platform', members: [{ value: u1 }] })
+        .expect(200);
+      expect(res.body.displayName).toBe('Platform');
+      expect(res.body.members.map((m: { value: string }) => m.value)).toEqual([u1]);
+      expect(await boot.services.repos.projects.findMemberRole(groupId, u2)).toBeNull(); // 被替换掉
+    });
+
+    it('DELETE 空组 → team 项目消失', async () => {
+      await request(app).delete(`/scim/v2/Groups/${groupId}`).set(scim()).expect(204);
+      await request(app).get(`/scim/v2/Groups/${groupId}`).set(scim()).expect(404);
+      expect(await boot.services.repos.projects.findById(groupId)).toBeNull();
+    });
+  });
 });
 
 describe('社区版：SSO/SCIM 全部拒之门外', () => {
