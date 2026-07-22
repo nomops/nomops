@@ -227,6 +227,16 @@ export const ssoConfigSchema = z.object({
   clientId: z.string().min(1),
   /** 省略 = 保留已存 secret（更新其他字段时不必重填）。 */
   clientSecret: z.string().min(1).optional(),
+  /** 授权请求 prompt 参数（对标基线 5 选项;空 = 不发送）。 */
+  prompt: z.enum(['select_account', 'login', 'consent', 'none', 'create']).optional(),
+  /** acr_values（空格分隔;空 = 不发送）。 */
+  acrValues: z.string().max(500).optional(),
+  /** 追加 scopes（空格分隔,叠加在 openid email profile 之上）。 */
+  additionalScopes: z
+    .string()
+    .max(500)
+    .refine((v) => !/[,;]/.test(v), 'Scopes must be space-separated (no commas or semicolons)')
+    .optional(),
 });
 
 export const credentialBodySchema = z.object({

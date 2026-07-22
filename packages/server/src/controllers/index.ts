@@ -1278,6 +1278,21 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
+  /* OAuth redirect 允许清单持久化（backlog #9;OAuth 授权流本体见 #25） */
+  router.put(
+    '/mcp/redirect-urls',
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      const body = (req.body ?? {}) as { redirectUrls?: string[] };
+      if (!Array.isArray(body.redirectUrls) || body.redirectUrls.some((x) => typeof x !== 'string')) {
+        throw new OperationalError('redirectUrls must be an array of strings', { status: 400 });
+      }
+      await services.mcp.setRedirectUrls(body.redirectUrls);
+      recordAudit(services, req, 'mcp.redirect-urls-update');
+      res.json(await services.mcp.status());
+    }),
+  );
+
   /* ── templates（内置模板库，docs/10 B1） ── */
   router.get(
     '/templates',

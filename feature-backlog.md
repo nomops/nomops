@@ -33,9 +33,7 @@
 
 - [x] **8. Insights 拆锁墙** `S/M` ✅ 2026-07-22（真数据页:KPI 五卡+路由 metric 高亮+5 档范围选择+SVG 成功/失败堆叠趋势(粒度跟后端 hour/day);live 造数截图验证。D153 项目选择器需后端跨项目聚合,单列不做）
 
-- [ ] **9. 设置页本地态字段接线** `M`
-  填了不发送的字段贯通后端：OIDC Prompt/ACR/Additional scopes；LDAP loginLabel/userFilter/allowUnauthorizedCerts/sync 系列（含 Test/Run synchronization 按钮启用）；MCP redirect 白名单持久化。
-  证据：`SettingsView.vue:166-171/257-281/539`。
+- [x] **9. 设置页本地态字段接线** `M` ✅ 2026-07-22（OIDC prompt/acr_values/追加 scopes 进授权跳转;LDAP 7 字段贯通(userFilter/证书豁免真进 ldapts)+同步 preview/run 真实现(dry-run 对账+JIT 预配/改名,幂等);MCP redirect 清单持久化+清洗;4 server 测+live 往返/截图。残余:同步定时开关仍本地态(无调度器不做假)）
 
 - [ ] **10. 执行批量删除** `S`
   后端只有单条 DELETE；补批量端点 + 前端多选删除。

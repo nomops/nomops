@@ -394,6 +394,14 @@ export function registerEeRoutes(router: Router, services: AppServices): void {
         ...(str('emailAttribute') !== undefined ? { emailAttribute: str('emailAttribute')! } : {}),
         ...(str('firstNameAttribute') !== undefined ? { firstNameAttribute: str('firstNameAttribute')! } : {}),
         ...(str('lastNameAttribute') !== undefined ? { lastNameAttribute: str('lastNameAttribute')! } : {}),
+        // 扩展字段（backlog #9 本地态接线）
+        ...(str('loginLabel') !== undefined ? { loginLabel: str('loginLabel')! } : {}),
+        ...(typeof b['allowUnauthorizedCerts'] === 'boolean' ? { allowUnauthorizedCerts: b['allowUnauthorizedCerts'] } : {}),
+        ...(str('userFilter') !== undefined ? { userFilter: str('userFilter')! } : {}),
+        ...(str('ldapIdAttribute') !== undefined ? { ldapIdAttribute: str('ldapIdAttribute')! } : {}),
+        ...(typeof b['pageSize'] === 'number' ? { pageSize: Math.max(0, Math.floor(b['pageSize'])) } : {}),
+        ...(typeof b['searchTimeout'] === 'number' ? { searchTimeout: Math.max(0, Math.floor(b['searchTimeout'])) } : {}),
+        ...(typeof b['enforceEmailUniqueness'] === 'boolean' ? { enforceEmailUniqueness: b['enforceEmailUniqueness'] } : {}),
       });
       recordAudit(services, req, 'ldap.config.update', undefined, { enabled });
       res.json(await services.ldap.getMaskedConfig());
@@ -408,6 +416,28 @@ export function registerEeRoutes(router: Router, services: AppServices): void {
       await assertInstanceAdmin(services, req);
       await services.ldap.testConnection();
       res.json({ ok: true });
+    }),
+  );
+
+  /** 同步预览（Test synchronization）：目录 ↔ 本地对账,不写库。 */
+  router.post(
+    '/ldap/sync/preview',
+    requireFeature(services.license, 'ldap'),
+    h(async (req, res) => {
+      await assertInstanceAdmin(services, req);
+      res.json({ rows: await services.ldap.previewSync() });
+    }),
+  );
+
+  /** 执行同步（Run synchronization）：create=JIT 预配,update=覆写姓名。 */
+  router.post(
+    '/ldap/sync',
+    requireFeature(services.license, 'ldap'),
+    h(async (req, res) => {
+      await assertInstanceAdmin(services, req);
+      const summary = await services.ldap.runSync();
+      recordAudit(services, req, 'ldap.sync', undefined, summary);
+      res.json(summary);
     }),
   );
 

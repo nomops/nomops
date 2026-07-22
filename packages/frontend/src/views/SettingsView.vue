@@ -164,8 +164,8 @@ const ssoLoading = ref(true);
 /* B2:SSO 两协议并存,各自独立启用。协议下拉只切表单,不影响对方的启用状态。
    基线缺省停在 SAML,跟随。 */
 const ssoProtocol = ref<'oidc' | 'saml'>('saml');
-/* OIDC 仅展示字段(基线有、nomops 后端暂未消费:Prompt/ACR/Additional scopes)——
-   本地态,保存不发送;接线后改走 API。 */
+/* OIDC Prompt/ACR/Additional scopes:已贯通后端（backlog #9）——
+   保存随 PUT /api/sso/config 落库,授权跳转时进 prompt/acr_values/scope。 */
 const oidcPrompt = ref<'login' | 'none' | 'consent' | 'select_account' | 'create'>('select_account');
 const oidcAcr = ref('');
 const oidcScopes = ref('');
@@ -255,8 +255,9 @@ const secretsStatus = ref<Awaited<ReturnType<typeof api.externalSecrets>> | null
 const secretsError = ref('');
 const secretRefExample = '{{ $secrets.KEY }}'; // 字面量，避免模板里 {{ }} 嵌套
 
-/* LDAP（企业）:字段集对标基线表单。带 ◆ 的映射到后端配置;其余仅展示
-   (基线有、nomops 后端暂未消费),本地态,保存不发送。 */
+/* LDAP（企业）:字段集对标基线表单,已全量贯通后端（backlog #9）。
+   仅 synchronizationEnabled/Interval 仍为本地态:nomops 无定时同步调度器,
+   同步为手动 Test/Run（做假的定时开关是误导,待调度器落地再接）。 */
 const ldap = ref({
   loginEnabled: false, // ◆ enabled
   loginLabel: '',
@@ -287,6 +288,60 @@ const ldapLoading = ref(true);
 const ldapDirty = ref(false);
 const ldapTesting = ref(false);
 const ldapTestResult = ref(''); // 'ok' | 错误消息
+/* 同步（backlog #9）:Test=dry-run 对账预览,Run=真执行;历次结果进表格（对标基线 5 列） */
+const ldapSyncBusy = ref<'' | 'preview' | 'run'>('');
+const ldapSyncRuns = ref<
+  Array<{ status: 'success' | 'error'; endedAt: string; runMode: 'dry' | 'live'; runTimeMs: number; details: string }>
+>([]);
+async function ldapSyncPreview() {
+  ldapSyncBusy.value = 'preview';
+  const t0 = performance.now();
+  try {
+    const { rows } = await api.ldap.syncPreview();
+    const n = (a: string) => rows.filter((r) => r.action === a).length;
+    ldapSyncRuns.value.unshift({
+      status: 'success',
+      endedAt: new Date().toLocaleString(),
+      runMode: 'dry',
+      runTimeMs: Math.round(performance.now() - t0),
+      details: `${n('create')} to create · ${n('update')} to update · ${n('unchanged')} unchanged`,
+    });
+  } catch (e) {
+    ldapSyncRuns.value.unshift({
+      status: 'error',
+      endedAt: new Date().toLocaleString(),
+      runMode: 'dry',
+      runTimeMs: Math.round(performance.now() - t0),
+      details: (e as Error).message,
+    });
+  } finally {
+    ldapSyncBusy.value = '';
+  }
+}
+async function ldapSyncRun() {
+  ldapSyncBusy.value = 'run';
+  const t0 = performance.now();
+  try {
+    const s = await api.ldap.sync();
+    ldapSyncRuns.value.unshift({
+      status: 'success',
+      endedAt: new Date().toLocaleString(),
+      runMode: 'live',
+      runTimeMs: Math.round(performance.now() - t0),
+      details: `${s.created} created · ${s.updated} updated · ${s.unchanged} unchanged`,
+    });
+  } catch (e) {
+    ldapSyncRuns.value.unshift({
+      status: 'error',
+      endedAt: new Date().toLocaleString(),
+      runMode: 'live',
+      runTimeMs: Math.round(performance.now() - t0),
+      details: (e as Error).message,
+    });
+  } finally {
+    ldapSyncBusy.value = '';
+  }
+}
 
 /** 存量 url ⇄ 表单三件套(address/port/security)。 */
 function ldapUrlFromForm(): string {
@@ -536,7 +591,7 @@ const mcpStatus = ref<import('../api/client.js').McpStatus | null>(null);
 const mcpError = ref('');
 const mcpToken = ref(''); // 明文仅签发时显示一次
 const mcpTab = ref<'workflows' | 'clients' | 'oauth'>('workflows');
-const mcpRedirectUrls = ref(''); // MCP OAuth redirect URL allowlist(前端表单;后端持久化留后续)
+const mcpRedirectUrls = ref(''); // MCP OAuth redirect URL allowlist(已持久化到后端;OAuth 授权流本体见 backlog #25)
 const mcpShowDetails = ref(false);
 const mcpConnMode = ref<'oauth' | 'token'>('oauth'); // D143 连接详情里的认证方式分段
 const mcpBusy = ref(false);
@@ -590,8 +645,24 @@ async function loadMcp() {
   mcpError.value = '';
   try {
     mcpStatus.value = await api.mcp.status();
+    mcpRedirectUrls.value = (mcpStatus.value?.redirectUrls ?? []).join('\n');
   } catch (e) {
     mcpError.value = (e as Error).message; // 非 admin → 403
+  }
+}
+/** OAuth redirect 允许清单持久化（backlog #9;每行一个 URL,仅 http(s)）。 */
+async function saveMcpRedirects() {
+  mcpError.value = '';
+  mcpBusy.value = true;
+  try {
+    mcpStatus.value = await api.mcp.setRedirectUrls(
+      mcpRedirectUrls.value.split('\n').map((s) => s.trim()).filter(Boolean),
+    );
+    mcpRedirectUrls.value = (mcpStatus.value?.redirectUrls ?? []).join('\n');
+  } catch (e) {
+    mcpError.value = (e as Error).message;
+  } finally {
+    mcpBusy.value = false;
   }
 }
 async function mcpEnable() {
@@ -757,7 +828,10 @@ async function loadSection() {
     ssoLoading.value = true;
     try {
       const cfg = await api.sso.config();
-      sso.value = { ...cfg, clientSecret: '' }; // 掩码不回填，留空表示不改
+      sso.value = { enabled: cfg.enabled, issuer: cfg.issuer, clientId: cfg.clientId, clientSecret: '' }; // 掩码不回填，留空表示不改
+      oidcPrompt.value = (cfg.prompt as typeof oidcPrompt.value) || 'select_account';
+      oidcAcr.value = cfg.acrValues ?? '';
+      oidcScopes.value = cfg.additionalScopes ?? '';
     } catch (e) {
       ssoError.value = (e as Error).message; // 社区版 403 / 非 admin 403
     } finally {
@@ -818,6 +892,13 @@ async function loadSection() {
         email: cfg.emailAttribute,
         firstName: cfg.firstNameAttribute,
         lastName: cfg.lastNameAttribute,
+        loginLabel: cfg.loginLabel ?? ldap.value.loginLabel,
+        allowUnauthorizedCerts: cfg.allowUnauthorizedCerts ?? false,
+        userFilter: cfg.userFilter ?? '',
+        ldapId: cfg.ldapIdAttribute ?? 'uid',
+        pageSize: cfg.pageSize ?? 50,
+        searchTimeout: cfg.searchTimeout ?? 60,
+        enforceEmailUniqueness: cfg.enforceEmailUniqueness ?? true,
       };
       ldapFormFromUrl(cfg.url);
       ldapTestResult.value = '';
@@ -1023,15 +1104,22 @@ function testSaml() {
 async function saveSso() {
   ssoError.value = '';
   ssoSaved.value = false;
+  if (oidcScopesInvalid.value) {
+    ssoError.value = 'Scopes must be space-separated (no commas or semicolons)';
+    return;
+  }
   try {
-    const body: { enabled: boolean; issuer: string; clientId: string; clientSecret?: string } = {
+    const body: Parameters<typeof api.sso.save>[0] = {
       enabled: sso.value.enabled,
       issuer: sso.value.issuer,
       clientId: sso.value.clientId,
+      prompt: oidcPrompt.value,
+      acrValues: oidcAcr.value.trim(),
+      additionalScopes: oidcScopes.value.trim(),
     };
     if (sso.value.clientSecret) body.clientSecret = sso.value.clientSecret;
     const saved = await api.sso.save(body);
-    sso.value = { ...saved, clientSecret: '' };
+    sso.value = { enabled: saved.enabled, issuer: saved.issuer, clientId: saved.clientId, clientSecret: '' };
     ssoSaved.value = true;
   } catch (e) {
     ssoError.value = (e as Error).message;
@@ -1064,6 +1152,14 @@ async function saveLdap() {
       ...(ldap.value.bindingType === 'admin' && ldap.value.adminPassword
         ? { bindPassword: ldap.value.adminPassword }
         : {}),
+      // 扩展字段（backlog #9 贯通）
+      loginLabel: ldap.value.loginLabel,
+      allowUnauthorizedCerts: ldap.value.allowUnauthorizedCerts,
+      userFilter: ldap.value.userFilter,
+      ldapIdAttribute: ldap.value.ldapId,
+      pageSize: Number(ldap.value.pageSize) || 0,
+      searchTimeout: Number(ldap.value.searchTimeout) || 0,
+      enforceEmailUniqueness: ldap.value.enforceEmailUniqueness,
     };
     const saved = await api.ldap.save(body);
     ldap.value = { ...ldap.value, loginEnabled: saved.enabled, adminPassword: '' };
@@ -2194,7 +2290,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
             <button class="btn primary" data-test="ldap-save" :disabled="!ldapDirty" @click="saveLdap">Save connection</button>
           </div>
 
-          <!-- Synchronization（对标基线;同步执行后端未实现,按钮禁用） -->
+          <!-- Synchronization（backlog #9:Test=dry-run 对账,Run=create/update 真执行;无定时调度,手动运行） -->
           <template v-if="ldap.loginEnabled">
             <h3 class="ee-section-title" style="margin-top: 40px">Synchronization</h3>
             <div class="ee-sync-table">
@@ -2203,13 +2299,32 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                   <tr><th>Status</th><th>Ended At</th><th>Run Mode</th><th>Run Time</th><th>Details</th></tr>
                 </thead>
                 <tbody>
-                  <tr><td colspan="5" class="ee-sync-empty">Test synchronization to preview updates</td></tr>
+                  <tr v-if="ldapSyncRuns.length === 0"><td colspan="5" class="ee-sync-empty">Test synchronization to preview updates</td></tr>
+                  <tr v-for="(r, i) in ldapSyncRuns" :key="i" :data-test-ldap-sync-row="i">
+                    <td :class="r.status === 'error' ? 'error-text' : ''" style="text-transform: capitalize">{{ r.status }}</td>
+                    <td>{{ r.endedAt }}</td>
+                    <td>{{ r.runMode }}</td>
+                    <td>{{ r.runTimeMs }}ms</td>
+                    <td>{{ r.details }}</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
             <div class="set-buttons">
-              <button class="btn secondary" disabled title="LDAP synchronization is not available yet">Test synchronization</button>
-              <button class="btn primary" disabled title="LDAP synchronization is not available yet">Run synchronization</button>
+              <button
+                class="btn secondary" data-test="ldap-sync-preview"
+                :disabled="ldapDirty || ldapSyncBusy !== ''" title="Dry run — preview what would change"
+                @click="ldapSyncPreview"
+              >
+                {{ ldapSyncBusy === 'preview' ? 'Testing…' : 'Test synchronization' }}
+              </button>
+              <button
+                class="btn primary" data-test="ldap-sync-run"
+                :disabled="ldapDirty || ldapSyncBusy !== ''" title="Provision/update local users from the directory"
+                @click="ldapSyncRun"
+              >
+                {{ ldapSyncBusy === 'run' ? 'Running…' : 'Run synchronization' }}
+              </button>
             </div>
           </template>
         </div>
@@ -2933,7 +3048,9 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                 placeholder="https://example.com/callback"
               />
               <div style="margin-top: 12px">
-                <button class="btn primary" data-test="mcp-oauth-save">Save Redirect URLs</button>
+                <button class="btn primary" data-test="mcp-oauth-save" :disabled="mcpBusy" @click="saveMcpRedirects">
+                  {{ mcpBusy ? 'Saving…' : 'Save Redirect URLs' }}
+                </button>
               </div>
             </div>
           </template>

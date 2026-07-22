@@ -30,6 +30,7 @@ const SETTINGS = {
   enabled: 'mcp.enabled',
   tokenHash: 'mcp.tokenHash',
   workflowIds: 'mcp.workflowIds',
+  redirectUrls: 'mcp.redirectUrls', // OAuth redirect 允许清单（backlog #9 持久化;OAuth 本体见 #25）
 } as const;
 
 const PROTOCOL_VERSION = '2025-03-26';
@@ -68,11 +69,28 @@ export class McpService {
     }
   }
 
+  /** OAuth redirect 允许清单（持久化;OAuth 授权流本体未实现,清单先行）。 */
+  async getRedirectUrls(): Promise<string[]> {
+    const raw = await this.repos.settings.get(SETTINGS.redirectUrls);
+    try {
+      const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+      return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async setRedirectUrls(urls: string[]): Promise<void> {
+    const cleaned = urls.map((u) => u.trim()).filter((u) => /^https?:\/\//.test(u));
+    await this.repos.settings.set(SETTINGS.redirectUrls, JSON.stringify(cleaned));
+  }
+
   async status(): Promise<{
     enabled: boolean;
     tokenConfigured: boolean;
     serverPath: string;
     workflowIds: string[];
+    redirectUrls: string[];
     workflows: Array<{
       id: string;
       name: string;
@@ -90,6 +108,7 @@ export class McpService {
       tokenConfigured: Boolean(await this.repos.settings.get(SETTINGS.tokenHash)),
       serverPath: '/mcp-server/http',
       workflowIds: [...ids],
+      redirectUrls: await this.getRedirectUrls(),
       workflows: all.map((w) => ({ ...w, enabled: ids.has(w.id) })),
       clients: [...this.clients.values()],
     };

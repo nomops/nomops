@@ -154,6 +154,7 @@ export interface McpStatus {
   tokenConfigured: boolean;
   serverPath: string;
   workflowIds: string[];
+  redirectUrls: string[];
   workflows: Array<{
     id: string;
     name: string;
@@ -544,6 +545,7 @@ export const api = {
     enable: () => http<McpStatus & { token: string }>('POST', '/api/mcp/enable'),
     disable: () => http<McpStatus>('POST', '/api/mcp/disable'),
     setWorkflows: (workflowIds: string[]) => http<McpStatus>('PUT', '/api/mcp/workflows', { workflowIds }),
+    setRedirectUrls: (redirectUrls: string[]) => http<McpStatus>('PUT', '/api/mcp/redirect-urls', { redirectUrls }),
   },
 
   /* Chat 设置（Settings → Chat，Preview） */
@@ -560,8 +562,24 @@ export const api = {
 
   sso: {
     config: () =>
-      http<{ enabled: boolean; issuer: string; clientId: string; clientSecret: string }>('GET', '/api/sso/config'),
-    save: (body: { enabled: boolean; issuer: string; clientId: string; clientSecret?: string }) =>
+      http<{
+        enabled: boolean;
+        issuer: string;
+        clientId: string;
+        clientSecret: string;
+        prompt?: string;
+        acrValues?: string;
+        additionalScopes?: string;
+      }>('GET', '/api/sso/config'),
+    save: (body: {
+      enabled: boolean;
+      issuer: string;
+      clientId: string;
+      clientSecret?: string;
+      prompt?: string;
+      acrValues?: string;
+      additionalScopes?: string;
+    }) =>
       http<{ enabled: boolean; issuer: string; clientId: string; clientSecret: string }>('PUT', '/api/sso/config', body),
   },
 
@@ -668,6 +686,13 @@ export const api = {
         emailAttribute: string;
         firstNameAttribute: string;
         lastNameAttribute: string;
+        loginLabel?: string;
+        allowUnauthorizedCerts?: boolean;
+        userFilter?: string;
+        ldapIdAttribute?: string;
+        pageSize?: number;
+        searchTimeout?: number;
+        enforceEmailUniqueness?: boolean;
       }>('GET', '/api/ldap/config'),
     save: (body: {
       enabled: boolean;
@@ -679,9 +704,29 @@ export const api = {
       emailAttribute: string;
       firstNameAttribute?: string;
       lastNameAttribute?: string;
+      loginLabel?: string;
+      allowUnauthorizedCerts?: boolean;
+      userFilter?: string;
+      ldapIdAttribute?: string;
+      pageSize?: number;
+      searchTimeout?: number;
+      enforceEmailUniqueness?: boolean;
     }) => http<{ enabled: boolean; url: string; bindPassword: string }>('PUT', '/api/ldap/config', body),
     /** 对已保存配置做服务账号 bind（Test connection 按钮）。 */
     test: () => http<{ ok: boolean }>('POST', '/api/ldap/test'),
+    /** 同步预览（Test synchronization）：目录 ↔ 本地对账,不写库。 */
+    syncPreview: () =>
+      http<{
+        rows: Array<{
+          ldapId: string | null;
+          email: string;
+          firstName: string | null;
+          lastName: string | null;
+          action: 'create' | 'update' | 'unchanged';
+        }>;
+      }>('POST', '/api/ldap/sync/preview'),
+    /** 执行同步（Run synchronization）。 */
+    sync: () => http<{ created: number; updated: number; unchanged: number }>('POST', '/api/ldap/sync'),
     login: (username: string, password: string) =>
       http<AuthResult>('POST', '/auth/ldap/login', { username, password }),
   },

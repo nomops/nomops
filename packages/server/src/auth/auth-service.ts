@@ -196,11 +196,15 @@ export class AuthService {
    * SSO 登录/JIT 预配（docs/07）：按 email 找用户，不存在则自动建
    * （passwordHash 置随机值——密码登录不可用，仅 SSO 进入）。disabled → 403。
    */
-  async loginViaSso(profile: {
+  /**
+   * JIT 预配（SSO 登录 / LDAP 登录 / LDAP 同步共用）：按 email 找或建用户
+   * （随机口令,登录只走 IdP/目录）+ 保证个人项目存在。不签发 token。
+   */
+  async provisionSsoUser(profile: {
     email: string;
     firstName?: string | null;
     lastName?: string | null;
-  }): Promise<{ result: IAuthResult; provisioned: boolean }> {
+  }): Promise<{ user: User; provisioned: boolean }> {
     let user = await this.repos.users.findByEmail(profile.email);
     let provisioned = false;
     if (!user) {
@@ -213,6 +217,16 @@ export class AuthService {
       });
       provisioned = true;
     }
+    await this.ensurePersonalProject(user);
+    return { user, provisioned };
+  }
+
+  async loginViaSso(profile: {
+    email: string;
+    firstName?: string | null;
+    lastName?: string | null;
+  }): Promise<{ result: IAuthResult; provisioned: boolean }> {
+    const { user, provisioned } = await this.provisionSsoUser(profile);
     if (user.disabled) {
       throw new OperationalError('This account has been disabled', { status: 403 });
     }

@@ -10,6 +10,12 @@ export interface ISsoConfig {
   issuer: string;
   clientId: string;
   clientSecret: string; // 内存态为明文；落库前必须经 Cipher
+  /** 授权请求 prompt 参数（空/缺省 = 不发送）。 */
+  prompt?: string;
+  /** acr_values（空格分隔;空 = 不发送）。 */
+  acrValues?: string;
+  /** 追加 scopes（空格分隔,叠加在 openid email profile 之上）。 */
+  additionalScopes?: string;
 }
 
 const SETTINGS_KEY = 'sso.oidc';
@@ -81,9 +87,10 @@ export class OidcService {
     return this.discovered;
   }
 
-  /** 生成 IdP 授权跳转 URL（Authorization Code + PKCE + state + nonce）。 */
+  /** 生成 IdP 授权跳转 URL（Authorization Code + PKCE + state + nonce + prompt/acr/追加 scopes）。 */
   async buildLoginUrl(): Promise<string> {
     const configuration = await this.discover();
+    const config = await this.getConfig();
     const codeVerifier = oidc.randomPKCECodeVerifier();
     const codeChallenge = await oidc.calculatePKCECodeChallenge(codeVerifier);
     const state = oidc.randomState();
@@ -92,13 +99,16 @@ export class OidcService {
     this.gcPending();
     this.pending.set(state, { codeVerifier, nonce, createdAt: Date.now() });
 
+    const scope = ['openid email profile', config?.additionalScopes?.trim()].filter(Boolean).join(' ');
     const url = oidc.buildAuthorizationUrl(configuration, {
       redirect_uri: `${this.baseUrl}/sso/callback`,
-      scope: 'openid email profile',
+      scope,
       state,
       nonce,
       code_challenge: codeChallenge,
       code_challenge_method: 'S256',
+      ...(config?.prompt ? { prompt: config.prompt } : {}),
+      ...(config?.acrValues?.trim() ? { acr_values: config.acrValues.trim() } : {}),
     });
     return url.href;
   }
