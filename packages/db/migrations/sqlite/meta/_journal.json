@@ -169,6 +169,13 @@
       "when": 1784689068058,
       "tag": "0023_steep_mattie_franklin",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1784706345777,
+      "tag": "0024_left_machine_man",
+      "breakpoints": true
     }
   ]
 }

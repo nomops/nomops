@@ -28,6 +28,8 @@ export const users = pgTable('users', {
   mfaEnabled: boolean('mfa_enabled').notNull().default(false),
   mfaSecret: text('mfa_secret'),
   mfaBackupCodes: jsonb('mfa_backup_codes').$type<string[]>(),
+  // 最近活跃时刻（每次鉴权请求节流更新;Users 列表显示 Last Active，D146）
+  lastActiveAt: timestamp('last_active_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 

@@ -76,7 +76,7 @@
 - [ ] **27. OpenTelemetry 后端** `L`（现为零，前端整页本地态假表单；OTLP 导出 + 表单接线）
 - [ ] **28. SCIM Groups** `M`（Users 已实现；Groups→projects 映射按 docs/07 延后项）
 - [ ] **29. 自定义角色（custom roles）** `L`（现固定枚举；Roles 页锁卡）
-- [ ] **30. lastActive 字段（D146）** `S`（加列 + 迁移 + 每请求打点 + API + 前端相对时间）
+- [x] **30. lastActive 字段（D146）** `S` ✅ 2026-07-22（users.last_active_at 双方言列(迁移 0024);touchLastActive 进程内 60s 节流打点,鉴权中间件 fire-and-forget 调用;instance/users 暴露给 admin;前端 Users 表 Last Active 列相对时间(Never/Xm/Xh/Xd/日期);3 server 测(打点/节流/pending null)）
 
 ## P7 · Epic 级（独立立项，先规划再动工）
 

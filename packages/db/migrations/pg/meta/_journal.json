@@ -169,6 +169,13 @@
       "when": 1784689069111,
       "tag": "0023_misty_tomas",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1784706346796,
+      "tag": "0024_clammy_proemial_gods",
+      "breakpoints": true
     }
   ]
 }

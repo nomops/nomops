@@ -251,6 +251,21 @@ const lsForm = ref<{ name: string; url: string; kind: 'webhook' | 'syslog'; secr
 });
 const lsTestResult = ref<Record<string, string>>({});
 
+/* D146 Last Active 相对时间（never / 刚刚 / N 分钟前 / N 小时前 / N 天前 / 日期）。 */
+function relativeTime(iso: string | null | undefined): string {
+  if (!iso) return 'Never';
+  const diff = Date.now() - new Date(iso).getTime();
+  if (diff < 0) return 'Just now';
+  const min = Math.floor(diff / 60_000);
+  if (min < 1) return 'Just now';
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 30) return `${day}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
 /* 外部密钥（企业） */
 const secretsStatus = ref<Awaited<ReturnType<typeof api.externalSecrets>> | null>(null);
 const secretsError = ref('');
@@ -1774,7 +1789,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                   <span :data-test-user-role="u.id" style="text-transform: capitalize">{{ u.role }}</span>
                   <span v-if="u.pending" class="dim"> (Pending)</span>
                 </td>
-                <td class="dim">—</td>
+                <td class="dim" :data-test-user-active="u.id">{{ u.pending ? '—' : relativeTime(u.lastActiveAt) }}</td>
                 <td class="dim">{{ u.pending ? '—' : u.mfaEnabled ? 'Enabled' : 'Disabled' }}</td>
                 <td class="dim">
                   {{ u.pending ? '—' : u.role === 'owner' || u.role === 'admin' ? 'All projects' : (u.projectCount ?? 0) }}

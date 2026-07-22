@@ -669,6 +669,7 @@ export const api = {
           mfaEnabled?: boolean;
           projectCount?: number;
           pending: boolean;
+          lastActiveAt?: string | null;
           createdAt: string;
         }>
       >('GET', '/api/instance/users'),

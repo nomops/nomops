@@ -91,6 +91,18 @@ export class UserRepository extends BaseRepository {
     return rows.length;
   }
 
+  /** 记最近活跃（D146）：进程内节流,同一用户 60s 内只写一次 DB。 */
+  private readonly lastActiveTouch = new Map<string, number>();
+  async touchLastActive(id: string, now: number = Date.now()): Promise<void> {
+    const last = this.lastActiveTouch.get(id) ?? 0;
+    if (now - last < 60_000) return;
+    this.lastActiveTouch.set(id, now);
+    await this.db
+      .update(this.schema.users)
+      .set({ lastActiveAt: new Date(now) })
+      .where(eq(this.schema.users.id, id));
+  }
+
   /** 全部用户（SCIM 列表用；实例内用户量级小，暂不分页查询）。 */
   async findAll(): Promise<User[]> {
     return (await this.db.select().from(this.schema.users)) as User[];

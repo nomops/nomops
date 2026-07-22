@@ -1668,6 +1668,7 @@ export function createApiRouter(services: AppServices): Router {
           mfaEnabled: u.mfaEnabled,
           projectCount: projectCounts.get(u.id) ?? 0,
           pending: false,
+          lastActiveAt: u.lastActiveAt ?? null,
           createdAt: u.createdAt,
         })),
         ...invitations.map((inv) => ({
@@ -1676,6 +1677,7 @@ export function createApiRouter(services: AppServices): Router {
           role: inv.role,
           disabled: false,
           pending: true,
+          lastActiveAt: null,
           createdAt: inv.createdAt,
         })),
       ]);

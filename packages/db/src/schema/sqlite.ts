@@ -26,6 +26,8 @@ export const users = sqliteTable('users', {
   mfaEnabled: integer('mfa_enabled', { mode: 'boolean' }).notNull().default(false),
   mfaSecret: text('mfa_secret'),
   mfaBackupCodes: text('mfa_backup_codes', { mode: 'json' }).$type<string[]>(),
+  // 最近活跃时刻（每次鉴权请求节流更新;Users 列表显示 Last Active，D146）
+  lastActiveAt: integer('last_active_at', { mode: 'timestamp' }),
   createdAt: integer('created_at', { mode: 'timestamp' })
     .notNull()
     .$defaultFn(() => new Date()),

@@ -40,6 +40,7 @@ function attachAuth(
         return;
       }
       req.auth = { userId, projectId, role: role as ProjectRole };
+      void repos.users.touchLastActive(userId).catch(() => undefined); // D146:活跃打点,失败不阻塞
       next();
     })
     .catch(next);
