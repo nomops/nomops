@@ -1828,5 +1828,40 @@ export function createWebhookRouter(services: AppServices): Router {
       res.json(summary);
     }),
   );
+
+  /**
+   * 匿名恢复 waiting 执行（backlog #15）：审批类流程把 $execution.resumeUrl 发出去,
+   * 外部点击/回调即续跑。令牌随执行状态落库,常数时间比较;任何不匹配一律 404 不泄露存在性。
+   */
+  router.all(
+    '/webhook-waiting/:executionId/:token',
+    h(async (req, res) => {
+      const executionId = String(req.params['executionId'] ?? '');
+      const token = String(req.params['token'] ?? '');
+      const notFound = () => res.status(404).json({ error: 'No waiting execution for this URL' });
+
+      const record = await services.repos.executions.getRecord(executionId).catch(() => null);
+      if (!record || record.status !== 'waiting') return notFound();
+      const data = (await services.repos.executions.getData(executionId).catch(() => null)) as {
+        resumeToken?: string;
+      } | null;
+      const expected = data?.resumeToken;
+      if (!expected || expected.length !== token.length) return notFound();
+      const a = Buffer.from(expected);
+      const b = Buffer.from(token);
+      if (a.length !== b.length || !timingSafeEqual(a, b)) return notFound();
+
+      const summary = await services.executions.resume(executionId);
+      services.audit.log({
+        projectId: await services.repos.workflows.getOwnerProjectId(record.workflowId),
+        action: 'execution.resume',
+        resourceType: 'execution',
+        resourceId: executionId,
+        details: { via: 'webhook-waiting' },
+        ip: req.ip ?? null,
+      });
+      return res.json({ resumed: true, executionId, status: summary.status });
+    }),
+  );
   return router;
 }

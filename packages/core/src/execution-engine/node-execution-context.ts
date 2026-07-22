@@ -159,6 +159,8 @@ export interface IWorkflowExecuteAdditionalData {
   binaryStore?: IBinaryDataStore;
   /** webhook 自定义响应回调（webhook 路由注入;RespondToWebhook 节点经 helpers 调用）。 */
   setWebhookResponse?: (response: JsonObject) => void;
+  /** 本次执行元信息（表达式 $execution.id / $execution.resumeUrl;server 注入）。 */
+  execution?: { id?: string; resumeUrl?: string };
 }
 
 export async function defaultHttpRequest(options: IHttpRequestOptions): Promise<unknown> {
@@ -229,6 +231,7 @@ export function createExecuteContext(args: {
           workflow: { id: workflow.id, name: workflow.name },
           vars: additionalData.variables ?? {},
           parameters: node.parameters,
+          ...(additionalData.execution ? { execution: additionalData.execution } : {}),
         });
       } catch (error) {
         // 补充定位信息：哪个节点、哪个参数、哪个 item
@@ -300,6 +303,7 @@ export function createExecuteContext(args: {
         workflow: { id: workflow.id, name: workflow.name },
         vars: additionalData.variables ?? {},
         parameters: node.parameters,
+        ...(additionalData.execution ? { execution: additionalData.execution } : {}),
       });
     },
 

@@ -18,7 +18,8 @@ export const waitDescription: INodeTypeDescription = {
       description: 'What wakes the execution up',
       options: [
         { name: 'After a time interval', value: 'afterDelay' },
-        { name: 'On external signal (resume API)', value: 'onSignal' },
+        // 匿名恢复:任意节点参数里用 {{ $execution.resumeUrl }} 把恢复 URL 发出去(如审批邮件)
+        { name: 'On external signal (resume API or $execution.resumeUrl)', value: 'onSignal' },
       ],
     },
     {

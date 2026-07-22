@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type { Execution, Repositories, Workflow as WorkflowRow } from '@nomops/db';
 import type { IBinaryDataStore, INodeLoader } from '@nomops/core';
 import {
@@ -62,10 +63,17 @@ export class ExecutionService {
     private readonly binaryStore?: IBinaryDataStore,
     /** 实例级并发闸门（B7）。缺省不限，由 bootstrap 注入配置值。 */
     private readonly concurrency: ConcurrencyGate = new ConcurrencyGate(UNLIMITED),
+    /** 实例外部可达地址（$execution.resumeUrl 与匿名恢复路由用）。 */
+    private readonly baseUrl: string = 'http://localhost:5678',
   ) {}
 
   /** 本进程在跑的引擎实例（executionId → engine）；stop 经此直达 cancel。 */
   private readonly running = new Map<string, WorkflowExecute>();
+
+  /** 匿名恢复令牌（backlog #15）：写进可序列化状态,公开 /webhook-waiting 路由校验。 */
+  private newResumeToken(): string {
+    return randomBytes(24).toString('hex');
+  }
 
   /** 当前并发占用（/metrics 与运维排查用）。 */
   concurrencyStats(): { active: number; waiting: number; enabled: boolean } {
@@ -117,6 +125,7 @@ export class ExecutionService {
           ? engine.processRunExecutionData(workflow, partialState)
           : engine.run(workflow, startNode ?? undefined, options.destinationNode),
       (row.staticData as JsonObject | null) ?? {},
+      { resumeToken: this.newResumeToken() },
     );
     await this.applySavePolicy(execution.id, row.settings as IWorkflowSettings | null, 'manual', run.status);
     return this.toSummary(execution.id, run);
@@ -151,6 +160,7 @@ export class ExecutionService {
       'chat',
       (engine) => engine.run(workflow, startNode ?? undefined, undefined, [{ json: { chatInput: message, sessionId } }]),
       (row.staticData as JsonObject | null) ?? {},
+      { resumeToken: this.newResumeToken() },
     );
     await this.applySavePolicy(execution.id, row.settings as IWorkflowSettings | null, 'chat', run.status);
 
@@ -247,6 +257,7 @@ export class ExecutionService {
 
     // 触发器节点的输出 = 外部事件数据（不执行其 execute），下游按连接入栈
     const state = createRunExecutionData();
+    state.resumeToken = this.newResumeToken(); // 随状态落库,queue/inline 两路 executeStored 都读它
     seedTriggerOutput(workflow, state, startNode, [seedData]);
 
     // queue 模式不过闸门：并发由 worker 的 BullMQ 并发度管，两层会互相打架
@@ -351,6 +362,7 @@ export class ExecutionService {
       connections: workflowData['connections'] as IConnections,
     });
     const state = data as unknown as IRunExecutionData;
+    const resumeToken = state.resumeToken ?? this.newResumeToken(); // 旧行无令牌则补发
 
     await this.repos.executions.updateStatus(executionId, 'running');
     const execution = { id: executionId, workflowId: stored.workflowId } as Execution;
@@ -380,7 +392,7 @@ export class ExecutionService {
         }
       },
       (freshRow?.staticData as JsonObject | null) ?? {},
-      extras,
+      { ...extras, resumeToken },
     );
     // 生产执行的保存策略跟随已发布定义的 settings（与运行的版本一致）
     if (freshRow) {
@@ -414,9 +426,10 @@ export class ExecutionService {
   }
 
   /**
-   * 重试（对标基线 executions 列表 Retry）：整个工作流重跑，产生新执行记录（mode 'retry'）。
+   * 重试（对标基线 executions Retry "from node with error"）：产生新执行记录（mode 'retry'）。
    * useOriginal=true 用该执行的定义快照（original workflow）；false 用当前保存的草稿（currently saved）。
-   * 与基线差异：基线从错误节点续跑，这里为全量重跑（部分续跑后续深化）。
+   * backlog #17:优先**从失败节点续跑**——成功节点的 runData 原样保留（含触发器,不重放触发）,
+   * 失败节点及其下游重跑;无法定位失败节点/前置数据不足时优雅退回全量重跑。
    */
   async retry(executionId: string, projectId: string, useOriginal: boolean): Promise<IRunSummary> {
     const orig = await this.repos.executions.findById(executionId, projectId);
@@ -435,6 +448,20 @@ export class ExecutionService {
     }
     const workflow = new Workflow({ id: row.id, name, nodes, connections });
 
+    // 从失败节点续跑的初始状态：失败节点标脏（脏闭包含其下游）,干净上游 runData 预置
+    let fromErrorState: IRunExecutionData | null = null;
+    const prevData = (await this.repos.executions.getData(executionId)) as unknown as IRunExecutionData | null;
+    const failedNode = prevData?.resultData?.error?.node ?? prevData?.resultData?.lastNodeExecuted;
+    if (failedNode && prevData?.resultData?.runData && Object.keys(prevData.resultData.runData).length > 0) {
+      try {
+        workflow.getNode(failedNode); // 定义变更后节点可能已不存在 → 退回全量
+        fromErrorState = buildPartialRunState(workflow, prevData.resultData.runData, failedNode, [failedNode]);
+        delete fromErrorState.startData; // 不止步于失败节点——续跑到工作流末端
+      } catch {
+        fromErrorState = null; // 前置数据不足等情况:退回全量重跑
+      }
+    }
+
     await this.quota.consume(projectId);
     const execution = await this.repos.executions.create(
       { workflowId: row.id, status: 'new', mode: 'retry', startedAt: new Date() },
@@ -448,8 +475,10 @@ export class ExecutionService {
       execution,
       projectId,
       'retry',
-      (engine) => engine.run(workflow),
+      (engine) =>
+        fromErrorState ? engine.processRunExecutionData(workflow, fromErrorState) : engine.run(workflow),
       (row.staticData as JsonObject | null) ?? {},
+      { resumeToken: this.newResumeToken() },
     );
     await this.applySavePolicy(execution.id, row.settings as IWorkflowSettings | null, 'retry', run.status);
     return this.toSummary(execution.id, run);
@@ -562,7 +591,7 @@ export class ExecutionService {
     mode: string,
     runFn: (engine: WorkflowExecute) => Promise<IRun>,
     staticData?: JsonObject,
-    extras?: { onWebhookResponse?: (response: JsonObject) => void },
+    extras?: { onWebhookResponse?: (response: JsonObject) => void; resumeToken?: string },
   ): Promise<IRun> {
     const staticDataBefore = staticData ? JSON.stringify(staticData) : null;
     const push = (event: Parameters<PushHub['broadcast']>[0]) => this.pushHub.broadcast(event);
@@ -577,7 +606,15 @@ export class ExecutionService {
       additionalData: {
         ...(await this.buildAdditionalData(projectId, 0, mode !== 'manual')),
         ...(extras?.onWebhookResponse ? { setWebhookResponse: extras.onWebhookResponse } : {}),
+        // $execution.id / $execution.resumeUrl（审批流把恢复 URL 发出去,backlog #15）
+        execution: {
+          id: execution.id,
+          ...(extras?.resumeToken
+            ? { resumeUrl: `${this.baseUrl}/webhook-waiting/${execution.id}/${extras.resumeToken}` }
+            : {}),
+        },
       },
+      ...(extras?.resumeToken ? { resumeToken: extras.resumeToken } : {}),
       ...(staticData ? { staticData } : {}),
       hooks: {
         nodeExecuteBefore: (nodeName) =>

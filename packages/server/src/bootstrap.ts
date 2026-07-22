@@ -238,6 +238,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     : new FileSystemBinaryStore(
         process.env['NOMOPS_BINARY_DATA_DIR'] ?? join('.nomops', 'binary-data'),
       );
+  const baseUrl = process.env['NOMOPS_BASE_URL'] ?? 'http://localhost:5678';
   const executions = new ExecutionService(
     repos,
     workflows,
@@ -252,6 +253,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
       opts.concurrencyLimit ?? concurrencyLimitFromEnv(process.env),
       opts.concurrencyQueueDepth ?? queueDepthFromEnv(process.env),
     ),
+    baseUrl,
   );
 
   const leader = new LeaderElection(lockStore);
@@ -282,10 +284,11 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     ...opts.pruner,
   });
   if (role === 'main') executionPruner.start();
-  const baseUrl = process.env['NOMOPS_BASE_URL'] ?? 'http://localhost:5678';
   const sso = new OidcService(repos, credentials, auth, baseUrl);
   const saml = new SamlService(repos, credentials, auth, baseUrl);
   const oauth2 = new OAuth2Service(credentialService, baseUrl);
+  // OAuth2 token 临期自动续期（#16）:执行注入前经 refresher 兜一手
+  credentialService.setTokenRefresher((id, pid) => oauth2.refreshIfNeeded(id, pid));
   const variables = new VariableService(repos);
   const dataTables = new DataTableService(repos);
   // LDAP 登录（docs/10 B5）：opts.ldapAuthenticator 供测试注入假实现；生产用 ldapts

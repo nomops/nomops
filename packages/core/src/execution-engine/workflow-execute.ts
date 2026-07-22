@@ -38,6 +38,8 @@ export interface IWorkflowExecuteOptions {
   hooks?: IExecutionHooks;
   /** 工作流 staticData（触发器持久状态）。引擎读写内存对象，持久化由 server 负责。 */
   staticData?: JsonObject;
+  /** 匿名恢复令牌（server 生成;写进可序列化状态,公开 /webhook-waiting 路由校验它）。 */
+  resumeToken?: string;
 }
 
 /** 环保护上限：单节点最大运行次数（防失控循环把进程跑死）。 */
@@ -196,6 +198,8 @@ export class WorkflowExecute {
   /** 从已有状态继续跑（恢复/队列 worker 用）。状态可来自 JSON.parse。 */
   async processRunExecutionData(workflow: Workflow, state: IRunExecutionData): Promise<IRun> {
     const startedAt = Date.now();
+    // 匿名恢复令牌进可序列化状态（已有则保留——waiting 续跑时令牌必须稳定）
+    if (this.options.resumeToken && !state.resumeToken) state.resumeToken = this.options.resumeToken;
     const executionData = state.executionData;
     if (!executionData) {
       throw new OperationalError('IRunExecutionData 缺少 executionData，无法执行');

@@ -49,14 +49,12 @@
 
 ## P4 · 触发器与凭证深化
 
-- [ ] **15. 匿名 resume webhook（waiting webhook）** `M`
-  Wait 现只支持时间等待 + 鉴权 resume API；补公开恢复 URL（`resumeToken` 字段已预留），支撑表单审批类场景。
+- [x] **15. 匿名 resume webhook（waiting webhook）** `M` ✅ 2026-07-22（resumeToken 随执行状态落库;表达式新增 $execution.id/resumeUrl(任意节点参数可把恢复 URL 发出去);公开 /webhook-waiting/:id/:token 常数时间比较,不匹配一律 404;1 server 全链路测）
 
 - [ ] **16. OAuth2 refresh token 自动续期** `S/M`
   refresh_token 已存储（`oauth2-service.ts:115`）但过期不自动刷新。
 
-- [ ] **17. 重试从失败节点续跑** `M`
-  现为全量重跑（`execution-service.ts:374` 注释自承）。用已有 partial-execution 机制从错误节点播种。
+- [x] **17. 重试从失败节点续跑** `M` ✅ 2026-07-22（复用 buildPartialRunState:失败节点标脏(闭包含下游),成功上游 runData 原样保留不重放触发;去掉 destination 止步续跑到底;定位失败/前置不足时优雅退回全量;1 server 测(时间戳证上游未重跑+删节点回退)）
 
 - [ ] **18. SMTP 邮件投递** `M`
   邀请/密码重置链接现只落服务端日志。→ SMTP 配置 + 邮件模板 + 发送通道（保留无 SMTP 时的日志回退）。

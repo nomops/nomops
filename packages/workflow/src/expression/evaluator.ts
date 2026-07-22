@@ -18,6 +18,8 @@ export interface IExpressionContext {
   vars?: Record<string, string>;
   /** 当前节点参数（$parameter.xxx——声明式 routing 的 url/body 里引用参数）。 */
   parameters?: JsonObject;
+  /** 本次执行元信息（$execution.id / $execution.resumeUrl——审批类流程把恢复 URL 发出去）。 */
+  execution?: { id?: string; resumeUrl?: string };
 }
 
 const EXPRESSION_MARKER = '=';
@@ -58,6 +60,7 @@ function buildScope(ctx: IExpressionContext): Record<string, unknown> {
     $workflow: { id: ctx.workflow.id, name: ctx.workflow.name },
     $vars: ctx.vars ?? {},
     $parameter: ctx.parameters ?? {},
+    $execution: ctx.execution ?? {},
     items: ctx.items,
   };
 }
