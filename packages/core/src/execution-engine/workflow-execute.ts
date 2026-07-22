@@ -511,6 +511,7 @@ export class WorkflowExecute {
       staticData: this.options.staticData ?? {},
       additionalData: this.options.additionalData ?? {},
       contextData: (state.contextData ??= {}), // 节点执行上下文（随状态序列化）
+      source: exec.source, // $prevNode / $('X').item 血缘起点
       resumed: exec.resumed === true,
       resolver: this.nodeLoader, // 能力子节点（ai_*）解析
     });

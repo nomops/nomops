@@ -1,6 +1,7 @@
 import type { INodeExecutionData, JsonObject } from '../interfaces.js';
 import type { IRunData } from '../execution-interfaces.js';
 import { ExpressionError, evaluateInSandbox } from './sandbox.js';
+import { itemInAncestor } from './paired-item.js';
 
 /** 表达式求值的数据上下文：当前 item + 各节点已产出的数据。 */
 export interface IExpressionContext {
@@ -20,22 +21,47 @@ export interface IExpressionContext {
   parameters?: JsonObject;
   /** 本次执行元信息（$execution.id / $execution.resumeUrl——审批类流程把恢复 URL 发出去）。 */
   execution?: { id?: string; resumeUrl?: string };
+  /** 当前节点已完成的运行次数（$runIndex,循环里区分第几轮）。 */
+  runIndex?: number;
+  /** 当前输入的直接上游（$prevNode.name/.outputIndex;$('X').item 血缘回溯的起点）。 */
+  prevNode?: { name?: string; outputIndex?: number };
 }
 
 const EXPRESSION_MARKER = '=';
 const TEMPLATE_RE = /\{\{([\s\S]+?)\}\}/g;
 
-/** 从 runData 取某节点最近一次运行、主输出端口 0 的第一个 item 的 json。 */
-function nodeOutputJson(runData: IRunData, nodeName: string): JsonObject {
+/** 从 runData 取某节点最近一次运行、主输出端口 0 的 items（未执行即抛错）。 */
+function nodeOutputItems(runData: IRunData, nodeName: string): INodeExecutionData[] {
   const runs = runData[nodeName];
   if (!runs || runs.length === 0) {
     throw new ExpressionError(`表达式引用的节点 "${nodeName}" 尚未执行或不存在`, {
       node: nodeName,
     });
   }
-  const last = runs[runs.length - 1]!;
-  const item = last.data?.['main']?.[0]?.[0];
-  return item?.json ?? {};
+  return runs[runs.length - 1]!.data?.['main']?.[0] ?? [];
+}
+
+/**
+ * 节点访问器（#20）：$('X') / $node["X"] 的返回值。
+ * .json 保持既有语义（首 item json）;.first()/.last()/.all() 取整 item;
+ * .item = 按 pairedItem 血缘定位「当前 item 在该节点里的来源 item」（#21）,
+ * 血缘断链/走不到时回退首 item（与 .json 同口径,不让表达式硬崩）。
+ */
+function nodeAccessor(ctx: IExpressionContext, name: string): Record<string, unknown> {
+  const items = nodeOutputItems(ctx.runData, name);
+  return {
+    json: items[0]?.json ?? {},
+    first: () => items[0],
+    last: () => items[items.length - 1],
+    all: () => items,
+    itemMatching: (i: number) => items[i],
+    get item(): INodeExecutionData | undefined {
+      const prev = ctx.prevNode?.name;
+      if (!prev) return items[0];
+      if (prev === name) return items[ctx.itemIndex] ?? items[0]; // 直接上游:同序直取
+      return itemInAncestor(ctx.runData, prev, ctx.itemIndex, name) ?? items[0];
+    },
+  };
 }
 
 /** 构造表达式作用域（白名单变量，全部为纯数据/纯函数）。 */
@@ -44,7 +70,7 @@ function buildScope(ctx: IExpressionContext): Record<string, unknown> {
     {},
     {
       get: (_t, name: string | symbol) =>
-        typeof name === 'string' ? { json: nodeOutputJson(ctx.runData, name) } : undefined,
+        typeof name === 'string' ? nodeAccessor(ctx, name) : undefined,
       has: () => true,
     },
   );
@@ -55,7 +81,17 @@ function buildScope(ctx: IExpressionContext): Record<string, unknown> {
     $items: ctx.items,
     $node,
     // $('Name') 形式与 $node["Name"] 等价
-    $: (name: string) => ({ json: nodeOutputJson(ctx.runData, name) }),
+    $: (name: string) => nodeAccessor(ctx, name),
+    // 当前节点输入的一等访问（#20,item = 当前 item 整体,含 json/binary）
+    $input: {
+      all: () => ctx.items,
+      first: () => ctx.items[0],
+      last: () => ctx.items[ctx.items.length - 1],
+      item: ctx.items[ctx.itemIndex],
+      length: ctx.items.length,
+    },
+    $runIndex: ctx.runIndex ?? 0,
+    $prevNode: ctx.prevNode ?? {},
     $now: new Date().toISOString(),
     $workflow: { id: ctx.workflow.id, name: ctx.workflow.name },
     $vars: ctx.vars ?? {},

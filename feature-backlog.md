@@ -62,11 +62,9 @@
 - [ ] **19. $fromAI + NDV「From AI」控件（D096）** `L`
   全仓零命中。引擎表达式变量 + AI Agent 运行时填参 + NDV Mapping|From AI 分段控件。
 
-- [ ] **20. 表达式访问增强：$node 高级访问 / $input / $runIndex / $prevNode** `M`
-  现 `$node` 只取 main 端口 0 首 item 的 `.json`（`evaluator.ts:27-37`）。
+- [x] **20. 表达式访问增强：$node 高级访问 / $input / $runIndex / $prevNode** `M` ✅ 2026-07-22（$('X')/$node[] 返回访问器 .json/.first/.last/.all/.itemMatching/.item;$input.first/last/all/item/length;$runIndex/$prevNode;引擎传 runIndex(runData 长度)+prevNode(exec.source);8 表达式测+1 引擎集成测）
 
-- [ ] **21. pairedItem 跨节点血缘解析** `M/L`
-  现只在输入输出等长时按索引补齐；无血缘解析器（数据来源追溯的地基）。
+- [x] **21. pairedItem 跨节点血缘解析** `M/L` ✅ 2026-07-22（expression/paired-item.ts:pairedItem+source 双向回溯 traceLineage/itemInAncestor;$('X').item 按血缘定位当前 item 在祖先节点的来源(非永远首 item);断链回退首 item 不硬崩;引擎集成测:反序节点后 $('A').item 正确交叉取 a1/a0）
 
 - [ ] **22. binary 数据生命周期** `M`
   引用 GC/清理 + binary 走完整引擎的端到端测试。

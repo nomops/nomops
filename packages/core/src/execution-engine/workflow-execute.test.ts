@@ -91,6 +91,26 @@ const testNodes: ILoadableNodeType[] = [
   loadable('t.fail', ['main'], async function () {
     throw new Error('boom');
   }),
+  // 反序透传（pairedItem 交叉,血缘测试用）
+  loadable('t.reverse', ['main'], async function () {
+    const items = this.getInputData();
+    return [
+      items.map((_, i) => {
+        const src = items.length - 1 - i;
+        return { json: items[src]!.json, pairedItem: { item: src } };
+      }),
+    ];
+  }),
+  // 逐 item 求值参数 probe 并回显（表达式集成测试用）
+  loadable('t.probe', ['main'], async function () {
+    const items = this.getInputData();
+    return [
+      items.map((_, i) => ({
+        json: { probed: this.getNodeParameter('probe', i) },
+        pairedItem: { item: i },
+      })),
+    ];
+  }),
   // 节点执行上下文：每次运行自增计数并回显（Loop 类节点的机制地基）
   loadable('t.counter', ['main', 'main'], async function () {
     const ctx = this.getContext();
@@ -289,6 +309,32 @@ describe('拓扑4 — 循环', () => {
     // 序列化中断续跑也带着上下文：状态 JSON 往返后 contextData 原样保留
     const revived = JSON.parse(JSON.stringify(run.data)) as typeof run.data;
     expect(revived.contextData?.['COUNTER']).toEqual({ n: 3 });
+  });
+});
+
+describe('#20/#21 — 表达式访问增强与 pairedItem 血缘（引擎级）', () => {
+  it('$("A").item 穿过反序节点按血缘取对应 item;$prevNode/$runIndex 就位', async () => {
+    // A(直通) → B(反序,pairedItem 交叉) → C(逐 item 求值 $("A").item)
+    const wf = new Workflow({
+      name: 'lineage',
+      nodes: [
+        node('A', 't.pass'),
+        node('B', 't.reverse'),
+        node('C', 't.probe', { probe: '={{ $("A").item.json.tag }}' }),
+        node('D', 't.probe', { probe: '={{ $prevNode.name }}:{{ $runIndex }}' }),
+      ],
+      connections: {
+        A: { main: [[to('B')]] },
+        B: { main: [[to('C')]] },
+        C: { main: [[to('D')]] },
+      },
+    });
+
+    const run = await engine().run(wf, wf.getNode('A'), undefined, [{ json: { tag: 'a0' } }, { json: { tag: 'a1' } }]);
+    expect(run.status).toBe('success');
+    // B 反序后 C 的 item0 血缘指向 A 的 a1
+    expect(outputJson(run.data, 'C')).toEqual([{ probed: 'a1' }, { probed: 'a0' }]);
+    expect(outputJson(run.data, 'D')).toEqual([{ probed: 'C:0' }, { probed: 'C:0' }]);
   });
 });
 

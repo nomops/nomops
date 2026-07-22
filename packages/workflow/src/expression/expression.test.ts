@@ -83,3 +83,85 @@ describe('表达式沙箱（验收项：拦截危险访问）', () => {
     expect(resolveParameterValue('={{ [1,2,3].map(x => x * 2).join(",") }}', ctx())).toBe('2,4,6');
   });
 });
+
+/* ── #20 表达式访问增强 + #21 pairedItem 血缘 ── */
+
+describe('表达式访问增强（#20/#21）', () => {
+  /** 三级链 A→B→C:B 把 A 的 2 个 item 反序输出(pairedItem 交叉),当前节点是 C。 */
+  const lineageRunData: IExpressionContext['runData'] = {
+    A: [
+      {
+        startTime: 0,
+        executionTime: 1,
+        source: [],
+        data: { main: [[{ json: { tag: 'a0' } }, { json: { tag: 'a1' } }]] },
+      },
+    ],
+    B: [
+      {
+        startTime: 0,
+        executionTime: 1,
+        source: [{ previousNode: 'A' }],
+        data: {
+          main: [
+            [
+              { json: { from: 'a1' }, pairedItem: { item: 1 } }, // B 输出0 来自 A 输入1（反序）
+              { json: { from: 'a0' }, pairedItem: { item: 0 } },
+            ],
+          ],
+        },
+      },
+    ],
+  };
+  const cCtx = (itemIndex: number): IExpressionContext => ({
+    json: { i: itemIndex },
+    itemIndex,
+    items: [{ json: { i: 0 } }, { json: { i: 1 } }],
+    runData: lineageRunData,
+    workflow: {},
+    runIndex: 0,
+    prevNode: { name: 'B', outputIndex: 0 },
+  });
+
+  it('$input.first/last/all/item/length', () => {
+    const c = cCtx(1);
+    expect(resolveParameterValue('={{ $input.length }}', c)).toBe(2);
+    expect(resolveParameterValue('={{ $input.first().json.i }}', c)).toBe(0);
+    expect(resolveParameterValue('={{ $input.last().json.i }}', c)).toBe(1);
+    expect(resolveParameterValue('={{ $input.item.json.i }}', c)).toBe(1);
+    expect(resolveParameterValue('={{ $input.all().length }}', c)).toBe(2);
+  });
+
+  it('$runIndex / $prevNode', () => {
+    const c = { ...cCtx(0), runIndex: 3 };
+    expect(resolveParameterValue('={{ $runIndex }}', c)).toBe(3);
+    expect(resolveParameterValue('={{ $prevNode.name }}', c)).toBe('B');
+  });
+
+  it('$("X").first/last/all/itemMatching;.json 兼容旧语义', () => {
+    const c = cCtx(0);
+    expect(resolveParameterValue('={{ $("A").json.tag }}', c)).toBe('a0');
+    expect(resolveParameterValue('={{ $("A").first().json.tag }}', c)).toBe('a0');
+    expect(resolveParameterValue('={{ $("A").last().json.tag }}', c)).toBe('a1');
+    expect(resolveParameterValue('={{ $("A").all().length }}', c)).toBe(2);
+    expect(resolveParameterValue('={{ $("A").itemMatching(1).json.tag }}', c)).toBe('a1');
+    expect(resolveParameterValue('={{ $node["A"].last().json.tag }}', c)).toBe('a1');
+  });
+
+  it('★$("A").item 按血缘定位:C 的 item0 ← B 输出0(pairedItem→A 输入1) → A 的 a1', () => {
+    expect(resolveParameterValue('={{ $("A").item.json.tag }}', cCtx(0))).toBe('a1');
+    expect(resolveParameterValue('={{ $("A").item.json.tag }}', cCtx(1))).toBe('a0');
+    // 直接上游:同序直取
+    expect(resolveParameterValue('={{ $("B").item.json.from }}', cCtx(1))).toBe('a0');
+  });
+
+  it('血缘断链回退首 item（不硬崩）', () => {
+    const broken = cCtx(0);
+    // B 的输出去掉 pairedItem → 走不到 A → 回退 A 首 item
+    broken.runData = {
+      ...lineageRunData,
+      B: [{ startTime: 0, executionTime: 1, source: [{ previousNode: 'A' }], data: { main: [[{ json: { from: 'x' } }]] } }],
+    };
+    expect(resolveParameterValue('={{ $("A").item.json.tag }}', broken)).toBe('a0');
+  });
+});

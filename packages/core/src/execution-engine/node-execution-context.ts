@@ -209,11 +209,19 @@ export function createExecuteContext(args: {
   contextData?: Record<string, JsonObject>;
   /** true = waiting 恢复后的续跑帧。 */
   resumed?: boolean;
+  /** 本帧输入来源（$prevNode 与 $('X').item 血缘起点;引擎传 exec.source）。 */
+  source?: import('@nomops/workflow').ITaskDataConnectionsSource | null;
   /** 子节点能力解析用的加载器（引擎注入）。 */
   resolver?: INodeTypeResolver;
 }): IExecuteContext {
   const { workflow, node, inputData, runData, staticData, additionalData } = args;
   const items = inputData['main']?.[0] ?? [];
+  // #20:$runIndex = 本节点已完成的运行次数;$prevNode = 输入端口 0 的直接上游
+  const runIndex = runData[node.name]?.length ?? 0;
+  const prevSource = args.source?.['main']?.[0];
+  const prevNode = prevSource
+    ? { name: prevSource.previousNode, outputIndex: prevSource.previousNodeOutput ?? 0 }
+    : undefined;
 
   const context: IExecuteContext = {
     getInputData(inputIndex = 0): INodeExecutionData[] {
@@ -231,6 +239,8 @@ export function createExecuteContext(args: {
           workflow: { id: workflow.id, name: workflow.name },
           vars: additionalData.variables ?? {},
           parameters: node.parameters,
+          runIndex,
+          ...(prevNode ? { prevNode } : {}),
           ...(additionalData.execution ? { execution: additionalData.execution } : {}),
         });
       } catch (error) {
@@ -303,6 +313,8 @@ export function createExecuteContext(args: {
         workflow: { id: workflow.id, name: workflow.name },
         vars: additionalData.variables ?? {},
         parameters: node.parameters,
+        runIndex,
+        ...(prevNode ? { prevNode } : {}),
         ...(additionalData.execution ? { execution: additionalData.execution } : {}),
       });
     },
