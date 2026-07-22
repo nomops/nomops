@@ -122,6 +122,54 @@ export class OAuth2Service {
     });
   }
 
+  /**
+   * 临期自动续期（backlog #16）：token 已过期/60s 内到期且有 refresh_token → 刷新并存回。
+   * 无 refresh_token / 无 expires_at（旧凭证）→ 原样不动;刷新失败抛错（比拿着死 token
+   * 去打目标 API 得到含糊的 401 更可诊断）。支持 refresh token 轮换（响应带新 refresh_token 即换）。
+   */
+  async refreshIfNeeded(credentialId: string, projectId: string): Promise<void> {
+    const data = await this.credentials.rawData(credentialId, projectId);
+    const tok = data['oauthTokenData'] as JsonObject | undefined;
+    const refreshToken = tok?.['refresh_token'];
+    const expiresAt = tok?.['expires_at'];
+    if (!tok || !refreshToken || typeof expiresAt !== 'number') return;
+    if (Date.now() < expiresAt - 60_000) return;
+
+    const tokenUrl = this.tokenUrlFor(data);
+    if (!tokenUrl) return;
+    const body = new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: String(refreshToken),
+      client_id: String(data['clientId'] ?? ''),
+      client_secret: String(data['clientSecret'] ?? ''),
+    });
+    const res = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
+      body,
+    }).catch((error: Error) => {
+      throw new OperationalError(`OAuth2 token refresh request failed: ${error.message}`, { status: 400 });
+    });
+    if (!res.ok) {
+      throw new OperationalError(`OAuth2 token refresh failed: HTTP ${res.status}`, { status: 400 });
+    }
+    const tokens = (await res.json().catch(() => ({}))) as JsonObject;
+    if (!tokens['access_token']) {
+      throw new OperationalError('OAuth2 token refresh returned no access_token', { status: 400 });
+    }
+    const next: IOAuthTokenData = {
+      access_token: tokens['access_token'],
+      token_type: tokens['token_type'] ?? tok['token_type'] ?? 'Bearer',
+      refresh_token: tokens['refresh_token'] ?? refreshToken, // 轮换:响应带新的就换
+      scope: tokens['scope'] ?? tok['scope'] ?? null,
+      expires_at:
+        typeof tokens['expires_in'] === 'number' ? Date.now() + (tokens['expires_in'] as number) * 1000 : null,
+    };
+    await this.credentials.updateData(credentialId, projectId, {
+      oauthTokenData: next as unknown as JsonObject,
+    });
+  }
+
   private gcPending(): void {
     const now = Date.now();
     for (const [state, item] of this.pending) {

@@ -52,12 +52,26 @@ export class CredentialService {
   }
 
   /** 仅供执行时注入节点使用，绝不经 API 返回（铁律 3）。 */
+  /** OAuth2 临期续期回调（bootstrap 在 OAuth2Service 建好后注入,打破构造顺序环）。 */
+  private tokenRefresher: ((id: string, projectId: string) => Promise<void>) | null = null;
+  setTokenRefresher(fn: (id: string, projectId: string) => Promise<void>): void {
+    this.tokenRefresher = fn;
+  }
+
   async getDecryptedData(id: string, projectId: string): Promise<JsonObject> {
+    // OAuth2 token 临期自动续期（backlog #16;非 OAuth 凭证由 refresher 内部直接跳过）
+    if (this.tokenRefresher) await this.tokenRefresher(id, projectId);
     const row = await this.repos.credentials.findById(id, projectId);
     if (!row) throw new OperationalError('Credential not found', { credentialId: id, status: 404 });
     const data = await this.credentials.decrypt(row.data, { projectId });
+    // oauthTokenData 摊平到顶层：声明式注入模板（如 Bearer {{access_token}}）直接可用
+    const tok = data['oauthTokenData'];
+    const merged =
+      tok !== null && typeof tok === 'object' && !Array.isArray(tok)
+        ? { ...data, ...(tok as JsonObject) }
+        : data;
     // 外部密钥：把 {{ $secrets.KEY }} 引用物化为真值（仅此注入链路，绝不出 API/落库）
-    return this.secrets ? this.secrets.resolve(data) : data;
+    return this.secrets ? this.secrets.resolve(merged) : merged;
   }
 
   /** 原始解密数据（不做 $secrets 解析——OAuth token 存回时用，避免把引用物化落库）。仅内部链路，绝不出 API。 */

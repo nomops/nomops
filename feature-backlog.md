@@ -51,8 +51,7 @@
 
 - [x] **15. 匿名 resume webhook（waiting webhook）** `M` ✅ 2026-07-22（resumeToken 随执行状态落库;表达式新增 $execution.id/resumeUrl(任意节点参数可把恢复 URL 发出去);公开 /webhook-waiting/:id/:token 常数时间比较,不匹配一律 404;1 server 全链路测）
 
-- [ ] **16. OAuth2 refresh token 自动续期** `S/M`
-  refresh_token 已存储（`oauth2-service.ts:115`）但过期不自动刷新。
+- [x] **16. OAuth2 refresh token 自动续期** `S/M` ✅ 2026-07-22（refreshIfNeeded:过期/临期 60s+有 refresh_token → 刷新存回,支持轮换;执行注入前经 setter 注入的 refresher 兜一手;连带修注入视图 oauthTokenData 摊平(声明式 Bearer {{access_token}} 原本读不到);2 server 测(demo provider 真 HTTP)）
 
 - [x] **17. 重试从失败节点续跑** `M` ✅ 2026-07-22（复用 buildPartialRunState:失败节点标脏(闭包含下游),成功上游 runData 原样保留不重放触发;去掉 destination 止步续跑到底;定位失败/前置不足时优雅退回全量;1 server 测(时间戳证上游未重跑+删节点回退)）
 
