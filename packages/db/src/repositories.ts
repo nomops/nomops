@@ -5,6 +5,8 @@ import type {
   ApiKey,
   AuditLog,
   BillingOrder,
+  ChatAgent,
+  ChatSession,
   CreateAuditLogInput,
   ExecutionData,
   ProjectMember,
@@ -1635,6 +1637,75 @@ export class TagRepository extends BaseRepository {
   }
 }
 
+/** Chat 会话/个人 Agent（backlog #14）：全部按 userId 归属;upsert 收前端生成的 uuid。 */
+export class ChatRepository extends BaseRepository {
+  async listSessions(userId: string): Promise<ChatSession[]> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.chatSessions)
+      .where(eq(this.schema.chatSessions.userId, userId))
+      .orderBy(desc(this.schema.chatSessions.createdAt));
+    return rows as ChatSession[];
+  }
+
+  async upsertSession(
+    userId: string,
+    input: { id: string; title: string; target: JsonObject | null; wfSessionId: string | null; messages: JsonObject[] },
+  ): Promise<ChatSession> {
+    const [row] = await this.db
+      .insert(this.schema.chatSessions)
+      .values({ ...input, userId, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: this.schema.chatSessions.id,
+        set: {
+          title: input.title,
+          target: input.target,
+          wfSessionId: input.wfSessionId,
+          messages: input.messages,
+          updatedAt: new Date(),
+        },
+        // 归属护栏:只有本人的行可被覆盖(别人的 uuid 撞进来时 where 不命中 → 无行返回)
+        setWhere: eq(this.schema.chatSessions.userId, userId),
+      })
+      .returning();
+    return row as ChatSession;
+  }
+
+  async deleteSession(userId: string, id: string): Promise<void> {
+    await this.db
+      .delete(this.schema.chatSessions)
+      .where(and(eq(this.schema.chatSessions.id, id), eq(this.schema.chatSessions.userId, userId)));
+  }
+
+  async listAgents(userId: string): Promise<ChatAgent[]> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.chatAgents)
+      .where(eq(this.schema.chatAgents.userId, userId))
+      .orderBy(desc(this.schema.chatAgents.createdAt));
+    return rows as ChatAgent[];
+  }
+
+  async upsertAgent(userId: string, input: { id: string; name: string; system: string }): Promise<ChatAgent> {
+    const [row] = await this.db
+      .insert(this.schema.chatAgents)
+      .values({ ...input, userId, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: this.schema.chatAgents.id,
+        set: { name: input.name, system: input.system, updatedAt: new Date() },
+        setWhere: eq(this.schema.chatAgents.userId, userId),
+      })
+      .returning();
+    return row as ChatAgent;
+  }
+
+  async deleteAgent(userId: string, id: string): Promise<void> {
+    await this.db
+      .delete(this.schema.chatAgents)
+      .where(and(eq(this.schema.chatAgents.id, id), eq(this.schema.chatAgents.userId, userId)));
+  }
+}
+
 export interface Repositories {
   users: UserRepository;
   apiKeys: ApiKeyRepository;
@@ -1654,6 +1725,7 @@ export interface Repositories {
   webhooks: WebhookRepository;
   auditLogs: AuditLogRepository;
   quotas: QuotaRepository;
+  chat: ChatRepository;
 }
 
 /** 用一个 DatabaseHandle 组装全部仓储。server 层在启动时调用一次。 */
@@ -1678,5 +1750,6 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
     webhooks: new WebhookRepository(db, schema),
     auditLogs: new AuditLogRepository(db, schema),
     quotas: new QuotaRepository(db, schema),
+    chat: new ChatRepository(db, schema),
   };
 }

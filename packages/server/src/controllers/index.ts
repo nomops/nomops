@@ -37,6 +37,8 @@ import {
   folderPatchSchema,
   loginSchema,
   patchMemberSchema,
+  chatAgentUpsertSchema,
+  chatSessionUpsertSchema,
   quotaBodySchema,
   registerSchema,
   runBodySchema,
@@ -1252,6 +1254,62 @@ export function createApiRouter(services: AppServices): Router {
         typeof body.model === 'string' && /^[a-zA-Z0-9][\w.-]{1,63}$/.test(body.model) ? body.model : undefined;
       const result = await services.assistant.chat(auth(req).projectId, body.messages, body.credentialId, system, model);
       res.json(result);
+    }),
+  );
+
+  /* ── Chat 会话/个人 Agent 持久化（backlog #14,用户维度;原 localStorage 落库） ── */
+  router.get(
+    '/chat/sessions',
+    h(async (req, res) => {
+      res.json(await services.repos.chat.listSessions(auth(req).userId));
+    }),
+  );
+  router.put(
+    '/chat/sessions/:id',
+    h(async (req, res) => {
+      const body = parseBody(chatSessionUpsertSchema, req);
+      const id = param(req, 'id');
+      if (!/^[0-9a-f-]{36}$/i.test(id)) throw new OperationalError('Invalid session id', { status: 400 });
+      const row = await services.repos.chat.upsertSession(auth(req).userId, {
+        id,
+        title: body.title,
+        target: (body.target ?? null) as JsonObject | null,
+        wfSessionId: body.wfSessionId ?? null,
+        messages: body.messages as JsonObject[],
+      });
+      if (!row) throw new OperationalError('Session belongs to another user', { status: 403 });
+      res.json(row);
+    }),
+  );
+  router.delete(
+    '/chat/sessions/:id',
+    h(async (req, res) => {
+      await services.repos.chat.deleteSession(auth(req).userId, param(req, 'id'));
+      res.status(204).end();
+    }),
+  );
+  router.get(
+    '/chat/agents',
+    h(async (req, res) => {
+      res.json(await services.repos.chat.listAgents(auth(req).userId));
+    }),
+  );
+  router.put(
+    '/chat/agents/:id',
+    h(async (req, res) => {
+      const body = parseBody(chatAgentUpsertSchema, req);
+      const id = param(req, 'id');
+      if (!/^[0-9a-f-]{36}$/i.test(id)) throw new OperationalError('Invalid agent id', { status: 400 });
+      const row = await services.repos.chat.upsertAgent(auth(req).userId, { id, name: body.name, system: body.system });
+      if (!row) throw new OperationalError('Agent belongs to another user', { status: 403 });
+      res.json(row);
+    }),
+  );
+  router.delete(
+    '/chat/agents/:id',
+    h(async (req, res) => {
+      await services.repos.chat.deleteAgent(auth(req).userId, param(req, 'id'));
+      res.status(204).end();
     }),
   );
 

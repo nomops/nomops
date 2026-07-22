@@ -349,6 +349,41 @@ export const projectQuotas = pgTable('project_quotas', {
 });
 
 // 支付订单（支付宝订单式购买；out_trade_no = id）
+/* Chat 会话/个人 Agent（backlog #14,用户维度非项目维度;messages 随会话行 JSON 存） */
+export const chatAgents = pgTable(
+  'chat_agents',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    name: text('name').notNull(),
+    system: text('system').notNull().default(''),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [index('chat_agents_user_id_idx').on(t.userId)],
+);
+
+export const chatSessions = pgTable(
+  'chat_sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    title: text('title').notNull().default('New chat'),
+    /** 会话目标（模型/个人 agent/工作流 agent）,前端 ChatTarget 形状原样 JSON。 */
+    target: jsonb('target').$type<JsonObject>(),
+    wfSessionId: text('wf_session_id'),
+    /** 消息数组（{role, content, workflow?, error?}[]）,聊天规模下整列重写可接受。 */
+    messages: jsonb('messages').$type<JsonObject[]>().notNull().default([]),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [index('chat_sessions_user_id_idx').on(t.userId)],
+);
+
 export const billingOrders = pgTable('billing_orders', {
   id: uuid('id').primaryKey().defaultRandom(),
   projectId: uuid('project_id').notNull(),
@@ -418,4 +453,6 @@ export const pgSchema = {
   projectQuotas,
   usageCounters,
   billingOrders,
+  chatAgents,
+  chatSessions,
 };

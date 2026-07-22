@@ -120,6 +120,20 @@ export const sourceControlSettingsSchema = z.object({
   color: z.string().max(20).optional(),
 });
 
+/** Chat 会话 upsert（backlog #14;id 前端生成 uuid,消息数组随行整存）。 */
+export const chatSessionUpsertSchema = z.object({
+  title: z.string().min(1).max(300),
+  target: z.record(z.unknown()).nullable().optional(),
+  wfSessionId: z.string().max(200).nullable().optional(),
+  messages: z.array(z.record(z.unknown())).max(500),
+});
+
+/** 个人 Chat Agent upsert。 */
+export const chatAgentUpsertSchema = z.object({
+  name: z.string().min(1).max(200),
+  system: z.string().max(20000),
+});
+
 /** 激活许可证（实例 admin）。 */
 export const licenseActivateSchema = z.object({
   activationKey: z.string().min(1, 'Activation key is required').max(5000),

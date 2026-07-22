@@ -42,9 +42,9 @@ interface ChatSession {
 
 const router = useRouter();
 
-/* ── 持久化 ── */
-const SESSIONS_KEY = 'nomops.chat.sessions.v2';
-const AGENTS_KEY = 'nomops.chat.agents.v1';
+/* ── 持久化（backlog #14:落后端,跨设备;旧 localStorage 首载一次性迁移后清除） ── */
+const LEGACY_SESSIONS_KEY = 'nomops.chat.sessions.v2';
+const LEGACY_AGENTS_KEY = 'nomops.chat.agents.v1';
 const loadJson = <T,>(key: string, fallback: T): T => {
   try {
     return JSON.parse(localStorage.getItem(key) ?? '') as T;
@@ -52,10 +52,73 @@ const loadJson = <T,>(key: string, fallback: T): T => {
     return fallback;
   }
 };
-const sessions = ref<ChatSession[]>(loadJson(SESSIONS_KEY, []));
-const agents = ref<PersonalAgent[]>(loadJson(AGENTS_KEY, []));
-const persistSessions = () => localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions.value));
-const persistAgents = () => localStorage.setItem(AGENTS_KEY, JSON.stringify(agents.value));
+const sessions = ref<ChatSession[]>([]);
+const agents = ref<PersonalAgent[]>([]);
+
+async function saveSession(s: ChatSession) {
+  await api.chat
+    .saveSession({
+      id: s.id,
+      title: s.title,
+      target: s.target as unknown as Record<string, unknown> | null,
+      wfSessionId: s.wfSessionId ?? null,
+      messages: s.messages as unknown as Array<Record<string, unknown>>,
+    })
+    .catch(() => undefined); // 离线/网络抖动不打断聊天,下次保存补齐
+}
+/** 保存当前活跃会话（调用点语义:变更总发生在活跃会话上）。 */
+const persistSessions = () => {
+  const s = activeSession.value;
+  if (s) void saveSession(s);
+};
+
+async function loadPersisted() {
+  const [ss, ags] = await Promise.all([api.chat.sessions().catch(() => []), api.chat.agents().catch(() => [])]);
+  sessions.value = ss.map((r) => ({
+    id: r.id,
+    title: r.title,
+    target: (r.target ?? null) as ChatSession['target'],
+    ...(r.wfSessionId ? { wfSessionId: r.wfSessionId } : {}),
+    messages: (r.messages ?? []) as unknown as Msg[],
+    createdAt: new Date(r.createdAt).getTime(),
+  }));
+  agents.value = ags.map((a) => ({ id: a.id, name: a.name, system: a.system }));
+  if (!ss.length && !ags.length) await migrateLegacy();
+}
+/** 旧 localStorage → 后端一次性迁移（旧 8 位短 id 换 uuid,agent 引用同步改写）。 */
+async function migrateLegacy() {
+  const legacySessions = loadJson<ChatSession[]>(LEGACY_SESSIONS_KEY, []);
+  const legacyAgents = loadJson<PersonalAgent[]>(LEGACY_AGENTS_KEY, []);
+  if (!legacySessions.length && !legacyAgents.length) return;
+  const idMap = new Map<string, string>();
+  for (const a of legacyAgents) {
+    const id = crypto.randomUUID();
+    idMap.set(a.id, id);
+    const migrated = { id, name: a.name, system: a.system };
+    const ok = await api.chat.saveAgent(migrated).catch(() => null);
+    if (ok) agents.value.push(migrated);
+  }
+  for (const s of legacySessions) {
+    const target =
+      s.target?.type === 'agent' && s.target.agentId
+        ? { ...s.target, agentId: idMap.get(s.target.agentId) ?? s.target.agentId }
+        : s.target;
+    const migrated: ChatSession = { ...s, id: crypto.randomUUID(), target };
+    const ok = await api.chat
+      .saveSession({
+        id: migrated.id,
+        title: migrated.title,
+        target: migrated.target as unknown as Record<string, unknown> | null,
+        wfSessionId: migrated.wfSessionId ?? null,
+        messages: migrated.messages as unknown as Array<Record<string, unknown>>,
+      })
+      .catch(() => null);
+    if (ok) sessions.value.push(migrated);
+  }
+  localStorage.removeItem(LEGACY_SESSIONS_KEY);
+  localStorage.removeItem(LEGACY_AGENTS_KEY);
+}
+onMounted(() => void loadPersisted());
 
 /* ── 视图 ── */
 type View = 'chat' | 'personal-agents' | 'workflow-agents';
@@ -83,14 +146,14 @@ onMounted(async () => {
 /* ── 会话 ── */
 function newChat() {
   const session: ChatSession = {
-    id: crypto.randomUUID().slice(0, 8),
+    id: crypto.randomUUID(), // 服务端主键要求完整 uuid
     title: 'New Chat',
     target: null,
     messages: [],
     createdAt: Date.now(),
   };
   sessions.value.unshift(session);
-  persistSessions();
+  void saveSession(session);
   activeSessionId.value = session.id;
   view.value = 'chat';
 }
@@ -101,7 +164,7 @@ function openSession(id: string) {
 }
 function deleteSession(id: string) {
   sessions.value = sessions.value.filter((s) => s.id !== id);
-  persistSessions();
+  void api.chat.deleteSession(id).catch(() => undefined);
   if (activeSessionId.value === id) activeSessionId.value = null;
 }
 
@@ -266,15 +329,16 @@ function saveAgent() {
   const name = agentDraftName.value.trim();
   const system = agentDraftSystem.value.trim();
   if (!name || !system) return;
-  agents.value.push({ id: crypto.randomUUID().slice(0, 8), name, system });
-  persistAgents();
+  const agent = { id: crypto.randomUUID(), name, system };
+  agents.value.push(agent);
+  void api.chat.saveAgent(agent).catch(() => undefined);
   agentDraftName.value = '';
   agentDraftSystem.value = '';
   agentFormOpen.value = false;
 }
 function deleteAgent(id: string) {
   agents.value = agents.value.filter((a) => a.id !== id);
-  persistAgents();
+  void api.chat.deleteAgent(id).catch(() => undefined);
 }
 function chatWith(target: ChatTarget) {
   newChat();

@@ -390,6 +390,49 @@ export const projectQuotas = sqliteTable('project_quotas', {
 });
 
 // 支付订单（支付宝订单式购买；out_trade_no = id）
+/* Chat 会话/个人 Agent（backlog #14,用户维度非项目维度;messages 随会话行 JSON 存） */
+export const chatAgents = sqliteTable(
+  'chat_agents',
+  {
+    id: uuidPk('id'),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    name: text('name').notNull(),
+    system: text('system').notNull().default(''),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('chat_agents_user_id_idx').on(t.userId)],
+);
+
+export const chatSessions = sqliteTable(
+  'chat_sessions',
+  {
+    id: uuidPk('id'),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    title: text('title').notNull().default('New chat'),
+    /** 会话目标（模型/个人 agent/工作流 agent）,前端 ChatTarget 形状原样 JSON。 */
+    target: text('target', { mode: 'json' }).$type<JsonObject>(),
+    wfSessionId: text('wf_session_id'),
+    /** 消息数组（{role, content, workflow?, error?}[]）,聊天规模下整列重写可接受。 */
+    messages: text('messages', { mode: 'json' }).$type<JsonObject[]>().notNull().default([]),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('chat_sessions_user_id_idx').on(t.userId)],
+);
+
 export const billingOrders = sqliteTable('billing_orders', {
   id: uuidPk('id'),
   projectId: text('project_id').notNull(),
@@ -463,4 +506,6 @@ export const sqliteSchema = {
   projectQuotas,
   usageCounters,
   billingOrders,
+  chatAgents,
+  chatSessions,
 };

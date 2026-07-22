@@ -45,8 +45,7 @@
 
 - [x] **13. 工作流移动/转移** `M` ✅ 2026-07-22（卡片菜单 Move 复活(基线第 7 项)→弹窗双区:文件夹移动(死代码复用)+跨项目转移;transfer 端点 owner 专属+目标 editor+ 校验,共享行清空/文件夹归零,凭证不随迁(确认时明示);1 server 测;live 弹窗+转移+X-Project-Id 上下文验证）
 
-- [ ] **14. Chat 会话与个人 Agent 落后端** `M`
-  现仅 localStorage，不跨设备。→ 会话/agent 表 + CRUD + 前端同步。
+- [x] **14. Chat 会话与个人 Agent 落后端** `M` ✅ 2026-07-22（chat_sessions/chat_agents 双方言表(迁移 0023,messages JSON 随行);用户维度 CRUD+PUT 幂等 upsert(setWhere 归属护栏,他人 uuid 403);前端换 API 持久化+旧 localStorage 一次性迁移(短 id→uuid);2 server 测;live 建会话/Agent→刷新后端回载验证）
 
 ## P4 · 触发器与凭证深化
 

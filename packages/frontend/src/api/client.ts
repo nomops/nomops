@@ -577,6 +577,23 @@ export const api = {
       http<McpStatus>('PUT', `/api/mcp/workflows/${id}/description`, { description }),
   },
 
+  /* Chat 会话/个人 Agent 持久化（backlog #14,用户维度;id 由前端生成 uuid,PUT 幂等 upsert） */
+  chat: {
+    sessions: () =>
+      http<Array<{ id: string; title: string; target: Record<string, unknown> | null; wfSessionId: string | null; messages: Array<Record<string, unknown>>; createdAt: string }>>(
+        'GET',
+        '/api/chat/sessions',
+      ),
+    saveSession: (s: { id: string; title: string; target: Record<string, unknown> | null; wfSessionId: string | null; messages: Array<Record<string, unknown>> }) =>
+      http<{ id: string }>('PUT', `/api/chat/sessions/${s.id}`, { title: s.title, target: s.target, wfSessionId: s.wfSessionId, messages: s.messages }),
+    deleteSession: (id: string) => http<void>('DELETE', `/api/chat/sessions/${id}`),
+    agents: () =>
+      http<Array<{ id: string; name: string; system: string }>>('GET', '/api/chat/agents'),
+    saveAgent: (a: { id: string; name: string; system: string }) =>
+      http<{ id: string }>('PUT', `/api/chat/agents/${a.id}`, { name: a.name, system: a.system }),
+    deleteAgent: (id: string) => http<void>('DELETE', `/api/chat/agents/${id}`),
+  },
+
   /* Chat 设置（Settings → Chat，Preview） */
   chatSettings: {
     get: () => http<{ enabled: boolean; model: string }>('GET', '/api/chat-settings'),
