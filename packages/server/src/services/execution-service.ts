@@ -4,6 +4,7 @@ import type { IBinaryDataStore, INodeLoader } from '@nomops/core';
 import {
   WorkflowExecute,
   buildPartialRunState,
+  collectBinaryIds,
   computeDirtyNodes,
   incomingSignatureOf,
   seedTriggerOutput,
@@ -404,6 +405,28 @@ export class ExecutionService {
 
   async list(projectId: string): Promise<Execution[]> {
     return this.repos.executions.findAllByProject(projectId);
+  }
+
+  /**
+   * binary 孤儿清理（#22）：store 里存在、但没有任何执行数据引用的 blob 删掉。
+   * 兜住「binary 写了但执行记录没落库」的场景（saveManualExecutions=false 收尾即删,
+   * 但那条删除路径的 setBeforeDelete 已覆盖;此扫描兜进程崩溃/旧数据等残留）。
+   * store 不支持 list/delete → 跳过（返回 0）。leader 定期调用。
+   */
+  async sweepOrphanBinaries(): Promise<number> {
+    if (!this.binaryStore?.list || !this.binaryStore.delete) return 0;
+    const stored = await this.binaryStore.list();
+    if (!stored || stored.length === 0) return 0;
+    const referenced = new Set<string>();
+    for (const data of await this.repos.executions.allData()) collectBinaryIds(data, referenced);
+    let removed = 0;
+    for (const id of stored) {
+      if (!referenced.has(id)) {
+        await this.binaryStore.delete(id).catch(() => undefined);
+        removed++;
+      }
+    }
+    return removed;
   }
 
   /** 删除执行记录（含 execution_data；归属检查）。 */

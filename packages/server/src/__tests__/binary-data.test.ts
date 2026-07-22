@@ -63,3 +63,37 @@ describe('二进制数据', () => {
     await request(app).get(`/api/executions/${execution.id}/binary/${orphan.id}`).set(authed()).expect(404);
   });
 });
+
+describe('binary 生命周期（#22 GC）', () => {
+  it('删执行记录级联删其 binary;孤儿清理移除无引用 blob', async () => {
+    const store = boot.services.executions.getBinaryStore()!;
+    const me = await request(app).get('/api/me').set(authed()).expect(200);
+    const projectId = me.body.projectId as string;
+
+    const referenced = await store.put(Buffer.from('KEEP-THEN-DELETE'), { mimeType: 'application/pdf', fileName: 'r.pdf' });
+    const orphan = await store.put(Buffer.from('NEVER-REFERENCED'), { mimeType: 'text/plain' });
+
+    const wf = await boot.services.workflows.create(
+      { name: 'gc-flow', nodes: [{ id: 'a', name: 'S', type: 'nomops.manualTrigger', typeVersion: 1, position: [0, 0], parameters: {} }], connections: {} },
+      projectId,
+    );
+    const execution = await boot.services.repos.executions.create(
+      { workflowId: wf.id, status: 'success', mode: 'manual', startedAt: new Date() },
+      {
+        workflowData: { name: wf.name, nodes: wf.nodes, connections: wf.connections },
+        data: { resultData: { runData: { S: [{ startTime: 0, executionTime: 1, source: [], data: { main: [[{ json: {}, binary: { file: referenced } }]] } }] } } },
+      },
+    );
+
+    // 删执行 → setBeforeDelete 钩子清掉被引用的 blob
+    await boot.services.executions.delete(execution.id, projectId);
+    await expect(store.get(referenced.id!)).rejects.toMatchObject({ context: { status: 404 } });
+    // 孤儿(从没被任何执行引用)此刻仍在
+    expect(Buffer.from(await store.get(orphan.id!)).toString()).toBe('NEVER-REFERENCED');
+
+    // 孤儿清理:store 里但无执行数据引用的 blob 被删
+    const removed = await boot.services.executions.sweepOrphanBinaries();
+    expect(removed).toBeGreaterThanOrEqual(1);
+    await expect(store.get(orphan.id!)).rejects.toMatchObject({ context: { status: 404 } });
+  });
+});

@@ -77,3 +77,25 @@ describe('binary store', () => {
     expect(inlineItem.binary!['file']!.data).toBe(Buffer.from('BYTES').toString('base64'));
   });
 });
+
+describe('collectBinaryIds（#22 引用扫描）', () => {
+  const id1 = '11111111-1111-4111-8111-111111111111';
+  const id2 = '22222222-2222-4222-8222-222222222222';
+
+  it('深扫执行数据里的所有 IBinaryData 引用;区别于普通业务 id', async () => {
+    const { collectBinaryIds } = await import('./binary-store.js');
+    const item1 = { json: { userId: 'not-a-binary' }, binary: { file: { id: id1, mimeType: 'application/pdf', fileName: 'a.pdf' } } };
+    const item2 = { json: { id: 'plain-id-no-mime' }, binary: { img: { id: id2, mimeType: 'image/png' } } };
+    const data = { resultData: { runData: { A: [{ data: { main: [[item1]] } }], B: [{ data: { main: [[item2]] } }] } } };
+
+    const ids = collectBinaryIds(data);
+    expect([...ids].sort()).toEqual([id1, id2].sort());
+    expect(ids.has('plain-id-no-mime')).toBe(false); // 无 mimeType/非 uuid → 不当作 binary
+  });
+
+  it('空/无引用 → 空集', async () => {
+    const { collectBinaryIds } = await import('./binary-store.js');
+    expect(collectBinaryIds(null).size).toBe(0);
+    expect(collectBinaryIds({ a: 1, b: [{ c: 'x' }] }).size).toBe(0);
+  });
+});

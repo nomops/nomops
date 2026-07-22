@@ -6,6 +6,7 @@ import {
   FileSystemBinaryStore,
   NodeLoader,
   S3BinaryStore,
+  collectBinaryIds,
   s3StoreOptionsFromEnv,
 } from '@nomops/core';
 import type { IEncryptionKeyProvider } from '@nomops/core';
@@ -259,6 +260,13 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     baseUrl,
   );
 
+  // binary GC（#22）：删执行记录（单删/批删/pruner/save-policy）前先清其 binary 引用
+  if (binaryStore.delete) {
+    repos.executions.setBeforeDelete(async (data) => {
+      for (const id of collectBinaryIds(data)) await binaryStore.delete!(id).catch(() => undefined);
+    });
+  }
+
   const leader = new LeaderElection(lockStore);
   const audit = new AuditService(repos, (entry) =>
     logStreaming.dispatch({
@@ -285,6 +293,10 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   const executionPruner = new ExecutionPruner(repos, () => leader.isLeader(), {
     ...prunerOptionsFromEnv(process.env),
     ...opts.pruner,
+    // binary 孤儿清理与执行清理同周期（store 不支持 list/delete 时内部返回 0）
+    ...(binaryStore.list && binaryStore.delete
+      ? { sweepOrphanBinaries: () => executions.sweepOrphanBinaries() }
+      : {}),
   });
   if (role === 'main') executionPruner.start();
   const sso = new OidcService(repos, credentials, auth, baseUrl);

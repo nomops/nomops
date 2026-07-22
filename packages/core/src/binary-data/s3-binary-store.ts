@@ -122,6 +122,36 @@ export class S3BinaryStore implements IBinaryDataStore {
    * 预签名下载链接：让浏览器直接从 S3 拉，大文件不必穿过本进程。
    * 返回 null 表示本 store 不支持（调用方回落到流式下载）。
    */
+  async delete(id: string): Promise<void> {
+    assertValidBinaryId(id);
+    const { DeleteObjectCommand } = await import('@aws-sdk/client-s3');
+    const client = await this.s3();
+    await client
+      .send(new DeleteObjectCommand({ Bucket: this.options.bucket, Key: this.key(id) }))
+      .catch(() => undefined); // 不存在/已删 → 幂等静默
+  }
+
+  /** 前缀 list（孤儿清理用）：翻页拉全部,从 key 反解 uuid。 */
+  async list(): Promise<string[]> {
+    const { ListObjectsV2Command } = await import('@aws-sdk/client-s3');
+    const client = await this.s3();
+    const prefix = this.options.prefix ? `${this.options.prefix.replace(/\/+$/, '')}/` : '';
+    const ids: string[] = [];
+    let token: string | undefined;
+    do {
+      const out: { Contents?: Array<{ Key?: string }>; NextContinuationToken?: string; IsTruncated?: boolean } =
+        await client.send(
+          new ListObjectsV2Command({ Bucket: this.options.bucket, Prefix: prefix, ContinuationToken: token }),
+        );
+      for (const obj of out.Contents ?? []) {
+        const key = obj.Key ?? '';
+        if (key.endsWith('.bin')) ids.push(key.slice(prefix.length, -4));
+      }
+      token = out.IsTruncated ? out.NextContinuationToken : undefined;
+    } while (token);
+    return ids;
+  }
+
   async presignedUrl(id: string): Promise<string | null> {
     assertValidBinaryId(id);
     const [{ GetObjectCommand }, { getSignedUrl }] = await Promise.all([

@@ -11,6 +11,8 @@ export interface IExecutionPrunerOptions {
   /** 保留条数；<=0 关闭按条数清理。 */
   maxCount?: number;
   intervalMs?: number;
+  /** binary 孤儿清理（#22）：与执行清理同周期、同 leader 门控;返回删除数。 */
+  sweepOrphanBinaries?: () => Promise<number>;
 }
 
 /**
@@ -38,11 +40,15 @@ export class ExecutionPruner {
     this.maxAgeHours = options.maxAgeHours ?? DEFAULT_MAX_AGE_HOURS;
     this.maxCount = options.maxCount ?? DEFAULT_MAX_COUNT;
     this.intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS;
+    this.sweepOrphanBinaries = options.sweepOrphanBinaries;
   }
 
-  /** 两条策略都关掉 = 整个清理器停用（自托管用户可显式选择无限保留）。 */
+  private readonly sweepOrphanBinaries?: () => Promise<number>;
+
+  /** 两条策略都关掉 = 整个清理器停用（自托管用户可显式选择无限保留）。
+      有 binary 孤儿清理时,即便执行清理都关也保持定时器运转（孤儿仍要扫）。 */
   get enabled(): boolean {
-    return this.maxAgeHours > 0 || this.maxCount > 0;
+    return this.maxAgeHours > 0 || this.maxCount > 0 || Boolean(this.sweepOrphanBinaries);
   }
 
   start(): void {
@@ -62,12 +68,20 @@ export class ExecutionPruner {
     if (!this.enabled || this.running || !this.isLeader()) return 0;
     this.running = true;
     try {
-      const deleted = await this.repos.executions.prune({
-        maxAgeHours: this.maxAgeHours,
-        maxCount: this.maxCount,
-      });
+      const deleted =
+        this.maxAgeHours > 0 || this.maxCount > 0
+          ? await this.repos.executions.prune({ maxAgeHours: this.maxAgeHours, maxCount: this.maxCount })
+          : 0;
       if (deleted > 0) {
         console.log(`[nomops] 清理历史执行 ${deleted} 条`);
+      }
+      // binary 孤儿清理（#22;执行清理已在 delete 级联清引用,此处兜进程崩溃/旧数据残留）
+      if (this.sweepOrphanBinaries) {
+        const swept = await this.sweepOrphanBinaries().catch((e: Error) => {
+          console.error('[nomops] binary 孤儿清理失败:', e.message);
+          return 0;
+        });
+        if (swept > 0) console.log(`[nomops] 清理孤儿 binary ${swept} 个`);
       }
       return deleted;
     } catch (error) {

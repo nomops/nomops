@@ -1074,7 +1074,20 @@ export class ExecutionRepository extends BaseRepository {
 
   /** 更新执行数据大字段（RunExecutionData）。 */
   /** 删除执行（含数据行）。工作流 settings 的「不保存某类执行」策略在收尾时调用。 */
+  /**
+   * 删除前回调（binary GC #22）：server 注入,拿到即将删除的执行数据先清其 binary 引用。
+   * 覆盖所有删除路径（单删/批删/pruner/save-policy drop）——它们都走 delete()。
+   */
+  private onBeforeDelete: ((data: JsonObject | null) => Promise<void>) | null = null;
+  setBeforeDelete(fn: (data: JsonObject | null) => Promise<void>): void {
+    this.onBeforeDelete = fn;
+  }
+
   async delete(id: string): Promise<void> {
+    if (this.onBeforeDelete) {
+      const data = await this.getData(id).catch(() => null);
+      await this.onBeforeDelete(data).catch(() => undefined); // 清理失败不阻塞删除
+    }
     await this.db.delete(this.schema.executionData).where(eq(this.schema.executionData.executionId, id));
     await this.db.delete(this.schema.executions).where(eq(this.schema.executions.id, id));
   }
@@ -1084,6 +1097,12 @@ export class ExecutionRepository extends BaseRepository {
       .update(this.schema.executionData)
       .set({ data })
       .where(eq(this.schema.executionData.executionId, id));
+  }
+
+  /** 全部执行数据 blob（binary 孤儿清理用;只出 data 字段,不带归属——系统级扫描）。 */
+  async allData(): Promise<JsonObject[]> {
+    const rows = await this.db.select({ data: this.schema.executionData.data }).from(this.schema.executionData);
+    return (rows as Array<{ data: JsonObject | null }>).map((r) => r.data).filter((d): d is JsonObject => d !== null);
   }
 
   /** 读执行数据大字段。注意：不带归属过滤，调用方必须先经 findById(id, projectId) 校验归属。 */

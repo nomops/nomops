@@ -23,7 +23,20 @@ function fakeS3() {
     factory: async () => ({
       send: async (command: unknown) => {
         const input = (command as { input: Record<string, unknown> }).input;
+        const ctor = (command as { constructor: { name: string } }).constructor?.name ?? '';
+        // ListObjectsV2Command:无 Key,按 Prefix 列
+        if (ctor.includes('List') || (input['Key'] === undefined && input['Prefix'] !== undefined)) {
+          const prefix = String(input['Prefix'] ?? '');
+          return {
+            Contents: [...objects.keys()].filter((k) => k.startsWith(prefix)).map((Key) => ({ Key })),
+            IsTruncated: false,
+          };
+        }
         const key = String(input['Key']);
+        if (ctor.includes('Delete')) {
+          objects.delete(key);
+          return {};
+        }
         // PutObjectCommand 带 Body，GetObjectCommand 不带
         if (input['Body'] !== undefined) {
           objects.set(key, Buffer.from(input['Body'] as Buffer));
@@ -128,6 +141,24 @@ describe.each(backends)('存储契约 @ %s', (_name, make) => {
 
     expect(ref.fileSize).toBe(0);
     expect(Buffer.from(await store.get(ref.id!)).byteLength).toBe(0);
+  });
+
+  it('delete/list（#22 GC 契约）:删后 get 404,list 反映实况,删不存在幂等', async () => {
+    // 独立 dir/桶:list 是全量视图,不能被同套件其它用例的残留污染
+    const isolated = make() instanceof FileSystemBinaryStore
+      ? new FileSystemBinaryStore(join(dir, randomUUID()))
+      : make() instanceof InMemoryBinaryStore
+        ? new InMemoryBinaryStore()
+        : new S3BinaryStore({ bucket: `del-${randomUUID()}`, clientFactory: fakeS3().factory });
+    const a = await isolated.put(Buffer.from('AAA'), { mimeType: 'text/plain' });
+    const b = await isolated.put(Buffer.from('BBB'), { mimeType: 'text/plain' });
+
+    expect((await isolated.list!())!.sort()).toEqual([a.id, b.id].sort());
+    await isolated.delete!(a.id!);
+    await expect(isolated.get(a.id!)).rejects.toMatchObject({ context: { status: 404 } });
+    expect(await isolated.list!()).toEqual([b.id]);
+    await isolated.delete!(randomUUID()); // 不存在 → 幂等不报错
+    await isolated.delete!(a.id!); // 已删 → 幂等
   });
 });
 

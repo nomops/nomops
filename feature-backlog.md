@@ -1,6 +1,6 @@
 # nomops 功能开发待办清单（feature-backlog）
 
-> 来源：2026-07-21 全项目缺口盘点（引擎/服务端/节点/前端四路代码审计 + diff-ledger + ui-audit gap-list 交叉）。
+> 来源：2026-07-21 全项目缺口盘点（引擎/服务端/节点/前端四路代码审计 + diff-ledger + ui-audit gap-list 交叉）；2026-07-22 增补 P8-P10（自托管 n8n 库 110 表逐一对照，#34-47）。
 > 用法：按编号发布指令逐项开发；完成后在本文件勾选并记 commit。
 > 工作量：S=半天内 · M=1-2 天 · L=3 天+ · XL=独立立项。
 
@@ -66,8 +66,7 @@
 
 - [x] **21. pairedItem 跨节点血缘解析** `M/L` ✅ 2026-07-22（expression/paired-item.ts:pairedItem+source 双向回溯 traceLineage/itemInAncestor;$('X').item 按血缘定位当前 item 在祖先节点的来源(非永远首 item);断链回退首 item 不硬崩;引擎集成测:反序节点后 $('A').item 正确交叉取 a1/a0）
 
-- [ ] **22. binary 数据生命周期** `M`
-  引用 GC/清理 + binary 走完整引擎的端到端测试。
+- [x] **22. binary 数据生命周期** `M` ✅ 2026-07-22（IBinaryDataStore 加 delete/list(三后端:FS/内存/S3 ListObjectsV2 翻页);collectBinaryIds 深扫执行数据引用;ExecutionRepository.setBeforeDelete 钩子——单删/批删/pruner/save-policy drop 四路删除都级联清 binary;sweepOrphanBinaries(store∖执行引用)进 pruner 同周期同 leader;store-contract delete/list 契约测+collectBinaryIds 单测+server 级联/孤儿 GC 端到端测）
 
 ## P6 · 平台能力面扩展
 
@@ -86,6 +85,66 @@
   dataset / eval trigger / test run / metric / 执行标注👍👎 / Debug in editor 全链，nomops 零后端。
 - [ ] **32. Chat 多模态（附件）+ 语音 STT** `XL`
 - [ ] **33. 凭证专属表达式模式** `M`（仅 `$secrets`/env 补全的专用控件，见 gap-list P2-4 收回记录）
+
+## P8 · n8n 表对照补差 · 小而快 + 正确性（来源：2026-07-22 自托管 n8n 库对照盘点）
+
+- [ ] **34. 每用户收藏（user_favorites）** `S`
+  现 `workflows.favorite` 是全局布尔，多人项目里星标互相覆盖（语义错误）。
+  → 新表 user_favorites(userId + resourceType/resourceId) + 迁移搬现有星标 + 星标/列表接口改按当前用户过滤。
+  验收：双用户各自星标互不可见。
+
+- [ ] **35. 执行标注 + 自定义元数据** `M`（执行标注从 #31 拆出先行，评测其余仍归 #31）
+  n8n：execution_annotations(vote 👍👎 + note) + annotation_tag_entity(标注标签) + execution_metadata(运行中写 KV、列表可检索)。
+  → 三表 + 执行详情标注 UI + 工作流内 customData 写入口 + 执行列表按标注/元数据过滤。
+  验收：打分/笔记/标签往返；工作流写 customData 后列表能按键值筛出。
+
+- [ ] **36. SSO 身份绑定表 + 同步历史** `M`（正确性隐患）
+  现 OIDC/LDAP 靠 email JIT 匹配，email 变更或多 provider 并存会错认归属。
+  → auth_identity(userId ↔ providerId/providerType)：登录时建绑定、此后优先按绑定匹配；auth_provider_sync_history 记每次 LDAP 同步的 scanned/created/updated/disabled 与错误。
+  验收：改 email 后同一 LDAP 账号仍归同一 user；同步历史可查。
+
+- [ ] **37. 登出令牌黑名单（invalid_auth_token）** `S`
+  现登出仅客户端删 cookie，JWT 到期前仍有效。→ 落库黑名单 + 鉴权中间件查表 + 过期行清理。
+  验收：登出后旧 token 立即 401。
+
+## P9 · n8n 表对照补差 · 基础设施
+
+- [ ] **38. DB 调度器（scheduled_job + scheduled_task）** `L`（地基项：解锁 #9 残余 LDAP 定时同步、#39 定时卷积、#44 Agent 定时任务）
+  统一定时任务落库：cron/interval/一次性 fireAt + 时区 + nextRunAt + maxAttempts；触发实例租约抢占（claimedBy/leaseExpiresAt/leaseEpoch）。Schedule Trigger 迁移到其上，重启不丢、多实例不重复。
+  验收：双实例并发同一 cron 只触发一次；重启后 nextRunAt 恢复继续。
+
+- [ ] **39. Insights 预聚合管线** `M/L`（解锁 #8 遗留 D153 跨项目聚合；卷积任务依赖 #38）
+  现从 executions 实时聚合，执行历史一清理数据即失。→ insights_raw(执行收尾写事件) → insights_by_period(hour/day 卷积) + insights_metadata(工作流/项目名快照)。
+  验收：删执行后 Insights 数字不变；跨项目聚合视图可用。
+
+- [ ] **40. 发布管线深化** `L`
+  workflow_publish_history(发布/回滚事件史) + publication_outbox(发布↔触发器激活原子化、失败重放) + publication_trigger_status(逐触发器激活状态/错误) + workflow_dependency/credential_dependency(版本级子流/凭证引用索引)。
+  验收：触发器激活失败在 UI 有状态与错误；发布史可回看；删被引用凭证前可见引用方。
+
+- [ ] **41. Chat 工具体系** `M/L`（与 #32 多模态互补）
+  chat_hub_tools(工具定义) + session_tools/agent_tools(会话级/Agent 级挂载)；消息带 workflowId/executionId 关联。
+  验收：会话挂一个工作流工具 → 对话触发执行 → 消息里可跳执行详情。
+
+- [ ] **42. SSO 角色映射规则（role_mapping_rule）** `M`（与 #28/#29 联动）
+  按表达式把 SSO 声明/LDAP group 映射到角色与项目（role_mapping_rule + role_mapping_rule_project，order 定优先级）。
+  验收：LDAP group → 项目成员自动生效。
+
+- [ ] **43. 平台零散补差清扫** `S/M`
+  folder_tag(文件夹打标)、mcp_registry_server(MCP registry 缓存)、instance_version_history(实例升级史)、users.settings(每用户偏好落库替 localStorage)。
+  验收：逐项 live 验证。
+
+## P10 · n8n 表对照 · Epic/远期（独立立项，先规划再动工）
+
+- [ ] **44. EPIC-AGENTS Agents 平台** `XL`
+  n8n 20 表体系：agent 定义/发布版本（agents + agent_history）、线程化执行 + token/成本核算（agent_execution*）、分层记忆（memory_entries + observations，embedding + 证据链）、定时任务（task_definition + run_lock，依赖 #38）、文件、外部渠道订阅（Telegram 等）。现仅 chat_agents 单表（name + system）。先出规划文档再动工。
+
+- [ ] **45. EPIC-AI-BUILDER AI 生成工作流 + 实例助手** `XL`
+  n8n 16 表体系：workflow_builder_session / ai_builder_temporary_workflow（AI 建流会话 + 临时流）、instance_ai_*（线程/检查点/运行树快照/HITL 待确认/观察-反思记忆/MCP 连接）。现 chat 的 wfSessionId 仅雏形。先出规划文档再动工。
+
+- [ ] **46. 动态凭证（dynamic credentials）** `L/XL`（远期：Cloud 嵌入式/多租户场景才有价值，触发前不动工）
+  dynamic_credential_resolver(解析器) + entry/user_entry(按 subject/user 的凭证值) + credentials.isResolvable/resolverId。运行时按租户解析凭证。
+
+- [ ] **47. 实例信任密钥链** `M`（远期：deployment_key/trusted_key/trusted_key_source/token_exchange_jti；OIDC token exchange 与实例签名，待 Cloud 联邦需求触发）
 
 ---
 
