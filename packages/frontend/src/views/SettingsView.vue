@@ -697,6 +697,10 @@ async function removeMcpWorkflow(id: string) {
 const mcpServerUrl = computed(
   () => `${location.origin.replace(/:(5173|5180|5181)$/, ':5680')}${mcpStatus.value?.serverPath ?? '/mcp-server/http'}`,
 );
+/** #25:OAuth 授权服务器元数据发现 URL（MCP 客户端从此拉 authorize/token 端点）。 */
+const mcpOAuthDiscovery = computed(
+  () => `${location.origin.replace(/:(5173|5180|5181)$/, ':5680')}/.well-known/oauth-authorization-server`,
+);
 
 async function loadMcp() {
   mcpError.value = '';
@@ -3030,10 +3034,14 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                     Send requests as <code>Authorization: Bearer &lt;token&gt;</code> (MCP Streamable HTTP, JSON-RPC 2.0).
                   </p>
                 </template>
-                <p v-else class="dim" style="font-size: 12px; margin: 10px 0 0">
-                  The client runs the OAuth consent flow against this URL — no token to copy. Add its callback to the
-                  allowlist under <b>OAuth settings</b> first.
-                </p>
+                <template v-else>
+                  <label style="font-size: 12px; color: var(--text-dim); display: block; margin-top: 12px">OAuth discovery</label>
+                  <code class="api-token" style="margin-top: 4px">{{ mcpOAuthDiscovery }}</code>
+                  <p class="dim" style="font-size: 12px; margin: 10px 0 0">
+                    The client discovers the authorize/token endpoints here and runs OAuth 2.0 (authorization code + PKCE).
+                    Add its callback to the allowlist under <b>OAuth settings</b> first — no token to copy.
+                  </p>
+                </template>
                 <!-- D143:基线连接详情还有 Configuration JSON 一项(客户端 mcpServers 配置) -->
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 12px">
                   <label style="font-size: 12px; color: var(--text-dim)">Configuration JSON</label>
