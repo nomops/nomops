@@ -116,6 +116,48 @@ describe('公共 API 令牌', () => {
       .expect(403);
   });
 
+  it('细粒度作用域（#26）：workflow:read 只放行读工作流,写工作流/读凭证都 403', async () => {
+    const created = await request(app)
+      .post('/api/api-keys')
+      .set(bearer(jwt))
+      .send({ label: 'wf-read', scope: 'workflow:read' })
+      .expect(201);
+    expect(created.body.apiKey.scope).toBe('workflow:read');
+    expect(created.body.apiKey.scopes).toEqual(['workflow:read']);
+    const key = created.body.token as string;
+
+    await request(app).get('/api/workflows').set(withKey(key)).expect(200);
+    const bad = await request(app)
+      .post('/api/workflows')
+      .set(withKey(key))
+      .send({ name: 'x', nodes: [], connections: {} })
+      .expect(403);
+    expect(bad.body.required).toBe('workflow:write');
+    await request(app).get('/api/credentials').set(withKey(key)).expect(403); // 越资源
+  });
+
+  it('细粒度多 scope：workflow:read + execution:read 两资源皆读放行', async () => {
+    const created = await request(app)
+      .post('/api/api-keys')
+      .set(bearer(jwt))
+      .send({ label: 'multi', scope: 'workflow:read,execution:read' })
+      .expect(201);
+    const key = created.body.token as string;
+    await request(app).get('/api/workflows').set(withKey(key)).expect(200);
+    await request(app).get('/api/executions').set(withKey(key)).expect(200);
+    await request(app).get('/api/variables').set(withKey(key)).expect(403);
+  });
+
+  it('scope 目录端点 + /api/v1 版本化面同套处理器', async () => {
+    const cat = await request(app).get('/api/api-keys/scopes').set(bearer(jwt)).expect(200);
+    expect(cat.body.scopes).toContain('workflow:read');
+    expect(cat.body.scopes).toContain('credential:write');
+
+    const created = await request(app).post('/api/api-keys').set(bearer(jwt)).send({ label: 'v1' }).expect(201);
+    const key = created.body.token as string;
+    await request(app).get('/api/v1/workflows').set(withKey(key)).expect(200); // 版本化基址可用
+  });
+
   it('过期令牌 → 401', async () => {
     const created = await request(app).post('/api/api-keys').set(bearer(jwt)).send({ label: 'exp' }).expect(201);
     const key = created.body.token as string;

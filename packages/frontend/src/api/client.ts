@@ -271,7 +271,8 @@ export interface ApiKeyRow {
   id: string;
   label: string;
   prefix: string;
-  scope: 'all' | 'readonly';
+  scope: string;
+  scopes: string[];
   expiresAt: string | null;
   lastUsedAt: string | null;
   createdAt: string;
@@ -645,7 +646,8 @@ export const api = {
 
   apiKeys: {
     list: () => http<ApiKeyRow[]>('GET', '/api/api-keys'),
-    create: (label: string, opts: { expiresInDays?: number | null; scope?: 'all' | 'readonly' } = {}) =>
+    scopes: () => http<{ scopes: string[] }>('GET', '/api/api-keys/scopes'),
+    create: (label: string, opts: { expiresInDays?: number | null; scope?: string } = {}) =>
       http<{ token: string; apiKey: ApiKeyRow }>('POST', '/api/api-keys', { label, ...opts }),
     revoke: (id: string) => http<void>('DELETE', `/api/api-keys/${id}`),
   },

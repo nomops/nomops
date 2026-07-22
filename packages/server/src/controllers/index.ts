@@ -15,6 +15,7 @@ import {
 } from '../http/route-helpers.js';
 import { registerEeRoutes } from '../ee/routes.js';
 import { requireRole } from '../auth/middleware.js';
+import { API_SCOPES } from '../auth/api-scopes.js';
 import { verifyHandoff } from '../auth/handoff.js';
 import { requireFeature } from '../ee/license/license-service.js';
 import { isProjectRole } from '../auth/rbac.js';
@@ -1586,10 +1587,18 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
+  // 细粒度 scope 目录（前端 Custom 勾选用）
+  router.get(
+    '/api-keys/scopes',
+    h(async (_req, res) => {
+      res.json({ scopes: API_SCOPES });
+    }),
+  );
+
   router.post(
     '/api-keys',
     h(async (req, res) => {
-      const body = (req.body ?? {}) as { label?: string; expiresInDays?: number | null; scope?: string };
+      const body = (req.body ?? {}) as { label?: string; expiresInDays?: number | null; scope?: string | string[] };
       const label = String(body.label ?? '').trim();
       if (!label) throw new OperationalError('label is required', { status: 400 });
       const expiresInDays =
@@ -1597,8 +1606,9 @@ export function createApiRouter(services: AppServices): Router {
       if (body.expiresInDays != null && !Number.isFinite(Number(body.expiresInDays))) {
         throw new OperationalError('expiresInDays must be a number', { status: 400 });
       }
-      const scope = body.scope === 'readonly' ? 'readonly' : 'all';
-      const created = await services.apiKeys.create(auth(req).userId, label, { expiresInDays, scope });
+      // 宏 all/readonly 或细粒度列表（服务层归一化）
+      const scope = body.scope as string | string[] | undefined;
+      const created = await services.apiKeys.create(auth(req).userId, label, { expiresInDays, scope: scope as never });
       recordAudit(services, req, 'apiKey.create', { type: 'apiKey', id: created.apiKey.id }, { label });
       // token 明文只在此返回一次
       res.status(201).json(created);

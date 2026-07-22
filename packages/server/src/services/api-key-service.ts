@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { ApiKey, Repositories } from '@nomops/db';
+import { normalizeScopeInput, parseScopes } from '../auth/api-scopes.js';
 
 /**
  * 公共 REST API 令牌。
@@ -9,24 +10,30 @@ import type { ApiKey, Repositories } from '@nomops/db';
 
 const TOKEN_PREFIX = 'nmp_';
 
-export type ApiKeyScope = 'all' | 'readonly';
+/** 宏或逗号分隔的细粒度 scope 列表（#26）。 */
+export type ApiKeyScope = string;
 
 export interface ApiKeyPublic {
   id: string;
   label: string;
   prefix: string;
-  scope: ApiKeyScope;
+  /** 原始 scope 字段（'all'/'readonly'/'workflow:read,...'）。 */
+  scope: string;
+  /** 解析后的 scope 集合（宏或细粒度）。 */
+  scopes: string[];
   expiresAt: Date | null;
   lastUsedAt: Date | null;
   createdAt: Date;
 }
 
 function toPublic(k: ApiKey): ApiKeyPublic {
+  const scope = k.scope ?? 'all';
   return {
     id: k.id,
     label: k.label,
     prefix: k.prefix,
-    scope: (k.scope as ApiKeyScope) ?? 'all',
+    scope,
+    scopes: parseScopes(scope),
     expiresAt: k.expiresAt ?? null,
     lastUsedAt: k.lastUsedAt,
     createdAt: k.createdAt,
@@ -57,7 +64,7 @@ export class ApiKeyService {
       tokenHash: hashToken(token),
       prefix,
       expiresAt,
-      scope: opts.scope ?? 'all',
+      scope: normalizeScopeInput(opts.scope),
     });
     return { token, apiKey: toPublic(row) };
   }
@@ -71,13 +78,13 @@ export class ApiKeyService {
     return this.repos.apiKeys.deleteOwned(id, userId);
   }
 
-  /** 鉴权：明文令牌 → { userId, scope }；过期视同无效；记录 lastUsed（fire-and-forget）。 */
-  async authenticate(token: string): Promise<{ userId: string; keyId: string; scope: ApiKeyScope } | null> {
+  /** 鉴权：明文令牌 → { userId, scopes }；过期视同无效；记录 lastUsed（fire-and-forget）。 */
+  async authenticate(token: string): Promise<{ userId: string; keyId: string; scopes: string[] } | null> {
     if (!token.startsWith(TOKEN_PREFIX)) return null;
     const row = await this.repos.apiKeys.findByTokenHash(hashToken(token));
     if (!row) return null;
     if (row.expiresAt && row.expiresAt.getTime() < Date.now()) return null; // 过期 → 401
     void this.repos.apiKeys.touchLastUsed(row.id).catch(() => undefined);
-    return { userId: row.userId, keyId: row.id, scope: (row.scope as ApiKeyScope) ?? 'all' };
+    return { userId: row.userId, keyId: row.id, scopes: parseScopes(row.scope) };
   }
 }

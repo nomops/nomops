@@ -383,6 +383,8 @@ const apiModalOpen = ref(false);
 const apiExpireDays = ref<number | null | 'custom'>(30);
 const apiExpireCustom = ref(''); // D141:Custom 过期日期(YYYY-MM-DD)
 const apiScope = ref<'all' | 'readonly' | 'custom'>('all'); // D141:加 Custom scope
+const apiCustomScopes = ref<string[]>([]); // #26:Custom 时勾选的细粒度 scope
+const apiScopeCatalog = ref<string[]>([]); // 后端 scope 目录
 /* D141 对标基线:Expiration = 7/30/60/90 days + Custom(No expiration 为 nomops 保留项) */
 const API_EXPIRATIONS: Array<{ label: string; value: number | null | 'custom' }> = [
   { label: '7 days', value: 7 },
@@ -414,6 +416,7 @@ async function loadApiKeys() {
   apiError.value = '';
   try {
     apiKeysList.value = await api.apiKeys.list();
+    if (!apiScopeCatalog.value.length) apiScopeCatalog.value = (await api.apiKeys.scopes()).scopes;
   } catch (e) {
     apiError.value = (e as Error).message;
   }
@@ -426,14 +429,16 @@ async function createApiKey() {
   }
   apiBusy.value = true;
   try {
-    // D141:Custom 过期→按所选日期换算天数;Custom scope 后端未支持,提交按 all
+    // D141:Custom 过期→按所选日期换算天数
     const expiresInDays =
       apiExpireDays.value === 'custom'
         ? apiExpireCustom.value
           ? Math.max(1, Math.ceil((new Date(apiExpireCustom.value).getTime() - Date.now()) / 86_400_000))
           : null
         : apiExpireDays.value;
-    const scope = apiScope.value === 'custom' ? 'all' : apiScope.value;
+    // #26:Custom → 提交勾选的细粒度 scope（空则回落 all）
+    const scope =
+      apiScope.value === 'custom' ? (apiCustomScopes.value.length ? apiCustomScopes.value.join(',') : 'all') : apiScope.value;
     const res = await api.apiKeys.create(newKeyLabel.value.trim(), { expiresInDays, scope });
     createdToken.value = res.token; // 明文只此一次
     newKeyLabel.value = '';
@@ -2522,7 +2527,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                 <tr v-for="k in apiKeysList" :key="k.id" data-test="api-key-row">
                   <td>{{ k.label }}</td>
                   <td class="mono dim">{{ k.prefix }}…</td>
-                  <td class="dim">{{ k.scope === 'readonly' ? 'Read only' : 'All' }}</td>
+                  <td class="dim">{{ k.scope === 'readonly' ? 'Read only' : k.scope === 'all' ? 'All' : k.scopes.join(', ') }}</td>
                   <td class="dim">{{ k.expiresAt ? new Date(k.expiresAt).toLocaleDateString() : 'Never' }}</td>
                   <td class="dim">{{ k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleDateString() : 'Never' }}</td>
                   <td style="text-align: right">
@@ -2566,13 +2571,18 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                 <input v-model="apiScope" type="radio" value="readonly" data-test="api-scope-readonly" />
                 <span>Read only</span>
               </label>
-              <!-- D141 对标基线:Custom scope 单选 -->
+              <!-- D141 对标基线:Custom scope 单选（#26 真细粒度勾选） -->
               <label class="radio-row">
                 <input v-model="apiScope" type="radio" value="custom" data-test="api-scope-custom" />
                 <span>Custom</span>
               </label>
+              <div v-if="apiScope === 'custom'" data-test="api-custom-scopes" style="margin: 6px 0 0; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px">
+                <label v-for="sc in apiScopeCatalog" :key="sc" class="inline-check" style="font-weight: 400; width: auto; white-space: nowrap; font-size: 12.5px">
+                  <input type="checkbox" :value="sc" v-model="apiCustomScopes" :data-test-scope="sc" /> {{ sc }}
+                </label>
+              </div>
               <p class="dim" style="font-size: 12px; margin: 6px 0 0">
-                {{ apiScope === 'custom' ? 'Custom keys grant a specific subset of scopes.' : 'Read-only keys can call GET endpoints only — write requests are rejected with 403.' }}
+                {{ apiScope === 'custom' ? 'Grant only the resource scopes this key needs (resource:read / resource:write).' : 'Read-only keys can call GET endpoints only — write requests are rejected with 403.' }}
               </p>
               <p v-if="apiError" class="error-text" data-test="api-error">{{ apiError }}</p>
               <div class="modal-actions">

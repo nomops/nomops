@@ -3,6 +3,7 @@ import type { Repositories } from '@nomops/db';
 import type { AuthService } from './auth-service.js';
 import type { ApiKeyService } from '../services/api-key-service.js';
 import { roleAtLeast, type ProjectRole } from './rbac.js';
+import { requiredScope, scopesAllow } from './api-scopes.js';
 
 /** 公共 API 令牌头。 */
 export const API_KEY_HEADER = 'x-nomops-api-key';
@@ -65,9 +66,14 @@ export function createAuthMiddleware(authService: AuthService, repos: Repositori
             res.status(401).json({ error: 'Invalid API key' });
             return;
           }
-          // 作用域强制：readonly 令牌只放行读方法
-          if (result.scope === 'readonly' && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
-            res.status(403).json({ error: 'This API key is read-only' });
+          // 细粒度作用域强制（#26）：按 method + 路径算所需 scope,令牌须覆盖
+          const path = req.originalUrl.split('?')[0] ?? req.path;
+          if (!scopesAllow(result.scopes, req.method, path)) {
+            res.status(403).json({
+              error: 'API key scope does not permit this request',
+              required: requiredScope(req.method, path) ?? 'all',
+              scopes: result.scopes,
+            });
             return;
           }
           // 默认项目上下文 = 用户的个人项目（无 X-Project-Id 时）
