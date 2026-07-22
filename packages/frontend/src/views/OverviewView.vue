@@ -620,7 +620,7 @@ function toggleExecSelectAll() {
 }
 async function deleteSelectedExecs() {
   const ids = [...selectedExecIds.value];
-  await Promise.all(ids.map((id) => api.executions.remove(id).catch(() => {})));
+  await api.executions.removeMany(ids).catch((e) => (error.value = (e as Error).message)); // 单请求批量（backlog #10）
   selectedExecIds.value = new Set();
   executions.value = executions.value.filter((e) => !ids.includes(e.id));
 }

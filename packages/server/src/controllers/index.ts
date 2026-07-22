@@ -634,6 +634,24 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
+  /* 批量删除（多选浮条）：归属外的 id 静默跳过,回报实删数 */
+  router.post(
+    '/executions/delete',
+    editor,
+    h(async (req, res) => {
+      const body = (req.body ?? {}) as { ids?: string[] };
+      if (!Array.isArray(body.ids) || body.ids.length === 0 || body.ids.some((x) => typeof x !== 'string')) {
+        throw new OperationalError('ids must be a non-empty array of strings', { status: 400 });
+      }
+      if (body.ids.length > 500) {
+        throw new OperationalError('At most 500 executions per batch delete', { status: 400 });
+      }
+      const result = await services.executions.deleteMany(body.ids, auth(req).projectId);
+      recordAudit(services, req, 'execution.bulk-delete', undefined, { requested: body.ids.length, ...result });
+      res.json(result);
+    }),
+  );
+
   /* 重试（B5）：useOriginal=true 用执行时的定义快照，否则用当前保存的草稿 */
   router.post(
     '/executions/:id/retry',

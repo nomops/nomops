@@ -409,6 +409,8 @@ export const api = {
       http<RunSummary>('POST', `/api/executions/${id}/retry`, { useOriginal }),
     /* 停止执行：running/waiting/排队 → canceled（已结束 409） */
     stop: (id: string) => http<RunSummary>('POST', `/api/executions/${id}/stop`),
+    /* 批量删除（≤500/批;归属外 id 服务端静默跳过） */
+    removeMany: (ids: string[]) => http<{ deleted: number }>('POST', '/api/executions/delete', { ids }),
   },
 
   credentials: {

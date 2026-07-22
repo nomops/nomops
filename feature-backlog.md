@@ -35,8 +35,7 @@
 
 - [x] **9. 设置页本地态字段接线** `M` ✅ 2026-07-22（OIDC prompt/acr_values/追加 scopes 进授权跳转;LDAP 7 字段贯通(userFilter/证书豁免真进 ldapts)+同步 preview/run 真实现(dry-run 对账+JIT 预配/改名,幂等);MCP redirect 清单持久化+清洗;4 server 测+live 往返/截图。残余:同步定时开关仍本地态(无调度器不做假)）
 
-- [ ] **10. 执行批量删除** `S`
-  后端只有单条 DELETE；补批量端点 + 前端多选删除。
+- [x] **10. 执行批量删除** `S` ✅ 2026-07-22（POST /api/executions/delete ≤500/批,归属外静默跳过+audit;前端多选浮条改单请求;1 server 测;live deleted:2 验证）
 
 - [ ] **11. 台账遗留 UI 小项清扫** `S`
   D026 命令面板上下文徽标、D114 options 自定义下拉、panel-right 图标与 Focus Panel 联动、MCP 弹层 Configuration JSON（D143）、MCP workflows description 可编辑（D144）。

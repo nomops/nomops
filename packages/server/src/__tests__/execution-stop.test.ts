@@ -162,3 +162,41 @@ describe('执行停止', () => {
     await request(app).post('/api/executions/00000000-0000-0000-0000-000000000000/stop').set(authed()).send({}).expect(404);
   });
 });
+
+describe('执行批量删除（backlog #10）', () => {
+  it('单请求删多条;归属外/不存在 id 静默跳过;空数组 400', async () => {
+    const created = await request(app)
+      .post('/api/workflows')
+      .set(authed())
+      .send({
+        name: 'bulk-del',
+        nodes: [
+          { id: 'a', name: 'Start', type: 'nomops.manualTrigger', typeVersion: 1, position: [0, 0], parameters: {} },
+          { id: 'b', name: 'Mark', type: 'nomops.set', typeVersion: 1, position: [200, 0], parameters: { fields: { x: 1 } } },
+        ],
+        connections: { Start: { main: [[{ node: 'Mark', type: 'main', index: 0 }]] } },
+      })
+      .expect(201);
+
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const run = await request(app).post(`/api/workflows/${created.body.id}/run`).set(authed()).send({}).expect(200);
+      ids.push(run.body.executionId as string);
+    }
+
+    const res = await request(app)
+      .post('/api/executions/delete')
+      .set(authed())
+      .send({ ids: [...ids.slice(0, 2), '00000000-0000-0000-0000-000000000000'] })
+      .expect(200);
+    expect(res.body.deleted).toBe(2);
+
+    const list = await request(app).get('/api/executions').set(authed()).expect(200);
+    const remain = (list.body as Array<{ id: string }>).map((e) => e.id);
+    expect(remain).toContain(ids[2]);
+    expect(remain).not.toContain(ids[0]);
+    expect(remain).not.toContain(ids[1]);
+
+    await request(app).post('/api/executions/delete').set(authed()).send({ ids: [] }).expect(400);
+  });
+});

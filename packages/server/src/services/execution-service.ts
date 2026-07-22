@@ -401,6 +401,18 @@ export class ExecutionService {
     await this.repos.executions.delete(id);
   }
 
+  /** 批量删除（多选浮条 Delete）：逐 id 做归属检查,非本项目/不存在的静默跳过。 */
+  async deleteMany(ids: string[], projectId: string): Promise<{ deleted: number }> {
+    let deleted = 0;
+    for (const id of ids) {
+      const execution = await this.repos.executions.findById(id, projectId);
+      if (!execution) continue;
+      await this.repos.executions.delete(id);
+      deleted++;
+    }
+    return { deleted };
+  }
+
   /**
    * 重试（对标基线 executions 列表 Retry）：整个工作流重跑，产生新执行记录（mode 'retry'）。
    * useOriginal=true 用该执行的定义快照（original workflow）；false 用当前保存的草稿（currently saved）。
