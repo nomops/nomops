@@ -49,6 +49,7 @@ import { BillingService } from './billing/billing-service.js';
 import { AssistantService } from './services/assistant-service.js';
 import { McpService } from './services/mcp-service.js';
 import { LogStreamingService } from './ee/services/log-streaming-service.js';
+import { OtelService } from './ee/services/otel-service.js';
 import { SecretsService, secretsProviderFromEnv } from './ee/services/secrets-service.js';
 import type { ISecretsProvider } from './ee/services/secrets-service.js';
 import { LdapService } from './ee/ldap/ldap-service.js';
@@ -250,6 +251,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
         process.env['NOMOPS_BINARY_DATA_DIR'] ?? join('.nomops', 'binary-data'),
       );
   const baseUrl = process.env['NOMOPS_BASE_URL'] ?? 'http://localhost:5678';
+  const otel = new OtelService(repos); // OpenTelemetry 追踪导出（#27）
   const executions = new ExecutionService(
     repos,
     workflows,
@@ -265,6 +267,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
       opts.concurrencyQueueDepth ?? queueDepthFromEnv(process.env),
     ),
     baseUrl,
+    (trace) => otel.exportExecution(trace),
   );
 
   // binary GC（#22）：删执行记录（单删/批删/pruner/save-policy）前先清其 binary 引用
@@ -356,6 +359,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     alipay,
     assistant,
     logStreaming,
+    otel,
     secrets,
     ldap,
     oauth2,

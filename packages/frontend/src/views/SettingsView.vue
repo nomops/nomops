@@ -591,8 +591,8 @@ const licensed = (feature: string): boolean => projects.hasFeature(feature);
 /** 源码控制:锁卡与真实 UI 曾是两条独立 v-if 链,未授权时同时渲染(锁形同虚设)。 */
 const scUnlocked = computed(() => licensed('sourceControl'));
 
-/* OpenTelemetry 表单本地态(对标基线 /settings/opentelemetry;后端持久化留后续)。
-   默认值取自基线页面 live 真值(Disabled / :4318 / /v1/traces / 2000ms / 1.00)。 */
+/* OpenTelemetry(#27:enabled/endpoint/tracePath/serviceName/sampleRate/includeNodeSpans 贯通后端;
+   startupTimeout/injectTraceparent/publishedOnly/custom headers 为 UI 展示态,引擎未消费)。 */
 const otel = ref({
   status: 'Disabled',
   endpoint: 'http://localhost:4318',
@@ -604,6 +604,42 @@ const otel = ref({
   injectTraceparent: false,
   publishedOnly: false,
 });
+const otelError = ref('');
+const otelSaved = ref(false);
+async function loadOtel() {
+  otelError.value = '';
+  try {
+    const cfg = await api.otel.get();
+    otel.value = {
+      ...otel.value,
+      status: cfg.enabled ? 'Enabled' : 'Disabled',
+      endpoint: cfg.endpoint,
+      serviceName: cfg.serviceName,
+      tracePath: cfg.tracePath,
+      sampleRate: cfg.sampleRate,
+      includeNodeSpans: cfg.includeNodeSpans,
+    };
+  } catch (e) {
+    otelError.value = (e as Error).message; // 非 admin → 403
+  }
+}
+async function saveOtel() {
+  otelError.value = '';
+  otelSaved.value = false;
+  try {
+    await api.otel.save({
+      enabled: otel.value.status === 'Enabled',
+      endpoint: otel.value.endpoint,
+      serviceName: otel.value.serviceName,
+      tracePath: otel.value.tracePath,
+      sampleRate: otel.value.sampleRate,
+      includeNodeSpans: otel.value.includeNodeSpans,
+    });
+    otelSaved.value = true;
+  } catch (e) {
+    otelError.value = (e as Error).message;
+  }
+}
 /* 原自有 Prometheus 抓取配置示例留档(后端 /metrics 端点保留,便于回退) */
 const promScrape = `- job_name: nomops\n  static_configs:\n    - targets: ['your-host:5678']`;
 
@@ -968,6 +1004,8 @@ async function loadSection() {
     await loadCommunityNodes();
   } else if (section.value === 'sourcecontrol') {
     await loadSourceControl();
+  } else if (section.value === 'opentelemetry') {
+    await loadOtel();
   } else if (section.value === 'mcp') {
     mcpToken.value = ''; // 切页清掉上次明文
     mcpShowDetails.value = false;
@@ -2947,9 +2985,11 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           </div>
         </div>
 
+        <p v-if="otelError" class="error-text" data-test="otel-error">{{ otelError }}</p>
+        <p v-if="otelSaved" class="saved-hint" data-test="otel-saved">Saved ✓</p>
         <div class="otel-actions">
-          <button class="btn primary" data-test="otel-save">Save settings</button>
-          <button class="btn secondary" data-test="otel-discard">Discard changes</button>
+          <button class="btn primary" data-test="otel-save" @click="saveOtel">Save settings</button>
+          <button class="btn secondary" data-test="otel-discard" @click="loadOtel">Discard changes</button>
         </div>
       </section>
 

@@ -595,6 +595,21 @@ export const api = {
     deleteAgent: (id: string) => http<void>('DELETE', `/api/chat/agents/${id}`),
   },
 
+  /* OpenTelemetry 追踪导出（#27，实例 admin） */
+  otel: {
+    get: () =>
+      http<{ enabled: boolean; endpoint: string; tracePath: string; serviceName: string; sampleRate: number; includeNodeSpans: boolean }>(
+        'GET',
+        '/api/otel',
+      ),
+    save: (body: { enabled: boolean; endpoint: string; tracePath: string; serviceName: string; sampleRate: number; includeNodeSpans: boolean }) =>
+      http<{ enabled: boolean; endpoint: string; tracePath: string; serviceName: string; sampleRate: number; includeNodeSpans: boolean }>(
+        'PUT',
+        '/api/otel',
+        body,
+      ),
+  },
+
   /* Chat 设置（Settings → Chat，Preview） */
   chatSettings: {
     get: () => http<{ enabled: boolean; model: string }>('GET', '/api/chat-settings'),

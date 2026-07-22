@@ -66,6 +66,16 @@ export class ExecutionService {
     private readonly concurrency: ConcurrencyGate = new ConcurrencyGate(UNLIMITED),
     /** 实例外部可达地址（$execution.resumeUrl 与匿名恢复路由用）。 */
     private readonly baseUrl: string = 'http://localhost:5678',
+    /** OpenTelemetry 追踪导出（#27）；缺省不注入即不追踪。 */
+    private readonly traceExporter?: (trace: {
+      executionId: string;
+      workflowId: string;
+      status: string;
+      mode: string;
+      startedAtMs: number;
+      endedAtMs: number;
+      nodes: Array<{ name: string; startedAtMs: number; endedAtMs: number; error?: string }>;
+    }) => void,
   ) {}
 
   /** 本进程在跑的引擎实例（executionId → engine）；stop 经此直达 cancel。 */
@@ -727,6 +737,30 @@ export class ExecutionService {
       timestamp: Date.now(),
     });
     this.emitFinished(execution, run.status, projectId);
+    // OpenTelemetry span（#27）：非 waiting 才发（waiting 不是终态）
+    if (this.traceExporter && run.status !== 'waiting') {
+      const nodes: Array<{ name: string; startedAtMs: number; endedAtMs: number; error?: string }> = [];
+      for (const [name, runs] of Object.entries(run.data.resultData.runData)) {
+        const last = runs[runs.length - 1];
+        if (last) {
+          nodes.push({
+            name,
+            startedAtMs: last.startTime,
+            endedAtMs: last.startTime + last.executionTime,
+            ...(last.error ? { error: last.error.message } : {}),
+          });
+        }
+      }
+      this.traceExporter({
+        executionId: execution.id,
+        workflowId: execution.workflowId,
+        status: run.status,
+        mode,
+        startedAtMs: run.startedAt,
+        endedAtMs: run.stoppedAt ?? Date.now(),
+        nodes,
+      });
+    }
     return run;
   }
 

@@ -28,6 +28,7 @@ import type { ApiKeyService } from './services/api-key-service.js';
 import type { MfaService } from './services/mfa-service.js';
 import type { CommunityNodeService } from './services/community-node-service.js';
 import type { GitService } from './ee/services/git-service.js';
+import type { OtelService } from './ee/services/otel-service.js';
 import type { IMailer } from './services/mailer.js';
 import type { SharingService } from './ee/services/sharing-service.js';
 import type { McpService } from './services/mcp-service.js';
@@ -58,6 +59,7 @@ export interface AppServices {
   alipay: AlipayProvider | null;
   assistant: AssistantService;
   logStreaming: LogStreamingService;
+  otel: OtelService;
   secrets: SecretsService;
   ldap: LdapService;
   oauth2: OAuth2Service;

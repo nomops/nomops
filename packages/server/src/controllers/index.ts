@@ -1322,6 +1322,24 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
+  /* ── OpenTelemetry 配置（#27，实例 admin；非 license 门，同 /metrics 开放语义） ── */
+  router.get(
+    '/otel',
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      res.json(await services.otel.getConfig());
+    }),
+  );
+  router.put(
+    '/otel',
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      const cfg = await services.otel.setConfig((req.body ?? {}) as Record<string, unknown>);
+      recordAudit(services, req, 'otel.config.update', undefined, { enabled: cfg.enabled });
+      res.json(cfg);
+    }),
+  );
+
   /* ── Chat 设置（Settings → Chat，Preview）：开关 + 默认模型 ── */
   router.get(
     '/chat-settings',
