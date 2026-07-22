@@ -31,10 +31,7 @@
 
 ## P2 · 现成后端的前端拆墙 / 接线
 
-- [ ] **8. Insights 拆锁墙** `S/M`
-  后端 `/api/insights` 完整（失败率/均耗时/趋势分桶），前端整页锁墙从不调用——与当年 Variables 墙同性质的拟态过度。
-  → 前端接真数据渲染 5 指标 + 趋势；可选带上 D153 项目选择器。
-  证据：`InsightsView.vue:5-8`、`api/client.ts:517-528`。
+- [x] **8. Insights 拆锁墙** `S/M` ✅ 2026-07-22（真数据页:KPI 五卡+路由 metric 高亮+5 档范围选择+SVG 成功/失败堆叠趋势(粒度跟后端 hour/day);live 造数截图验证。D153 项目选择器需后端跨项目聚合,单列不做）
 
 - [ ] **9. 设置页本地态字段接线** `M`
   填了不发送的字段贯通后端：OIDC Prompt/ACR/Additional scopes；LDAP loginLabel/userFilter/allowUnauthorizedCerts/sync 系列（含 Test/Run synchronization 按钮启用）；MCP redirect 白名单持久化。
