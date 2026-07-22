@@ -2425,7 +2425,8 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         <p class="sub">
           Keep third-party secrets in an external backend; credentials only store a reference
           <code>{{ secretRefExample }}</code> that resolves at run time — rotate a secret without touching credentials, and no real
-          secrets land in the DB. The current provider reads from <code>NOMOPS_SECRET_&lt;KEY&gt;</code> env vars.
+          secrets land in the DB. Configure the backend with <code>NOMOPS_SECRETS_PROVIDER</code> (env vars by default, or
+          <code>vault</code> for HashiCorp Vault).
         </p>
         <div v-if="!licensed('externalSecrets')" class="locked-card" data-test="secrets-locked">
           <h2>Available on the Enterprise plan</h2>

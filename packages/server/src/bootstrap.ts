@@ -49,7 +49,7 @@ import { BillingService } from './billing/billing-service.js';
 import { AssistantService } from './services/assistant-service.js';
 import { McpService } from './services/mcp-service.js';
 import { LogStreamingService } from './ee/services/log-streaming-service.js';
-import { EnvSecretsProvider, SecretsService } from './ee/services/secrets-service.js';
+import { SecretsService, secretsProviderFromEnv } from './ee/services/secrets-service.js';
 import type { ISecretsProvider } from './ee/services/secrets-service.js';
 import { LdapService } from './ee/ldap/ldap-service.js';
 import type { ILdapAuthenticator } from './ee/ldap/ldap-service.js';
@@ -226,8 +226,13 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
       join(process.cwd(), '.nomops', 'source-control'),
     new Cipher(new SettingsKeyProvider(repos.settings)),
   );
-  // 外部密钥（docs/10 B4）：凭证解密后物化 {{ $secrets.KEY }} 引用
-  const secrets = new SecretsService(opts.secretsProvider ?? new EnvSecretsProvider(), license);
+  // 外部密钥（docs/10 B4）：凭证解密后物化 {{ $secrets.KEY }} 引用。
+  // provider 可选 env 变量 / Vault（NOMOPS_SECRETS_PROVIDER）；测试注入 opts.secretsProvider。
+  const secretsSelection = opts.secretsProvider
+    ? { provider: opts.secretsProvider }
+    : secretsProviderFromEnv(process.env);
+  if (secretsSelection.start) await secretsSelection.start(); // Vault 预热快照
+  const secrets = new SecretsService(secretsSelection.provider, license);
   const credentialService = new CredentialService(repos, credentials, secrets, opts.credentialTester);
   // 用量:社区无条件计数;企业版在其上加限额检查(ee 实现包住社区实现)
   const usageCounter = new CountingUsageGate(repos);
