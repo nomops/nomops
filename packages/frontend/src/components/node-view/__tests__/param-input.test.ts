@@ -118,4 +118,26 @@ describe('ParamInput（schema 驱动控件分发）', () => {
     expect(w.text()).toContain('注意事项');
     expect(w.find('input').exists()).toBe(false);
   });
+
+  it('From AI 芯片（#19 D096）:仅 aiTool 且可切表达式的字段显示,点击插入 $fromAI 模板', async () => {
+    const w = mount(ParamInput, {
+      props: { prop: { displayName: 'Order Id', name: 'orderId', type: 'string', default: '' } as INodeProperties, value: '', aiTool: true },
+    });
+    const chip = w.find('[data-test="param-from-ai"]');
+    expect(chip.exists()).toBe(true);
+    await chip.trigger('click');
+    const emitted = w.emitted('change')![0]![0] as string;
+    expect(emitted).toContain('$fromAI(');
+    expect(emitted).toContain("'orderId'");
+    expect(emitted.startsWith('=')).toBe(true);
+
+    // 非 aiTool → 不显示
+    const w2 = make({ type: 'string' }, '');
+    expect(w2.find('[data-test="param-from-ai"]').exists()).toBe(false);
+    // aiTool 但不可切表达式（noDataExpression）→ 不显示
+    const w3 = mount(ParamInput, {
+      props: { prop: { displayName: 'X', name: 'x', type: 'string', default: '', noDataExpression: true } as INodeProperties, value: '', aiTool: true },
+    });
+    expect(w3.find('[data-test="param-from-ai"]').exists()).toBe(false);
+  });
 });

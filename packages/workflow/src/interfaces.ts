@@ -355,6 +355,8 @@ export interface IAiMemory {
 export interface ISupplyDataContext {
   getNodeParameter(name: string): unknown;
   getNodeParameter(name: string, fallback: unknown): unknown;
+  /** 未求值的原始参数值（$fromAI 声明藏在表达式里,不能被提前解析——#19 AI 工具用）。 */
+  getRawNodeParameter(name: string): unknown;
   getCredentials(type: string): Promise<JsonObject>;
   getWorkflowStaticData(type: string): JsonObject;
   /** 嵌套组合：子节点自己也可挂子节点（如 RAG 工具挂 embedding 模型）。 */

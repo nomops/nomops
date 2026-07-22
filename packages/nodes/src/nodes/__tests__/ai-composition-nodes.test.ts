@@ -48,6 +48,7 @@ function supplyContext(args: {
   return {
     getNodeParameter: (name: string, fallback?: unknown) =>
       name in args.params ? args.params[name] : fallback,
+    getRawNodeParameter: (name: string) => args.params[name],
     getCredentials: async () => args.credentials ?? {},
     getWorkflowStaticData: (type: string) => {
       const key = type === 'global' ? 'global' : 'node:test';
@@ -193,6 +194,34 @@ describe('HTTP Tool / Window Memory 子节点', () => {
     expect(seen[0]!.qs).toEqual({ input: 'cats' });
     expect(result).toBe('{"hits":3}');
     expect(tool.spec.name).toBe('search');
+  });
+
+  it('HttpTool + $fromAI（#19）：schema 从声明拼出;模型实参解析进 url/body', async () => {
+    const seen: IHttpRequestOptions[] = [];
+    const ctx = supplyContext({
+      params: {
+        toolName: 'get_order',
+        toolDescription: 'fetch an order',
+        method: 'POST',
+        url: "=https://api.dev/orders/{{ $fromAI('orderId', 'The order id', 'string') }}",
+        body: "={{ { note: $fromAI('note', 'A note', 'string'), qty: $fromAI('qty', 'quantity', 'number') } }}",
+      },
+      httpRequest: async (o) => {
+        seen.push(o);
+        return { ok: true };
+      },
+    });
+    const tool = await new HttpTool().supplyData!.call(ctx);
+    // spec schema 由 $fromAI 声明拼出（去重、含 required）
+    const params = tool.spec.parameters as { properties: Record<string, { type: string; description?: string }>; required: string[] };
+    expect(Object.keys(params.properties).sort()).toEqual(['note', 'orderId', 'qty']);
+    expect(params.properties['qty']!.type).toBe('number');
+    expect(params.required.sort()).toEqual(['note', 'orderId', 'qty']);
+
+    // 模型给实参 → url path 与 body 用实参解析
+    await tool.invoke({ orderId: 'A-99', note: 'urgent', qty: 3 });
+    expect(seen[0]!.url).toBe('https://api.dev/orders/A-99');
+    expect(seen[0]!.body).toEqual({ note: 'urgent', qty: 3 });
   });
 
   it('WindowMemory：按会话裁剪窗口、过滤 system', async () => {

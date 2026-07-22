@@ -117,6 +117,8 @@ const inputItems = computed(() =>
   node.value ? inputItemsFor(editor.connections, runData.value, node.value.name) : [],
 );
 const hasInputPort = computed(() => (desc.value?.inputs.length ?? 0) > 0);
+/** AI 工具节点（输出 ai_tool）：参数支持 $fromAI「让模型填」（#19 D096）。 */
+const isAiTool = computed(() => (desc.value?.outputs ?? []).includes('ai_tool'));
 
 /* ── 凭证选择器(对标基线:节点声明 credentials 时,NDV 顶部出现凭证下拉) ── */
 const router = useRouter();
@@ -280,6 +282,7 @@ async function executeStep() {
                 :preview-items="inputItems"
                 :node-parameters="node.parameters"
                 :node-name="node.name"
+                :ai-tool="isAiTool"
                 @change="editor.setParam(node.name, prop.name, $event)"
               />
             </div>

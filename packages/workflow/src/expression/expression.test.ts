@@ -165,3 +165,30 @@ describe('表达式访问增强（#20/#21）', () => {
     expect(resolveParameterValue('={{ $("A").item.json.tag }}', broken)).toBe('a0');
   });
 });
+
+/* ── #19 $fromAI ── */
+
+describe('$fromAI（#19 AI 工具让模型填参）', () => {
+  it('collect 模式:登记参数并返回占位;fromAiSchema 拼 schema', async () => {
+    const { collectFromAiParams, fromAiSchema } = await import('./from-ai.js');
+    const params = collectFromAiParams([
+      "=https://x/{{ $fromAI('id', 'the id', 'string') }}",
+      "={{ { n: $fromAI('n', 'count', 'number'), id: $fromAI('id', 'dup', 'string') } }}",
+    ]);
+    expect(params.map((p) => p.name)).toEqual(['id', 'n']); // 去重、按首现序
+    const schema = fromAiSchema(params) as { properties: Record<string, { type: string }>; required: string[] };
+    expect(schema.properties['id']!.type).toBe('string');
+    expect(schema.properties['n']!.type).toBe('number');
+    expect(schema.required.sort()).toEqual(['id', 'n']);
+  });
+
+  it('provided 模式:$fromAI(name) → 模型实参', async () => {
+    const { resolveWithAiArgs } = await import('./from-ai.js');
+    expect(resolveWithAiArgs("=order-{{ $fromAI('id') }}", { id: 'A9' })).toBe('order-A9');
+    expect(resolveWithAiArgs("={{ $fromAI('qty') }}", { qty: 5 })).toBe(5); // 单表达式保留类型
+  });
+
+  it('AI 上下文之外:$fromAI 安全降级为 undefined（不崩表达式）', () => {
+    expect(resolveParameterValue("={{ $fromAI('x') ?? 'fallback' }}", ctx())).toBe('fallback');
+  });
+});

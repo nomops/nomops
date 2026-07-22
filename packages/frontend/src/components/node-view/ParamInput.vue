@@ -22,6 +22,8 @@ const props = defineProps<{
   nodeParameters?: Record<string, unknown>;
   /** 所属节点名（NDV 传入;有值时工具条显示 panel-right → 钉进 Focus Panel）。 */
   nodeName?: string;
+  /** 所属节点是 AI 工具（输出 ai_tool）→ 参数支持 $fromAI「让模型填」（#19 D096）。 */
+  aiTool?: boolean;
 }>();
 const emit = defineEmits<{ change: [value: unknown] }>();
 
@@ -148,6 +150,20 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick, true));
 function toggleExpression() {
   if (isExpression.value) emit('change', String(current.value).slice(1));
   else emit('change', `=${String(current.value ?? '')}`);
+}
+
+/* #19 D096:AI 工具参数「让模型填」——插入 $fromAI 模板到当前光标位置（追加到末尾）。
+   仅可切表达式的字段显示;点击后进入表达式模式并追加 ={{ $fromAI('field','desc','string') }}。 */
+const canFromAI = computed(() => Boolean(props.aiTool) && canExpression.value);
+function insertFromAI() {
+  const key = props.prop.name.replace(/[^a-zA-Z0-9_]/g, '_');
+  const snippet = `${CURLY.slice(0, 2)} $fromAI('${key}', '${props.prop.displayName}', 'string') ${CURLY.slice(-2)}`;
+  const cur = current.value;
+  if (typeof cur === 'string' && cur.startsWith('=')) emit('change', `${cur}${snippet}`);
+  else {
+    const base = cur === undefined || cur === null || cur === props.prop.default ? '' : String(cur);
+    emit('change', `=${base}${snippet}`);
+  }
 }
 
 /* D109 对标基线:几乎所有标量字段都可切 Fixed|Expression(原仅 string)。 */
@@ -315,6 +331,15 @@ function removeField(i: number) {
               <button type="button" class="pt-menu-item" data-test="param-reset" @click.stop="resetValue">{{ t('Reset Value') }}</button>
             </span>
           </span>
+          <!-- #19 D096:AI 工具参数「让模型填」——插入 $fromAI 模板 -->
+          <button
+            v-if="canFromAI"
+            type="button"
+            class="pt-fromai"
+            data-test="param-from-ai"
+            title="Let the AI fill this parameter at run time ($fromAI)"
+            @click="insertFromAI"
+          >✨ From AI</button>
           <!-- D110 对标基线:Fixed|Expression 是分段控件(10px/500、高 15),不是内联 ƒx 按钮 -->
           <span v-if="canExpression" class="pt-seg" data-test="param-fx">
             <button type="button" class="pt-seg-btn" :class="{ active: !isExpression }" @click="isExpression && toggleExpression()">{{ t('Fixed') }}</button>
@@ -600,6 +625,12 @@ function removeField(i: number) {
 .pt-focus svg { width: 13px; height: 13px; }
 .pt-focus:hover { color: var(--text); background: var(--color--background--light-1); }
 .pt-focus.on { color: var(--accent); }
+.pt-fromai {
+  height: 15px; padding: 0 6px; background: none; border-radius: 4px;
+  border: var(--border-width) var(--border-style) var(--color--primary); color: var(--color--primary);
+  font-size: 10px; font-weight: 500; cursor: pointer; white-space: nowrap;
+}
+.pt-fromai:hover { background: color-mix(in srgb, var(--color--primary) 12%, transparent); }
 /* D114 options 自定义下拉 */
 .opt-dd { position: relative; }
 .opt-dd-btn {

@@ -107,6 +107,10 @@ export function createSupplyContext(args: {
       }
     },
 
+    getRawNodeParameter(name: string): unknown {
+      return node.parameters[name];
+    },
+
     async getCredentials(type: string): Promise<JsonObject> {
       if (!additionalData.getCredentials) {
         throw new OperationalError(`凭证服务未注入，无法获取凭证 "${type}"`, {

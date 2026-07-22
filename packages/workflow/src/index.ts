@@ -18,3 +18,5 @@ export { isExpression, resolveParameterValue } from './expression/evaluator.js';
 export type { IExpressionContext } from './expression/evaluator.js';
 export { itemInAncestor, traceLineage } from './expression/paired-item.js';
 export type { ILineageStep } from './expression/paired-item.js';
+export { collectFromAiParams, fromAiSchema, resolveWithAiArgs } from './expression/from-ai.js';
+export type { IFromAiParam } from './expression/from-ai.js';

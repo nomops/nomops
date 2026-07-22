@@ -25,7 +25,25 @@ export interface IExpressionContext {
   runIndex?: number;
   /** 当前输入的直接上游（$prevNode.name/.outputIndex;$('X').item 血缘回溯的起点）。 */
   prevNode?: { name?: string; outputIndex?: number };
+  /**
+   * $fromAI 模式（#19,AI 工具「让模型填参」）：
+   * - collect:模式下 $fromAI(name,desc,type) 登记参数并返回占位值（供构造工具 JSON schema）;
+   * - provided:模式下 $fromAI(name) 返回模型这次调用给的实参。
+   * 两者都缺省时 $fromAI 返回 undefined（AI 上下文之外安全降级,不崩表达式）。
+   */
+  fromAI?: {
+    collect?: (name: string, description: string, type: string) => void;
+    provided?: JsonObject;
+  };
 }
+
+/** $fromAI 声明的参数类型 → JSON schema 类型 + 占位值。 */
+const FROM_AI_TYPES: Record<string, { schema: string; placeholder: unknown }> = {
+  string: { schema: 'string', placeholder: '' },
+  number: { schema: 'number', placeholder: 0 },
+  boolean: { schema: 'boolean', placeholder: false },
+  json: { schema: 'object', placeholder: {} },
+};
 
 const EXPRESSION_MARKER = '=';
 const TEMPLATE_RE = /\{\{([\s\S]+?)\}\}/g;
@@ -92,6 +110,16 @@ function buildScope(ctx: IExpressionContext): Record<string, unknown> {
     },
     $runIndex: ctx.runIndex ?? 0,
     $prevNode: ctx.prevNode ?? {},
+    // #19 $fromAI(name, description?, type?):AI 工具让模型在调用时填此参数
+    $fromAI: (name: string, description = '', type = 'string') => {
+      const fai = ctx.fromAI;
+      if (fai?.provided && name in fai.provided) return fai.provided[name];
+      if (fai?.collect) {
+        fai.collect(name, description, type);
+        return FROM_AI_TYPES[type]?.placeholder ?? '';
+      }
+      return undefined; // AI 上下文之外:安全降级
+    },
     $now: new Date().toISOString(),
     $workflow: { id: ctx.workflow.id, name: ctx.workflow.name },
     $vars: ctx.vars ?? {},

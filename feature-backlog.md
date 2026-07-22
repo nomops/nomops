@@ -1,6 +1,6 @@
 # nomops 功能开发待办清单（feature-backlog）
 
-> 来源：2026-07-21 全项目缺口盘点（引擎/服务端/节点/前端四路代码审计 + diff-ledger + ui-audit gap-list 交叉）；2026-07-22 增补 P8-P10（自托管 n8n 库 110 表逐一对照，#34-47）。
+> 来源：2026-07-21 全项目缺口盘点（引擎/服务端/节点/前端四路代码审计 + diff-ledger + ui-audit gap-list 交叉）；2026-07-22 增补 P8-P10（自托管 n8n 库 110 表逐一对照，#34-47）；2026-07-22 增补 P11（n8n 2.30.4 节点面板全目录 `/types/nodes.json` 对照，Core Node 缺口 34 个 → #48-54，详见 `docs/node-catalog-gap.md`）。
 > 用法：按编号发布指令逐项开发；完成后在本文件勾选并记 commit。
 > 工作量：S=半天内 · M=1-2 天 · L=3 天+ · XL=独立立项。
 
@@ -59,8 +59,7 @@
 
 ## P5 · 引擎/表达式深化
 
-- [ ] **19. $fromAI + NDV「From AI」控件（D096）** `L`
-  全仓零命中。引擎表达式变量 + AI Agent 运行时填参 + NDV Mapping|From AI 分段控件。
+- [x] **19. $fromAI + NDV「From AI」控件（D096）** `L` ✅ 2026-07-22（表达式 $fromAI(name,desc,type):collect 模式登记参数拼工具 JSON schema、provided 模式用模型实参解析、AI 上下文外安全降级 undefined;from-ai.ts collectFromAiParams/fromAiSchema/resolveWithAiArgs;ISupplyDataContext 加 getRawNodeParameter(拿未求值原始值);HttpTool 支持 url/query/body 里 $fromAI(schema 从声明拼、invoke 用实参解析、无声明退回旧 input);NDV AI 工具字段显 ✨From AI 芯片插模板;workflow 24+nodes 51+frontend 78 测;live 芯片渲染+插入截图验证）
 
 - [x] **20. 表达式访问增强：$node 高级访问 / $input / $runIndex / $prevNode** `M` ✅ 2026-07-22（$('X')/$node[] 返回访问器 .json/.first/.last/.all/.itemMatching/.item;$input.first/last/all/item/length;$runIndex/$prevNode;引擎传 runIndex(runData 长度)+prevNode(exec.source);8 表达式测+1 引擎集成测）
 
@@ -145,6 +144,42 @@
   dynamic_credential_resolver(解析器) + entry/user_entry(按 subject/user 的凭证值) + credentials.isResolvable/resolverId。运行时按租户解析凭证。
 
 - [ ] **47. 实例信任密钥链** `M`（远期：deployment_key/trusted_key/trusted_key_source/token_exchange_jti；OIDC token exchange 与实例签名，待 Cloud 联邦需求触发）
+
+## P11 · Core Node 补差（节点库骨架缺口，来源：2026-07-22 n8n 2.30.4 面板全目录对照）
+
+> n8n 面板 Core Nodes 共 53 个，nomops 已覆盖 19（#5/#6 批次 + 基础节点），缺 34。这 34 个是任何工作流都可能用到的平台骨架，逐个对照见 `docs/node-catalog-gap.md`。按批次粒度拆为 #48-54，优先级由高到低。app 集成（355）与 AI/RAG（101）不在此节，走独立框架/排期。
+
+- [ ] **48. 数据变换六件套：Sort / Limit / Remove Duplicates / Rename Keys / Summarize / Compare Datasets** `M/L`
+  纯内存转换，引擎侧实现，零外部依赖——对标已完成的 #5 五件套，ROI 最高。
+  → Sort（多字段排序/自定义比较）、Limit（截断 N 条）、Remove Duplicates（按字段去重，跨执行去重可后置）、Rename Keys（键改名/正则）、Summarize（分组聚合 sum/avg/count/concat）、Compare Datasets（双输入 diff：同/异/仅左/仅右四路输出，参照 Merge 的多输入契约）。
+  验收：六节点各自单测；Compare Datasets 四路输出拓扑经引擎全链路测。
+
+- [ ] **49. 日期/加密/文本格式五件套：Date & Time / Crypto / HTML / XML / Markdown** `M/L`
+  带轻量 helper 库的转换节点。
+  → Date & Time（解析/格式化/加减/时区，选无依赖或极轻日期库）、Crypto（hash/hmac/base64/uuid、对称加解密，复用现有加密工具）、HTML（CSS 选择器提取 + 文本转 HTML）、XML（解析↔构建，与 JSON 互转）、Markdown（md↔html 双向）。
+  验收：五节点单测覆盖典型 in/out；时区与编码边界用例。
+
+- [ ] **50. 文件 IO 六件套：Read/Write File / Extract from File / Convert to File / Compression / FTP / Edit Image** `L`
+  依赖 #22 已建的 binary 数据生命周期（IBinaryDataStore）。
+  → Read/Write Files from Disk（本地读写，路径白名单/沙箱约束）、Extract from File（csv/json/xlsx/pdf/text 解析出 items）、Convert to File（items→csv/json/xlsx/二进制）、Compression（zip/gzip 压缩解压）、FTP（上传/下载/列目录，凭证类型 ftp/sftp）、Edit Image（缩放/裁剪/水印，需图像库，最重可末位排期）。
+  验收：二进制往返（写→读、items→file→extract 回环）经端到端测；binary 引用被 #22 的级联 GC 正确回收。
+
+- [ ] **51. 远程执行 + 邮件三件套：SSH / Send Email / Email Trigger (IMAP)** `M/L`
+  你现有的 Jira 只读运维 Agent 工作流就卡在 SSH 上跑不起来（见 docs/node-catalog-gap.md 用例）。
+  → SSH（远程执行命令/传文件，凭证类型：密码 + 私钥，私钥解密后绝不落库/出日志——铁律 3）、Send Email（SMTP 发信节点，复用 #18 手搓的 SMTP 客户端，凭证走 smtp）、Email Trigger (IMAP)（轮询收件箱触发，依赖轮询触发地基 PollingTrigger）。
+  验收：SSH 对本机容器执行命令回读 stdout；Send Email 经假 SMTP 服务器验证投递；IMAP 触发经轮询拉取新邮件启动执行。
+
+- [ ] **52. 触发器补全五件套：Form Trigger / n8n Form / RSS Read / RSS Feed Trigger / SSE Trigger** `M`
+  → Form Trigger（生成公开表单页，提交即触发，字段 schema 驱动）、n8n Form（流程内表单页，HITL 场景，多步表单）、RSS Read（拉取解析 feed 为 items）、RSS Feed Trigger（轮询 feed 新条目触发，依赖 PollingTrigger）、SSE Trigger（订阅 SSE 流触发）。命名遵循仓库铁律去 n8n 字样（Form Trigger / Form）。
+  验收：Form Trigger 公开页提交→执行启动并带表单数据；RSS 轮询到新条目触发；SSE 收到事件触发。
+
+- [ ] **53. 流程/工具杂项四件套：Stop and Error / Execution Data / TOTP / Git** `S/M`
+  → Stop and Error（主动抛错终止执行，配合 Error Trigger #6）、Execution Data（读/写当前执行的元数据 KV，配合 #35 执行元数据）、TOTP（生成/校验 TOTP 验证码，复用已有 TOTP 实现）、Git（clone/commit/push 等，凭证走 SSH/token，最重可末位）。
+  验收：Stop and Error 触发 Error Trigger 流；Execution Data 写入的 KV 在执行详情可见；TOTP 生成码与标准算法对齐。
+
+- [ ] **54. 自引用/低价值节点（评估后按需，默认不做）** `S~M`
+  n8n / n8n Trigger（调 n8n 自身 API / 监听实例事件——nomops 等价物应改造为「nomops 自 API 节点」+ 实例事件触发，价值取决于是否需要工作流操作平台自身）、Data table（n8n 的内置数据表功能，需整套 dataTable 后端，属独立特性非单节点）、AI Transform（自然语言生成转换代码，依赖 AI 建流能力 #45）、Track Time Saved（n8n 云运营指标，自托管无意义）。
+  → 逐项在开发前单独裁决；Data table 若做应并入独立特性立项，AI Transform 挂靠 #45，Track Time Saved 直接不做。
 
 ---
 
