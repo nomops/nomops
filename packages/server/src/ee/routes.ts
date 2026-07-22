@@ -441,6 +441,67 @@ export function registerEeRoutes(router: Router, services: AppServices): void {
     }),
   );
 
+  /* ── 共享（backlog #12,功能位 sharing）:owner 项目管理共享面 ── */
+  const sharingFeature = requireFeature(services.license, 'sharing');
+  const assertProjectEditor = (req: Parameters<typeof auth>[0]): void => {
+    const role = auth(req).role;
+    if (role !== 'project:editor' && role !== 'project:owner') {
+      throw new OperationalError('Requires project editor role', { status: 403 });
+    }
+  };
+  const parseProjectIds = (body: unknown): string[] => {
+    const ids = (body as { projectIds?: unknown })?.projectIds;
+    if (!Array.isArray(ids) || ids.some((x) => typeof x !== 'string') || ids.length > 200) {
+      throw new OperationalError('projectIds must be an array of strings (max 200)', { status: 400 });
+    }
+    return ids as string[];
+  };
+
+  router.get(
+    '/workflows/:id/share',
+    sharingFeature,
+    h(async (req, res) => {
+      assertProjectEditor(req);
+      res.json({ shares: await services.sharing.listWorkflowShares(param(req, 'id'), auth(req).projectId) });
+    }),
+  );
+  router.put(
+    '/workflows/:id/share',
+    sharingFeature,
+    h(async (req, res) => {
+      assertProjectEditor(req);
+      const shares = await services.sharing.setWorkflowShares(param(req, 'id'), auth(req).projectId, parseProjectIds(req.body));
+      recordAudit(services, req, 'workflow.share', { type: 'workflow', id: param(req, 'id') }, { targets: shares.length - 1 });
+      res.json({ shares });
+    }),
+  );
+  router.get(
+    '/credentials/:id/share',
+    sharingFeature,
+    h(async (req, res) => {
+      assertProjectEditor(req);
+      res.json({ shares: await services.sharing.listCredentialShares(param(req, 'id'), auth(req).projectId) });
+    }),
+  );
+  router.put(
+    '/credentials/:id/share',
+    sharingFeature,
+    h(async (req, res) => {
+      assertProjectEditor(req);
+      const shares = await services.sharing.setCredentialShares(param(req, 'id'), auth(req).projectId, parseProjectIds(req.body));
+      recordAudit(services, req, 'credential.share', { type: 'credential', id: param(req, 'id') }, { targets: shares.length - 1 });
+      res.json({ shares });
+    }),
+  );
+  /** 可共享目标：其他用户的个人项目 + 我所在的团队项目。 */
+  router.get(
+    '/share-targets',
+    sharingFeature,
+    h(async (req, res) => {
+      res.json({ targets: await services.sharing.shareTargets(auth(req).userId, auth(req).projectId) });
+    }),
+  );
+
   router.post(
     '/scim/token',
     requireFeature(services.license, 'scim'),

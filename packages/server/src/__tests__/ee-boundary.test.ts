@@ -84,6 +84,7 @@ describe('LICENSE_EE 与真实目录', () => {
       externalSecrets: 'services/secrets-service.ts',
       ldap: 'ldap/ldap-service.ts',
       sourceControl: 'services/git-service.ts',
+      sharing: 'services/sharing-service.ts',
     };
     const missing = LICENSE_FEATURES.filter((f) => !existsSync(join(EE_DIR, homes[f])));
 

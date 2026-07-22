@@ -21,6 +21,7 @@ import { MfaService } from './services/mfa-service.js';
 import { CommunityNodeService, NpmNodeInstaller } from './services/community-node-service.js';
 import type { INodeInstaller } from './services/community-node-service.js';
 import { GitService } from './ee/services/git-service.js';
+import { SharingService } from './ee/services/sharing-service.js';
 import { PushHub } from './ws/push-hub.js';
 import { ActiveWorkflowManager } from './triggers/active-workflow-manager.js';
 import { LicenseService } from './ee/license/license-service.js';
@@ -300,6 +301,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   const assistant = new AssistantService(repos, credentialService, nodeLoader, opts.callClaude);
   // 实例级 MCP：把勾选的工作流暴露为 MCP tools（Preview）
   const mcp = new McpService(repos, executions, workflows);
+  const sharing = new SharingService(repos, workflows, credentialService);
 
   const services: AppServices = {
     repos,
@@ -310,6 +312,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     workflows,
     communityNodes,
     git,
+    sharing,
     credentials: credentialService,
     executions,
     pushHub,

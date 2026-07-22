@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { api, type CredentialView } from '../../api/client.js';
+import { useProjectsStore } from '../../stores/projects.js';
 import { CREDENTIAL_TYPES, credentialTypeMeta } from '../../lib/credential-types.js';
 import { credentialIcon } from '../../lib/icons.js';
 import IconSvg from '../IconSvg.vue';
@@ -20,6 +21,46 @@ const props = defineProps<{ edit?: CredentialView; createType?: string }>();
 
 const step = ref<'pick' | 'config'>('pick');
 const tab = ref<'connection' | 'sharing' | 'details'>('connection');
+
+/* backlog #12:Sharing tab 真实现(licensed + 已保存凭证);受享方打开 → owner 专属 403 原样呈现 */
+const projectsStore = useProjectsStore();
+const sharingLicensed = computed(() => projectsStore.hasFeature('sharing'));
+const shareTargets = ref<Array<{ projectId: string; kind: 'user' | 'project'; label: string }>>([]);
+const shareSelected = ref<Set<string>>(new Set());
+const shareBusy = ref(false);
+const shareError = ref('');
+async function loadShares() {
+  if (!credId.value) return;
+  shareError.value = '';
+  try {
+    const [targets, shares] = await Promise.all([api.shareTargets(), api.credentials.shares(credId.value)]);
+    shareTargets.value = targets.targets;
+    shareSelected.value = new Set(shares.shares.filter((s) => !s.role.endsWith(':owner')).map((s) => s.projectId));
+  } catch (e) {
+    shareError.value = (e as Error).message;
+  }
+}
+watch(tab, (t) => {
+  if (t === 'sharing' && sharingLicensed.value && credId.value) void loadShares();
+});
+function toggleShare(projectId: string) {
+  const next = new Set(shareSelected.value);
+  if (next.has(projectId)) next.delete(projectId);
+  else next.add(projectId);
+  shareSelected.value = next;
+}
+async function saveShares() {
+  if (!credId.value) return;
+  shareBusy.value = true;
+  shareError.value = '';
+  try {
+    await api.credentials.setShares(credId.value, [...shareSelected.value]);
+  } catch (e) {
+    shareError.value = (e as Error).message;
+  } finally {
+    shareBusy.value = false;
+  }
+}
 
 /* pick 步：combobox */
 const search = ref('');
@@ -447,7 +488,27 @@ onUnmounted(() => {
 
             <!-- D049 Sharing:对标基线 Community 的虚线升级卡 -->
             <template v-else-if="tab === 'sharing'">
-              <div class="sharing-lock" data-test="cred-sharing-lock">
+              <!-- backlog #12:licensed('sharing') + 已保存凭证 → 真共享面;否则保留升级卡 -->
+              <template v-if="sharingLicensed && credId">
+                <p class="setup-help" style="margin-top: 0">
+                  Shared users and projects can use this credential in their workflows — they can never view or edit the secret.
+                </p>
+                <p v-if="shareError" class="error-text" data-test="cred-share-error">{{ shareError }}</p>
+                <div class="share-list" data-test="cred-share-list">
+                  <p v-if="!shareTargets.length" class="share-empty">No one to share with yet — invite users under Settings → Users.</p>
+                  <label v-for="tgt in shareTargets" :key="tgt.projectId" class="share-row" :data-test-cred-share="tgt.projectId">
+                    <input type="checkbox" :checked="shareSelected.has(tgt.projectId)" @change="toggleShare(tgt.projectId)" />
+                    <span>{{ tgt.label }}</span>
+                  </label>
+                </div>
+                <button class="btn primary" data-test="cred-share-save" :disabled="shareBusy" style="margin-top: 14px" @click="saveShares">
+                  {{ shareBusy ? 'Saving…' : 'Save sharing' }}
+                </button>
+              </template>
+              <div v-else-if="sharingLicensed" class="sharing-lock" data-test="cred-sharing-unsaved">
+                <p>Save the credential first, then share it here.</p>
+              </div>
+              <div v-else class="sharing-lock" data-test="cred-sharing-lock">
                 <h4>Upgrade to collaborate</h4>
                 <p>You can share credentials with others when you upgrade your plan.</p>
                 <a class="btn primary" :href="LINKS.pricing" target="_blank" rel="noopener">View plans</a>
@@ -633,6 +694,17 @@ onUnmounted(() => {
 
 /* Sharing tab */
 /* D049 Sharing 虚线升级卡(对标基线) */
+.share-list {
+  display: flex; flex-direction: column; gap: 2px; max-height: 240px; overflow: auto;
+  border: 1px solid var(--border); border-radius: 8px; padding: 6px;
+}
+.share-row {
+  display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 6px;
+  font-size: 13.5px; cursor: pointer;
+}
+.share-row:hover { background: var(--bg-hover); }
+.share-row input[type='checkbox'] { width: 15px; height: 15px; flex: 0 0 auto; }
+.share-empty { padding: 8px 4px; font-size: 13px; color: var(--text-dim); }
 .sharing-lock {
   text-align: center; padding: 40px 24px; margin: 8px 0;
   border: 1px dashed var(--border-strong); border-radius: 10px;

@@ -81,6 +81,7 @@ export const ALL_TEST_FEATURES = [
   'externalSecrets',
   'ldap',
   'sourceControl',
+  'sharing',
 ];
 
 /**

@@ -34,6 +34,14 @@ export interface WorkflowDependency {
   name: string;
 }
 
+/** 共享清单行（含 owner 行;role: workflow:owner / workflow:editor / credential:owner / credential:user）。 */
+export interface ShareRow {
+  projectId: string;
+  role: string;
+  projectName: string;
+  projectType: string;
+}
+
 export interface WorkflowRow {
   id: string;
   name: string;
@@ -337,7 +345,19 @@ export const api = {
       http<void>('DELETE', `/api/community-nodes?name=${encodeURIComponent(name)}`),
   },
 
+  /* 共享（backlog #12,企业功能 sharing） */
+  shareTargets: () =>
+    http<{ targets: Array<{ projectId: string; kind: 'user' | 'project'; label: string }> }>('GET', '/api/share-targets'),
+  shared: {
+    workflows: () => http<WorkflowRow[]>('GET', '/api/shared/workflows'),
+    credentials: () => http<CredentialView[]>('GET', '/api/shared/credentials'),
+  },
+
   workflows: {
+    /* 共享面（owner 项目专属;受享方 403） */
+    shares: (id: string) => http<{ shares: ShareRow[] }>('GET', `/api/workflows/${id}/share`),
+    setShares: (id: string, projectIds: string[]) =>
+      http<{ shares: ShareRow[] }>('PUT', `/api/workflows/${id}/share`, { projectIds }),
     // folderId：undefined → 全部；null → 项目根；string → 指定文件夹。archived=true 只看归档。
     list: (folderId?: string | null, archived = false) => {
       const params = new URLSearchParams();
@@ -415,6 +435,9 @@ export const api = {
 
   credentials: {
     list: () => http<CredentialView[]>('GET', '/api/credentials'),
+    shares: (id: string) => http<{ shares: ShareRow[] }>('GET', `/api/credentials/${id}/share`),
+    setShares: (id: string, projectIds: string[]) =>
+      http<{ shares: ShareRow[] }>('PUT', `/api/credentials/${id}/share`, { projectIds }),
     /* 编辑：改名 + 覆写填写的字段（留空 = 保持不变；旧值绝不回显） */
     update: (id: string, body: { name?: string; data?: Record<string, unknown> }) =>
       http<CredentialView>('PATCH', `/api/credentials/${id}`, body),

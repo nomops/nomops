@@ -224,9 +224,21 @@ export class WorkflowService {
 
   async delete(id: string, projectId: string): Promise<void> {
     await this.getById(id, projectId); // 归属检查
+    await this.assertOwnerProject(id, projectId); // 受享方(editor)不可删,只有归属项目可删
     await this.repos.workflowVersions.deleteByWorkflow(id); // 先清版本（FK 指向 workflows）
     await this.repos.tags.clearWorkflow(id); // 清标签映射（FK 指向 workflows）
     await this.repos.workflows.delete(id);
+  }
+
+  /**
+   * 断言请求方项目是该工作流的归属（owner）项目（共享后受享方 editor 不可删/管共享面;
+   * 共享操作本体在 ee/services/sharing-service.ts,此断言是社区侧的归属语义,恒生效）。
+   */
+  async assertOwnerProject(id: string, projectId: string): Promise<void> {
+    const role = await this.repos.workflows.getRoleForProject(id, projectId);
+    if (role !== 'workflow:owner') {
+      throw new OperationalError('Only the owning project can perform this action', { workflowId: id, status: 403 });
+    }
   }
 
   /* ── 发布/草稿分离 ── */

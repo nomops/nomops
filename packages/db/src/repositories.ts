@@ -536,14 +536,90 @@ export class WorkflowRepository extends BaseRepository {
   /**
    * 工作流的归属 project（owner）。触发执行（webhook/cron）没有请求上下文，
    * 凭证解密所需的 projectId 从这里取。
+   * ★必须按 owner 角色过滤——共享(#12)后一个工作流有多行 shared_workflows,
+   *   取任意一行会把生产触发的凭证解密上下文指到受享方项目。
    */
   async getOwnerProjectId(workflowId: string): Promise<string | null> {
     const rows = await this.db
       .select()
       .from(this.schema.sharedWorkflows)
-      .where(eq(this.schema.sharedWorkflows.workflowId, workflowId))
+      .where(
+        and(
+          eq(this.schema.sharedWorkflows.workflowId, workflowId),
+          eq(this.schema.sharedWorkflows.role, ROLE_WORKFLOW_OWNER),
+        ),
+      )
       .limit(1);
     return rows[0] ? (rows[0] as { projectId: string }).projectId : null;
+  }
+
+  /* ── 共享（backlog #12;role: workflow:owner=归属,workflow:editor=受享读写跑） ── */
+
+  /** 某项目对该工作流的角色（null = 无任何关系）。 */
+  async getRoleForProject(workflowId: string, projectId: string): Promise<string | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.sharedWorkflows)
+      .where(
+        and(
+          eq(this.schema.sharedWorkflows.workflowId, workflowId),
+          eq(this.schema.sharedWorkflows.projectId, projectId),
+        ),
+      )
+      .limit(1);
+    return rows[0] ? (rows[0] as { role: string }).role : null;
+  }
+
+  /** 共享清单（含 owner 行,带项目名/类型）。 */
+  async listShares(workflowId: string): Promise<Array<{ projectId: string; role: string; projectName: string; projectType: string }>> {
+    const rows = await this.db
+      .select({
+        projectId: this.schema.sharedWorkflows.projectId,
+        role: this.schema.sharedWorkflows.role,
+        projectName: this.schema.projects.name,
+        projectType: this.schema.projects.type,
+      })
+      .from(this.schema.sharedWorkflows)
+      .innerJoin(this.schema.projects, eq(this.schema.projects.id, this.schema.sharedWorkflows.projectId))
+      .where(eq(this.schema.sharedWorkflows.workflowId, workflowId));
+    return rows as Array<{ projectId: string; role: string; projectName: string; projectType: string }>;
+  }
+
+  /** 覆盖式设置受享项目集（owner 行不动;目标恒为 editor 角色）。 */
+  async setShares(workflowId: string, projectIds: string[]): Promise<void> {
+    await this.db
+      .delete(this.schema.sharedWorkflows)
+      .where(
+        and(
+          eq(this.schema.sharedWorkflows.workflowId, workflowId),
+          ne(this.schema.sharedWorkflows.role, ROLE_WORKFLOW_OWNER),
+        ),
+      );
+    const owner = await this.getOwnerProjectId(workflowId);
+    const targets = [...new Set(projectIds)].filter((p) => p !== owner);
+    if (targets.length) {
+      await this.db
+        .insert(this.schema.sharedWorkflows)
+        .values(targets.map((projectId) => ({ workflowId, projectId, role: 'workflow:editor' })));
+    }
+  }
+
+  /** 共享**给**某项目的工作流（受享侧,role != owner;Shared with you 页）。 */
+  async findSharedWithProject(projectId: string): Promise<Workflow[]> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.workflows)
+      .innerJoin(
+        this.schema.sharedWorkflows,
+        eq(this.schema.sharedWorkflows.workflowId, this.schema.workflows.id),
+      )
+      .where(
+        and(
+          eq(this.schema.sharedWorkflows.projectId, projectId),
+          ne(this.schema.sharedWorkflows.role, ROLE_WORKFLOW_OWNER),
+        ),
+      );
+    return rows.map((r: { workflows: Workflow }) => r.workflows);
   }
 }
 
@@ -753,6 +829,85 @@ export class CredentialRepository extends BaseRepository {
       .delete(this.schema.sharedCredentials)
       .where(eq(this.schema.sharedCredentials.credentialId, id));
     await this.db.delete(this.schema.credentials).where(eq(this.schema.credentials.id, id));
+  }
+
+  /* ── 共享（backlog #12,与工作流对称;受享=credential:user,执行注入可用、不可改/删/再共享） ── */
+
+  async getOwnerProjectId(credentialId: string): Promise<string | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.sharedCredentials)
+      .where(
+        and(
+          eq(this.schema.sharedCredentials.credentialId, credentialId),
+          eq(this.schema.sharedCredentials.role, ROLE_CREDENTIAL_OWNER),
+        ),
+      )
+      .limit(1);
+    return rows[0] ? (rows[0] as { projectId: string }).projectId : null;
+  }
+
+  async getRoleForProject(credentialId: string, projectId: string): Promise<string | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.sharedCredentials)
+      .where(
+        and(
+          eq(this.schema.sharedCredentials.credentialId, credentialId),
+          eq(this.schema.sharedCredentials.projectId, projectId),
+        ),
+      )
+      .limit(1);
+    return rows[0] ? (rows[0] as { role: string }).role : null;
+  }
+
+  async listShares(credentialId: string): Promise<Array<{ projectId: string; role: string; projectName: string; projectType: string }>> {
+    const rows = await this.db
+      .select({
+        projectId: this.schema.sharedCredentials.projectId,
+        role: this.schema.sharedCredentials.role,
+        projectName: this.schema.projects.name,
+        projectType: this.schema.projects.type,
+      })
+      .from(this.schema.sharedCredentials)
+      .innerJoin(this.schema.projects, eq(this.schema.projects.id, this.schema.sharedCredentials.projectId))
+      .where(eq(this.schema.sharedCredentials.credentialId, credentialId));
+    return rows as Array<{ projectId: string; role: string; projectName: string; projectType: string }>;
+  }
+
+  async setShares(credentialId: string, projectIds: string[]): Promise<void> {
+    await this.db
+      .delete(this.schema.sharedCredentials)
+      .where(
+        and(
+          eq(this.schema.sharedCredentials.credentialId, credentialId),
+          ne(this.schema.sharedCredentials.role, ROLE_CREDENTIAL_OWNER),
+        ),
+      );
+    const owner = await this.getOwnerProjectId(credentialId);
+    const targets = [...new Set(projectIds)].filter((p) => p !== owner);
+    if (targets.length) {
+      await this.db
+        .insert(this.schema.sharedCredentials)
+        .values(targets.map((projectId) => ({ credentialId, projectId, role: 'credential:user' })));
+    }
+  }
+
+  async findSharedWithProject(projectId: string): Promise<Credential[]> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.credentials)
+      .innerJoin(
+        this.schema.sharedCredentials,
+        eq(this.schema.sharedCredentials.credentialId, this.schema.credentials.id),
+      )
+      .where(
+        and(
+          eq(this.schema.sharedCredentials.projectId, projectId),
+          ne(this.schema.sharedCredentials.role, ROLE_CREDENTIAL_OWNER),
+        ),
+      );
+    return rows.map((r: { credentials: Credential }) => r.credentials);
   }
 }
 

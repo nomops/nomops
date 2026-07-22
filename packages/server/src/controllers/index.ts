@@ -576,6 +576,23 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
+  /* 共享操作路由（GET/PUT :id/share、share-targets）在 ee/routes.ts（边界铁律:付费实现进 ee/） */
+
+  /** Shared with you：共享**给**当前项目的资源（受享侧;凭证只出元数据,密文/明文都不出）。 */
+  router.get(
+    '/shared/workflows',
+    h(async (req, res) => {
+      res.json(await services.repos.workflows.findSharedWithProject(auth(req).projectId));
+    }),
+  );
+  router.get(
+    '/shared/credentials',
+    h(async (req, res) => {
+      const rows = await services.repos.credentials.findSharedWithProject(auth(req).projectId);
+      res.json(rows.map((r) => ({ id: r.id, name: r.name, type: r.type, createdAt: r.createdAt, updatedAt: r.updatedAt })));
+    }),
+  );
+
   /* ── executions ── */
   router.get(
     '/executions',

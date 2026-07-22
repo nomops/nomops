@@ -497,11 +497,52 @@ async function removeWorkflow(id: string) {
 const showArchived = ref(false); // 归档视图切换（默认列表隐藏 archived）
 watch(showArchived, () => void reload());
 
-/* D039:Share... = Enterprise 锁(Community 不能共享工作流,对标基线)。 */
+/* D039 → backlog #12:licensed('sharing') 走真共享弹窗;Community 保留 Enterprise 锁。 */
 const shareLockOpen = ref(false);
-function openShareLock() {
+const shareFor = ref<WorkflowRow | null>(null);
+const shareTargetsList = ref<Array<{ projectId: string; kind: 'user' | 'project'; label: string }>>([]);
+const shareSelected = ref<Set<string>>(new Set());
+const shareBusy = ref(false);
+const shareError = ref('');
+async function openShare(row: WorkflowRow) {
   closeMenus();
-  shareLockOpen.value = true;
+  if (!projects.hasFeature('sharing')) {
+    shareLockOpen.value = true;
+    return;
+  }
+  shareFor.value = row;
+  shareError.value = '';
+  shareBusy.value = true;
+  try {
+    const [targets, shares] = await Promise.all([api.shareTargets(), api.workflows.shares(row.id)]);
+    shareTargetsList.value = targets.targets;
+    shareSelected.value = new Set(
+      shares.shares.filter((s) => !s.role.endsWith(':owner')).map((s) => s.projectId),
+    );
+  } catch (e) {
+    shareError.value = (e as Error).message; // 受享方打开 → owner 专属 403 原样呈现
+  } finally {
+    shareBusy.value = false;
+  }
+}
+function toggleShareTarget(projectId: string) {
+  const next = new Set(shareSelected.value);
+  if (next.has(projectId)) next.delete(projectId);
+  else next.add(projectId);
+  shareSelected.value = next;
+}
+async function saveShare() {
+  if (!shareFor.value) return;
+  shareBusy.value = true;
+  shareError.value = '';
+  try {
+    await api.workflows.setShares(shareFor.value.id, [...shareSelected.value]);
+    shareFor.value = null;
+  } catch (e) {
+    shareError.value = (e as Error).message;
+  } finally {
+    shareBusy.value = false;
+  }
 }
 
 async function toggleFavorite(row: WorkflowRow) {
@@ -991,7 +1032,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
             <div v-if="openMenu === row.id" class="menu row-menu-pop" :data-test-menu-pop="row.id">
               <button class="menu-item" @click="openWorkflow(row.id)">{{ t('Open') }}</button>
               <template v-if="!row.archived">
-                <button class="menu-item" :data-test-share="row.id" @click="openShareLock()">{{ t('Share...') }}</button>
+                <button class="menu-item" :data-test-share="row.id" @click="openShare(row)">{{ t('Share...') }}</button>
                 <button class="menu-item" :data-test-favorite="row.id" @click="toggleFavorite(row)">
                   {{ row.favorite ? t('Unfavorite') : t('Favorite') }}
                 </button>
@@ -1495,6 +1536,37 @@ const fmtRunTime = (row: ExecutionRow): string => {
       </div>
     </div>
 
+    <!-- backlog #12:真共享弹窗(licensed) -->
+    <div v-if="shareFor" class="modal-mask" data-test="share-modal" @click.self="shareFor = null">
+      <div class="modal-card" style="width: 480px">
+        <div style="display: flex; align-items: flex-start; justify-content: space-between">
+          <h2 class="modal-title">{{ t('Share') }} “{{ shareFor.name }}”</h2>
+          <button class="modal-x" @click="shareFor = null">×</button>
+        </div>
+        <p class="dim" style="margin: 0 0 12px; font-size: 13px">
+          {{ t('Shared users and projects can view, run and edit this workflow. Only this project can delete or re-share it.') }}
+        </p>
+        <p v-if="shareError" class="error-text" data-test="share-error">{{ shareError }}</p>
+        <p v-if="shareBusy && !shareTargetsList.length" class="dim" style="font-size: 13px">Loading…</p>
+        <div v-else class="pick-list" style="max-height: 280px">
+          <p v-if="!shareTargetsList.length" class="dim" style="font-size: 13px; padding: 8px 2px">
+            {{ t('No one to share with yet — invite users under Settings → Users.') }}
+          </p>
+          <label v-for="tgt in shareTargetsList" :key="tgt.projectId" class="check-row" :data-test-share-target="tgt.projectId">
+            <input type="checkbox" :checked="shareSelected.has(tgt.projectId)" @change="toggleShareTarget(tgt.projectId)" />
+            <span>{{ tgt.label }}</span>
+            <span class="dim" style="margin-left: auto; font-size: 12px">{{ tgt.kind === 'user' ? t('User') : t('Project') }}</span>
+          </label>
+        </div>
+        <div class="modal-actions" style="justify-content: flex-end; gap: 10px">
+          <button class="btn secondary" @click="shareFor = null">{{ t('Cancel') }}</button>
+          <button class="btn primary" data-test="share-save" :disabled="shareBusy" @click="saveShare">
+            {{ shareBusy ? t('Saving…') : t('Save') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- D039 Share... Enterprise 锁(对标基线 Community:工作流共享需升级) -->
     <div v-if="shareLockOpen" class="modal-mask" data-test="share-lock-modal" @click.self="shareLockOpen = false">
       <div class="modal-card" style="max-width: 460px; text-align: center">
@@ -1869,6 +1941,22 @@ const fmtRunTime = (row: ExecutionRow): string => {
 .dt-radio input { width: auto; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
 .modal-actions .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+/* backlog #12 共享弹窗 */
+.modal-x {
+  width: 28px; height: 28px; padding: 0; background: none; border: none;
+  color: var(--text-dim); font-size: 20px; line-height: 1; cursor: pointer; border-radius: 4px;
+}
+.modal-x:hover { color: var(--text); background: var(--bg-hover); }
+.pick-list {
+  overflow: auto; border: 1px solid var(--border); border-radius: 8px; padding: 6px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.check-row {
+  display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 6px;
+  font-size: 13.5px; cursor: pointer;
+}
+.check-row:hover { background: var(--bg-hover); }
+.check-row input[type='checkbox'] { width: 15px; height: 15px; flex: 0 0 auto; }
 
 .wf-desc { margin: 3px 0 0; font-size: 12.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 720px; }
 

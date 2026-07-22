@@ -28,6 +28,7 @@ import type { ApiKeyService } from './services/api-key-service.js';
 import type { MfaService } from './services/mfa-service.js';
 import type { CommunityNodeService } from './services/community-node-service.js';
 import type { GitService } from './ee/services/git-service.js';
+import type { SharingService } from './ee/services/sharing-service.js';
 import type { McpService } from './services/mcp-service.js';
 
 /** 服务容器：构造函数注入（docs/05），app 层只见接口不见组装细节。 */
@@ -40,6 +41,7 @@ export interface AppServices {
   workflows: WorkflowService;
   communityNodes: CommunityNodeService;
   git: GitService;
+  sharing: SharingService;
   credentials: CredentialService;
   executions: ExecutionService;
   pushHub: PushHub;

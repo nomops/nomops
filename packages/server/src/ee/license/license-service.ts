@@ -31,6 +31,7 @@ export const LICENSE_FEATURES = [
   'externalSecrets',
   'ldap',
   'sourceControl',
+  'sharing',
 ] as const;
 export type LicenseFeature = (typeof LICENSE_FEATURES)[number];
 

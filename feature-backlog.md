@@ -41,9 +41,7 @@
 
 ## P3 · 协作与归属（表结构已就绪）
 
-- [ ] **12. 工作流/凭证共享（sharing）** `L`
-  `shared_workflows`/`shared_credentials` 带 role 列但插入恒为 owner，无 shareWith 端点；前端 Share.../Sharing tab 现为锁卡。
-  → 共享端点 + 权限语义（读/写）+ 前端 Share 弹窗替换锁卡。License 门控 `sharing`。
+- [x] **12. 工作流/凭证共享（sharing）** `L` ✅ 2026-07-22（复用归属 join:共享=插非 owner 行;workflow:editor=读/跑/改、credential:user=仅执行注入;删/改秘密/管共享面恒 owner 专属;实现进 ee/sharing-service(边界铁律);★修 getOwnerProjectId 多行不确定性;前端 Share 弹窗/凭证 Sharing tab/SharedView 真数据;4 server 测;dev license 重签含 sharing,live UI 全流程验证）
 
 - [ ] **13. 工作流移动/转移** `M`
   「Move to 文件夹」入口恢复（`moveWorkflowToFolder` 死代码在 `OverviewView.vue:441`，需文件夹/项目选择弹窗）+ 跨项目 transfer 端点（含凭证归属校验）。

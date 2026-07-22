@@ -85,6 +85,7 @@ export class CredentialService {
   ): Promise<ICredentialView> {
     const row = await this.repos.credentials.findById(id, projectId);
     if (!row) throw new OperationalError('Credential not found', { credentialId: id, status: 404 });
+    await this.assertOwnerProject(id, projectId); // 受享方只能用(执行注入),不能改秘密
     const update: { name?: string; data?: string } = {};
     if (patch.name !== undefined && patch.name !== row.name) update.name = patch.name;
     const filled = Object.fromEntries(
@@ -133,7 +134,19 @@ export class CredentialService {
   async delete(id: string, projectId: string): Promise<void> {
     const row = await this.repos.credentials.findById(id, projectId);
     if (!row) throw new OperationalError('Credential not found', { credentialId: id, status: 404 });
+    await this.assertOwnerProject(id, projectId); // 受享方不可删
     await this.repos.credentials.delete(id);
+  }
+
+  /**
+   * 断言请求方项目是该凭证的归属（owner）项目（受享方只能执行注入,不可改秘密/删;
+   * 共享操作本体在 ee/services/sharing-service.ts,此断言是社区侧的归属语义,恒生效）。
+   */
+  async assertOwnerProject(id: string, projectId: string): Promise<void> {
+    const role = await this.repos.credentials.getRoleForProject(id, projectId);
+    if (role !== 'credential:owner') {
+      throw new OperationalError('Only the owning project can perform this action', { credentialId: id, status: 403 });
+    }
   }
 
   private toView(row: { id: string; name: string; type: string; createdAt: Date; updatedAt: Date }): ICredentialView {
