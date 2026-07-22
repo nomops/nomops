@@ -4,7 +4,7 @@ import type { Express } from 'express';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
-import type { PostFn } from '../ee/services/log-streaming-service.js';
+import type { PostFn, SyslogFn } from '../ee/services/log-streaming-service.js';
 import { licensedBoot } from './helpers.js';
 
 /**
@@ -31,11 +31,12 @@ let boot: BootstrapResult;
 let app: Express;
 let token: string;
 
-async function setup(opts: { enterprise: boolean; post?: PostFn }) {
+async function setup(opts: { enterprise: boolean; post?: PostFn; syslog?: SyslogFn }) {
   boot = await bootstrap({
     dbConfig: { type: 'sqlite' },
     ...(opts.enterprise ? licensedBoot() : { licenseKey: null }),
     ...(opts.post ? { logStreamPost: opts.post } : {}),
+    ...(opts.syslog ? { logStreamSyslog: opts.syslog } : {}),
   });
   app = createApp(boot.services);
   const reg = await request(app).post('/auth/register').send({ email: 'ls@dev.dev', password: 'password-123' }).expect(201);
@@ -153,5 +154,71 @@ describe('日志流（Log Streaming）', () => {
     await request(app).post(`/api/workflows/${wf.body.id}/run`).set(authed()).send({}).expect(200);
     await flush();
     expect(sink.received.filter((r) => JSON.parse(r.body).type === 'execution')).toHaveLength(0);
+  });
+
+  it('syslog 目的地：url 校验 + RFC 5424 消息经 syslog 发送器送达（#24）', async () => {
+    const sent: Array<{ protocol: string; host: string; port: number; message: string }> = [];
+    const syslog: SyslogFn = async (t) => {
+      sent.push(t);
+    };
+    await setup({ enterprise: true, syslog });
+
+    // 非法 syslog url → 400
+    await request(app)
+      .post('/api/log-streaming/destinations')
+      .set(authed())
+      .send({ name: 'bad', kind: 'syslog', url: 'http://nope' })
+      .expect(400);
+
+    const dest = await request(app)
+      .post('/api/log-streaming/destinations')
+      .set(authed())
+      .send({ name: 'SIEM syslog', kind: 'syslog', url: 'udp://siem.local:514', events: ['execution.error', 'audit'] })
+      .expect(201);
+    expect(dest.body.kind).toBe('syslog');
+
+    await request(app).post(`/api/log-streaming/destinations/${dest.body.id}/test`).set(authed()).expect(200);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.protocol).toBe('udp');
+    expect(sent[0]!.host).toBe('siem.local');
+    expect(sent[0]!.port).toBe(514);
+    // RFC 5424: <PRI>1 ... audit ...；audit 事件 → severity info(6),facility local0(16) → PRI 134
+    expect(sent[0]!.message).toMatch(/^<134>1 .+ nomops nomops - audit - /);
+  });
+
+  it('细粒度事件树：订阅 execution.error 只收失败，成功执行不推（#24）', async () => {
+    const sink = makeSink();
+    await setup({ enterprise: true, post: sink.post });
+    await request(app)
+      .post('/api/log-streaming/destinations')
+      .set(authed())
+      .send({ name: 'errors-only', url: 'http://sink.local/err', events: ['execution.error'] })
+      .expect(201);
+
+    const mkWf = (name: string, code: string) =>
+      request(app)
+        .post('/api/workflows')
+        .set(authed())
+        .send({
+          name,
+          nodes: [
+            { id: 'a', name: 'S', type: 'nomops.manualTrigger', typeVersion: 1, position: [0, 0], parameters: {} },
+            { id: 'b', name: 'C', type: 'nomops.code', typeVersion: 1, position: [200, 0], parameters: { code } },
+          ],
+          connections: { S: { main: [[{ node: 'C', type: 'main', index: 0 }]] } },
+        })
+        .expect(201);
+
+    const okWf = await mkWf('ok', 'return items;');
+    await request(app).post(`/api/workflows/${okWf.body.id}/run`).set(authed()).send({}).expect(200);
+    const badWf = await mkWf('bad', 'throw new Error("boom")');
+    await request(app).post(`/api/workflows/${badWf.body.id}/run`).set(authed()).send({}).expect(200);
+    await flush();
+
+    const errEvents = sink.received.filter((r) => r.url.endsWith('/err'));
+    expect(errEvents).toHaveLength(1); // 只失败那条
+    const evt = JSON.parse(errEvents[0]!.body);
+    expect(evt.status).toBe('error');
+    expect(errEvents[0]!.headers['x-nomops-event']).toBe('execution.error');
   });
 });

@@ -700,14 +700,15 @@ export const api = {
         Array<{
           id: string;
           name: string;
+          kind: 'webhook' | 'syslog';
           url: string;
-          events: Array<'execution' | 'audit'>;
+          events: string[];
           enabled: boolean;
           secretConfigured: boolean;
           createdAt: string;
         }>
       >('GET', '/api/log-streaming/destinations'),
-    create: (body: { name: string; url: string; secret?: string; events?: Array<'execution' | 'audit'> }) =>
+    create: (body: { name: string; url: string; kind?: 'webhook' | 'syslog'; secret?: string; events?: string[] }) =>
       http<{ id: string; name: string; url: string; events: string[]; enabled: boolean; secretConfigured: boolean; createdAt: string }>(
         'POST',
         '/api/log-streaming/destinations',

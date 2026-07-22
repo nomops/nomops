@@ -70,7 +70,7 @@
 ## P6 · 平台能力面扩展
 
 - [x] **23. External Secrets 多 provider** `L` ✅ 2026-07-22（Vault KV v2 provider:内存快照+后台刷新保同步 get()接口,零依赖 fetch;secretsProviderFromEnv 按 NOMOPS_SECRETS_PROVIDER 选;首刷失败不阻断启动;4 server 测(快照/mount-path/首刷失败/factory)+前端 provider 说明动态化。AWS/Azure/GCP 同抽象后续按需）
-- [ ] **24. Log Streaming 多 destination** `L`（现仅 webhook；补 syslog + 细粒度事件树，对齐 P2-6）
+- [x] **24. Log Streaming 多 destination** `L` ✅ 2026-07-22（syslog destination:RFC 5424 over UDP/TCP,零依赖 dgram/net,SyslogFn 可注入测;细粒度事件树:订阅 execution 收全部子类型、execution.error 只收失败(effectiveType 按 status 派生+层级匹配);前端 kind 选择器+5 档事件勾选+动态 URL 提示;老数据无 kind 回退 webhook;2 新 server 测(syslog 送达+错误订阅只收失败)+前端 typecheck/build 过）
 - [ ] **25. MCP OAuth 鉴权** `M/L`（现仅 access token；前端分段控件已画好）
 - [ ] **26. Public API 独立面 + 细粒度 scopes** `L`（现 readonly/all 两档、复用内部 /api；API key Custom scopes 前端已画、提交降级 all）
 - [ ] **27. OpenTelemetry 后端** `L`（现为零，前端整页本地态假表单；OTLP 导出 + 表单接线）

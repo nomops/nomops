@@ -242,9 +242,10 @@ const newScimToken = ref('');
 /* 日志流（企业） */
 const destinations = ref<Awaited<ReturnType<typeof api.logStreaming.list>>>([]);
 const lsError = ref('');
-const lsForm = ref<{ name: string; url: string; secret: string; events: Array<'execution' | 'audit'> }>({
+const lsForm = ref<{ name: string; url: string; kind: 'webhook' | 'syslog'; secret: string; events: string[] }>({
   name: '',
   url: '',
+  kind: 'webhook',
   secret: '',
   events: ['execution', 'audit'],
 });
@@ -974,10 +975,11 @@ async function addDestination() {
     await api.logStreaming.create({
       name: lsForm.value.name,
       url: lsForm.value.url,
+      kind: lsForm.value.kind,
       secret: lsForm.value.secret || undefined,
       events: lsForm.value.events,
     });
-    lsForm.value = { name: '', url: '', secret: '', events: ['execution', 'audit'] };
+    lsForm.value = { name: '', url: '', kind: 'webhook', secret: '', events: ['execution', 'audit'] };
     destinations.value = await api.logStreaming.list();
   } catch (e) {
     lsError.value = (e as Error).message;
@@ -2381,7 +2383,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                 <b>{{ d.name }}</b>
                 <div class="dim" style="font-size: 12px; word-break: break-all">{{ d.url }}</div>
                 <div class="dim" style="font-size: 11px">
-                  Events: {{ d.events.join(' / ') }} · Secret: {{ d.secretConfigured ? 'configured' : 'none' }}
+                  {{ d.kind === 'syslog' ? 'Syslog' : 'Webhook' }} · Events: {{ d.events.join(' / ') }} · Secret: {{ d.secretConfigured ? 'configured' : 'none' }}
                 </div>
               </div>
               <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0">
@@ -2398,17 +2400,32 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
               <div class="set-item-control"><input v-model="lsForm.name" data-test="ls-name" placeholder="Splunk / internal alerts" /></div>
             </div>
             <div class="set-item">
-              <div class="set-item-label"><label>Webhook URL</label><small>Where events are POSTed in real time</small></div>
-              <div class="set-item-control"><input v-model="lsForm.url" data-test="ls-url" placeholder="https://siem.example.com/ingest" /></div>
+              <div class="set-item-label"><label>Type</label><small>HTTP webhook or a syslog collector</small></div>
+              <div class="set-item-control" style="justify-content: flex-end">
+                <select v-model="lsForm.kind" class="sec-select" data-test="ls-kind">
+                  <option value="webhook">Webhook (HTTP)</option>
+                  <option value="syslog">Syslog (UDP/TCP)</option>
+                </select>
+              </div>
             </div>
             <div class="set-item">
+              <div class="set-item-label">
+                <label>{{ lsForm.kind === 'syslog' ? 'Syslog URL' : 'Webhook URL' }}</label>
+                <small>{{ lsForm.kind === 'syslog' ? 'udp://host:port or tcp://host:port (RFC 5424)' : 'Where events are POSTed in real time' }}</small>
+              </div>
+              <div class="set-item-control"><input v-model="lsForm.url" data-test="ls-url" :placeholder="lsForm.kind === 'syslog' ? 'udp://siem.example.com:514' : 'https://siem.example.com/ingest'" /></div>
+            </div>
+            <div v-if="lsForm.kind === 'webhook'" class="set-item">
               <div class="set-item-label"><label>Signing secret</label><small>Optional — signs each event via HMAC-SHA256</small></div>
               <div class="set-item-control"><input v-model="lsForm.secret" data-test="ls-secret" type="password" placeholder="••••••••" /></div>
             </div>
-            <div class="set-item">
+            <div class="set-item" style="align-items: flex-start">
               <div class="set-item-label"><label>Events</label><small>Which event types to forward</small></div>
-              <div class="set-item-control" style="gap: 16px; justify-content: flex-end; width: auto">
-                <label class="inline-check" style="font-weight: 400; width: auto; white-space: nowrap"><input type="checkbox" value="execution" v-model="lsForm.events" /> Execution finished</label>
+              <div class="set-item-control" style="gap: 8px 16px; justify-content: flex-end; width: auto; flex-wrap: wrap; max-width: 360px">
+                <label class="inline-check" style="font-weight: 400; width: auto; white-space: nowrap"><input type="checkbox" value="execution" v-model="lsForm.events" /> All executions</label>
+                <label class="inline-check" style="font-weight: 400; width: auto; white-space: nowrap"><input type="checkbox" value="execution.success" v-model="lsForm.events" /> Succeeded</label>
+                <label class="inline-check" style="font-weight: 400; width: auto; white-space: nowrap"><input type="checkbox" value="execution.error" v-model="lsForm.events" /> Failed</label>
+                <label class="inline-check" style="font-weight: 400; width: auto; white-space: nowrap"><input type="checkbox" value="execution.canceled" v-model="lsForm.events" /> Canceled</label>
                 <label class="inline-check" style="font-weight: 400; width: auto; white-space: nowrap"><input type="checkbox" value="audit" v-model="lsForm.events" /> Audit events</label>
               </div>
             </div>

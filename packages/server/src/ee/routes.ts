@@ -65,12 +65,16 @@ export function registerEeRoutes(router: Router, services: AppServices): void {
       const body = (req.body ?? {}) as {
         name?: string;
         url?: string;
+        kind?: 'webhook' | 'syslog';
         secret?: string;
-        events?: Array<'execution' | 'audit'>;
+        events?: Array<
+          'execution' | 'execution.success' | 'execution.error' | 'execution.canceled' | 'execution.waiting' | 'audit'
+        >;
       };
       const created = await services.logStreaming.create({
         name: body.name ?? '',
         url: body.url ?? '',
+        ...(body.kind ? { kind: body.kind } : {}),
         secret: body.secret,
         events: body.events,
       });

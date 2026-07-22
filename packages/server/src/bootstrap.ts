@@ -114,6 +114,8 @@ export interface BootstrapOptions {
   callClaude?: import('./services/assistant-service.js').CallClaude;
   /** 日志流的 webhook 推送函数（缺省真实 fetch；测试注入进程内接收器）。 */
   logStreamPost?: import('./ee/services/log-streaming-service.js').PostFn;
+  /** syslog 发送器（缺省真实 UDP/TCP；测试注入进程内接收器）。 */
+  logStreamSyslog?: import('./ee/services/log-streaming-service.js').SyslogFn;
   /** 外部密钥 provider（缺省 env 变量 provider；测试注入假 provider）。 */
   secretsProvider?: ISecretsProvider;
   /** LDAP 认证器（缺省 ldapts 真实实现；测试注入假实现）。 */
@@ -238,7 +240,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   const usageCounter = new CountingUsageGate(repos);
   const quota = new QuotaService(repos, license, usageCounter);
   // 日志流（docs/10 B3）：先于 executions/audit 建好，两者把事件旁路到它
-  const logStreaming = new LogStreamingService(repos, opts.logStreamPost);
+  const logStreaming = new LogStreamingService(repos, opts.logStreamPost, opts.logStreamSyslog);
   // 二进制存储：执行状态里只留引用，字节流落 store。
   // 配了 NOMOPS_S3_BUCKET 走 S3 兼容后端（AWS/MinIO/R2），否则文件系统。
   const s3Options = opts.s3 ?? s3StoreOptionsFromEnv(process.env);
