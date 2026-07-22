@@ -448,6 +448,55 @@ async function moveWorkflowToFolder(wfId: string, folderId: string | null) {
   }
 }
 
+/* ── backlog #13:Move 弹窗（文件夹移动 + 跨项目转移;基线卡片菜单第 7 项 Move 复活） ── */
+const moveFor = ref<WorkflowRow | null>(null);
+const moveBusy = ref(false);
+const moveError = ref('');
+function openMove(row: WorkflowRow) {
+  closeMenus();
+  moveError.value = '';
+  moveFor.value = row;
+}
+const moveProjects = computed(() =>
+  projects.projects.filter(
+    (p) => p.id !== projects.currentProjectId && (p.role === 'project:editor' || p.role === 'project:owner'),
+  ),
+);
+async function moveToFolder(folderId: string | null) {
+  if (!moveFor.value) return;
+  moveBusy.value = true;
+  moveError.value = '';
+  try {
+    await api.workflows.move(moveFor.value.id, folderId);
+    moveFor.value = null;
+    await reload();
+  } catch (e) {
+    moveError.value = (e as Error).message;
+  } finally {
+    moveBusy.value = false;
+  }
+}
+async function transferToProject(projectId: string, projectName: string) {
+  if (!moveFor.value) return;
+  if (
+    !window.confirm(
+      `Move "${moveFor.value.name}" to project "${projectName}"?\n\nCredentials do not move with it — reassign them in the target project. Existing shares are removed.`,
+    )
+  )
+    return;
+  moveBusy.value = true;
+  moveError.value = '';
+  try {
+    await api.workflows.transfer(moveFor.value.id, projectId);
+    moveFor.value = null;
+    await reload();
+  } catch (e) {
+    moveError.value = (e as Error).message;
+  } finally {
+    moveBusy.value = false;
+  }
+}
+
 const filteredCredentials = computed(() => {
   const list = q.value ? credentials.value.filter((c) => c.name.toLowerCase().includes(q.value)) : credentials.value;
   return [...list].sort((a, b) => {
@@ -1037,6 +1086,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
                   {{ row.favorite ? t('Unfavorite') : t('Favorite') }}
                 </button>
                 <button class="menu-item" :data-test-duplicate="row.id" @click="duplicateWorkflow(row)">{{ t('Duplicate') }}</button>
+                <button class="menu-item" :data-test-move="row.id" @click="openMove(row)">{{ t('Move') }}</button>
                 <button class="menu-item danger" :data-test-archive="row.id" @click="archiveWorkflow(row)">{{ t('Archive') }}</button>
                 <button class="menu-item" :data-test-mcp-access="row.id" @click="enableMcpAccess(row)">{{ t('Enable MCP access') }}</button>
               </template>
@@ -1533,6 +1583,59 @@ const fmtRunTime = (row: ExecutionRow): string => {
           <button class="btn secondary" @click="managingTagsFor = null">{{ t('Cancel') }}</button>
           <button class="btn primary" data-test="save-workflow-tags" @click="saveWorkflowTags">{{ t('Save') }}</button>
         </div>
+      </div>
+    </div>
+
+    <!-- backlog #13:Move 弹窗(文件夹 + 跨项目) -->
+    <div v-if="moveFor" class="modal-mask" data-test="move-modal" @click.self="moveFor = null">
+      <div class="modal-card" style="width: 460px">
+        <div style="display: flex; align-items: flex-start; justify-content: space-between">
+          <h2 class="modal-title">{{ t('Move') }} “{{ moveFor.name }}”</h2>
+          <button class="modal-x" @click="moveFor = null">×</button>
+        </div>
+        <p v-if="moveError" class="error-text" data-test="move-error">{{ moveError }}</p>
+
+        <p class="dim" style="margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px">{{ t('Folders') }}</p>
+        <div class="pick-list" style="max-height: 180px; margin-bottom: 16px" data-test="move-folders">
+          <button class="check-row" style="border: none; background: none; text-align: left" :disabled="moveBusy || moveFor.folderId === null" data-test="move-folder-root" @click="moveToFolder(null)">
+            <span>{{ t('Project root') }}</span>
+            <span v-if="moveFor.folderId === null" class="dim" style="margin-left: auto; font-size: 12px">{{ t('Current') }}</span>
+          </button>
+          <button
+            v-for="f in folders"
+            :key="f.id"
+            class="check-row"
+            style="border: none; background: none; text-align: left"
+            :disabled="moveBusy || moveFor.folderId === f.id"
+            :data-test-move-folder="f.id"
+            @click="moveToFolder(f.id)"
+          >
+            <span>{{ f.name }}</span>
+            <span v-if="moveFor.folderId === f.id" class="dim" style="margin-left: auto; font-size: 12px">{{ t('Current') }}</span>
+          </button>
+        </div>
+
+        <p class="dim" style="margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px">{{ t('Projects') }}</p>
+        <div class="pick-list" style="max-height: 160px" data-test="move-projects">
+          <p v-if="!moveProjects.length" class="dim" style="font-size: 13px; padding: 8px 2px">
+            {{ t('No other projects you can move this to.') }}
+          </p>
+          <button
+            v-for="p in moveProjects"
+            :key="p.id"
+            class="check-row"
+            style="border: none; background: none; text-align: left"
+            :disabled="moveBusy"
+            :data-test-move-project="p.id"
+            @click="transferToProject(p.id, p.name)"
+          >
+            <span>{{ p.name }}</span>
+            <span class="dim" style="margin-left: auto; font-size: 12px">{{ t('Transfer') }}</span>
+          </button>
+        </div>
+        <p class="dim" style="margin: 12px 0 0; font-size: 12px">
+          {{ t('Moving to another project keeps the workflow running there; credentials do not move with it.') }}
+        </p>
       </div>
     </div>
 

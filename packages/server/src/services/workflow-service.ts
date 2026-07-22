@@ -231,6 +231,27 @@ export class WorkflowService {
   }
 
   /**
+   * 跨项目转移（backlog #13）：owner 项目专属;请求者须是目标项目 editor+。
+   * 凭证不随迁——旧项目凭证在新归属下解析 404,由前端确认时明示（对标基线告警）。
+   */
+  async transfer(id: string, projectId: string, targetProjectId: string, userId: string): Promise<WorkflowRow> {
+    await this.getById(id, projectId);
+    await this.assertOwnerProject(id, projectId);
+    if (targetProjectId === projectId) {
+      throw new OperationalError('Workflow is already in this project', { status: 400 });
+    }
+    if (!(await this.repos.projects.findById(targetProjectId))) {
+      throw new OperationalError('Target project not found', { status: 400 });
+    }
+    const role = await this.repos.projects.findMemberRole(targetProjectId, userId);
+    if (role !== 'project:editor' && role !== 'project:owner') {
+      throw new OperationalError('Requires editor access in the target project', { status: 403 });
+    }
+    await this.repos.workflows.transferOwner(id, targetProjectId);
+    return this.getById(id, targetProjectId);
+  }
+
+  /**
    * 断言请求方项目是该工作流的归属（owner）项目（共享后受享方 editor 不可删/管共享面;
    * 共享操作本体在 ee/services/sharing-service.ts,此断言是社区侧的归属语义,恒生效）。
    */

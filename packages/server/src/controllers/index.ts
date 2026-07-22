@@ -576,6 +576,21 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
+  /* 跨项目转移（backlog #13）:owner 项目专属,须是目标项目 editor+;凭证不随迁 */
+  router.post(
+    '/workflows/:id/transfer',
+    editor,
+    h(async (req, res) => {
+      const body = (req.body ?? {}) as { projectId?: string };
+      if (typeof body.projectId !== 'string' || !body.projectId) {
+        throw new OperationalError('projectId is required', { status: 400 });
+      }
+      const moved = await services.workflows.transfer(param(req, 'id'), auth(req).projectId, body.projectId, auth(req).userId);
+      recordAudit(services, req, 'workflow.transfer', { type: 'workflow', id: param(req, 'id') }, { to: body.projectId });
+      res.json(moved);
+    }),
+  );
+
   /* 共享操作路由（GET/PUT :id/share、share-targets）在 ee/routes.ts（边界铁律:付费实现进 ee/） */
 
   /** Shared with you：共享**给**当前项目的资源（受享侧;凭证只出元数据,密文/明文都不出）。 */

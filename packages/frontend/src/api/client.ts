@@ -386,6 +386,8 @@ export const api = {
       }>,
     ) =>
       http<WorkflowRow>('PATCH', `/api/workflows/${id}`, body),
+    /* 跨项目转移（owner 项目专属;凭证不随迁） */
+    transfer: (id: string, projectId: string) => http<WorkflowRow>('POST', `/api/workflows/${id}/transfer`, { projectId }),
     move: (id: string, folderId: string | null) =>
       http<WorkflowRow>('PATCH', `/api/workflows/${id}`, { folderId }),
     remove: (id: string) => http<void>('DELETE', `/api/workflows/${id}`),

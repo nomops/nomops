@@ -155,6 +155,52 @@ describe('凭证共享', () => {
   });
 });
 
+describe('跨项目转移（backlog #13）', () => {
+  it('转到我有 editor 权的团队项目;非成员目标 403;受享方不可转;文件夹归零', async () => {
+    // A 建团队项目(自动成为 owner)
+    const team = await request(app).post('/api/projects').set(as(a.token)).send({ name: 'Move Target' }).expect(201);
+    const teamId = team.body.id as string;
+
+    // A 建文件夹 + 放进去的工作流,共享给 B
+    const folder = await request(app).post('/api/folders').set(as(a.token)).send({ name: 'src-folder' }).expect(201);
+    const wf = await request(app)
+      .post('/api/workflows')
+      .set(as(a.token))
+      .send({ ...wfBody('transfer-me'), folderId: folder.body.id })
+      .expect(201);
+    await request(app).put(`/api/workflows/${wf.body.id}/share`).set(as(a.token)).send({ projectIds: [b.projectId] }).expect(200);
+
+    // 受享方 B 不可转移(非 owner 项目)
+    await request(app)
+      .post(`/api/workflows/${wf.body.id}/transfer`)
+      .set(as(b.token))
+      .send({ projectId: b.projectId })
+      .expect(403);
+    // A 转到 B 的个人项目 → A 非其成员 403
+    await request(app)
+      .post(`/api/workflows/${wf.body.id}/transfer`)
+      .set(as(a.token))
+      .send({ projectId: b.projectId })
+      .expect(403);
+
+    // A 转到团队项目 → 成功;个人项目不再可见,团队上下文可见;文件夹归零;共享行清空
+    const moved = await request(app)
+      .post(`/api/workflows/${wf.body.id}/transfer`)
+      .set(as(a.token))
+      .send({ projectId: teamId })
+      .expect(200);
+    expect(moved.body.folderId).toBeNull();
+    await request(app).get(`/api/workflows/${wf.body.id}`).set(as(a.token)).expect(404);
+    await request(app).get(`/api/workflows/${wf.body.id}`).set(as(b.token)).expect(404); // 共享行已清
+    const inTeam = await request(app)
+      .get(`/api/workflows/${wf.body.id}`)
+      .set({ ...as(a.token), 'X-Project-Id': teamId })
+      .expect(200);
+    expect(inTeam.body.name).toBe('transfer-me');
+    expect(await boot.services.repos.workflows.getOwnerProjectId(wf.body.id as string)).toBe(teamId);
+  });
+});
+
 describe('社区版门控', () => {
   it('无 sharing 功能位 → 共享端点 403 带 feature', async () => {
     const cboot = await bootstrap({ dbConfig: { type: 'sqlite' }, licenseKey: null });

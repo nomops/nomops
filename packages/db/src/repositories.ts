@@ -604,6 +604,35 @@ export class WorkflowRepository extends BaseRepository {
     }
   }
 
+  /**
+   * 跨项目转移（backlog #13）：owner 行改指目标项目。
+   * 共享行全清（受享关系不跨项目迁移,也防目标项目已有 editor 行撞 PK）;
+   * folderId 归零（文件夹属于旧项目）。
+   */
+  async transferOwner(workflowId: string, targetProjectId: string): Promise<void> {
+    await this.db
+      .delete(this.schema.sharedWorkflows)
+      .where(
+        and(
+          eq(this.schema.sharedWorkflows.workflowId, workflowId),
+          ne(this.schema.sharedWorkflows.role, ROLE_WORKFLOW_OWNER),
+        ),
+      );
+    await this.db
+      .update(this.schema.sharedWorkflows)
+      .set({ projectId: targetProjectId })
+      .where(
+        and(
+          eq(this.schema.sharedWorkflows.workflowId, workflowId),
+          eq(this.schema.sharedWorkflows.role, ROLE_WORKFLOW_OWNER),
+        ),
+      );
+    await this.db
+      .update(this.schema.workflows)
+      .set({ folderId: null, updatedAt: new Date() })
+      .where(eq(this.schema.workflows.id, workflowId));
+  }
+
   /** 共享**给**某项目的工作流（受享侧,role != owner;Shared with you 页）。 */
   async findSharedWithProject(projectId: string): Promise<Workflow[]> {
     const rows = await this.db

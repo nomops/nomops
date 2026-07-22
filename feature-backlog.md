@@ -43,8 +43,7 @@
 
 - [x] **12. 工作流/凭证共享（sharing）** `L` ✅ 2026-07-22（复用归属 join:共享=插非 owner 行;workflow:editor=读/跑/改、credential:user=仅执行注入;删/改秘密/管共享面恒 owner 专属;实现进 ee/sharing-service(边界铁律);★修 getOwnerProjectId 多行不确定性;前端 Share 弹窗/凭证 Sharing tab/SharedView 真数据;4 server 测;dev license 重签含 sharing,live UI 全流程验证）
 
-- [ ] **13. 工作流移动/转移** `M`
-  「Move to 文件夹」入口恢复（`moveWorkflowToFolder` 死代码在 `OverviewView.vue:441`，需文件夹/项目选择弹窗）+ 跨项目 transfer 端点（含凭证归属校验）。
+- [x] **13. 工作流移动/转移** `M` ✅ 2026-07-22（卡片菜单 Move 复活(基线第 7 项)→弹窗双区:文件夹移动(死代码复用)+跨项目转移;transfer 端点 owner 专属+目标 editor+ 校验,共享行清空/文件夹归零,凭证不随迁(确认时明示);1 server 测;live 弹窗+转移+X-Project-Id 上下文验证）
 
 - [ ] **14. Chat 会话与个人 Agent 落后端** `M`
   现仅 localStorage，不跨设备。→ 会话/agent 表 + CRUD + 前端同步。
