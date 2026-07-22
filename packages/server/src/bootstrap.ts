@@ -22,6 +22,7 @@ import { CommunityNodeService, NpmNodeInstaller } from './services/community-nod
 import type { INodeInstaller } from './services/community-node-service.js';
 import { GitService } from './ee/services/git-service.js';
 import { SharingService } from './ee/services/sharing-service.js';
+import { NullMailer, SmtpMailer, mailerConfigFromEnv, type IMailer } from './services/mailer.js';
 import { PushHub } from './ws/push-hub.js';
 import { ActiveWorkflowManager } from './triggers/active-workflow-manager.js';
 import { LicenseService } from './ee/license/license-service.js';
@@ -116,6 +117,8 @@ export interface BootstrapOptions {
   secretsProvider?: ISecretsProvider;
   /** LDAP 认证器（缺省 ldapts 真实实现；测试注入假实现）。 */
   ldapAuthenticator?: ILdapAuthenticator;
+  /** 邮件投递（测试注入记录桩;生产按 NOMOPS_SMTP_* 环境变量,未配置为 NullMailer）。 */
+  mailer?: IMailer;
   /** 社区节点安装器（缺省 npm 真实实现；测试注入假实现映射到本地 fixture）。 */
   nodeInstaller?: INodeInstaller;
   /** 凭证连接测试的 HTTP 客户端（缺省真实 fetch；测试注入假实现，不打真网）。 */
@@ -305,6 +308,8 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   // 实例级 MCP：把勾选的工作流暴露为 MCP tools（Preview）
   const mcp = new McpService(repos, executions, workflows);
   const sharing = new SharingService(repos, workflows, credentialService);
+  const mailerConfig = mailerConfigFromEnv(process.env);
+  const mailer: IMailer = opts.mailer ?? (mailerConfig ? new SmtpMailer(mailerConfig) : new NullMailer());
 
   const services: AppServices = {
     repos,
@@ -316,6 +321,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     communityNodes,
     git,
     sharing,
+    mailer,
     credentials: credentialService,
     executions,
     pushHub,

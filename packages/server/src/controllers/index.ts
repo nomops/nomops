@@ -190,6 +190,14 @@ export function createAuthRouter(services: AppServices): Router {
         const base = process.env['NOMOPS_BASE_URL'] ?? `${proto}://${req.headers.host ?? 'localhost'}`;
         const link = `${base.replace(/\/$/, '')}/login?reset=${encodeURIComponent(result.token)}`;
         console.log(`[nomops] 密码重置链接（${result.email}）: ${link}`);
+        // SMTP 已配置则真发邮件（backlog #18）;失败只记日志——响应恒 ok,不给枚举面
+        void services.mailer
+          .send(
+            result.email,
+            'Reset your nomops password',
+            `You requested a password reset for your nomops account.\n\nReset link: ${link}\n\nIf you did not request this, you can safely ignore this email.`,
+          )
+          .catch((e: Error) => console.error('[nomops] 重置邮件发送失败:', e.message));
       }
       res.json({ ok: true });
     }),
@@ -1695,6 +1703,14 @@ export function createApiRouter(services: AppServices): Router {
         baseUrl: base,
       });
       recordAudit(services, req, 'user.invite', { type: 'invitation', id: invitation.id }, { email: invitation.email });
+      // SMTP 已配置则给受邀人发邮件（backlog #18）;响应仍带链接,便于当面转发
+      void services.mailer
+        .send(
+          invitation.email,
+          'You have been invited to nomops',
+          `You have been invited to join a nomops instance.\n\nAccept the invite: ${link}\n\nThis link is personal — do not share it.`,
+        )
+        .catch((e: Error) => console.error('[nomops] 邀请邮件发送失败:', e.message));
       res.status(201).json({ id: invitation.id, email: invitation.email, role: invitation.role, inviteLink: link });
     }),
   );
