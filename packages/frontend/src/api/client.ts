@@ -548,6 +548,8 @@ export const api = {
     disable: () => http<McpStatus>('POST', '/api/mcp/disable'),
     setWorkflows: (workflowIds: string[]) => http<McpStatus>('PUT', '/api/mcp/workflows', { workflowIds }),
     setRedirectUrls: (redirectUrls: string[]) => http<McpStatus>('PUT', '/api/mcp/redirect-urls', { redirectUrls }),
+    setWorkflowDescription: (id: string, description: string) =>
+      http<McpStatus>('PUT', `/api/mcp/workflows/${id}/description`, { description }),
   },
 
   /* Chat 设置（Settings → Chat，Preview） */

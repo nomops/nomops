@@ -1,7 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { createPinia, setActivePinia } from 'pinia';
 import type { INodeProperties } from '@nomops/workflow';
 import ParamInput from '../ParamInput.vue';
+
+// ParamInput 引 editor store（panel-right → Focus Panel 联动），挂测试 pinia
+beforeEach(() => setActivePinia(createPinia()));
 
 const make = (prop: Partial<INodeProperties>, value: unknown = undefined) =>
   mount(ParamInput, {
@@ -55,19 +59,46 @@ describe('ParamInput（schema 驱动控件分发）', () => {
     expect(w.emitted('change')![0]).toEqual([true]);
   });
 
-  it('options → select 渲染全部选项', () => {
+  it('options → 自定义下拉(D114):展开列全部选项,点击选中并关闭', async () => {
     const w = make(
       {
         type: 'options',
         default: 'a',
         options: [
           { name: 'A', value: 'a' },
-          { name: 'B', value: 'b' },
+          { name: 'B', value: 'b', description: 'the b option' },
         ],
       },
       'a',
     );
-    expect(w.findAll('option')).toHaveLength(2);
+    expect(w.find('[data-test="options-toggle"]').text()).toContain('A');
+    await w.find('[data-test="options-toggle"]').trigger('click');
+    const items = w.findAll('.opt-dd-item');
+    expect(items).toHaveLength(2);
+    expect(items[1]!.text()).toContain('the b option'); // 描述副行
+    await items[1]!.trigger('click');
+    expect(w.emitted('change')![0]).toEqual(['b']);
+    expect(w.find('[data-test="options-pop"]').exists()).toBe(false); // 选后关闭
+  });
+
+  it('panel-right:有 nodeName 才显示,点击钉进 Focus Panel', async () => {
+    const w = mount(ParamInput, {
+      props: {
+        prop: { displayName: 'T', name: 'p1', type: 'string', default: '' } as INodeProperties,
+        value: 'x',
+        nodeName: 'Node A',
+      },
+    });
+    const btn = w.find('[data-test="param-focus"]');
+    expect(btn.exists()).toBe(true);
+    await btn.trigger('click');
+    const { useEditorStore } = await import('../../../stores/editor.js');
+    const editor = useEditorStore();
+    expect(editor.pinnedParams).toEqual([{ nodeName: 'Node A', paramName: 'p1' }]);
+    expect(editor.focusPanelOpen).toBe(true);
+    // 无 nodeName(Focus 面板自身上下文)不显示
+    const w2 = make({ type: 'string' }, 'x');
+    expect(w2.find('[data-test="param-focus"]').exists()).toBe(false);
   });
 
   it('json → textarea，合法 JSON 失焦提交、非法给错误', async () => {

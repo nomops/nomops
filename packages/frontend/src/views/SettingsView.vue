@@ -650,6 +650,31 @@ async function loadMcp() {
     mcpError.value = (e as Error).message; // 非 admin → 403
   }
 }
+/** D144:MCP 表描述可编辑（prompt 流,同 Rename node 惯例;保存后刷新 status）。 */
+async function editMcpDescription(w: { id: string; name: string; description: string | null }) {
+  const next = window.prompt(`Description for "${w.name}"`, w.description ?? '');
+  if (next === null) return;
+  mcpError.value = '';
+  try {
+    mcpStatus.value = await api.mcp.setWorkflowDescription(w.id, next);
+  } catch (e) {
+    mcpError.value = (e as Error).message;
+  }
+}
+
+/* D143:Connection details 的 Configuration JSON(按认证方式生成客户端 mcpServers 配置) */
+const mcpConfigJson = computed(() => {
+  const server: Record<string, unknown> = { url: mcpServerUrl.value };
+  if (mcpConnMode.value === 'token') server['headers'] = { Authorization: 'Bearer <access-token>' };
+  return JSON.stringify({ mcpServers: { nomops: server } }, null, 2);
+});
+const mcpJsonCopied = ref(false);
+async function copyMcpConfigJson() {
+  await navigator.clipboard?.writeText(mcpConfigJson.value).catch(() => undefined);
+  mcpJsonCopied.value = true;
+  setTimeout(() => (mcpJsonCopied.value = false), 1500);
+}
+
 /** OAuth redirect 允许清单持久化（backlog #9;每行一个 URL,仅 http(s)）。 */
 async function saveMcpRedirects() {
   mcpError.value = '';
@@ -2926,6 +2951,14 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                   The client runs the OAuth consent flow against this URL — no token to copy. Add its callback to the
                   allowlist under <b>OAuth settings</b> first.
                 </p>
+                <!-- D143:基线连接详情还有 Configuration JSON 一项(客户端 mcpServers 配置) -->
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 12px">
+                  <label style="font-size: 12px; color: var(--text-dim)">Configuration JSON</label>
+                  <button class="btn secondary btn-sm" data-test="mcp-json-copy" @click="copyMcpConfigJson">
+                    {{ mcpJsonCopied ? 'Copied ✓' : 'Copy' }}
+                  </button>
+                </div>
+                <pre class="mcp-config-json" data-test="mcp-config-json">{{ mcpConfigJson }}</pre>
               </div>
             </div>
           </div>
@@ -2984,7 +3017,16 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                   <tr v-for="w in mcpEnabledWorkflows" :key="w.id" data-test="mcp-wf-row">
                     <td>{{ w.name }}</td>
                     <td class="dim">{{ w.projectName }}</td>
-                    <td class="dim" data-test="mcp-wf-desc">{{ w.description || t('No description') }}</td>
+                    <!-- D144:描述可点击编辑(对标基线 editTooltip/updateDescription) -->
+                    <td
+                      class="dim mcp-desc-cell"
+                      data-test="mcp-wf-desc"
+                      :title="t('Click to edit description')"
+                      @click="editMcpDescription(w)"
+                    >
+                      {{ w.description || t('No description') }}
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="mcp-desc-pen"><path d="M4 20h4L18.7 9.3a1.9 1.9 0 0 0-2.7-2.7L5 17.3z" /><path d="M14.5 8.5l3 3" /></svg>
+                    </td>
                     <td style="text-align: right">
                       <button class="btn secondary btn-sm" :data-test-mcp-remove="w.id" @click="removeMcpWorkflow(w.id)">Remove</button>
                     </td>
@@ -3690,6 +3732,16 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
   background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
   padding: 14px 16px 16px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
 }
+/* D143 Configuration JSON */
+.mcp-config-json {
+  margin: 4px 0 0; padding: 10px 12px; max-height: 180px; overflow: auto;
+  background: var(--bg-input); border: 1px solid var(--border); border-radius: 6px;
+  font-size: 11.5px; line-height: 1.5; color: var(--text); white-space: pre;
+}
+/* D144 描述可编辑 */
+.mcp-desc-cell { cursor: pointer; }
+.mcp-desc-pen { width: 12px; height: 12px; margin-left: 6px; opacity: 0; vertical-align: -1px; }
+.mcp-desc-cell:hover .mcp-desc-pen { opacity: 0.7; }
 /* 页头（标题 + 右上用户 chip） */
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; max-width: 880px; }
 .me-chip { display: flex; align-items: center; gap: 10px; }

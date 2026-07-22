@@ -163,6 +163,8 @@ function onKey(e: KeyboardEvent) {
   <div v-if="ui.paletteOpen" class="palette-overlay" data-test="command-palette" @click.self="ui.closePalette()">
     <div class="palette">
       <div class="palette-search">
+        <!-- D026:上下文徽标(工作流内打开时显示 "Workflow · 名称") -->
+        <span v-if="ui.paletteContextLabel" class="palette-ctx" data-test="palette-ctx">{{ ui.paletteContextLabel }}</span>
         <input
           ref="inputEl"
           v-model="query"
@@ -219,6 +221,13 @@ function onKey(e: KeyboardEvent) {
 }
 .palette-search { position: relative; display: flex; align-items: center; border-bottom: var(--border-width) var(--border-style) var(--border-color); }
 .palette-search .search-icon { display: none; }
+/* D026 上下文徽标 */
+.palette-ctx {
+  flex: none; margin-left: 12px; padding: 3px 8px; border-radius: 4px;
+  background: var(--color--background--light-1); color: var(--color--text--tint-1);
+  font-size: var(--font-size--2xs); white-space: nowrap; max-width: 40%;
+  overflow: hidden; text-overflow: ellipsis;
+}
 .palette-search input {
   flex: 1; background: none; border: none; border-radius: 0; box-shadow: none;
   height: 48px; padding: 0 32px 0 var(--spacing--sm); font-size: var(--font-size--sm);

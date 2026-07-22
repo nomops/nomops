@@ -37,8 +37,7 @@
 
 - [x] **10. 执行批量删除** `S` ✅ 2026-07-22（POST /api/executions/delete ≤500/批,归属外静默跳过+audit;前端多选浮条改单请求;1 server 测;live deleted:2 验证）
 
-- [ ] **11. 台账遗留 UI 小项清扫** `S`
-  D026 命令面板上下文徽标、D114 options 自定义下拉、panel-right 图标与 Focus Panel 联动、MCP 弹层 Configuration JSON（D143）、MCP workflows description 可编辑（D144）。
+- [x] **11. 台账遗留 UI 小项清扫** `S` ✅ 2026-07-22（D026 面板 "Workflow · 名" 徽标(改名实时跟随);D114 options 自定义下拉(描述副行/键盘导航/点击外关闭);panel-right→Focus Panel 钉参联动;D143 弹层 Configuration JSON+复制;D144 描述铅笔编辑(新 admin 端点 unscoped 仅 description);2 前端测+1 server 测;live 三项截图验证）
 
 ## P3 · 协作与归属（表结构已就绪）
 

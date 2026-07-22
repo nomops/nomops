@@ -85,6 +85,13 @@ export class McpService {
     await this.repos.settings.set(SETTINGS.redirectUrls, JSON.stringify(cleaned));
   }
 
+  /** D144:MCP 页可编辑工作流描述（实例 admin 面;跨项目走 unscoped,只许动 description）。 */
+  async setWorkflowDescription(workflowId: string, description: string): Promise<void> {
+    const row = await this.repos.workflows.findByIdUnscoped(workflowId);
+    if (!row) throw new OperationalError('Workflow not found', { workflowId, status: 404 });
+    await this.repos.workflows.update(workflowId, { description: description.trim() || null });
+  }
+
   async status(): Promise<{
     enabled: boolean;
     tokenConfigured: boolean;

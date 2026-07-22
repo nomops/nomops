@@ -398,7 +398,13 @@ onMounted(async () => {
   window.addEventListener('click', closeMenu);
   window.addEventListener('click', closePublishMenu);
   window.addEventListener('keydown', onKeydown);
-  ui.setPaletteContext(canvasCommands); // 画布上下文命令入全局 ⌘K 面板
+  ui.setPaletteContext(canvasCommands, `Workflow · ${editor.name}`); // 画布上下文命令 + D026 徽标入全局 ⌘K 面板
+  watch(
+    () => editor.name,
+    (n) => {
+      if (ui.paletteContextLabel) ui.paletteContextLabel = `Workflow · ${n}`; // 改名实时跟随
+    },
+  );
 });
 onUnmounted(() => {
   window.removeEventListener('click', closeMenu);

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { INodeExecutionData, INodeProperties } from '@nomops/workflow';
 import { resolveParameterValue } from '@nomops/workflow';
 import ExpressionInput from './ExpressionInput.vue';
+import { useEditorStore } from '../../stores/editor.js';
 import { t } from '../../lib/i18n.js';
 import { LINKS } from '../../lib/links.js';
 
@@ -19,8 +20,16 @@ const props = defineProps<{
   /** 表达式预览与拖拽映射的上下文（NDV 传入上游输入 items）。 */
   previewItems?: INodeExecutionData[];
   nodeParameters?: Record<string, unknown>;
+  /** 所属节点名（NDV 传入;有值时工具条显示 panel-right → 钉进 Focus Panel）。 */
+  nodeName?: string;
 }>();
 const emit = defineEmits<{ change: [value: unknown] }>();
+
+/* panel-right → Focus Panel 联动（P1-CC 单列待办清偿;Focus 面板上下文不传 nodeName 不显示） */
+const editorStore = useEditorStore();
+const paramPinned = computed(() =>
+  props.nodeName ? editorStore.isParamPinned(props.nodeName, props.prop.name) : false,
+);
 
 const current = computed(() => props.value ?? props.prop.default);
 
@@ -83,6 +92,59 @@ function resetValue() {
   menuOpen.value = false;
   emit('change', props.prop.default);
 }
+
+/* D114:options 自定义下拉(替代原生 select;点击外关闭/键盘导航/选项带描述副行) */
+const optOpen = ref(false);
+const optHover = ref(0);
+const currentOptionName = computed(() => {
+  const found = (props.prop.options ?? []).find((o) => o.value === current.value);
+  return found?.name ?? String(current.value ?? '');
+});
+function pickOption(value: unknown) {
+  optOpen.value = false;
+  emit('change', value);
+}
+function toggleOptOpen() {
+  optOpen.value = !optOpen.value;
+  if (optOpen.value) {
+    const idx = (props.prop.options ?? []).findIndex((o) => o.value === current.value);
+    optHover.value = idx >= 0 ? idx : 0;
+  }
+}
+function onOptKeydown(event: KeyboardEvent) {
+  if (!optOpen.value) {
+    if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      toggleOptOpen();
+    }
+    return;
+  }
+  const count = (props.prop.options ?? []).length;
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    optHover.value = (optHover.value + 1) % count;
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    optHover.value = (optHover.value - 1 + count) % count;
+  } else if (event.key === 'Enter') {
+    event.preventDefault();
+    const opt = (props.prop.options ?? [])[optHover.value];
+    if (opt) pickOption(opt.value);
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    optOpen.value = false;
+  }
+}
+/* 点击外关闭（options 下拉与 ⋮ 菜单共用一个全局监听） */
+const rootEl = ref<HTMLElement | null>(null);
+function onDocClick(event: MouseEvent) {
+  if (!rootEl.value?.contains(event.target as Node)) {
+    optOpen.value = false;
+    menuOpen.value = false;
+  }
+}
+onMounted(() => document.addEventListener('click', onDocClick, true));
+onBeforeUnmount(() => document.removeEventListener('click', onDocClick, true));
 function toggleExpression() {
   if (isExpression.value) emit('change', String(current.value).slice(1));
   else emit('change', `=${String(current.value ?? '')}`);
@@ -208,7 +270,7 @@ function removeField(i: number) {
 </script>
 
 <template>
-  <div class="param" :data-test-param="prop.name">
+  <div ref="rootEl" class="param" :data-test-param="prop.name">
     <!-- D112 对标基线:notice 渲染为紫色 Tip 提示条(非灰文本) -->
     <template v-if="prop.type === 'notice'">
       <div class="param-notice" data-test="param-notice">
@@ -233,6 +295,18 @@ function removeField(i: number) {
             stroke-width="2"
             stroke-linecap="round"
           ><circle cx="12" cy="12" r="10" /><path d="M12 16v-4m0-4h.01" /></svg>
+          <!-- panel-right:在 Focus Panel 中打开此字段(钉住;再点解钉) -->
+          <button
+            v-if="nodeName"
+            type="button"
+            class="pt-focus"
+            :class="{ on: paramPinned }"
+            data-test="param-focus"
+            :title="paramPinned ? 'Remove from Focus Panel' : 'Open in Focus Panel'"
+            @click.stop="editorStore.togglePinParam(nodeName!, prop.name)"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M15 4v16" /></svg>
+          </button>
           <span class="pt-menu-anchor">
             <button class="pt-dots" type="button" data-test="param-menu" :aria-label="t('Parameter options')" @click.stop="menuOpen = !menuOpen">
               <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="12" cy="19" r="1.7" /></svg>
@@ -335,15 +409,33 @@ function removeField(i: number) {
         <span class="pswitch-knob" />
       </button>
 
-      <select
-        v-else-if="prop.type === 'options'"
-        :value="String(current ?? '')"
-        @change="emit('change', ($event.target as HTMLSelectElement).value)"
-      >
-        <option v-for="opt in prop.options ?? []" :key="String(opt.value)" :value="opt.value">
-          {{ opt.name }}
-        </option>
-      </select>
+      <!-- D114 对标基线:options 自定义下拉(选项带描述副行;键盘 ↑↓/Enter/Esc;点击外关闭) -->
+      <div v-else-if="prop.type === 'options'" class="opt-dd" data-test="options-dropdown" @keydown="onOptKeydown">
+        <button type="button" class="opt-dd-btn" :aria-expanded="optOpen" data-test="options-toggle" @click.stop="toggleOptOpen">
+          <span class="opt-dd-cur">{{ currentOptionName }}</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="opt-dd-chev" :class="{ open: optOpen }"><path d="M6 9l6 6 6-6" /></svg>
+        </button>
+        <div v-if="optOpen" class="opt-dd-pop" role="listbox" data-test="options-pop">
+          <button
+            v-for="(opt, i) in prop.options ?? []"
+            :key="String(opt.value)"
+            type="button"
+            class="opt-dd-item"
+            :class="{ sel: opt.value === current, hov: i === optHover }"
+            role="option"
+            :aria-selected="opt.value === current"
+            :data-test-option="String(opt.value)"
+            @mouseenter="optHover = i"
+            @click.stop="pickOption(opt.value)"
+          >
+            <span class="opt-dd-name">
+              {{ opt.name }}
+              <svg v-if="opt.value === current" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" class="opt-dd-check"><path d="M5 13l4 4 10-10" /></svg>
+            </span>
+            <span v-if="opt.description" class="opt-dd-desc">{{ opt.description }}</span>
+          </button>
+        </div>
+      </div>
 
       <!-- D108 对标基线:multiOptions 多选(勾选芯片),值为数组 -->
       <div v-else-if="prop.type === 'multiOptions'" class="multi-opts" data-test="multi-options">
@@ -500,6 +592,39 @@ function removeField(i: number) {
 /* D110/D116 live 实测基线:ⓘ 12×12 dim;⋮ 12×12;分段按钮 10px/500、高 15 */
 .param-tools { display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; }
 .pt-help { width: 12px; height: 12px; color: var(--text-dim); flex: none; }
+.pt-focus {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; padding: 0; background: none; border: none; border-radius: 3px;
+  color: var(--text-dim); cursor: pointer;
+}
+.pt-focus svg { width: 13px; height: 13px; }
+.pt-focus:hover { color: var(--text); background: var(--color--background--light-1); }
+.pt-focus.on { color: var(--accent); }
+/* D114 options 自定义下拉 */
+.opt-dd { position: relative; }
+.opt-dd-btn {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; height: 32px; padding: 0 10px; text-align: left;
+  background: var(--bg-input); border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--radius); color: var(--text); font-size: var(--font-size--sm); cursor: pointer;
+}
+.opt-dd-cur { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opt-dd-chev { width: 14px; height: 14px; flex: none; color: var(--text-dim); transition: transform 0.12s; }
+.opt-dd-chev.open { transform: rotate(180deg); }
+.opt-dd-pop {
+  position: absolute; left: 0; right: 0; top: 34px; z-index: 40; max-height: 260px; overflow: auto;
+  background: var(--color--background--light-3); border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: 6px; padding: 4px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+}
+.opt-dd-item {
+  display: block; width: 100%; height: auto; padding: 7px 10px; text-align: left;
+  background: none; border: none; border-radius: 4px; cursor: pointer; color: var(--text);
+}
+.opt-dd-item.hov { background: var(--color--background--light-1); }
+.opt-dd-name { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: var(--font-size--sm); }
+.opt-dd-check { width: 13px; height: 13px; color: var(--accent); flex: none; }
+.opt-dd-item.sel .opt-dd-name { color: var(--color--text--shade-1); }
+.opt-dd-desc { display: block; margin-top: 2px; font-size: var(--font-size--2xs); color: var(--text-dim); line-height: 1.4; }
 .pt-menu-anchor { position: relative; display: inline-flex; }
 .pt-dots {
   width: 12px; height: 12px; padding: 0; border: none; background: transparent;

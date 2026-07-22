@@ -24,6 +24,8 @@ export const useUiStore = defineStore('ui', {
     paletteOpen: false,
     /** 当前视图注入的上下文命令（离开视图时清空）。 */
     paletteContext: [] as PaletteCommand[],
+    /** D026:面板上下文徽标（如 "Workflow · 名称"）。 */
+    paletteContextLabel: null as string | null,
     /** Settings → Chat 开关的共享状态：侧栏 Chat 入口实时显隐（切换即生效，无需刷新）。 */
     chatEnabled: true,
   }),
@@ -44,11 +46,13 @@ export const useUiStore = defineStore('ui', {
     closePalette() {
       this.paletteOpen = false;
     },
-    setPaletteContext(commands: PaletteCommand[]) {
+    setPaletteContext(commands: PaletteCommand[], label: string | null = null) {
       this.paletteContext = commands;
+      this.paletteContextLabel = label;
     },
     clearPaletteContext() {
       this.paletteContext = [];
+      this.paletteContextLabel = null;
     },
     setChatEnabled(enabled: boolean) {
       this.chatEnabled = enabled;

@@ -1296,6 +1296,21 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
+  /* D144:MCP 页可编辑工作流描述（实例 admin;跨项目 unscoped,仅 description） */
+  router.put(
+    '/mcp/workflows/:id/description',
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      const body = (req.body ?? {}) as { description?: string };
+      if (typeof body.description !== 'string' || body.description.length > 2000) {
+        throw new OperationalError('description must be a string (max 2000 chars)', { status: 400 });
+      }
+      await services.mcp.setWorkflowDescription(param(req, 'id'), body.description);
+      recordAudit(services, req, 'mcp.workflow-description-update', { type: 'workflow', id: param(req, 'id') });
+      res.json(await services.mcp.status());
+    }),
+  );
+
   /* OAuth redirect 允许清单持久化（backlog #9;OAuth 授权流本体见 #25） */
   router.put(
     '/mcp/redirect-urls',

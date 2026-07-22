@@ -163,4 +163,31 @@ describe('MCP redirect 允许清单', () => {
 
     await request(app).put('/api/mcp/redirect-urls').set(admin()).send({ redirectUrls: 'nope' }).expect(400);
   });
+
+  it('D144:MCP 页更新工作流描述(unscoped,仅 description);幽灵 id 404', async () => {
+    await setup();
+    const wf = await request(app)
+      .post('/api/workflows')
+      .set(admin())
+      .send({
+        name: 'desc-target',
+        nodes: [{ id: 'a', name: 'Start', type: 'nomops.manualTrigger', typeVersion: 1, position: [0, 0], parameters: {} }],
+        connections: {},
+      })
+      .expect(201);
+
+    const st = await request(app)
+      .put(`/api/mcp/workflows/${wf.body.id}/description`)
+      .set(admin())
+      .send({ description: 'Runs the nightly digest' })
+      .expect(200);
+    const row = (st.body.workflows as Array<{ id: string; description: string | null }>).find((w) => w.id === wf.body.id);
+    expect(row?.description).toBe('Runs the nightly digest');
+
+    await request(app)
+      .put('/api/mcp/workflows/00000000-0000-0000-0000-000000000000/description')
+      .set(admin())
+      .send({ description: 'x' })
+      .expect(404);
+  });
 });

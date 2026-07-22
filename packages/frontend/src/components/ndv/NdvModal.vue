@@ -279,6 +279,7 @@ async function executeStep() {
                 :value="node.parameters[prop.name]"
                 :preview-items="inputItems"
                 :node-parameters="node.parameters"
+                :node-name="node.name"
                 @change="editor.setParam(node.name, prop.name, $event)"
               />
             </div>
