@@ -10,6 +10,7 @@ import {
   seedTriggerOutput,
 } from '@nomops/core';
 import type {
+  IBinaryData,
   IConnections,
   INode,
   INodeExecutionData,
@@ -151,6 +152,7 @@ export class ExecutionService {
     projectId: string,
     message: string,
     sessionId: string,
+    attachments?: Array<{ fileName?: string; mimeType: string; data: string }>,
   ): Promise<{ executionId: string; status: string; reply: string; error?: string }> {
     const row = await this.workflowService.getById(workflowId, projectId);
     const trigger = (row.nodes as INode[]).find((n) => n.type === 'nomops.chatTrigger' && !n.disabled);
@@ -159,6 +161,19 @@ export class ExecutionService {
     }
     const workflow = this.toWorkflow(row, { applyPinData: true }); // 画布聊天属手动调试语境
     const startNode = workflow.getNode(trigger.name);
+
+    // 多模态附件（#32）：有 store 落 store 引用，否则内联 base64;都能被 binaryToBuffer 取回
+    const binary: Record<string, IBinaryData> = {};
+    for (const [i, att] of (attachments ?? []).entries()) {
+      const meta = { mimeType: att.mimeType, ...(att.fileName ? { fileName: att.fileName } : {}) };
+      binary[`file${i}`] = this.binaryStore
+        ? await this.binaryStore.put(Buffer.from(att.data, 'base64'), meta)
+        : { data: att.data, mimeType: att.mimeType, ...(att.fileName ? { fileName: att.fileName } : {}) };
+    }
+    const seedItem: INodeExecutionData = {
+      json: { chatInput: message, sessionId, ...(attachments?.length ? { attachmentCount: attachments.length } : {}) },
+      ...(Object.keys(binary).length ? { binary } : {}),
+    };
 
     await this.quota.consume(projectId);
     const execution = await this.createExecutionRow(row, 'chat', {
@@ -169,7 +184,7 @@ export class ExecutionService {
       execution,
       projectId,
       'chat',
-      (engine) => engine.run(workflow, startNode ?? undefined, undefined, [{ json: { chatInput: message, sessionId } }]),
+      (engine) => engine.run(workflow, startNode ?? undefined, undefined, [seedItem]),
       (row.staticData as JsonObject | null) ?? {},
       { resumeToken: this.newResumeToken() },
     );

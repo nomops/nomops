@@ -139,11 +139,23 @@ export const licenseActivateSchema = z.object({
   activationKey: z.string().min(1, 'Activation key is required').max(5000),
 });
 
-/** 画布/API 聊天（Chat Trigger）。 */
-export const chatBodySchema = z.object({
-  message: z.string().min(1).max(20_000),
-  sessionId: z.string().min(1).max(100).optional().default('default'),
+/** 多模态附件（backlog #32）：base64 内联。图片进视觉模型，其余节点可读 binary。 */
+export const chatAttachmentSchema = z.object({
+  fileName: z.string().max(300).optional(),
+  mimeType: z.string().min(1).max(200),
+  data: z.string().min(1).max(14_000_000), // base64（~10MB 原文，配合 express.json 15mb 限）
 });
+
+/** 画布/API 聊天（Chat Trigger）。message 可空（仅附件时）。 */
+export const chatBodySchema = z
+  .object({
+    message: z.string().max(20_000).optional().default(''),
+    sessionId: z.string().min(1).max(100).optional().default('default'),
+    attachments: z.array(chatAttachmentSchema).max(10).optional(),
+  })
+  .refine((v) => v.message.trim().length > 0 || (v.attachments?.length ?? 0) > 0, {
+    message: 'Provide a message or at least one attachment',
+  });
 
 export const runBodySchema = z.object({
   destinationNode: z.string().optional(),

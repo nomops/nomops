@@ -26,7 +26,7 @@ export function createApp(services?: AppServices): Express {
   const app = express();
   // billing webhook 要 raw body（服务商原文验签），必须挂在全局 json 解析之前
   if (services) app.use(createBillingRouter(services));
-  app.use(express.json({ limit: '10mb' }));
+  app.use(express.json({ limit: '15mb' })); // 15mb 容多模态 chat 附件 base64（#32）
 
   app.get('/healthz', (_req: Request, res: Response) => {
     res.status(200).json({ status: 'ok' });

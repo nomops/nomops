@@ -547,7 +547,15 @@ export function createApiRouter(services: AppServices): Router {
     editor,
     h(async (req, res) => {
       const body = parseBody(chatBodySchema, req);
-      res.json(await services.executions.chat(param(req, 'id'), auth(req).projectId, body.message, body.sessionId));
+      res.json(
+        await services.executions.chat(
+          param(req, 'id'),
+          auth(req).projectId,
+          body.message,
+          body.sessionId,
+          body.attachments,
+        ),
+      );
     }),
   );
 
