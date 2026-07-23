@@ -238,6 +238,8 @@ describe('node-types', () => {
       'chatTrigger',
       'code',
       'errorTrigger',
+      'evaluation',
+      'evaluationTrigger',
       'executeWorkflow',
       'executeWorkflowTrigger',
       'filter',

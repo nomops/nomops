@@ -157,6 +157,12 @@ export const activateBodySchema = z.object({
   active: z.boolean(),
 });
 
+/** 发起评测运行（backlog #31）：不传 dataTableId 则用 Evaluation Trigger 节点绑定的数据集。 */
+export const testRunBodySchema = z.object({
+  dataTableId: z.string().min(1).max(100).optional(),
+  limit: z.number().int().min(0).max(10_000).optional(),
+});
+
 const projectRoleSchema = z.enum(['project:viewer', 'project:editor', 'project:owner']);
 
 export const createProjectSchema = z.object({

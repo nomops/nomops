@@ -22,6 +22,7 @@ import type { LdapService } from './ee/ldap/ldap-service.js';
 import type { OAuth2Service } from './services/oauth2-service.js';
 import type { VariableService } from './services/variable-service.js';
 import type { DataTableService } from './services/data-table-service.js';
+import type { EvaluationService } from './services/evaluation-service.js';
 import type { WaitTracker } from './services/wait-tracker.js';
 import type { ExecutionPruner } from './services/execution-pruner.js';
 import type { ApiKeyService } from './services/api-key-service.js';
@@ -65,6 +66,7 @@ export interface AppServices {
   oauth2: OAuth2Service;
   variables: VariableService;
   dataTables: DataTableService;
+  evaluations: EvaluationService;
   mailer: IMailer;
   waitTracker: WaitTracker;
   executionPruner: ExecutionPruner;

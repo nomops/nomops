@@ -33,6 +33,7 @@ import { SamlService } from './ee/sso/saml-service.js';
 import { OAuth2Service } from './services/oauth2-service.js';
 import { VariableService } from './services/variable-service.js';
 import { DataTableService } from './services/data-table-service.js';
+import { EvaluationService } from './services/evaluation-service.js';
 import { WaitTracker } from './services/wait-tracker.js';
 import { ExecutionPruner, prunerOptionsFromEnv } from './services/execution-pruner.js';
 import {
@@ -314,6 +315,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   credentialService.setTokenRefresher((id, pid) => oauth2.refreshIfNeeded(id, pid));
   const variables = new VariableService(repos);
   const dataTables = new DataTableService(repos);
+  const evaluations = new EvaluationService(repos, workflows, executions);
   // LDAP 登录（docs/10 B5）：opts.ldapAuthenticator 供测试注入假实现；生产用 ldapts
   const ldap = new LdapService(repos, credentials, auth, license, opts.ldapAuthenticator);
   const scim = new ScimService(repos);
@@ -363,6 +365,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     oauth2,
     variables,
     dataTables,
+    evaluations,
     waitTracker,
     executionPruner,
     mcp,

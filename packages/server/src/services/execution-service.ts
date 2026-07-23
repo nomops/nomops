@@ -193,6 +193,36 @@ export class ExecutionService {
   }
 
   /**
+   * 评测逐行运行（backlog #31）：把一行数据 seed 进指定起点节点，跑完返回执行 id + IRun。
+   * 评测执行一律保留（不套 saveManualExecutions 删除策略），供用例详情回看。
+   */
+  async runEvaluationCase(
+    row: WorkflowRow,
+    projectId: string,
+    startNodeName: string,
+    seedItems: INodeExecutionData[],
+  ): Promise<{ executionId: string; run: IRun }> {
+    const workflow = this.toWorkflow(row);
+    const startNode = workflow.getNode(startNodeName);
+    if (!startNode) throw new OperationalError(`Start node not found: ${startNodeName}`, { status: 400 });
+
+    await this.quota.consume(projectId); // 每行都是真实执行，计入配额
+    const execution = await this.createExecutionRow(row, 'evaluation', {
+      resultData: { runData: {} },
+    } as unknown as JsonObject);
+    const run = await this.runEngine(
+      workflow,
+      execution,
+      projectId,
+      'evaluation',
+      (engine) => engine.run(workflow, startNode, undefined, seedItems),
+      (row.staticData as JsonObject | null) ?? {},
+      { resumeToken: this.newResumeToken() },
+    );
+    return { executionId: execution.id, run };
+  }
+
+  /**
    * 执行保存策略（workflow settings，对标基线）：默认全存；
    * saveManualExecutions / saveFailedExecutions / saveSuccessfulExecutions 置 false → 收尾后删除该执行记录。
    * waiting（挂起待续跑）不删。统计已在收尾前累计，不受影响。

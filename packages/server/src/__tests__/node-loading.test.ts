@@ -20,6 +20,8 @@ describe('内置节点通过加载器可用', () => {
       'chatTrigger',
       'code',
       'errorTrigger',
+      'evaluation',
+      'evaluationTrigger',
       'executeWorkflow',
       'executeWorkflowTrigger',
       'filter',

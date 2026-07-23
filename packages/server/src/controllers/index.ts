@@ -43,6 +43,7 @@ import {
   quotaBodySchema,
   registerSchema,
   runBodySchema,
+  testRunBodySchema,
   chatBodySchema,
   updateMeSchema,
   changePasswordSchema,
@@ -558,6 +559,38 @@ export function createApiRouter(services: AppServices): Router {
       const summary = await services.executions.runManually(param(req, 'id'), auth(req).projectId, body);
       recordAudit(services, req, 'workflow.run', { type: 'workflow', id: param(req, 'id') }, { mode: 'manual', executionId: summary.executionId });
       res.json(summary);
+    }),
+  );
+
+  /* ── 评测/测试（backlog #31）：Evaluation Trigger + data table 逐行跑 ── */
+  router.post(
+    '/workflows/:id/test-runs',
+    editor,
+    h(async (req, res) => {
+      const body = parseBody(testRunBodySchema, req);
+      const run = await services.evaluations.createTestRun(param(req, 'id'), auth(req).projectId, body);
+      recordAudit(services, req, 'evaluation.run', { type: 'workflow', id: param(req, 'id') }, { testRunId: run.id, cases: run.totalCases });
+      res.status(201).json(run);
+    }),
+  );
+  router.get(
+    '/workflows/:id/test-runs',
+    h(async (req, res) => {
+      res.json(await services.evaluations.listTestRuns(param(req, 'id'), auth(req).projectId));
+    }),
+  );
+  router.get(
+    '/test-runs/:id',
+    h(async (req, res) => {
+      res.json(await services.evaluations.getTestRun(param(req, 'id'), auth(req).projectId));
+    }),
+  );
+  router.delete(
+    '/test-runs/:id',
+    editor,
+    h(async (req, res) => {
+      await services.evaluations.deleteTestRun(param(req, 'id'), auth(req).projectId);
+      res.status(204).end();
     }),
   );
 
