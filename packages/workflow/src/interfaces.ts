@@ -309,6 +309,12 @@ export interface IAiToolCall {
   arguments: JsonObject;
 }
 
+/** 多模态图片附件（backlog #32）：随 user 消息带给视觉模型。data 为 base64。 */
+export interface IAiImageAttachment {
+  mimeType: string; // 如 image/png、image/jpeg
+  data: string; // base64（无 data: 前缀）
+}
+
 export interface IAiMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
@@ -316,6 +322,8 @@ export interface IAiMessage {
   toolCallId?: string;
   /** role='assistant' 且模型请求调用工具时。 */
   toolCalls?: IAiToolCall[];
+  /** role='user' 多模态：附带的图片（视觉模型消费；纯文本模型忽略）。 */
+  images?: IAiImageAttachment[];
 }
 
 export interface IAiChatResponse {

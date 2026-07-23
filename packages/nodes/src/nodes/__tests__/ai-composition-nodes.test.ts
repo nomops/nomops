@@ -120,6 +120,43 @@ describe('AI Agent — 组合模式', () => {
     expect(out[0]![0]!.json['toolRounds']).toBe(2);
     expect(calls).toBe(3); // 初始 1 + 两轮循环
   });
+
+  it('多模态（#32）：item 上的图片 binary → user 消息 images；非图片 binary 忽略', async () => {
+    const chatLog: IAiMessage[][] = [];
+    const model: IAiLanguageModel = {
+      chat: async (messages) => {
+        chatLog.push(messages.map((m) => ({ ...m })));
+        return { content: 'a cat' };
+      },
+    };
+    const b64 = Buffer.from('PNGBYTES').toString('base64');
+    const ctx = {
+      getInputData: () => [
+        {
+          json: {},
+          binary: {
+            photo: { mimeType: 'image/png', data: b64 },
+            doc: { mimeType: 'application/pdf', data: 'ignored' },
+          },
+        },
+      ],
+      getNodeParameter: (name: string, _i: number, fallback?: unknown) =>
+        ({ prompt: 'describe', system: '', maxIterations: 5, sessionId: 'default' } as Record<string, unknown>)[name] ?? fallback,
+      getCredentials: async () => ({}),
+      getWorkflowStaticData: () => ({}),
+      isResumed: () => false,
+      getInputConnectionData: async (type: string) => (type === 'ai_languageModel' ? [model] : []),
+      helpers: {
+        httpRequest: async () => ({}),
+        binaryToBuffer: async (b: { data?: string }) => new Uint8Array(Buffer.from(b.data ?? '', 'base64')),
+        bufferToBinary: async () => ({ mimeType: 'application/octet-stream' }),
+      },
+    } as unknown as IExecuteContext;
+
+    await new AiAgent().execute!.call(ctx);
+    const user = chatLog[0]!.find((m) => m.role === 'user')!;
+    expect(user.images).toEqual([{ mimeType: 'image/png', data: b64 }]);
+  });
 });
 
 describe('Anthropic Chat Model 子节点', () => {
@@ -176,6 +213,43 @@ describe('Anthropic Chat Model 子节点', () => {
     const messages = (requests[0]!.body as { messages: Array<{ role: string; content: unknown }> }).messages;
     expect(messages[1]!.content).toEqual([{ type: 'tool_use', id: 'c1', name: 'f', input: {} }]);
     expect(messages[2]!.content).toEqual([{ type: 'tool_result', tool_use_id: 'c1', content: 'r' }]);
+  });
+
+  it('多模态（#32）：带图片的 user 消息翻译成 text + image block 数组', async () => {
+    const requests: IHttpRequestOptions[] = [];
+    const ctx = supplyContext({
+      params: {},
+      credentials: { apiKey: 'k' },
+      httpRequest: async (o) => {
+        requests.push(o);
+        return { content: [{ type: 'text', text: 'a cat' }] };
+      },
+    });
+    const model = await new AnthropicChatModel().supplyData!.call(ctx);
+    await model.chat([
+      { role: 'user', content: 'describe', images: [{ mimeType: 'image/png', data: 'BASE64DATA' }] },
+    ]);
+    const messages = (requests[0]!.body as { messages: Array<{ role: string; content: unknown }> }).messages;
+    expect(messages[0]!.content).toEqual([
+      { type: 'text', text: 'describe' },
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'BASE64DATA' } },
+    ]);
+  });
+
+  it('多模态（#32）：无图片的 user 消息仍是纯字符串（不回归）', async () => {
+    const requests: IHttpRequestOptions[] = [];
+    const ctx = supplyContext({
+      params: {},
+      credentials: { apiKey: 'k' },
+      httpRequest: async (o) => {
+        requests.push(o);
+        return { content: [{ type: 'text', text: 'ok' }] };
+      },
+    });
+    const model = await new AnthropicChatModel().supplyData!.call(ctx);
+    await model.chat([{ role: 'user', content: 'hi' }]);
+    const messages = (requests[0]!.body as { messages: Array<{ role: string; content: unknown }> }).messages;
+    expect(messages[0]!.content).toBe('hi');
   });
 });
 

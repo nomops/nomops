@@ -1,4 +1,5 @@
 import type {
+  IAiImageAttachment,
   IAiLanguageModel,
   IAiMemory,
   IAiMessage,
@@ -10,6 +11,17 @@ import type {
 } from '@nomops/workflow';
 import { OperationalError } from '@nomops/workflow';
 import { aiAgentDescription } from './AiAgent.description.js';
+
+/** 从 item 的 binary 里挑出图片附件转 base64（多模态，backlog #32）；非图片忽略。 */
+async function collectImages(ctx: IExecuteContext, item: INodeExecutionData): Promise<IAiImageAttachment[]> {
+  const out: IAiImageAttachment[] = [];
+  for (const bin of Object.values(item.binary ?? {})) {
+    if (!bin.mimeType?.startsWith('image/')) continue;
+    const bytes = await ctx.helpers.binaryToBuffer(bin);
+    out.push({ mimeType: bin.mimeType, data: Buffer.from(bytes).toString('base64') });
+  }
+  return out;
+}
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
@@ -49,12 +61,13 @@ export class AiAgent implements INodeType {
       const maxIterations = Math.max(1, Number(this.getNodeParameter('maxIterations', i, 5)));
       const sessionId = String(this.getNodeParameter('sessionId', i, 'default') ?? 'default');
 
-      // 会话组装：system + 记忆里的历史 + 本轮用户输入
+      // 会话组装：system + 记忆里的历史 + 本轮用户输入（含图片附件）
       const history = memory ? await memory.load(sessionId) : [];
+      const images = await collectImages(this, items[i]!);
       const messages: IAiMessage[] = [
         ...(system ? [{ role: 'system', content: system } as IAiMessage] : []),
         ...history,
-        { role: 'user', content: prompt },
+        { role: 'user', content: prompt, ...(images.length ? { images } : {}) },
       ];
 
       // Agent 循环：模型请求工具 → 逐个执行 → 结果回喂，直到纯文本或到达上限

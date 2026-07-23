@@ -49,6 +49,8 @@ interface IApiContentBlock {
   input?: JsonObject;
   tool_use_id?: string;
   content?: string;
+  /** type='image' 时的 base64 图片源（多模态，backlog #32）。 */
+  source?: { type: 'base64'; media_type: string; data: string };
 }
 
 /** 把通用 IAiMessage 序列翻译成 Anthropic Messages 请求体。 */
@@ -74,6 +76,16 @@ function toApiMessages(messages: IAiMessage[]): { system?: string; messages: Arr
         role: 'user',
         content: [{ type: 'tool_result', tool_use_id: m.toolCallId ?? '', content: m.content }],
       });
+      continue;
+    }
+    // user 多模态：文本 + 图片 block 数组（backlog #32）；无图片则保持纯字符串
+    if (m.role === 'user' && m.images?.length) {
+      const blocks: IApiContentBlock[] = [];
+      if (m.content) blocks.push({ type: 'text', text: m.content });
+      for (const img of m.images) {
+        blocks.push({ type: 'image', source: { type: 'base64', media_type: img.mimeType, data: img.data } });
+      }
+      out.push({ role: 'user', content: blocks });
       continue;
     }
     out.push({ role: m.role, content: m.content });
