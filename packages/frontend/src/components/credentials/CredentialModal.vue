@@ -6,6 +6,7 @@ import { CREDENTIAL_TYPES, credentialTypeMeta } from '../../lib/credential-types
 import { credentialIcon } from '../../lib/icons.js';
 import IconSvg from '../IconSvg.vue';
 import { LINKS } from '../../lib/links.js';
+import CredentialExpressionField from './CredentialExpressionField.vue';
 
 /**
  * 「Add new credential」弹窗：
@@ -75,6 +76,17 @@ const values = ref<Record<string, unknown>>({});
 const error = ref('');
 const busy = ref(false);
 const copied = ref(false);
+
+/* 凭证专属表达式（#33）：可用的外部密钥键 + 是否启用（externalSecrets 企业功能）。 */
+const secretKeys = ref<string[]>([]);
+const secretsEnabled = ref(false);
+async function loadSecrets() {
+  const s = await api.externalSecrets().catch(() => null);
+  if (s) {
+    secretsEnabled.value = s.enabled;
+    secretKeys.value = s.keys ?? [];
+  }
+}
 
 /* OAuth 状态 */
 const credId = ref<string | null>(null);
@@ -296,6 +308,7 @@ function onDocClick(e: MouseEvent) {
 }
 onMounted(() => {
   window.addEventListener('mousedown', onDocClick);
+  void loadSecrets(); // #33：拉外部密钥键供表达式补全
   if (props.edit) {
     // 编辑模式：类型锁定、字段全空（占位提示保持不变）；旧值绝不回显（铁律 3）
     selectedType.value = props.edit.type;
@@ -434,13 +447,15 @@ onUnmounted(() => {
                   <svg class="select-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6" /></svg>
                 </div>
 
-                <input
+                <CredentialExpressionField
                   v-else
-                  :id="`fld-${f.name}`"
-                  v-model="values[f.name]"
-                  :type="f.type"
+                  :field-id="`fld-${f.name}`"
+                  :model-value="String(values[f.name] ?? '')"
+                  :type="f.type as 'text' | 'password'"
                   :placeholder="props.edit ? '••••••  (leave blank to keep current value)' : f.placeholder"
-                  :data-test-cred-field="f.name"
+                  :secrets="secretKeys"
+                  :secrets-enabled="secretsEnabled"
+                  @update:model-value="values[f.name] = $event"
                 />
 
                 <p v-if="f.hint" class="fld-hint">{{ f.hint }}</p>

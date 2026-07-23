@@ -82,7 +82,7 @@
 
 - [x] **31. EPIC-EVAL 评测/测试子系统** `XL` ✅ 2026-07-23（数据集复用 data_tables;test_runs+test_case_runs 双方言表(迁移 0026)+TestRunRepository;节点 evaluationTrigger(逐行 seed 注入)+evaluation(setMetrics/setOutputs→保留键 _nmMetrics/_nmOutputs,引擎零耦合);EvaluationService.createTestRun 逐行跑引擎·提取指标·按名求均值聚合·passed>=1 计通过;路由 POST/GET /workflows/:id/test-runs + GET/DELETE /test-runs/:id;前端画布评测 tab 解锁真管理面(数据集选择器+Run test+历史+聚合指标卡+逐用例表)+Debug in editor(把用例输入 pin 进 trigger 开编辑器);6 节点测+5 server 端到端测全绿;活体 Run test(Value 5.8/Passed 0.6)+Debug(pin 驱动执行)双验。执行标注👍👎已按 backlog 拆去 P8 #35）
 - [x] **32. Chat 多模态（附件）+ 语音 STT** `XL` ✅ 2026-07-23（附件走 base64 内联 JSON 不引 multer;IAiMessage 增 images 附件→AnthropicChatModel.toApiMessages 生成 image content block→AiAgent 从 item.binary 拾图片;chatBodySchema+ExecutionService.chat 接附件存 binaryStore→seed 进 item.binary→ChatTrigger 透传;SttService 零依赖 multipart 打 Whisper 兼容端点(可注入 fetchImpl)+GET/PUT /stt-config(apiKey 不回显)+POST /chat/transcribe;前端 chat 面板 📎附件(File→base64+chip 预览)+🎤录音(MediaRecorder→转写填输入);express.json 限提到 15mb;3 节点测+3 chat 附件 server 测+4 STT 测全绿;活体验证附件/录音按钮渲染+chat 往返无回归）
-- [ ] **33. 凭证专属表达式模式** `M`（仅 `$secrets`/env 补全的专用控件，见 gap-list P2-4 收回记录）
+- [x] **33. 凭证专属表达式模式** `M`（仅 `$secrets`/env 补全的专用控件，见 gap-list P2-4 收回记录）✅ 2026-07-23（新建 CredentialExpressionField.vue 专用控件——刻意不复用节点 ParamInput/ExpressionInput（复用会误导用户以为支持 $json/item 表达式）；ABC⇄{{ }} 切换、值含 $secrets 表达式则初始即表达式态、聚焦补全 $secrets 键 chip（按 $secrets. 后片段过滤、插入替换未闭合片段）；表达式态明示"只有 $secrets、无 $json 上下文"、externalSecrets 未启用/无键分别提示；CredentialModal text/password 字段接入并拉 api.externalSecrets 键；6 组件单测+84 前端测全绿；活体验证 HTTP Header Auth 的 Header value 切表达式态显作用域提示+"No external secrets found"、控制台零报错）
 
 ## P8 · n8n 表对照补差 · 小而快 + 正确性（来源：2026-07-22 自托管 n8n 库对照盘点）
 
