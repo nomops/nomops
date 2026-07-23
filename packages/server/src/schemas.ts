@@ -194,13 +194,14 @@ export const dataTableRowSchema = z.object({
   data: z.record(z.unknown()).optional().default({}),
 });
 
+// role 允许内建角色或自定义角色名（存在性在路由层校验；#29）
 export const addMemberSchema = z.object({
   email: z.string().email(),
-  role: projectRoleSchema,
+  role: z.string().min(1).max(50),
 });
 
 export const patchMemberSchema = z.object({
-  role: projectRoleSchema,
+  role: z.string().min(1).max(50),
 });
 
 export const quotaBodySchema = z

@@ -176,6 +176,13 @@
       "when": 1784706346796,
       "tag": "0024_clammy_proemial_gods",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1784709619026,
+      "tag": "0025_worthless_the_stranger",
+      "breakpoints": true
     }
   ]
 }

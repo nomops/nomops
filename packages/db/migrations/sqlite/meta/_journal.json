@@ -176,6 +176,13 @@
       "when": 1784706345777,
       "tag": "0024_left_machine_man",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1784709617738,
+      "tag": "0025_spotty_madrox",
+      "breakpoints": true
     }
   ]
 }

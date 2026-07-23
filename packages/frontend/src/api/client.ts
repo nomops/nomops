@@ -610,6 +610,20 @@ export const api = {
       ),
   },
 
+  /* 自定义角色（#29，实例 admin，Enterprise rbac） */
+  customRoles: {
+    list: () =>
+      http<{ scopes: string[]; roles: Array<{ id: string; name: string; description: string; scopes: string[]; createdAt: string }> }>(
+        'GET',
+        '/api/custom-roles',
+      ),
+    create: (body: { name: string; description?: string; scopes: string[] }) =>
+      http<{ id: string; name: string; description: string; scopes: string[]; createdAt: string }>('POST', '/api/custom-roles', body),
+    update: (id: string, body: { description?: string; scopes?: string[] }) =>
+      http<{ id: string; name: string; description: string; scopes: string[]; createdAt: string }>('PATCH', `/api/custom-roles/${id}`, body),
+    remove: (id: string) => http<void>('DELETE', `/api/custom-roles/${id}`),
+  },
+
   /* Chat 设置（Settings → Chat，Preview） */
   chatSettings: {
     get: () => http<{ enabled: boolean; model: string }>('GET', '/api/chat-settings'),

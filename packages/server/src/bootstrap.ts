@@ -303,10 +303,8 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   const executionPruner = new ExecutionPruner(repos, () => leader.isLeader(), {
     ...prunerOptionsFromEnv(process.env),
     ...opts.pruner,
-    // binary 孤儿清理与执行清理同周期（store 不支持 list/delete 时内部返回 0）
-    ...(binaryStore.list && binaryStore.delete
-      ? { sweepOrphanBinaries: () => executions.sweepOrphanBinaries() }
-      : {}),
+    // binary 孤儿清理与执行清理同周期（store 不支持 list/delete 时 sweep 内部返回 0）
+    sweepOrphanBinaries: () => executions.sweepOrphanBinaries(),
   });
   if (role === 'main') executionPruner.start();
   const sso = new OidcService(repos, credentials, auth, baseUrl);

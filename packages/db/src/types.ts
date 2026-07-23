@@ -29,6 +29,7 @@ export type InstalledNode = InferSelectModel<typeof sqliteSchema.installedNodes>
 export type Tag = InferSelectModel<typeof sqliteSchema.tags>;
 export type WorkflowStatistics = InferSelectModel<typeof sqliteSchema.workflowStatistics>;
 export type ChatAgent = InferSelectModel<typeof sqliteSchema.chatAgents>;
+export type CustomRole = InferSelectModel<typeof sqliteSchema.customRoles>;
 export type ChatSession = InferSelectModel<typeof sqliteSchema.chatSessions>;
 
 /* ── 创建入参（区别于自动生成的 id/时间戳字段） ── */

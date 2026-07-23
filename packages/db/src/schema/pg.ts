@@ -386,6 +386,15 @@ export const chatSessions = pgTable(
   (t) => [index('chat_sessions_user_id_idx').on(t.userId)],
 );
 
+/** 自定义项目角色（backlog #29）：命名的权限集,name 全实例唯一。 */
+export const customRoles = pgTable('custom_roles', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull().unique(),
+  description: text('description').notNull().default(''),
+  scopes: jsonb('scopes').$type<string[]>().notNull().default([]),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
 export const billingOrders = pgTable('billing_orders', {
   id: uuid('id').primaryKey().defaultRandom(),
   projectId: uuid('project_id').notNull(),
@@ -455,6 +464,7 @@ export const pgSchema = {
   projectQuotas,
   usageCounters,
   billingOrders,
+  customRoles,
   chatAgents,
   chatSessions,
 };

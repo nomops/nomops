@@ -435,6 +435,17 @@ export const chatSessions = sqliteTable(
   (t) => [index('chat_sessions_user_id_idx').on(t.userId)],
 );
 
+/** 自定义项目角色（backlog #29）：命名的权限集,name 全实例唯一。 */
+export const customRoles = sqliteTable('custom_roles', {
+  id: uuidPk('id'),
+  name: text('name').notNull().unique(),
+  description: text('description').notNull().default(''),
+  scopes: text('scopes', { mode: 'json' }).$type<string[]>().notNull().default([]),
+  createdAt: integer('created_at', { mode: 'timestamp' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 export const billingOrders = sqliteTable('billing_orders', {
   id: uuidPk('id'),
   projectId: text('project_id').notNull(),
@@ -508,6 +519,7 @@ export const sqliteSchema = {
   projectQuotas,
   usageCounters,
   billingOrders,
+  customRoles,
   chatAgents,
   chatSessions,
 };

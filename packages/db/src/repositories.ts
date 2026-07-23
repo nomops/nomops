@@ -7,6 +7,7 @@ import type {
   BillingOrder,
   ChatAgent,
   ChatSession,
+  CustomRole,
   CreateAuditLogInput,
   ExecutionData,
   ProjectMember,
@@ -1762,6 +1763,56 @@ export class ChatRepository extends BaseRepository {
   }
 }
 
+/** 自定义角色（backlog #29）：小集合,带进程内缓存供鉴权中间件同步命中。 */
+export class CustomRoleRepository extends BaseRepository {
+  private cache: CustomRole[] | null = null;
+
+  private invalidate(): void {
+    this.cache = null;
+  }
+
+  async list(): Promise<CustomRole[]> {
+    if (this.cache) return this.cache;
+    this.cache = (await this.db.select().from(this.schema.customRoles)) as CustomRole[];
+    return this.cache;
+  }
+
+  /** 按 name 命中缓存的 scopes（鉴权中间件用；未知名字 → null）。 */
+  async scopesForName(name: string): Promise<string[] | null> {
+    const found = (await this.list()).find((r) => r.name === name);
+    return found ? found.scopes : null;
+  }
+
+  async create(input: { name: string; description?: string; scopes: string[] }): Promise<CustomRole> {
+    const [row] = await this.db
+      .insert(this.schema.customRoles)
+      .values({ name: input.name, description: input.description ?? '', scopes: input.scopes })
+      .returning();
+    this.invalidate();
+    return row as CustomRole;
+  }
+
+  async update(id: string, patch: { description?: string; scopes?: string[] }): Promise<CustomRole | null> {
+    const [row] = await this.db
+      .update(this.schema.customRoles)
+      .set({ ...(patch.description !== undefined ? { description: patch.description } : {}), ...(patch.scopes ? { scopes: patch.scopes } : {}) })
+      .where(eq(this.schema.customRoles.id, id))
+      .returning();
+    this.invalidate();
+    return (row as CustomRole | undefined) ?? null;
+  }
+
+  async findById(id: string): Promise<CustomRole | null> {
+    const rows = await this.db.select().from(this.schema.customRoles).where(eq(this.schema.customRoles.id, id)).limit(1);
+    return (rows[0] as CustomRole | undefined) ?? null;
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.db.delete(this.schema.customRoles).where(eq(this.schema.customRoles.id, id));
+    this.invalidate();
+  }
+}
+
 export interface Repositories {
   users: UserRepository;
   apiKeys: ApiKeyRepository;
@@ -1781,6 +1832,7 @@ export interface Repositories {
   webhooks: WebhookRepository;
   auditLogs: AuditLogRepository;
   quotas: QuotaRepository;
+  customRoles: CustomRoleRepository;
   chat: ChatRepository;
 }
 
@@ -1806,6 +1858,7 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
     webhooks: new WebhookRepository(db, schema),
     auditLogs: new AuditLogRepository(db, schema),
     quotas: new QuotaRepository(db, schema),
+    customRoles: new CustomRoleRepository(db, schema),
     chat: new ChatRepository(db, schema),
   };
 }

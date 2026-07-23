@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import type { Repositories } from '@nomops/db';
 import type { AuthService } from './auth-service.js';
 import type { ApiKeyService } from '../services/api-key-service.js';
-import { roleAtLeast, type ProjectRole } from './rbac.js';
+import { isProjectRole, roleAtLeast, tierForScopes, type ProjectRole } from './rbac.js';
 import { requiredScope, scopesAllow } from './api-scopes.js';
 
 /** 公共 API 令牌头。 */
@@ -12,8 +12,10 @@ export const API_KEY_HEADER = 'x-nomops-api-key';
 export interface IRequestAuth {
   userId: string;
   projectId: string;
-  /** 用户在当前项目上下文中的角色（每请求查表，改权立即生效——docs/06）。 */
+  /** 有效内建层级（自定义角色解析为其一，供 requireRole 层级判定）。 */
   role: ProjectRole;
+  /** 原始角色名（内建时同 role;自定义角色时为其名字，供审计/展示）。 */
+  roleName: string;
 }
 
 declare module 'express-serve-static-core' {
@@ -35,12 +37,20 @@ function attachAuth(
   const projectId = typeof headerProject === 'string' && headerProject ? headerProject : defaultProjectId;
   void repos.projects
     .findMemberRole(projectId, userId)
-    .then((role) => {
+    .then(async (role) => {
       if (!role) {
         res.status(403).json({ error: 'You are not a member of this project', projectId });
         return;
       }
-      req.auth = { userId, projectId, role: role as ProjectRole };
+      // 自定义角色（#29）：非内建 → 查其 scopes 解析为有效层级;未知角色 → 最小权限 viewer
+      let effective: ProjectRole = 'project:viewer';
+      if (isProjectRole(role)) {
+        effective = role;
+      } else {
+        const scopes = await repos.customRoles.scopesForName(role).catch(() => null);
+        if (scopes) effective = tierForScopes(scopes);
+      }
+      req.auth = { userId, projectId, role: effective, roleName: role };
       void repos.users.touchLastActive(userId).catch(() => undefined); // D146:活跃打点,失败不阻塞
       next();
     })

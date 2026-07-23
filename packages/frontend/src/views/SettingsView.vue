@@ -582,9 +582,99 @@ const filteredUsers = computed(() => {
   );
 });
 
-/* Roles 页（固定内置角色，对标基线的 Instance/Project roles 两个 tab） */
-// Roles 页现为基线 Enterprise 锁态,仅保留 tab 切换(instance/project 描述已随锁态移除)
+/* Roles 页：内置角色 + 自定义角色（#29，Enterprise rbac 解锁后可增删改） */
 const rolesTab = ref<'instance' | 'project'>('instance');
+
+interface CustomRole {
+  id: string;
+  name: string;
+  description: string;
+  scopes: string[];
+  createdAt: string;
+}
+const customRoles = ref<CustomRole[]>([]);
+const roleScopeCatalog = ref<string[]>([]);
+const rolesError = ref('');
+const roleModalOpen = ref(false);
+const roleEditingId = ref<string | null>(null);
+const roleForm = ref<{ name: string; description: string; scopes: string[] }>({ name: '', description: '', scopes: [] });
+const roleBusy = ref(false);
+
+/** scope 分组展示：resource → [action]（catalog 形如 workflow:read）。 */
+const roleScopeGroups = computed(() => {
+  const groups: Record<string, string[]> = {};
+  for (const s of roleScopeCatalog.value) {
+    const resource = s.split(':')[0] ?? s;
+    (groups[resource] ??= []).push(s);
+  }
+  return Object.entries(groups).map(([resource, scopes]) => ({ resource, scopes }));
+});
+
+async function loadCustomRoles() {
+  rolesError.value = '';
+  try {
+    const res = await api.customRoles.list();
+    roleScopeCatalog.value = res.scopes;
+    customRoles.value = res.roles;
+  } catch (e) {
+    rolesError.value = (e as Error).message;
+  }
+}
+
+function openRoleModal(role?: CustomRole) {
+  rolesError.value = '';
+  if (role) {
+    roleEditingId.value = role.id;
+    roleForm.value = { name: role.name, description: role.description, scopes: [...role.scopes] };
+  } else {
+    roleEditingId.value = null;
+    roleForm.value = { name: '', description: '', scopes: [] };
+  }
+  roleModalOpen.value = true;
+}
+
+function toggleRoleScope(scope: string) {
+  const set = roleForm.value.scopes;
+  const i = set.indexOf(scope);
+  if (i >= 0) set.splice(i, 1);
+  else set.push(scope);
+}
+
+async function saveRole() {
+  rolesError.value = '';
+  roleBusy.value = true;
+  try {
+    if (roleEditingId.value) {
+      await api.customRoles.update(roleEditingId.value, {
+        description: roleForm.value.description,
+        scopes: roleForm.value.scopes,
+      });
+    } else {
+      await api.customRoles.create({
+        name: roleForm.value.name.trim(),
+        description: roleForm.value.description,
+        scopes: roleForm.value.scopes,
+      });
+    }
+    roleModalOpen.value = false;
+    await loadCustomRoles();
+  } catch (e) {
+    rolesError.value = (e as Error).message;
+  } finally {
+    roleBusy.value = false;
+  }
+}
+
+async function deleteRole(role: CustomRole) {
+  if (!confirm(`Delete custom role "${role.name}"? Members holding it fall back to viewer access.`)) return;
+  rolesError.value = '';
+  try {
+    await api.customRoles.remove(role.id);
+    await loadCustomRoles();
+  } catch (e) {
+    rolesError.value = (e as Error).message;
+  }
+}
 
 /** 企业功能是否已解锁（决定显示真实表单还是基线式锁定卡）。 */
 const licensed = (feature: string): boolean => projects.hasFeature(feature);
@@ -1016,6 +1106,8 @@ async function loadSection() {
     await loadMcp();
   } else if (section.value === 'chat') {
     await loadChat();
+  } else if (section.value === 'roles') {
+    if (licensed('rbac')) await loadCustomRoles();
   } else if (section.value === 'billing') {
     const current = projects.current;
     if (current) usage.value = await api.projects.usage(current.id).catch(() => null);
@@ -1735,14 +1827,94 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           <button class="tab" :class="{ active: rolesTab === 'instance' }" data-test="roles-tab-instance" @click="rolesTab = 'instance'">Instance roles</button>
           <button class="tab" :class="{ active: rolesTab === 'project' }" data-test="roles-tab-project" @click="rolesTab = 'project'">Project roles</button>
         </div>
-        <!-- Enterprise 锁卡(对标基线 Community Roles):三权限卡图形 + Upgrade to Enterprise -->
-        <div class="ent-lock" data-test="roles-lock">
+
+        <!-- Enterprise 锁卡(对标基线 Community Roles):未授权 rbac 时展示 -->
+        <div v-if="!licensed('rbac')" class="ent-lock" data-test="roles-lock">
           <div class="ent-cards"><span /><span /><span /></div>
           <h2 class="ent-title">Upgrade to Enterprise</h2>
           <p class="ent-desc">Upgrade to Enterprise to unlock custom roles. It will allow to create custom, granular permissions that let you fine-tune access.</p>
           <div class="ent-actions">
             <a class="btn-learn" href="/docs" @click.prevent>Learn more</a>
             <button class="btn-upgrade" data-test="roles-upgrade">Upgrade</button>
+          </div>
+        </div>
+
+        <!-- 已授权：自定义角色管理（#29） -->
+        <template v-else>
+          <p v-if="rolesError" class="error-text" data-test="roles-error">{{ rolesError }}</p>
+
+          <div style="display: flex; align-items: center; margin: 18px 0 10px; max-width: 880px">
+            <span style="flex: 1" />
+            <button class="btn primary" data-test="role-create" @click="openRoleModal()">Create role</button>
+          </div>
+
+          <div v-if="!customRoles.length" class="dim" data-test="roles-empty" style="max-width: 880px; padding: 24px 0">
+            No custom roles yet. Create one to grant members a tailored set of permissions.
+          </div>
+          <div v-else class="card" style="max-width: 880px; padding: 0">
+            <table class="api-table">
+              <thead>
+                <tr><th>Name</th><th>Permissions</th><th style="width: 120px"></th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="r in customRoles" :key="r.id" data-test="role-row">
+                  <td>
+                    <b :data-test-role-name="r.id">{{ r.name }}</b>
+                    <div v-if="r.description" class="dim" style="font-size: 12.5px">{{ r.description }}</div>
+                  </td>
+                  <td>
+                    <span class="dim" style="font-size: 12.5px">{{ r.scopes.join(', ') }}</span>
+                  </td>
+                  <td style="text-align: right; white-space: nowrap">
+                    <button class="link" data-test="role-edit" @click="openRoleModal(r)">Edit</button>
+                    <button class="link" data-test="role-delete" style="margin-left: 12px; color: var(--danger, #c0392b)" @click="deleteRole(r)">Delete</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </template>
+
+        <!-- 弹窗：创建/编辑自定义角色 -->
+        <div v-if="roleModalOpen" class="modal-mask" data-test="role-modal" @click.self="roleModalOpen = false">
+          <div class="modal-card" style="width: 560px">
+            <div style="display: flex; align-items: flex-start; justify-content: space-between">
+              <h2 class="modal-title">{{ roleEditingId ? 'Edit role' : 'Create role' }}</h2>
+              <button class="modal-x" @click="roleModalOpen = false">×</button>
+            </div>
+            <label class="modal-label">Name <span class="req">*</span></label>
+            <input
+              v-model="roleForm.name"
+              data-test="role-name"
+              type="text"
+              placeholder="e.g. Deployer"
+              :disabled="!!roleEditingId"
+              style="width: 100%"
+            />
+            <label class="modal-label">Description</label>
+            <input v-model="roleForm.description" data-test="role-description" type="text" placeholder="Optional" style="width: 100%" />
+            <label class="modal-label">Permissions <span class="req">*</span></label>
+            <div class="role-scopes" data-test="role-scopes">
+              <div v-for="g in roleScopeGroups" :key="g.resource" class="role-scope-group">
+                <div class="role-scope-resource">{{ g.resource }}</div>
+                <label v-for="s in g.scopes" :key="s" class="role-scope-option">
+                  <input type="checkbox" :checked="roleForm.scopes.includes(s)" :data-test-scope="s" @change="toggleRoleScope(s)" />
+                  {{ s.split(':')[1] }}
+                </label>
+              </div>
+            </div>
+            <p v-if="rolesError" class="error-text" data-test="role-modal-error">{{ rolesError }}</p>
+            <div class="modal-actions" style="margin-top: 20px">
+              <button class="btn secondary" @click="roleModalOpen = false">Cancel</button>
+              <button
+                class="btn primary"
+                data-test="role-save"
+                :disabled="roleBusy || !roleForm.name.trim() || !roleForm.scopes.length"
+                @click="saveRole"
+              >
+                {{ roleBusy ? 'Saving…' : 'Save' }}
+              </button>
+            </div>
           </div>
         </div>
       </section>
@@ -3887,6 +4059,12 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
   box-shadow: inset 0 0 0 1px var(--button--border-color--primary), 0 1px 3px -1px var(--color--black-alpha-100);
 }
 .ent-lock .btn-upgrade:hover { background: var(--button--color--background--primary--hover-active-focus); }
+
+/* 自定义角色弹窗 scope 勾选网格（#29） */
+.role-scopes { margin-top: 6px; display: flex; flex-direction: column; gap: 12px; max-height: 300px; overflow-y: auto; }
+.role-scope-group { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.role-scope-resource { flex-basis: 100%; font-size: 12px; font-weight: var(--font-weight--medium); text-transform: capitalize; color: var(--text-light); }
+.role-scope-option { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; text-transform: capitalize; cursor: pointer; }
 
 /* 设置行卡片（对标基线 Security & policies / OpenTelemetry 的 row 布局） */
 .setting-card { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-panel); }

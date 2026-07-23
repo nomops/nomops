@@ -18,7 +18,7 @@ import { requireRole } from '../auth/middleware.js';
 import { API_SCOPES } from '../auth/api-scopes.js';
 import { verifyHandoff } from '../auth/handoff.js';
 import { requireFeature } from '../ee/license/license-service.js';
-import { isProjectRole } from '../auth/rbac.js';
+import { isProjectRole, tierForScopes, PROJECT_SCOPES } from '../auth/rbac.js';
 import { computeInsights } from '../services/insights.js';
 import { CHAT_PROVIDERS } from '../services/assistant-service.js';
 import { getTemplate, templateSummaries } from '../services/template-registry.js';
@@ -1003,6 +1003,70 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
+  /* ── 自定义角色（backlog #29，企业功能 rbac + 实例 admin） ── */
+  router.get(
+    '/custom-roles',
+    rbacFeature,
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      res.json({ scopes: PROJECT_SCOPES, roles: await services.repos.customRoles.list() });
+    }),
+  );
+  router.post(
+    '/custom-roles',
+    rbacFeature,
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      const body = (req.body ?? {}) as { name?: string; description?: string; scopes?: string[] };
+      const name = String(body.name ?? '').trim();
+      if (!name || !/^[a-zA-Z0-9 _-]{1,50}$/.test(name)) {
+        throw new OperationalError('name must be 1-50 chars (letters, digits, space, _-)', { status: 400 });
+      }
+      if (isProjectRole(`project:${name}`) || ['owner', 'editor', 'viewer'].includes(name.toLowerCase())) {
+        throw new OperationalError('name collides with a built-in role', { status: 400 });
+      }
+      const scopes = (Array.isArray(body.scopes) ? body.scopes : []).filter((s) => (PROJECT_SCOPES as readonly string[]).includes(s));
+      if (!scopes.length) throw new OperationalError('at least one scope is required', { status: 400 });
+      if (await services.repos.customRoles.list().then((rs) => rs.some((r) => r.name === name))) {
+        throw new OperationalError('A role with this name already exists', { status: 409 });
+      }
+      const role = await services.repos.customRoles.create({ name, description: body.description ?? '', scopes });
+      recordAudit(services, req, 'customRole.create', { type: 'customRole', id: role.id }, { name, scopes });
+      res.status(201).json(role);
+    }),
+  );
+  router.patch(
+    '/custom-roles/:id',
+    rbacFeature,
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      const body = (req.body ?? {}) as { description?: string; scopes?: string[] };
+      const scopes = body.scopes
+        ? body.scopes.filter((s) => (PROJECT_SCOPES as readonly string[]).includes(s))
+        : undefined;
+      if (scopes && !scopes.length) throw new OperationalError('at least one scope is required', { status: 400 });
+      const role = await services.repos.customRoles.update(param(req, 'id'), {
+        ...(body.description !== undefined ? { description: body.description } : {}),
+        ...(scopes ? { scopes } : {}),
+      });
+      if (!role) throw new OperationalError('Custom role not found', { status: 404 });
+      recordAudit(services, req, 'customRole.update', { type: 'customRole', id: role.id });
+      res.json(role);
+    }),
+  );
+  router.delete(
+    '/custom-roles/:id',
+    rbacFeature,
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      const role = await services.repos.customRoles.findById(param(req, 'id'));
+      if (!role) throw new OperationalError('Custom role not found', { status: 404 });
+      await services.repos.customRoles.delete(role.id);
+      recordAudit(services, req, 'customRole.delete', { type: 'customRole', id: role.id }, { name: role.name });
+      res.status(204).end();
+    }),
+  );
+
   router.post(
     '/projects',
     rbacFeature,
@@ -1033,6 +1097,7 @@ export function createApiRouter(services: AppServices): Router {
       const projectId = param(req, 'id');
       await assertOwnerOf(req, projectId);
       const body = parseBody(addMemberSchema, req);
+      await assertAssignableRole(body.role);
       const user = await services.repos.users.findByEmail(body.email);
       if (!user) throw new OperationalError('User not found', { status: 404, email: body.email });
       if (await services.repos.projects.findMemberRole(projectId, user.id)) {
@@ -1043,6 +1108,15 @@ export function createApiRouter(services: AppServices): Router {
       res.status(201).json({ userId: user.id, email: user.email, role: body.role });
     }),
   );
+
+  /** 角色可指派性：内建角色或已存在的自定义角色（#29）。 */
+  async function assertAssignableRole(role: string): Promise<void> {
+    if (isProjectRole(role)) return;
+    const custom = await services.repos.customRoles.list();
+    if (!custom.some((r) => r.name === role)) {
+      throw new OperationalError('Unknown role', { status: 400, role });
+    }
+  }
 
   /** 最后一个 owner 不可降级/移除（否则项目无人可管）。 */
   async function assertNotLastOwner(projectId: string, targetUserId: string): Promise<void> {
@@ -1061,8 +1135,12 @@ export function createApiRouter(services: AppServices): Router {
       await assertOwnerOf(req, projectId);
       const body = parseBody(patchMemberSchema, req);
       const targetId = param(req, 'userId');
-      if (!isProjectRole(body.role)) throw new OperationalError('Invalid role', { status: 400 });
-      if (body.role !== 'project:owner') await assertNotLastOwner(projectId, targetId);
+      await assertAssignableRole(body.role);
+      // 降级到非 owner 有效层级时,保护最后一个 owner
+      const newTier = isProjectRole(body.role)
+        ? body.role
+        : tierForScopes((await services.repos.customRoles.scopesForName(body.role)) ?? []);
+      if (newTier !== 'project:owner') await assertNotLastOwner(projectId, targetId);
       await services.repos.projects.updateMemberRole(projectId, targetId, body.role);
       recordAudit(services, req, 'project.member.update', { type: 'project', id: projectId }, { memberId: targetId, role: body.role }, projectId);
       res.json({ userId: targetId, role: body.role });
@@ -1884,7 +1962,9 @@ export function createWebhookRouter(services: AppServices): Router {
     h(async (req, res) => {
       const executionId = String(req.params['executionId'] ?? '');
       const token = String(req.params['token'] ?? '');
-      const notFound = () => res.status(404).json({ error: 'No waiting execution for this URL' });
+      const notFound = (): void => {
+        res.status(404).json({ error: 'No waiting execution for this URL' });
+      };
 
       const record = await services.repos.executions.getRecord(executionId).catch(() => null);
       if (!record || record.status !== 'waiting') return notFound();
@@ -1906,7 +1986,7 @@ export function createWebhookRouter(services: AppServices): Router {
         details: { via: 'webhook-waiting' },
         ip: req.ip ?? null,
       });
-      return res.json({ resumed: true, executionId, status: summary.status });
+      res.json({ resumed: true, executionId, status: summary.status });
     }),
   );
   return router;
