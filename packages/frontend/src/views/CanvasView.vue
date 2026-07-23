@@ -693,6 +693,15 @@ function fmtMetric(v: number): string {
   return Number.isInteger(v) ? String(v) : v.toFixed(3);
 }
 
+/** Debug in editor：把该用例的输入钉到 Evaluation Trigger 节点并切回编辑器，
+ *  这样手动 Execute 会用这一行数据跑，方便逐节点排查。 */
+function debugCase(c: TestCaseRow) {
+  const triggerName = evalDetail.value?.run.triggerNode;
+  if (!triggerName) return;
+  editor.pinNodeData(triggerName, [{ json: c.input }]);
+  canvasTab.value = 'editor';
+}
+
 /* B5 深链：Overview executions 行点击 → ?tab=executions&exec=<id> 直达该执行详情 */
 onMounted(() => {
   if (route.query['tab'] === 'executions') {
@@ -1183,6 +1192,7 @@ async function loadSavePolicy() {
                   <th>Input</th>
                   <th v-for="m in evalMetricNames" :key="m">{{ m }}</th>
                   <th style="width: 70px">Status</th>
+                  <th style="width: 60px"></th>
                 </tr>
               </thead>
               <tbody>
@@ -1192,6 +1202,11 @@ async function loadSavePolicy() {
                   <td v-for="m in evalMetricNames" :key="m">{{ c.metrics[m] !== undefined ? fmtMetric(c.metrics[m]!) : '—' }}</td>
                   <td>
                     <span class="eval-run-status" :class="c.status">{{ c.status }}</span>
+                  </td>
+                  <td>
+                    <button class="eval-debug-btn" data-test="eval-debug" title="Pin this row's input and open the editor" @click="debugCase(c)">
+                      Debug
+                    </button>
                   </td>
                 </tr>
               </tbody>
@@ -1707,6 +1722,11 @@ async function loadSavePolicy() {
 .eval-cases th, .eval-cases td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 .eval-cases th { color: var(--text-dim); font-weight: var(--font-weight--medium); text-transform: capitalize; }
 .eval-input-cell { max-width: 320px; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-family--monospace, monospace); }
+.eval-debug-btn {
+  padding: 3px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-panel);
+  color: var(--accent); font-size: 12px; cursor: pointer;
+}
+.eval-debug-btn:hover { border-color: var(--accent); }
 .exec-list {
   width: 340px; flex-shrink: 0; border-right: 1px solid var(--border);
   display: flex; flex-direction: column; overflow-y: auto; background: var(--bg);

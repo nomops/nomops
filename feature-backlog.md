@@ -80,8 +80,7 @@
 
 ## P7 · Epic 级（独立立项，先规划再动工）
 
-- [ ] **31. EPIC-EVAL 评测/测试子系统** `XL`
-  dataset / eval trigger / test run / metric / 执行标注👍👎 / Debug in editor 全链，nomops 零后端。
+- [x] **31. EPIC-EVAL 评测/测试子系统** `XL` ✅ 2026-07-23（数据集复用 data_tables;test_runs+test_case_runs 双方言表(迁移 0026)+TestRunRepository;节点 evaluationTrigger(逐行 seed 注入)+evaluation(setMetrics/setOutputs→保留键 _nmMetrics/_nmOutputs,引擎零耦合);EvaluationService.createTestRun 逐行跑引擎·提取指标·按名求均值聚合·passed>=1 计通过;路由 POST/GET /workflows/:id/test-runs + GET/DELETE /test-runs/:id;前端画布评测 tab 解锁真管理面(数据集选择器+Run test+历史+聚合指标卡+逐用例表)+Debug in editor(把用例输入 pin 进 trigger 开编辑器);6 节点测+5 server 端到端测全绿;活体 Run test(Value 5.8/Passed 0.6)+Debug(pin 驱动执行)双验。执行标注👍👎已按 backlog 拆去 P8 #35）
 - [ ] **32. Chat 多模态（附件）+ 语音 STT** `XL`
 - [ ] **33. 凭证专属表达式模式** `M`（仅 `$secrets`/env 补全的专用控件，见 gap-list P2-4 收回记录）
 
