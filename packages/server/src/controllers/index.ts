@@ -45,6 +45,8 @@ import {
   runBodySchema,
   testRunBodySchema,
   chatBodySchema,
+  sttConfigSchema,
+  transcribeBodySchema,
   updateMeSchema,
   changePasswordSchema,
   ssoConfigSchema,
@@ -556,6 +558,32 @@ export function createApiRouter(services: AppServices): Router {
           body.attachments,
         ),
       );
+    }),
+  );
+
+  /* ── 语音转写 STT（backlog #32）：配置(admin) + 转写(editor) ── */
+  router.get(
+    '/stt-config',
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      res.json(await services.stt.getPublicConfig());
+    }),
+  );
+  router.put(
+    '/stt-config',
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      const body = parseBody(sttConfigSchema, req);
+      recordAudit(services, req, 'stt.config.update', { type: 'setting', id: 'stt.config' });
+      res.json(await services.stt.setConfig(body));
+    }),
+  );
+  router.post(
+    '/chat/transcribe',
+    editor,
+    h(async (req, res) => {
+      const body = parseBody(transcribeBodySchema, req);
+      res.json(await services.stt.transcribe(body.audio, body.mimeType, body.fileName));
     }),
   );
 

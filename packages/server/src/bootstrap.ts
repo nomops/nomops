@@ -34,6 +34,7 @@ import { OAuth2Service } from './services/oauth2-service.js';
 import { VariableService } from './services/variable-service.js';
 import { DataTableService } from './services/data-table-service.js';
 import { EvaluationService } from './services/evaluation-service.js';
+import { SttService } from './services/stt-service.js';
 import { WaitTracker } from './services/wait-tracker.js';
 import { ExecutionPruner, prunerOptionsFromEnv } from './services/execution-pruner.js';
 import {
@@ -122,6 +123,8 @@ export interface BootstrapOptions {
   secretsProvider?: ISecretsProvider;
   /** LDAP 认证器（缺省 ldapts 真实实现；测试注入假实现）。 */
   ldapAuthenticator?: ILdapAuthenticator;
+  /** STT 转写 fetch（缺省全局 fetch；测试注入假实现）。 */
+  sttFetch?: typeof fetch;
   /** 邮件投递（测试注入记录桩;生产按 NOMOPS_SMTP_* 环境变量,未配置为 NullMailer）。 */
   mailer?: IMailer;
   /** 社区节点安装器（缺省 npm 真实实现；测试注入假实现映射到本地 fixture）。 */
@@ -316,6 +319,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   const variables = new VariableService(repos);
   const dataTables = new DataTableService(repos);
   const evaluations = new EvaluationService(repos, workflows, executions);
+  const stt = new SttService(repos, opts.sttFetch);
   // LDAP 登录（docs/10 B5）：opts.ldapAuthenticator 供测试注入假实现；生产用 ldapts
   const ldap = new LdapService(repos, credentials, auth, license, opts.ldapAuthenticator);
   const scim = new ScimService(repos);
@@ -366,6 +370,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     variables,
     dataTables,
     evaluations,
+    stt,
     waitTracker,
     executionPruner,
     mcp,

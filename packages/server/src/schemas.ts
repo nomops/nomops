@@ -146,6 +146,21 @@ export const chatAttachmentSchema = z.object({
   data: z.string().min(1).max(14_000_000), // base64（~10MB 原文，配合 express.json 15mb 限）
 });
 
+/** STT 配置（实例 admin，backlog #32）：apiKey 省略/空 = 保留旧值。 */
+export const sttConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  endpoint: z.string().url().max(500).optional(),
+  model: z.string().min(1).max(100).optional(),
+  apiKey: z.string().max(500).optional(),
+});
+
+/** 语音转写请求（base64 音频）。 */
+export const transcribeBodySchema = z.object({
+  audio: z.string().min(1).max(14_000_000),
+  mimeType: z.string().min(1).max(200),
+  fileName: z.string().max(300).optional(),
+});
+
 /** 画布/API 聊天（Chat Trigger）。message 可空（仅附件时）。 */
 export const chatBodySchema = z
   .object({
