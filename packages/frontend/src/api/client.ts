@@ -157,6 +157,33 @@ export interface DataTableRowView {
   data: Record<string, unknown>;
 }
 
+/** 评测测试运行（#31）。 */
+export interface TestRunRow {
+  id: string;
+  workflowId: string;
+  dataTableId: string | null;
+  triggerNode: string;
+  status: string;
+  totalCases: number;
+  ranCases: number;
+  passedCases: number | null;
+  metrics: Record<string, number>;
+  error: string | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export interface TestCaseRow {
+  id: string;
+  testRunId: string;
+  executionId: string | null;
+  rowIndex: number;
+  input: Record<string, unknown>;
+  metrics: Record<string, number>;
+  status: string;
+  error: string | null;
+}
+
 export interface McpStatus {
   enabled: boolean;
   tokenConfigured: boolean;
@@ -494,6 +521,15 @@ export const api = {
       http<DataTableRowView>('PATCH', `/api/data-tables/${id}/rows/${rowId}`, { data }),
     removeRow: (id: string, rowId: string) =>
       http<void>('DELETE', `/api/data-tables/${id}/rows/${rowId}`),
+  },
+
+  /* 评测/测试运行（#31）：Evaluation Trigger + data table 逐行跑工作流 */
+  evaluations: {
+    list: (workflowId: string) => http<TestRunRow[]>('GET', `/api/workflows/${workflowId}/test-runs`),
+    run: (workflowId: string, body: { dataTableId?: string; limit?: number }) =>
+      http<TestRunRow>('POST', `/api/workflows/${workflowId}/test-runs`, body),
+    get: (id: string) => http<{ run: TestRunRow; cases: TestCaseRow[] }>('GET', `/api/test-runs/${id}`),
+    remove: (id: string) => http<void>('DELETE', `/api/test-runs/${id}`),
   },
 
   projects: {

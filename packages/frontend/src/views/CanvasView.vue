@@ -2,7 +2,14 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { IConnections, INode, IRunExecutionData } from '@nomops/workflow';
-import { api, type ExecutionRow, type TagRow } from '../api/client.js';
+import {
+  api,
+  type ExecutionRow,
+  type TagRow,
+  type DataTableView,
+  type TestRunRow,
+  type TestCaseRow,
+} from '../api/client.js';
 import { useEditorStore } from '../stores/editor.js';
 import { useNodeTypesStore } from '../stores/node-types.js';
 import { useExecutionStore } from '../stores/execution.js';
@@ -616,6 +623,76 @@ async function selectExec(id: string) {
   execDetail.value = await api.executions.get(id).catch(() => null);
 }
 
+/* ── 评测（#31）：数据集选择 + Run test + 测试运行历史/详情 ── */
+const evalTables = ref<DataTableView[]>([]);
+const evalDataTableId = ref<string>('');
+const evalLimit = ref<number>(0);
+const evalRuns = ref<TestRunRow[]>([]);
+const evalSelectedRunId = ref<string | null>(null);
+const evalDetail = ref<{ run: TestRunRow; cases: TestCaseRow[] } | null>(null);
+const evalRunning = ref(false);
+const evalError = ref('');
+
+/** 该工作流是否有 Evaluation Trigger 节点（决定能否跑评测）。 */
+const hasEvalTrigger = computed(() => editor.nodes.some((n) => n.type === 'nomops.evaluationTrigger'));
+/** 评测详情里所有出现过的指标列名（用例表列头）。 */
+const evalMetricNames = computed(() => {
+  const names = new Set<string>();
+  for (const c of evalDetail.value?.cases ?? []) for (const k of Object.keys(c.metrics)) names.add(k);
+  return [...names];
+});
+
+async function loadEvalTables() {
+  evalTables.value = await api.dataTables.list().catch(() => [] as DataTableView[]);
+  // 缺省选中 Evaluation Trigger 节点已绑定的数据集
+  const trigger = editor.nodes.find((n) => n.type === 'nomops.evaluationTrigger');
+  const bound = trigger?.parameters?.['dataTableId'];
+  if (typeof bound === 'string' && bound) evalDataTableId.value = bound;
+  else if (!evalDataTableId.value && evalTables.value[0]) evalDataTableId.value = evalTables.value[0].id;
+}
+
+async function loadEvalRuns() {
+  if (!editor.id) return;
+  evalRuns.value = await api.evaluations.list(editor.id).catch(() => [] as TestRunRow[]);
+}
+
+async function selectEvalRun(id: string) {
+  evalSelectedRunId.value = id;
+  evalDetail.value = await api.evaluations.get(id).catch(() => null);
+}
+
+async function runTest() {
+  if (!editor.id || evalRunning.value) return;
+  evalError.value = '';
+  evalRunning.value = true;
+  try {
+    const body: { dataTableId?: string; limit?: number } = {};
+    if (evalDataTableId.value) body.dataTableId = evalDataTableId.value;
+    if (evalLimit.value > 0) body.limit = evalLimit.value;
+    const run = await api.evaluations.run(editor.id, body);
+    await loadEvalRuns();
+    await selectEvalRun(run.id);
+  } catch (e) {
+    evalError.value = (e as Error).message;
+  } finally {
+    evalRunning.value = false;
+  }
+}
+
+async function deleteTestRun(id: string) {
+  if (!confirm('Delete this test run?')) return;
+  await api.evaluations.remove(id).catch(() => undefined);
+  if (evalSelectedRunId.value === id) {
+    evalSelectedRunId.value = null;
+    evalDetail.value = null;
+  }
+  await loadEvalRuns();
+}
+
+function fmtMetric(v: number): string {
+  return Number.isInteger(v) ? String(v) : v.toFixed(3);
+}
+
 /* B5 深链：Overview executions 行点击 → ?tab=executions&exec=<id> 直达该执行详情 */
 onMounted(() => {
   if (route.query['tab'] === 'executions') {
@@ -635,6 +712,10 @@ watch(canvasTab, (t) => {
   } else if (execTimer) {
     clearInterval(execTimer);
     execTimer = null;
+  }
+  if (t === 'evaluations') {
+    void loadEvalTables();
+    void loadEvalRuns();
   }
 });
 onUnmounted(() => {
@@ -1005,17 +1086,119 @@ async function loadSavePolicy() {
     </div>
 
     <!-- Evaluations Tab：Community 未注册锁态(对标基线) -->
-    <div v-else-if="canvasTab === 'evaluations'" class="eval-view" data-test="eval-view">
-      <div class="eval-left">
-        <h2 class="eval-h">Test your AI workflow over multiple inputs</h2>
-        <p class="eval-desc">Evaluations measure performance against a test dataset. <a class="link" href="/docs" @click.prevent>More info</a></p>
-        <div class="eval-video" />
-      </div>
-      <div class="eval-right" data-test="eval-register">
-        <h3 class="eval-reg-title">Register to enable evaluation</h3>
-        <p class="eval-reg-desc">Register your Community instance to unlock the evaluation feature</p>
-        <button class="btn primary" data-test="eval-register-btn">Register instance</button>
-      </div>
+    <div v-else-if="canvasTab === 'evaluations'" class="eval-body" data-test="eval-view">
+      <!-- 左栏：跑测试 + 历史 -->
+      <aside class="eval-list">
+        <div class="eval-run-box">
+          <h3>Run evaluation</h3>
+          <p class="dim" style="font-size: 12.5px; margin: 0 0 10px">
+            Runs this workflow once per row of a dataset, from the Evaluation Trigger.
+          </p>
+          <label class="eval-field">
+            <span>Dataset</span>
+            <select v-model="evalDataTableId" data-test="eval-dataset">
+              <option value="" disabled>Select a data table…</option>
+              <option v-for="t in evalTables" :key="t.id" :value="t.id">{{ t.name }} ({{ t.rowCount }} rows)</option>
+            </select>
+          </label>
+          <label class="eval-field">
+            <span>Max rows (0 = all)</span>
+            <input v-model.number="evalLimit" type="number" min="0" data-test="eval-limit" />
+          </label>
+          <p v-if="!hasEvalTrigger" class="eval-warn" data-test="eval-no-trigger">
+            Add an Evaluation Trigger node to this workflow to run tests.
+          </p>
+          <p v-if="evalError" class="error-text" data-test="eval-error">{{ evalError }}</p>
+          <button
+            class="btn primary"
+            data-test="eval-run"
+            style="width: 100%"
+            :disabled="evalRunning || !hasEvalTrigger || !evalDataTableId"
+            @click="runTest"
+          >
+            {{ evalRunning ? 'Running…' : 'Run test' }}
+          </button>
+        </div>
+
+        <div class="eval-runs">
+          <h4>Past runs</h4>
+          <p v-if="!evalRuns.length" class="dim" style="font-size: 12.5px; padding: 6px 2px">No test runs yet</p>
+          <button
+            v-for="r in evalRuns"
+            :key="r.id"
+            class="eval-run-item"
+            :class="{ selected: evalSelectedRunId === r.id }"
+            :data-test-run="r.id"
+            @click="selectEvalRun(r.id)"
+          >
+            <span class="eval-run-main">
+              <b>{{ fmtWhen(r.createdAt) }}</b>
+              <span class="dim">
+                {{ r.ranCases }}/{{ r.totalCases }} cases
+                <template v-if="r.passedCases !== null"> · {{ r.passedCases }} passed</template>
+              </span>
+            </span>
+            <span class="eval-run-status" :class="r.status">{{ r.status }}</span>
+          </button>
+        </div>
+      </aside>
+
+      <!-- 右栏：选中运行的聚合指标 + 逐用例表 -->
+      <section class="eval-detail">
+        <div v-if="!evalDetail" class="eval-empty">
+          <h2>No run selected</h2>
+          <p class="dim">Run a test or pick a past run to see per-case metrics.</p>
+        </div>
+        <template v-else>
+          <div class="eval-detail-head" data-test="eval-detail-head">
+            <b style="text-transform: capitalize">{{ evalDetail.run.status }}</b>
+            <span class="dim">
+              {{ evalDetail.run.ranCases }}/{{ evalDetail.run.totalCases }} cases
+              <template v-if="evalDetail.run.passedCases !== null">
+                · {{ evalDetail.run.passedCases }}/{{ evalDetail.run.ranCases }} passed
+              </template>
+              · {{ fmtWhen(evalDetail.run.createdAt) }}
+            </span>
+            <span style="flex: 1" />
+            <button class="exec-copy-btn" data-test="eval-delete" @click="deleteTestRun(evalDetail.run.id)">Delete</button>
+          </div>
+
+          <!-- 聚合指标卡 -->
+          <div class="eval-metrics" data-test="eval-metrics">
+            <div v-for="(v, name) in evalDetail.run.metrics" :key="name" class="eval-metric-card">
+              <div class="eval-metric-name">{{ name }}</div>
+              <div class="eval-metric-value">{{ fmtMetric(v) }}</div>
+            </div>
+            <p v-if="!Object.keys(evalDetail.run.metrics).length" class="dim" style="font-size: 12.5px">
+              No metrics recorded. Add an Evaluation node with Set Metrics to score each run.
+            </p>
+          </div>
+
+          <!-- 逐用例表 -->
+          <div class="eval-cases-wrap">
+            <table class="eval-cases" data-test="eval-cases">
+              <thead>
+                <tr>
+                  <th style="width: 40px">#</th>
+                  <th>Input</th>
+                  <th v-for="m in evalMetricNames" :key="m">{{ m }}</th>
+                  <th style="width: 70px">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="c in evalDetail.cases" :key="c.id" :data-test-case="c.rowIndex">
+                  <td>{{ c.rowIndex + 1 }}</td>
+                  <td class="eval-input-cell">{{ JSON.stringify(c.input) }}</td>
+                  <td v-for="m in evalMetricNames" :key="m">{{ c.metrics[m] !== undefined ? fmtMetric(c.metrics[m]!) : '—' }}</td>
+                  <td>
+                    <span class="eval-run-status" :class="c.status">{{ c.status }}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </template>
+      </section>
     </div>
 
     <div v-else class="body">
@@ -1478,19 +1661,52 @@ async function loadSavePolicy() {
 .exec-body { flex: 1; display: flex; min-height: 0; }
 
 /* Evaluations 注册锁态(对标基线 Community):左说明+视频位 / 右虚线框 Register */
-.eval-view { flex: 1; display: flex; gap: 40px; padding: 56px 64px; align-items: center; justify-content: center; min-height: 0; }
-.eval-left { flex: 1; max-width: 440px; }
-.eval-h { margin: 0; font-size: 22px; font-weight: var(--font-weight--bold); color: var(--color--text--shade-1); }
-.eval-desc { margin: 12px 0 0; font-size: var(--font-size--sm); color: var(--text-dim); }
-.eval-video { margin-top: 20px; aspect-ratio: 16/9; border-radius: 8px; background: var(--bg-panel); border: 1px solid var(--border); }
-.eval-right {
-  flex: 1; max-width: 380px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px;
-  border: 2px dashed var(--border-strong); border-radius: 12px; padding: 48px 28px;
+/* 评测 tab（#31）：左栏跑测试+历史，右栏聚合指标+逐用例表 */
+.eval-body { flex: 1; display: flex; min-height: 0; }
+.eval-list {
+  width: 340px; flex-shrink: 0; border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow-y: auto; background: var(--bg);
 }
-.eval-reg-title { margin: 0; font-size: var(--font-size--md); font-weight: var(--font-weight--bold); color: var(--color--text--shade-1); }
-.eval-reg-desc { margin: 0; font-size: var(--font-size--sm); color: var(--text-dim); }
-.eval-view .link { color: var(--accent); text-decoration: none; }
-.eval-view .link:hover { text-decoration: underline; }
+.eval-run-box { padding: 16px; border-bottom: 1px solid var(--border); }
+.eval-run-box h3 { margin: 0 0 4px; font-size: var(--font-size--md); font-weight: var(--font-weight--bold); }
+.eval-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; font-size: 12.5px; color: var(--text-dim); }
+.eval-field select, .eval-field input {
+  height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg-panel); color: var(--color--text--shade-1); font-size: 13px;
+}
+.eval-warn { font-size: 12.5px; color: var(--color--warning, #b7791f); margin: 0 0 10px; }
+.eval-runs { padding: 12px; }
+.eval-runs h4 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim); }
+.eval-run-item {
+  width: 100%; display: flex; align-items: center; gap: 8px; padding: 9px 10px; border: none; border-radius: 6px;
+  background: transparent; cursor: pointer; text-align: left; color: var(--color--text--shade-1);
+}
+.eval-run-item:hover { background: var(--bg-panel); }
+.eval-run-item.selected { background: var(--color--primary--tint-3, var(--bg-panel)); box-shadow: inset 2px 0 0 var(--accent); }
+.eval-run-main { display: flex; flex-direction: column; flex: 1; min-width: 0; font-size: 12.5px; }
+.eval-run-main .dim { font-size: 11.5px; }
+.eval-run-status {
+  font-size: 11px; padding: 2px 7px; border-radius: 10px; text-transform: capitalize;
+  background: var(--bg-panel); color: var(--text-dim);
+}
+.eval-run-status.completed, .eval-run-status.success { background: rgba(45,164,78,0.15); color: #2da44e; }
+.eval-run-status.error { background: rgba(207,34,46,0.15); color: #cf222e; }
+.eval-run-status.running { background: rgba(154,103,0,0.15); color: #9a6700; }
+.eval-detail { flex: 1; display: flex; flex-direction: column; overflow-y: auto; min-width: 0; }
+.eval-empty { margin: auto; text-align: center; color: var(--text-dim); }
+.eval-empty h2 { margin: 0 0 6px; font-size: 18px; color: var(--color--text--shade-1); }
+.eval-detail-head { display: flex; align-items: center; gap: 8px; padding: 16px 20px; border-bottom: 1px solid var(--border); font-size: 13px; }
+.eval-metrics { display: flex; flex-wrap: wrap; gap: 12px; padding: 18px 20px; }
+.eval-metric-card {
+  min-width: 120px; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-panel);
+}
+.eval-metric-name { font-size: 12px; color: var(--text-dim); text-transform: capitalize; }
+.eval-metric-value { font-size: 24px; font-weight: var(--font-weight--bold); color: var(--color--text--shade-1); margin-top: 2px; }
+.eval-cases-wrap { padding: 0 20px 24px; overflow-x: auto; }
+.eval-cases { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.eval-cases th, .eval-cases td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.eval-cases th { color: var(--text-dim); font-weight: var(--font-weight--medium); text-transform: capitalize; }
+.eval-input-cell { max-width: 320px; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-family--monospace, monospace); }
 .exec-list {
   width: 340px; flex-shrink: 0; border-right: 1px solid var(--border);
   display: flex; flex-direction: column; overflow-y: auto; background: var(--bg);
