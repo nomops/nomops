@@ -23,7 +23,7 @@ import { evaluationDescription } from './nodes/Evaluation/Evaluation.description
 import { errorTriggerDescription } from './nodes/ErrorTrigger/ErrorTrigger.description.js';
 import { executeWorkflowTriggerDescription } from './nodes/ExecuteWorkflowTrigger/ExecuteWorkflowTrigger.description.js';
 import { respondToWebhookDescription } from './nodes/RespondToWebhook/RespondToWebhook.description.js';
-import { anthropicChatModelDescription } from './nodes/AnthropicChatModel/AnthropicChatModel.node.js';
+import { chatModelDescription } from './nodes/ChatModel/ChatModel.node.js';
 import { httpToolDescription } from './nodes/HttpTool/HttpTool.node.js';
 import { windowMemoryDescription } from './nodes/WindowMemory/WindowMemory.node.js';
 import { stickyNoteDescription } from './nodes/StickyNote/StickyNote.node.js';
@@ -157,9 +157,9 @@ export const builtinNodeManifest: ILoadableNodeType[] = [
     load: () => import('./nodes/PollingTrigger/PollingTrigger.node.js').then((m) => m.PollingTrigger),
   },
   {
-    type: `nomops.${anthropicChatModelDescription.name}`,
-    description: anthropicChatModelDescription,
-    load: () => import('./nodes/AnthropicChatModel/AnthropicChatModel.node.js').then((m) => m.AnthropicChatModel),
+    type: `nomops.${chatModelDescription.name}`,
+    description: chatModelDescription,
+    load: () => import('./nodes/ChatModel/ChatModel.node.js').then((m) => m.ChatModel),
   },
   {
     type: `nomops.${httpToolDescription.name}`,

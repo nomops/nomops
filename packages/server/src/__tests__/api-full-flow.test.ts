@@ -234,7 +234,7 @@ describe('node-types', () => {
     expect(names).toEqual([
       'aggregate',
       'aiAgent',
-      'anthropicChatModel',
+      'chatModel',
       'chatTrigger',
       'code',
       'errorTrigger',

@@ -16,7 +16,7 @@ describe('内置节点通过加载器可用', () => {
     expect(names).toEqual([
       'aggregate',
       'aiAgent',
-      'anthropicChatModel',
+      'chatModel',
       'chatTrigger',
       'code',
       'errorTrigger',

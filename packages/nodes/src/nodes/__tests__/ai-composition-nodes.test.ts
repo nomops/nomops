@@ -11,7 +11,7 @@ import type {
   JsonObject,
 } from '@nomops/workflow';
 import { AiAgent } from '../AiAgent/AiAgent.node.js';
-import { AnthropicChatModel } from '../AnthropicChatModel/AnthropicChatModel.node.js';
+import { ChatModel } from '../ChatModel/ChatModel.node.js';
 import { HttpTool } from '../HttpTool/HttpTool.node.js';
 import { WindowMemory } from '../WindowMemory/WindowMemory.node.js';
 
@@ -159,7 +159,7 @@ describe('AI Agent — 组合模式', () => {
   });
 });
 
-describe('Anthropic Chat Model 子节点', () => {
+describe('Chat Model 子节点（多 provider）', () => {
   it('supplyData→chat：请求形状（tools/system/messages）与 tool_use 解析', async () => {
     const requests: IHttpRequestOptions[] = [];
     const ctx = supplyContext({
@@ -175,7 +175,7 @@ describe('Anthropic Chat Model 子节点', () => {
         };
       },
     });
-    const model = await new AnthropicChatModel().supplyData!.call(ctx);
+    const model = await new ChatModel().supplyData!.call(ctx);
 
     const reply = await model.chat(
       [
@@ -204,7 +204,7 @@ describe('Anthropic Chat Model 子节点', () => {
         return { content: [{ type: 'text', text: 'done' }] };
       },
     });
-    const model = await new AnthropicChatModel().supplyData!.call(ctx);
+    const model = await new ChatModel().supplyData!.call(ctx);
     await model.chat([
       { role: 'user', content: 'q' },
       { role: 'assistant', content: '', toolCalls: [{ id: 'c1', name: 'f', arguments: {} }] },
@@ -225,7 +225,7 @@ describe('Anthropic Chat Model 子节点', () => {
         return { content: [{ type: 'text', text: 'a cat' }] };
       },
     });
-    const model = await new AnthropicChatModel().supplyData!.call(ctx);
+    const model = await new ChatModel().supplyData!.call(ctx);
     await model.chat([
       { role: 'user', content: 'describe', images: [{ mimeType: 'image/png', data: 'BASE64DATA' }] },
     ]);
@@ -246,10 +246,52 @@ describe('Anthropic Chat Model 子节点', () => {
         return { content: [{ type: 'text', text: 'ok' }] };
       },
     });
-    const model = await new AnthropicChatModel().supplyData!.call(ctx);
+    const model = await new ChatModel().supplyData!.call(ctx);
     await model.chat([{ role: 'user', content: 'hi' }]);
     const messages = (requests[0]!.body as { messages: Array<{ role: string; content: unknown }> }).messages;
     expect(messages[0]!.content).toBe('hi');
+  });
+
+  it('多 provider：openai 兼容走 Chat Completions（Bearer + choices 解析 + 工具/图片格式）', async () => {
+    const requests: IHttpRequestOptions[] = [];
+    const ctx = supplyContext({
+      params: { provider: 'deepseek', model: 'deepseek-chat' },
+      credentials: { apiKey: 'sk-ds' },
+      httpRequest: async (o) => {
+        requests.push(o);
+        return {
+          choices: [
+            {
+              message: {
+                content: 'sure',
+                tool_calls: [{ id: 'tc1', type: 'function', function: { name: 'lookup', arguments: '{"q":"x"}' } }],
+              },
+            },
+          ],
+        };
+      },
+    });
+    const model = await new ChatModel().supplyData!.call(ctx);
+    const reply = await model.chat(
+      [{ role: 'user', content: 'see this', images: [{ mimeType: 'image/png', data: 'B64' }] }],
+      { tools: [{ name: 'lookup', description: 'd' }] },
+    );
+
+    // 打 DeepSeek 端点、Bearer 鉴权
+    expect(requests[0]!.url).toBe('https://api.deepseek.com/chat/completions');
+    expect(requests[0]!.headers?.['authorization']).toBe('Bearer sk-ds');
+    const body = requests[0]!.body as Record<string, unknown>;
+    // OpenAI 工具格式（type:function）
+    expect((body['tools'] as Array<{ type: string }>)[0]!.type).toBe('function');
+    // OpenAI 多模态格式（image_url data URI）
+    const userMsg = (body['messages'] as Array<{ role: string; content: unknown }>)[0]!;
+    expect(userMsg.content).toEqual([
+      { type: 'text', text: 'see this' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,B64' } },
+    ]);
+    // choices → content + tool_calls(实参 JSON 解析)
+    expect(reply.content).toBe('sure');
+    expect(reply.toolCalls).toEqual([{ id: 'tc1', name: 'lookup', arguments: { q: 'x' } }]);
   });
 });
 

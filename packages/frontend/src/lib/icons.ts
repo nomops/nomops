@@ -213,7 +213,7 @@ const NODE: Record<string, IconVisual> = {
   executeWorkflow: { svg: GLYPH.subflow, color: '#8b5cf6' },
   wait: { svg: GLYPH.pause, color: '#f5a623' },
   aiAgent: { svg: GLYPH.robot, color: '#ff6900' },
-  anthropicChatModel: { svg: BRAND.anthropic, color: '' },
+  chatModel: { svg: GLYPH.chat, color: '#ff6900' },
   httpTool: { svg: GLYPH.wrench, color: '#8b5cf6' },
   windowMemory: { svg: GLYPH.memory, color: '#4cc38a' },
   slack: { svg: BRAND.slack, color: '' },

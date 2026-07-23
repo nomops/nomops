@@ -196,6 +196,8 @@ export interface INodeProperties {
 export interface INodeCredentialDescription {
   name: string;
   required?: boolean;
+  /** 按其他参数值条件显示该凭证槽（如多 provider 节点只显示所选 provider 的凭证）。 */
+  displayOptions?: IDisplayOptions;
 }
 
 /**

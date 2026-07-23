@@ -132,7 +132,16 @@ watch(
   },
   { immediate: true },
 );
-const nodeCredTypes = computed(() => desc.value?.credentials ?? []);
+const nodeCredTypes = computed(() =>
+  (desc.value?.credentials ?? []).filter((ct) => {
+    const show = ct.displayOptions?.show;
+    if (!show) return true;
+    // show 全命中才显示（凭证按所选 provider 条件展示）
+    return Object.entries(show).every(([key, allowed]) =>
+      (allowed as unknown[]).includes(node.value?.parameters?.[key]),
+    );
+  }),
+);
 function credsOfType(type: string): CredentialView[] {
   return allCredentials.value.filter((c) => c.type === type);
 }
