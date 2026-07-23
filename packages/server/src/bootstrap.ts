@@ -186,6 +186,13 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   const repos = createRepositories(dbHandle);
   const { jwtSecret } = await ensureInstanceSecrets(repos);
 
+  // #34 一次性回填：全局 workflows.favorite → 各项目 owner 的 user_favorites。
+  // settings 标志位保证只跑一次（否则用户取消收藏后重启会被重新加回）。
+  if (!(await repos.settings.get('favorites.backfilled'))) {
+    const moved = await repos.favorites.backfillFromWorkflowFlag().catch(() => -1);
+    if (moved >= 0) await repos.settings.set('favorites.backfilled', String(moved));
+  }
+
   const nodeLoader = new NodeLoader(builtinNodeManifest);
   await nodeLoader.loadAll();
 

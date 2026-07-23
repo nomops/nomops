@@ -39,6 +39,7 @@ export {
   WorkflowVersionRepository,
   InstalledNodeRepository,
   TestRunRepository,
+  FavoriteRepository,
 } from './repositories.js';
 export type {
   Repositories,
@@ -75,4 +76,5 @@ export type {
   InstalledNode,
   TestRun,
   TestCaseRun,
+  UserFavorite,
 } from './types.js';

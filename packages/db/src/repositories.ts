@@ -1924,6 +1924,90 @@ export class TestRunRepository extends BaseRepository {
   }
 }
 
+/**
+ * 每用户收藏（backlog #34）。归属天然按 userId 隔离——收藏是私人视图，
+ * 不经项目边界（双用户各自星标互不可见）。
+ */
+export class FavoriteRepository extends BaseRepository {
+  async add(userId: string, resourceType: string, resourceId: string): Promise<void> {
+    await this.db
+      .insert(this.schema.userFavorites)
+      .values({ userId, resourceType, resourceId })
+      .onConflictDoNothing();
+  }
+
+  async remove(userId: string, resourceType: string, resourceId: string): Promise<void> {
+    await this.db
+      .delete(this.schema.userFavorites)
+      .where(
+        and(
+          eq(this.schema.userFavorites.userId, userId),
+          eq(this.schema.userFavorites.resourceType, resourceType),
+          eq(this.schema.userFavorites.resourceId, resourceId),
+        ),
+      );
+  }
+
+  /** 某用户某类资源的收藏 id 集合（列表标星/过滤用）。 */
+  async listResourceIds(userId: string, resourceType: string): Promise<Set<string>> {
+    const rows = await this.db
+      .select({ resourceId: this.schema.userFavorites.resourceId })
+      .from(this.schema.userFavorites)
+      .where(
+        and(
+          eq(this.schema.userFavorites.userId, userId),
+          eq(this.schema.userFavorites.resourceType, resourceType),
+        ),
+      );
+    return new Set(rows.map((r: { resourceId: string }) => r.resourceId));
+  }
+
+  async isFavorite(userId: string, resourceType: string, resourceId: string): Promise<boolean> {
+    const rows = await this.db
+      .select({ resourceId: this.schema.userFavorites.resourceId })
+      .from(this.schema.userFavorites)
+      .where(
+        and(
+          eq(this.schema.userFavorites.userId, userId),
+          eq(this.schema.userFavorites.resourceType, resourceType),
+          eq(this.schema.userFavorites.resourceId, resourceId),
+        ),
+      )
+      .limit(1);
+    return rows.length > 0;
+  }
+
+  /**
+   * 一次性回填：把 workflows.favorite=true 的全局星标搬给各自项目 owner。
+   * 幂等（onConflictDoNothing）；bootstrap 用 settings 标志位保证只跑一次。
+   * 返回搬运的行数。
+   */
+  async backfillFromWorkflowFlag(): Promise<number> {
+    const rows = (await this.db
+      .select({
+        workflowId: this.schema.workflows.id,
+        userId: this.schema.projectRelations.userId,
+      })
+      .from(this.schema.workflows)
+      .innerJoin(
+        this.schema.sharedWorkflows,
+        eq(this.schema.sharedWorkflows.workflowId, this.schema.workflows.id),
+      )
+      .innerJoin(
+        this.schema.projectRelations,
+        eq(this.schema.projectRelations.projectId, this.schema.sharedWorkflows.projectId),
+      )
+      .where(
+        and(
+          eq(this.schema.workflows.favorite, true),
+          eq(this.schema.projectRelations.role, 'project:owner'),
+        ),
+      )) as Array<{ workflowId: string; userId: string }>;
+    for (const r of rows) await this.add(r.userId, 'workflow', r.workflowId);
+    return rows.length;
+  }
+}
+
 export interface Repositories {
   users: UserRepository;
   apiKeys: ApiKeyRepository;
@@ -1946,6 +2030,7 @@ export interface Repositories {
   customRoles: CustomRoleRepository;
   chat: ChatRepository;
   testRuns: TestRunRepository;
+  favorites: FavoriteRepository;
 }
 
 /** 用一个 DatabaseHandle 组装全部仓储。server 层在启动时调用一次。 */
@@ -1973,5 +2058,6 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
     customRoles: new CustomRoleRepository(db, schema),
     chat: new ChatRepository(db, schema),
     testRuns: new TestRunRepository(db, schema),
+    favorites: new FavoriteRepository(db, schema),
   };
 }

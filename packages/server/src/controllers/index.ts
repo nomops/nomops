@@ -322,7 +322,7 @@ export function createApiRouter(services: AppServices): Router {
       const fq = req.query['folderId'];
       const folderId = fq === undefined ? undefined : fq === 'root' || fq === '' ? null : String(fq);
       const archived = req.query['archived'] === 'true';
-      res.json(await services.workflows.list(auth(req).projectId, folderId, archived));
+      res.json(await services.workflows.list(auth(req).projectId, folderId, archived, auth(req).userId));
     }),
   );
 
@@ -341,7 +341,11 @@ export function createApiRouter(services: AppServices): Router {
     h(async (req, res) => {
       const row = await services.workflows.getById(param(req, 'id'), auth(req).projectId);
       const favorite = Boolean((req.body as { favorite?: boolean })?.favorite);
-      res.json(await services.repos.workflows.setFlags(row.id, { favorite }));
+      // #34：每用户收藏——写 user_favorites 而非全局列；返回带本用户 favorite 的行
+      const userId = auth(req).userId;
+      if (favorite) await services.repos.favorites.add(userId, 'workflow', row.id);
+      else await services.repos.favorites.remove(userId, 'workflow', row.id);
+      res.json({ ...row, favorite });
     }),
   );
 

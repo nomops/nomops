@@ -86,10 +86,7 @@
 
 ## P8 · n8n 表对照补差 · 小而快 + 正确性（来源：2026-07-22 自托管 n8n 库对照盘点）
 
-- [ ] **34. 每用户收藏（user_favorites）** `S`
-  现 `workflows.favorite` 是全局布尔，多人项目里星标互相覆盖（语义错误）。
-  → 新表 user_favorites(userId + resourceType/resourceId) + 迁移搬现有星标 + 星标/列表接口改按当前用户过滤。
-  验收：双用户各自星标互不可见。
+- [x] **34. 每用户收藏（user_favorites）** `S` ✅ 2026-07-23（新表 user_favorites 复合主键(userId+resourceType+resourceId)双方言+迁移0027;FavoriteRepository(add/remove/listResourceIds/isFavorite/backfillFromWorkflowFlag);workflow-service.list 传 userId 时按本用户收藏覆写每行 favorite;/workflows/:id/favorite 改写 user_favorites 并回显本用户状态;bootstrap 一次性回填全局 favorite→各项目 owner(settings 标志位保证只跑一次,避免重启复活);workflows.favorite 列转休眠仅作回填来源;4 server 测(双用户各收藏不同流各见各的、同流互不影响、取消只影响本人、端点回显)验收"双用户各自星标互不可见";前端 API 形状不变无需改)
 
 - [ ] **35. 执行标注 + 自定义元数据** `M`（执行标注从 #31 拆出先行，评测其余仍归 #31）
   n8n：execution_annotations(vote 👍👎 + note) + annotation_tag_entity(标注标签) + execution_metadata(运行中写 KV、列表可检索)。

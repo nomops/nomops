@@ -474,6 +474,20 @@ export const testCaseRuns = pgTable(
   (t) => [index('test_case_runs_test_run_id_idx').on(t.testRunId)],
 );
 
+/** 每用户收藏（backlog #34）：取代 workflows.favorite 全局布尔。resourceType 可扩展。 */
+export const userFavorites = pgTable(
+  'user_favorites',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    resourceType: text('resource_type').notNull(), // 'workflow'（未来可加 credential 等）
+    resourceId: text('resource_id').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.resourceType, t.resourceId] })],
+);
+
 export const pgSchema = {
   users,
   apiKeys,
@@ -508,4 +522,5 @@ export const pgSchema = {
   chatSessions,
   testRuns,
   testCaseRuns,
+  userFavorites,
 };

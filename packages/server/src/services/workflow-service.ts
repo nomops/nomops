@@ -161,9 +161,23 @@ export class WorkflowService {
     return out;
   }
 
-  async list(projectId: string, folderId?: string | null, archived = false): Promise<WorkflowRow[]> {
-    if (folderId === undefined) return this.repos.workflows.findAllByProject(projectId, archived);
-    return this.repos.workflows.findByProjectAndFolder(projectId, folderId, archived);
+  /**
+   * folderId: undefined → 全部；null → 项目根；string → 指定文件夹。archived=true 只看归档。
+   * userId 传入时按该用户的收藏覆写每行 favorite（#34：每用户收藏，取代全局列）。
+   */
+  async list(
+    projectId: string,
+    folderId?: string | null,
+    archived = false,
+    userId?: string,
+  ): Promise<WorkflowRow[]> {
+    const rows =
+      folderId === undefined
+        ? await this.repos.workflows.findAllByProject(projectId, archived)
+        : await this.repos.workflows.findByProjectAndFolder(projectId, folderId, archived);
+    if (!userId) return rows;
+    const favs = await this.repos.favorites.listResourceIds(userId, 'workflow');
+    return rows.map((r) => ({ ...r, favorite: favs.has(r.id) }));
   }
 
   /**
