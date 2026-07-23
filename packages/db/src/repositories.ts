@@ -37,6 +37,7 @@ import type {
   InstalledNode,
   TestRun,
   TestCaseRun,
+  AnnotationTag,
 } from './types.js';
 
 /**
@@ -2008,6 +2009,98 @@ export class FavoriteRepository extends BaseRepository {
   }
 }
 
+/** 执行标注 shape：vote/note + 标签。 */
+export interface ExecutionAnnotationView {
+  vote: 'up' | 'down' | null;
+  note: string;
+  tags: AnnotationTag[];
+}
+
+/**
+ * 执行标注 + 标签（backlog #35）。归属经 execution → workflow 派生，
+ * 调用方须先用 ExecutionRepository.findById(id, projectId) 校验归属再调这里。
+ */
+export class ExecutionAnnotationRepository extends BaseRepository {
+  async get(executionId: string): Promise<ExecutionAnnotationView> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.executionAnnotations)
+      .where(eq(this.schema.executionAnnotations.executionId, executionId))
+      .limit(1);
+    const ann = rows[0] as { vote: string | null; note: string } | undefined;
+    const tags = await this.tagsFor(executionId);
+    return {
+      vote: (ann?.vote as 'up' | 'down' | null) ?? null,
+      note: ann?.note ?? '',
+      tags,
+    };
+  }
+
+  /** upsert vote/note（executionId 为主键）。 */
+  async setAnnotation(executionId: string, patch: { vote?: 'up' | 'down' | null; note?: string }): Promise<void> {
+    await this.db
+      .insert(this.schema.executionAnnotations)
+      .values({
+        executionId,
+        vote: patch.vote ?? null,
+        note: patch.note ?? '',
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: this.schema.executionAnnotations.executionId,
+        set: {
+          ...(patch.vote !== undefined ? { vote: patch.vote } : {}),
+          ...(patch.note !== undefined ? { note: patch.note } : {}),
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  async tagsFor(executionId: string): Promise<AnnotationTag[]> {
+    const rows = await this.db
+      .select({
+        id: this.schema.annotationTags.id,
+        name: this.schema.annotationTags.name,
+        createdAt: this.schema.annotationTags.createdAt,
+      })
+      .from(this.schema.executionAnnotationTags)
+      .innerJoin(
+        this.schema.annotationTags,
+        eq(this.schema.annotationTags.id, this.schema.executionAnnotationTags.tagId),
+      )
+      .where(eq(this.schema.executionAnnotationTags.executionId, executionId));
+    return rows as AnnotationTag[];
+  }
+
+  /** 全量替换某执行的标签映射（传入 tagId 列表）。 */
+  async setTags(executionId: string, tagIds: string[]): Promise<void> {
+    await this.db
+      .delete(this.schema.executionAnnotationTags)
+      .where(eq(this.schema.executionAnnotationTags.executionId, executionId));
+    if (tagIds.length > 0) {
+      await this.db
+        .insert(this.schema.executionAnnotationTags)
+        .values(tagIds.map((tagId) => ({ executionId, tagId })));
+    }
+  }
+
+  async listTags(): Promise<AnnotationTag[]> {
+    return (await this.db.select().from(this.schema.annotationTags)) as AnnotationTag[];
+  }
+
+  /** 按名取标签,不存在则建（标注时输入新标签名即创建）。 */
+  async findOrCreateTag(name: string): Promise<AnnotationTag> {
+    const existing = await this.db
+      .select()
+      .from(this.schema.annotationTags)
+      .where(eq(this.schema.annotationTags.name, name))
+      .limit(1);
+    if (existing[0]) return existing[0] as AnnotationTag;
+    const [row] = await this.db.insert(this.schema.annotationTags).values({ name }).returning();
+    return row as AnnotationTag;
+  }
+}
+
 export interface Repositories {
   users: UserRepository;
   apiKeys: ApiKeyRepository;
@@ -2031,6 +2124,7 @@ export interface Repositories {
   chat: ChatRepository;
   testRuns: TestRunRepository;
   favorites: FavoriteRepository;
+  annotations: ExecutionAnnotationRepository;
 }
 
 /** 用一个 DatabaseHandle 组装全部仓储。server 层在启动时调用一次。 */
@@ -2059,5 +2153,6 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
     chat: new ChatRepository(db, schema),
     testRuns: new TestRunRepository(db, schema),
     favorites: new FavoriteRepository(db, schema),
+    annotations: new ExecutionAnnotationRepository(db, schema),
   };
 }

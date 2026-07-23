@@ -34,6 +34,9 @@ export type ChatSession = InferSelectModel<typeof sqliteSchema.chatSessions>;
 export type TestRun = InferSelectModel<typeof sqliteSchema.testRuns>;
 export type TestCaseRun = InferSelectModel<typeof sqliteSchema.testCaseRuns>;
 export type UserFavorite = InferSelectModel<typeof sqliteSchema.userFavorites>;
+export type ExecutionAnnotation = InferSelectModel<typeof sqliteSchema.executionAnnotations>;
+export type AnnotationTag = InferSelectModel<typeof sqliteSchema.annotationTags>;
+export type ExecutionMetadataRow = InferSelectModel<typeof sqliteSchema.executionMetadata>;
 
 /* ── 创建入参（区别于自动生成的 id/时间戳字段） ── */
 

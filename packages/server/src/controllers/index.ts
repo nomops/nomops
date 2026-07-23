@@ -47,6 +47,7 @@ import {
   chatBodySchema,
   sttConfigSchema,
   transcribeBodySchema,
+  executionAnnotationSchema,
   updateMeSchema,
   changePasswordSchema,
   ssoConfigSchema,
@@ -704,6 +705,44 @@ export function createApiRouter(services: AppServices): Router {
     '/executions/:id',
     h(async (req, res) => {
       res.json(await services.executions.getById(param(req, 'id'), auth(req).projectId));
+    }),
+  );
+
+  /* ── 执行标注（backlog #35）：vote👍👎 / note / tags ── */
+  // 已定义的标注标签清单（标注输入框自动补全用）
+  router.get(
+    '/annotation-tags',
+    h(async (_req, res) => {
+      res.json(await services.repos.annotations.listTags());
+    }),
+  );
+  router.get(
+    '/executions/:id/annotation',
+    h(async (req, res) => {
+      await services.executions.getById(param(req, 'id'), auth(req).projectId); // 归属校验
+      res.json(await services.repos.annotations.get(param(req, 'id')));
+    }),
+  );
+  router.put(
+    '/executions/:id/annotation',
+    editor,
+    h(async (req, res) => {
+      await services.executions.getById(param(req, 'id'), auth(req).projectId); // 归属校验
+      const id = param(req, 'id');
+      const body = parseBody(executionAnnotationSchema, req);
+      if (body.vote !== undefined || body.note !== undefined) {
+        await services.repos.annotations.setAnnotation(id, {
+          ...(body.vote !== undefined ? { vote: body.vote } : {}),
+          ...(body.note !== undefined ? { note: body.note } : {}),
+        });
+      }
+      if (body.tags !== undefined) {
+        // 标签名 → id（不存在则建），再全量替换映射
+        const tagIds = [];
+        for (const name of body.tags) tagIds.push((await services.repos.annotations.findOrCreateTag(name.trim())).id);
+        await services.repos.annotations.setTags(id, tagIds);
+      }
+      res.json(await services.repos.annotations.get(id));
     }),
   );
 

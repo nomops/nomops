@@ -5,6 +5,7 @@ import type { IConnections, INode, IRunExecutionData } from '@nomops/workflow';
 import {
   api,
   type ExecutionRow,
+  type ExecutionAnnotation,
   type TagRow,
   type DataTableView,
   type TestRunRow,
@@ -621,6 +622,35 @@ async function selectExec(id: string) {
   selectedExecId.value = id;
   expandedNode.value = null;
   execDetail.value = await api.executions.get(id).catch(() => null);
+  await loadAnnotation(id);
+}
+
+/* ── 执行标注（#35）：vote👍👎 / note / tags ── */
+const annotation = ref<ExecutionAnnotation>({ vote: null, note: '', tags: [] });
+const annotationTags = ref<string[]>([]); // 全局标签名，输入补全用
+const newTag = ref('');
+async function loadAnnotation(id: string) {
+  annotation.value = (await api.executions.getAnnotation(id).catch(() => null)) ?? { vote: null, note: '', tags: [] };
+  if (!annotationTags.value.length) annotationTags.value = (await api.annotationTags().catch(() => [])).map((t) => t.name);
+}
+async function saveAnnotation(patch: { vote?: 'up' | 'down' | null; note?: string; tags?: string[] }) {
+  const id = selectedExecId.value;
+  if (!id) return;
+  annotation.value = await api.executions.setAnnotation(id, patch).catch(() => annotation.value);
+  annotationTags.value = (await api.annotationTags().catch(() => [])).map((t) => t.name);
+}
+function toggleVote(v: 'up' | 'down') {
+  void saveAnnotation({ vote: annotation.value.vote === v ? null : v });
+}
+function addAnnotationTag() {
+  const name = newTag.value.trim();
+  if (!name) return;
+  const names = [...new Set([...annotation.value.tags.map((t) => t.name), name])];
+  newTag.value = '';
+  void saveAnnotation({ tags: names });
+}
+function removeAnnotationTag(name: string) {
+  void saveAnnotation({ tags: annotation.value.tags.map((t) => t.name).filter((n) => n !== name) });
 }
 
 /* ── 评测（#31）：数据集选择 + Run test + 测试运行历史/详情 ── */
@@ -1060,6 +1090,47 @@ async function loadSavePolicy() {
             <button class="exec-trash-btn" data-test="exec-delete" title="Delete execution" :disabled="execDeleting" @click="deleteExecution">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /></svg>
             </button>
+          </div>
+
+          <!-- 执行标注(#35):👍👎 + 笔记 + 标签 -->
+          <div class="exec-annotation" data-test="exec-annotation">
+            <button
+              class="annot-vote"
+              :class="{ on: annotation.vote === 'up' }"
+              data-test="annot-up"
+              title="Rate good"
+              @click="toggleVote('up')"
+            >👍</button>
+            <button
+              class="annot-vote"
+              :class="{ on: annotation.vote === 'down' }"
+              data-test="annot-down"
+              title="Rate bad"
+              @click="toggleVote('down')"
+            >👎</button>
+            <span v-for="tg in annotation.tags" :key="tg.id" class="annot-tag" data-test="annot-tag">
+              {{ tg.name }}
+              <button class="annot-tag-x" data-test="annot-tag-remove" @click="removeAnnotationTag(tg.name)">×</button>
+            </span>
+            <input
+              v-model="newTag"
+              class="annot-tag-input"
+              list="annot-tag-list"
+              data-test="annot-tag-input"
+              placeholder="+ tag"
+              @keyup.enter="addAnnotationTag"
+            />
+            <datalist id="annot-tag-list">
+              <option v-for="t in annotationTags" :key="t" :value="t" />
+            </datalist>
+            <input
+              :value="annotation.note"
+              class="annot-note"
+              data-test="annot-note"
+              placeholder="Add a note…"
+              @change="saveAnnotation({ note: ($event.target as HTMLInputElement).value })"
+              @keyup.enter="saveAnnotation({ note: ($event.target as HTMLInputElement).value })"
+            />
           </div>
 
           <!-- 只读斜纹画布快照(节点带执行态);执行 API 无快照,用当前工作流定义近似 -->
@@ -1782,6 +1853,25 @@ async function loadSavePolicy() {
   border-radius: var(--radius); color: var(--color--text--shade-1); font-size: var(--font-size--2xs); cursor: pointer;
 }
 .exec-copy-btn:hover { border-color: var(--border-color--strong); }
+
+/* 执行标注(#35) */
+.exec-annotation {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  padding: 10px 20px; border-bottom: var(--border-width) var(--border-style) var(--border-color);
+}
+.annot-vote {
+  width: 30px; height: 28px; border: 1px solid var(--border-color); border-radius: 6px;
+  background: none; cursor: pointer; font-size: 14px; opacity: 0.55;
+}
+.annot-vote:hover { opacity: 0.85; }
+.annot-vote.on { opacity: 1; border-color: var(--accent); background: var(--color--background--light-1); }
+.annot-tag {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 6px 3px 9px;
+  background: var(--color--background--light-1); border: 1px solid var(--border-color); border-radius: 12px; font-size: 12px;
+}
+.annot-tag-x { border: none; background: none; color: var(--text-dim); cursor: pointer; font-size: 13px; line-height: 1; padding: 0; }
+.annot-tag-input { width: 80px; height: 28px; padding: 0 8px; border: 1px solid var(--border-color); border-radius: 6px; background: none; color: inherit; font-size: 12px; }
+.annot-note { flex: 1; min-width: 140px; height: 28px; padding: 0 10px; border: 1px solid var(--border-color); border-radius: 6px; background: none; color: inherit; font-size: 13px; }
 .exec-trash-btn {
   display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px;
   background: var(--color--background--light-3); border: var(--border-width) var(--border-style) var(--border-color);

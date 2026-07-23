@@ -474,6 +474,53 @@ export const testCaseRuns = pgTable(
   (t) => [index('test_case_runs_test_run_id_idx').on(t.testRunId)],
 );
 
+/** 执行标注（backlog #35）：每次执行一条,👍👎 + 笔记。1:1 于 execution。 */
+export const executionAnnotations = pgTable('execution_annotations', {
+  executionId: uuid('execution_id')
+    .primaryKey()
+    .references(() => executions.id),
+  vote: text('vote'), // 'up' | 'down' | null
+  note: text('note').notNull().default(''),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+/** 标注标签定义（backlog #35）：name 全实例唯一。 */
+export const annotationTags = pgTable('annotation_tags', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull().unique(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+/** 执行↔标注标签 多对多（backlog #35）。 */
+export const executionAnnotationTags = pgTable(
+  'execution_annotation_tags',
+  {
+    executionId: uuid('execution_id')
+      .notNull()
+      .references(() => executions.id),
+    tagId: uuid('tag_id')
+      .notNull()
+      .references(() => annotationTags.id),
+  },
+  (t) => [primaryKey({ columns: [t.executionId, t.tagId] })],
+);
+
+/** 执行自定义元数据（backlog #35）：运行中写 KV,执行列表可按键值检索。 */
+export const executionMetadata = pgTable(
+  'execution_metadata',
+  {
+    executionId: uuid('execution_id')
+      .notNull()
+      .references(() => executions.id),
+    key: text('key').notNull(),
+    value: text('value').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.executionId, t.key] }),
+    index('execution_metadata_key_value_idx').on(t.key, t.value),
+  ],
+);
+
 /** 每用户收藏（backlog #34）：取代 workflows.favorite 全局布尔。resourceType 可扩展。 */
 export const userFavorites = pgTable(
   'user_favorites',
@@ -523,4 +570,8 @@ export const pgSchema = {
   testRuns,
   testCaseRuns,
   userFavorites,
+  executionAnnotations,
+  annotationTags,
+  executionAnnotationTags,
+  executionMetadata,
 };

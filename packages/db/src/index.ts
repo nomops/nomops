@@ -40,11 +40,13 @@ export {
   InstalledNodeRepository,
   TestRunRepository,
   FavoriteRepository,
+  ExecutionAnnotationRepository,
 } from './repositories.js';
 export type {
   Repositories,
   WorkflowVersionMeta,
   CreateWorkflowVersionInput,
+  ExecutionAnnotationView,
 } from './repositories.js';
 
 export type {
@@ -77,4 +79,7 @@ export type {
   TestRun,
   TestCaseRun,
   UserFavorite,
+  ExecutionAnnotation,
+  AnnotationTag,
+  ExecutionMetadataRow,
 } from './types.js';

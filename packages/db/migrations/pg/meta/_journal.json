@@ -197,6 +197,13 @@
       "when": 1784791352201,
       "tag": "0027_common_grandmaster",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1784792476665,
+      "tag": "0028_dry_mariko_yashida",
+      "breakpoints": true
     }
   ]
 }

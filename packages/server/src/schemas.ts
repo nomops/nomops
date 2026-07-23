@@ -146,6 +146,13 @@ export const chatAttachmentSchema = z.object({
   data: z.string().min(1).max(14_000_000), // base64（~10MB 原文，配合 express.json 15mb 限）
 });
 
+/** 执行标注（backlog #35）：vote 👍👎 / note / tags(标签名,不存在则建)。 */
+export const executionAnnotationSchema = z.object({
+  vote: z.enum(['up', 'down']).nullable().optional(),
+  note: z.string().max(5000).optional(),
+  tags: z.array(z.string().min(1).max(50)).max(20).optional(),
+});
+
 /** STT 配置（实例 admin，backlog #32）：apiKey 省略/空 = 保留旧值。 */
 export const sttConfigSchema = z.object({
   enabled: z.boolean().optional(),

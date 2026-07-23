@@ -113,6 +113,13 @@ export interface ExecutionRow {
   createdAt: string;
 }
 
+/** 执行标注（#35）。 */
+export interface ExecutionAnnotation {
+  vote: 'up' | 'down' | null;
+  note: string;
+  tags: Array<{ id: string; name: string }>;
+}
+
 export interface RunSummary {
   executionId: string;
   status: string;
@@ -473,7 +480,13 @@ export const api = {
     stop: (id: string) => http<RunSummary>('POST', `/api/executions/${id}/stop`),
     /* 批量删除（≤500/批;归属外 id 服务端静默跳过） */
     removeMany: (ids: string[]) => http<{ deleted: number }>('POST', '/api/executions/delete', { ids }),
+    /* 执行标注（#35）：vote👍👎 / note / tags */
+    getAnnotation: (id: string) => http<ExecutionAnnotation>('GET', `/api/executions/${id}/annotation`),
+    setAnnotation: (id: string, body: { vote?: 'up' | 'down' | null; note?: string; tags?: string[] }) =>
+      http<ExecutionAnnotation>('PUT', `/api/executions/${id}/annotation`, body),
   },
+
+  annotationTags: () => http<Array<{ id: string; name: string }>>('GET', '/api/annotation-tags'),
 
   credentials: {
     list: () => http<CredentialView[]>('GET', '/api/credentials'),
