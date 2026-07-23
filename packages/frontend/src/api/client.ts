@@ -173,6 +173,13 @@ export interface TestRunRow {
   completedAt: string | null;
 }
 
+/** 多模态 chat 附件（#32）：base64 内联。 */
+export interface ChatAttachment {
+  fileName?: string;
+  mimeType: string;
+  data: string;
+}
+
 export interface TestCaseRow {
   id: string;
   testRunId: string;
@@ -421,10 +428,15 @@ export const api = {
     remove: (id: string) => http<void>('DELETE', `/api/workflows/${id}`),
     run: (id: string, opts: { destinationNode?: string; startNode?: string } = {}) =>
       http<RunSummary>('POST', `/api/workflows/${id}/run`, opts),
-    /* 画布聊天（Chat Trigger）：消息进工作流，回最后节点的文本输出 */
-    chat: (id: string, message: string, sessionId: string) =>
+    /* 画布聊天（Chat Trigger）：消息(+多模态附件)进工作流，回最后节点的文本输出 */
+    chat: (
+      id: string,
+      message: string,
+      sessionId: string,
+      attachments?: ChatAttachment[],
+    ) =>
       http<{ executionId: string; status: string; reply: string; error?: string }>(
-        'POST', `/api/workflows/${id}/chat`, { message, sessionId },
+        'POST', `/api/workflows/${id}/chat`, { message, sessionId, ...(attachments?.length ? { attachments } : {}) },
       ),
     activate: (id: string, active: boolean) =>
       http<{ id: string; active: boolean }>('POST', `/api/workflows/${id}/activate`, { active }),
@@ -521,6 +533,16 @@ export const api = {
       http<DataTableRowView>('PATCH', `/api/data-tables/${id}/rows/${rowId}`, { data }),
     removeRow: (id: string, rowId: string) =>
       http<void>('DELETE', `/api/data-tables/${id}/rows/${rowId}`),
+  },
+
+  /* 语音转写 STT（#32）：配置(admin) + 转写(editor) */
+  stt: {
+    config: () =>
+      http<{ enabled: boolean; endpoint: string; model: string; apiKeyConfigured: boolean }>('GET', '/api/stt-config'),
+    saveConfig: (body: { enabled?: boolean; endpoint?: string; model?: string; apiKey?: string }) =>
+      http<{ enabled: boolean; endpoint: string; model: string; apiKeyConfigured: boolean }>('PUT', '/api/stt-config', body),
+    transcribe: (audio: string, mimeType: string, fileName?: string) =>
+      http<{ text: string }>('POST', '/api/chat/transcribe', { audio, mimeType, ...(fileName ? { fileName } : {}) }),
   },
 
   /* 评测/测试运行（#31）：Evaluation Trigger + data table 逐行跑工作流 */

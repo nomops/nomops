@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { api, type WorkflowRow } from '../api/client.js';
+import { api, type WorkflowRow, type ChatAttachment } from '../api/client.js';
 import SettingsMenu from '../components/shell/SettingsMenu.vue';
 
 /**
@@ -128,6 +128,74 @@ const activeSession = computed(() => sessions.value.find((s) => s.id === activeS
 const input = ref('');
 const busy = ref(false);
 const listEl = ref<HTMLElement>();
+
+/* ── 多模态附件 + 语音输入（#32） ── */
+const attachments = ref<ChatAttachment[]>([]);
+const fileInput = ref<HTMLInputElement>();
+const recording = ref(false);
+const transcribing = ref(false);
+let mediaRecorder: MediaRecorder | null = null;
+let recordedChunks: Blob[] = [];
+
+/** 只对当前是 Chat Trigger 工作流的会话开放附件/语音（服务端仅 chat 端点接附件）。 */
+const supportsAttachments = computed(() => activeSession.value?.target?.type === 'workflow');
+
+/** File → base64（去掉 data: 前缀）。 */
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] ?? '');
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function onPickFiles(e: Event) {
+  const files = (e.target as HTMLInputElement).files;
+  if (!files) return;
+  for (const file of Array.from(files).slice(0, 10)) {
+    const data = await fileToBase64(file);
+    attachments.value.push({ fileName: file.name, mimeType: file.type || 'application/octet-stream', data });
+  }
+  if (fileInput.value) fileInput.value.value = ''; // 允许重选同名文件
+}
+
+function removeAttachment(i: number) {
+  attachments.value.splice(i, 1);
+}
+
+/** 麦克风录音 → 停止后转写填入输入框（需实例已配 STT）。 */
+async function toggleRecording() {
+  if (recording.value) {
+    mediaRecorder?.stop();
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recordedChunks = [];
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = (ev) => ev.data.size > 0 && recordedChunks.push(ev.data);
+    mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      recording.value = false;
+      const blob = new Blob(recordedChunks, { type: mediaRecorder?.mimeType || 'audio/webm' });
+      const data = await fileToBase64(new File([blob], 'clip.webm', { type: blob.type }));
+      transcribing.value = true;
+      try {
+        const res = await api.stt.transcribe(data, blob.type, 'clip.webm');
+        input.value = (input.value ? input.value + ' ' : '') + res.text;
+      } catch (e) {
+        input.value = `[transcription failed: ${(e as Error).message}]`;
+      } finally {
+        transcribing.value = false;
+      }
+    };
+    mediaRecorder.start();
+    recording.value = true;
+  } catch (e) {
+    input.value = `[microphone unavailable: ${(e as Error).message}]`;
+  }
+}
 
 /* ── Workflow agents（含 Chat Trigger 的工作流） ── */
 const workflowAgents = ref<WorkflowRow[]>([]);
@@ -276,19 +344,22 @@ const canSend = computed(() => Boolean(activeSession.value?.target) && !busy.val
 async function send() {
   const content = input.value.trim();
   const session = activeSession.value;
-  if (!content || !session?.target || busy.value) return;
+  const pending = attachments.value.slice();
+  if ((!content && !pending.length) || !session?.target || busy.value) return;
   if (session.messages.length === 0) {
-    session.title = content.length > 40 ? content.slice(0, 40) + '…' : content;
+    session.title = content ? (content.length > 40 ? content.slice(0, 40) + '…' : content) : `${pending.length} attachment(s)`;
   }
   input.value = '';
-  session.messages.push({ role: 'user', content });
+  attachments.value = [];
+  const label = pending.length ? `${content}${content ? ' ' : ''}📎×${pending.length}` : content;
+  session.messages.push({ role: 'user', content: label });
   persistSessions();
   busy.value = true;
   void scrollDown();
   try {
     const target = session.target;
     if (target.type === 'workflow' && target.workflowId) {
-      const res = await api.workflows.chat(target.workflowId, content, session.wfSessionId ?? 'default');
+      const res = await api.workflows.chat(target.workflowId, content, session.wfSessionId ?? 'default', pending);
       session.messages.push({ role: 'assistant', content: res.error ?? res.reply, error: Boolean(res.error) });
     } else {
       const history = session.messages.filter((m) => !m.error).map((m) => ({ role: m.role, content: m.content }));
@@ -563,21 +634,52 @@ function chatWith(target: ChatTarget) {
           </div>
           <!-- D156 对标基线:输入区 + 底栏(左 +Tools / 右 橙色发送) -->
           <div class="composer" :class="{ disabled: !activeSession?.target }">
+            <!-- 附件预览 chips（#32） -->
+            <div v-if="attachments.length" class="composer-attachments" data-test="chat-attachments">
+              <span v-for="(a, i) in attachments" :key="i" class="attach-chip" data-test="attach-chip">
+                <span class="attach-name">{{ a.fileName ?? a.mimeType }}</span>
+                <button class="attach-x" data-test="attach-remove" @click="removeAttachment(i)">×</button>
+              </span>
+            </div>
             <textarea
               v-model="input"
               data-test="chat-input"
               rows="1"
-              :placeholder="activeSession?.target ? 'Type a message…' : 'Select a model'"
+              :placeholder="transcribing ? 'Transcribing…' : activeSession?.target ? 'Type a message…' : 'Select a model'"
               :disabled="!activeSession?.target"
               @keydown.enter.exact.prevent="send()"
             />
+            <input ref="fileInput" type="file" multiple accept="image/*" style="display: none" data-test="chat-file-input" @change="onPickFiles" />
             <div class="composer-bar">
               <button class="composer-tools" data-test="chat-tools" :disabled="!activeSession?.target">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14" /></svg>
                 Tools
               </button>
+              <!-- 附件（仅 Chat Trigger 工作流会话） -->
+              <button
+                v-if="supportsAttachments"
+                class="composer-icon"
+                data-test="chat-attach"
+                title="Attach image"
+                :disabled="!activeSession?.target"
+                @click="fileInput?.click()"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
+              </button>
+              <!-- 语音输入 -->
+              <button
+                v-if="supportsAttachments"
+                class="composer-icon"
+                :class="{ recording }"
+                data-test="chat-mic"
+                :title="recording ? 'Stop recording' : 'Record voice'"
+                :disabled="!activeSession?.target || transcribing"
+                @click="toggleRecording"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10a7 7 0 0 0 14 0M12 17v4" /></svg>
+              </button>
               <span class="spacer" style="flex: 1" />
-              <button class="send" data-test="chat-send" :disabled="!canSend || !input.trim()" @click="send()">
+              <button class="send" data-test="chat-send" :disabled="!canSend || (!input.trim() && !attachments.length)" @click="send()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6" /></svg>
               </button>
             </div>
@@ -729,6 +831,25 @@ function chatWith(target: ChatTarget) {
 .send svg { width: 16px; height: 16px; }
 .send:hover { background: var(--accent-dim); }
 .send:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* 多模态附件 + 语音（#32） */
+.composer-icon {
+  width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: var(--border-width) var(--border-style) var(--border-color); border-radius: var(--radius);
+  color: var(--color--text--shade-1); cursor: pointer;
+}
+.composer-icon svg { width: 15px; height: 15px; }
+.composer-icon:hover:not(:disabled) { background: var(--color--background--light-1); }
+.composer-icon:disabled { opacity: 0.5; cursor: not-allowed; }
+.composer-icon.recording { color: #fff; background: #cf222e; border-color: #cf222e; animation: pulse-rec 1s ease-in-out infinite; }
+@keyframes pulse-rec { 50% { opacity: 0.6; } }
+.composer-attachments { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 4px 0; }
+.attach-chip {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 200px; padding: 3px 6px 3px 9px;
+  background: var(--color--background--light-1); border: 1px solid var(--border-color); border-radius: 12px; font-size: var(--font-size--2xs);
+}
+.attach-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attach-x { border: none; background: none; color: var(--text-dim); cursor: pointer; font-size: 14px; line-height: 1; padding: 0; }
 
 /* Agents 页 */
 .agents-page { padding: 26px 30px; overflow-y: auto; }
