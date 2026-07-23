@@ -35,6 +35,8 @@ import type {
   Workflow,
   WorkflowVersion,
   InstalledNode,
+  TestRun,
+  TestCaseRun,
 } from './types.js';
 
 /**
@@ -1813,6 +1815,115 @@ export class CustomRoleRepository extends BaseRepository {
   }
 }
 
+/**
+ * 评测测试运行（backlog #31）。归属沿用 workflow：读操作 join shared_workflows
+ * 按 projectId 过滤（与 ExecutionRepository 同惯例）。
+ */
+export class TestRunRepository extends BaseRepository {
+  async createRun(input: {
+    workflowId: string;
+    dataTableId: string | null;
+    triggerNode: string;
+    totalCases: number;
+  }): Promise<TestRun> {
+    const [row] = await this.db
+      .insert(this.schema.testRuns)
+      .values({
+        workflowId: input.workflowId,
+        dataTableId: input.dataTableId,
+        triggerNode: input.triggerNode,
+        totalCases: input.totalCases,
+        status: 'running',
+      })
+      .returning();
+    return row as TestRun;
+  }
+
+  async updateRun(
+    id: string,
+    patch: Partial<{
+      status: string;
+      ranCases: number;
+      passedCases: number | null;
+      metrics: Record<string, number>;
+      error: string | null;
+      completedAt: Date | null;
+    }>,
+  ): Promise<void> {
+    await this.db.update(this.schema.testRuns).set(patch).where(eq(this.schema.testRuns.id, id));
+  }
+
+  async findRunById(id: string, projectId: string): Promise<TestRun | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.testRuns)
+      .innerJoin(
+        this.schema.sharedWorkflows,
+        eq(this.schema.sharedWorkflows.workflowId, this.schema.testRuns.workflowId),
+      )
+      .where(and(eq(this.schema.testRuns.id, id), eq(this.schema.sharedWorkflows.projectId, projectId)))
+      .limit(1);
+    return rows[0] ? (rows[0].test_runs as TestRun) : null;
+  }
+
+  /** 某工作流的测试运行历史（最新在前）。 */
+  async findRunsByWorkflow(workflowId: string, projectId: string): Promise<TestRun[]> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.testRuns)
+      .innerJoin(
+        this.schema.sharedWorkflows,
+        eq(this.schema.sharedWorkflows.workflowId, this.schema.testRuns.workflowId),
+      )
+      .where(
+        and(
+          eq(this.schema.testRuns.workflowId, workflowId),
+          eq(this.schema.sharedWorkflows.projectId, projectId),
+        ),
+      )
+      .orderBy(desc(this.schema.testRuns.createdAt));
+    return rows.map((r: { test_runs: TestRun }) => r.test_runs);
+  }
+
+  async deleteRun(id: string): Promise<void> {
+    await this.db.delete(this.schema.testCaseRuns).where(eq(this.schema.testCaseRuns.testRunId, id));
+    await this.db.delete(this.schema.testRuns).where(eq(this.schema.testRuns.id, id));
+  }
+
+  async addCaseRun(input: {
+    testRunId: string;
+    executionId: string | null;
+    rowIndex: number;
+    input: JsonObject;
+    metrics: Record<string, number>;
+    status: string;
+    error?: string | null;
+  }): Promise<TestCaseRun> {
+    const [row] = await this.db
+      .insert(this.schema.testCaseRuns)
+      .values({
+        testRunId: input.testRunId,
+        executionId: input.executionId,
+        rowIndex: input.rowIndex,
+        input: input.input,
+        metrics: input.metrics,
+        status: input.status,
+        error: input.error ?? null,
+      })
+      .returning();
+    return row as TestCaseRun;
+  }
+
+  async findCaseRuns(testRunId: string): Promise<TestCaseRun[]> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.testCaseRuns)
+      .where(eq(this.schema.testCaseRuns.testRunId, testRunId))
+      .orderBy(this.schema.testCaseRuns.rowIndex);
+    return rows as TestCaseRun[];
+  }
+}
+
 export interface Repositories {
   users: UserRepository;
   apiKeys: ApiKeyRepository;
@@ -1834,6 +1945,7 @@ export interface Repositories {
   quotas: QuotaRepository;
   customRoles: CustomRoleRepository;
   chat: ChatRepository;
+  testRuns: TestRunRepository;
 }
 
 /** 用一个 DatabaseHandle 组装全部仓储。server 层在启动时调用一次。 */
@@ -1860,5 +1972,6 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
     quotas: new QuotaRepository(db, schema),
     customRoles: new CustomRoleRepository(db, schema),
     chat: new ChatRepository(db, schema),
+    testRuns: new TestRunRepository(db, schema),
   };
 }

@@ -183,6 +183,13 @@
       "when": 1784709619026,
       "tag": "0025_worthless_the_stranger",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1784774393050,
+      "tag": "0026_thankful_warlock",
+      "breakpoints": true
     }
   ]
 }

@@ -435,6 +435,45 @@ export const auditLogs = pgTable(
   (t) => [index('audit_logs_project_id_timestamp_idx').on(t.projectId, t.timestamp)],
 );
 
+/** 评测测试运行（backlog #31）：对某工作流用数据集跑一轮评测。归属沿用 workflow。 */
+export const testRuns = pgTable(
+  'test_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workflowId: uuid('workflow_id').notNull(),
+    dataTableId: uuid('data_table_id'), // 数据集来源（null = trigger 未绑定，跑空）
+    triggerNode: text('trigger_node').notNull(),
+    status: text('status').notNull().default('running'), // running|completed|error|canceled
+    totalCases: integer('total_cases').notNull().default(0),
+    ranCases: integer('ran_cases').notNull().default(0),
+    passedCases: integer('passed_cases'), // null = 无 pass/fail 判定
+    metrics: jsonb('metrics').$type<Record<string, number>>().notNull().default({}), // 聚合指标（各指标行均值）
+    error: text('error'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    completedAt: timestamp('completed_at'),
+  },
+  (t) => [index('test_runs_workflow_id_created_at_idx').on(t.workflowId, t.createdAt)],
+);
+
+/** 评测单用例结果（backlog #31）：数据集每行一条,链到实际 execution。 */
+export const testCaseRuns = pgTable(
+  'test_case_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    testRunId: uuid('test_run_id')
+      .notNull()
+      .references(() => testRuns.id),
+    executionId: uuid('execution_id'), // 该行触发的执行（null = 执行建立前就失败）
+    rowIndex: integer('row_index').notNull(),
+    input: jsonb('input').$type<JsonObject>().notNull().default({}),
+    metrics: jsonb('metrics').$type<Record<string, number>>().notNull().default({}),
+    status: text('status').notNull(), // success|error
+    error: text('error'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('test_case_runs_test_run_id_idx').on(t.testRunId)],
+);
+
 export const pgSchema = {
   users,
   apiKeys,
@@ -467,4 +506,6 @@ export const pgSchema = {
   customRoles,
   chatAgents,
   chatSessions,
+  testRuns,
+  testCaseRuns,
 };

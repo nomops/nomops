@@ -31,6 +31,8 @@ export type WorkflowStatistics = InferSelectModel<typeof sqliteSchema.workflowSt
 export type ChatAgent = InferSelectModel<typeof sqliteSchema.chatAgents>;
 export type CustomRole = InferSelectModel<typeof sqliteSchema.customRoles>;
 export type ChatSession = InferSelectModel<typeof sqliteSchema.chatSessions>;
+export type TestRun = InferSelectModel<typeof sqliteSchema.testRuns>;
+export type TestCaseRun = InferSelectModel<typeof sqliteSchema.testCaseRuns>;
 
 /* ── 创建入参（区别于自动生成的 id/时间戳字段） ── */
 

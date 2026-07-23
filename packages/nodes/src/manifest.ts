@@ -18,6 +18,8 @@ import { aiAgentDescription } from './nodes/AiAgent/AiAgent.description.js';
 import { waitDescription } from './nodes/Wait/Wait.description.js';
 import { pollingTriggerDescription } from './nodes/PollingTrigger/PollingTrigger.description.js';
 import { chatTriggerDescription } from './nodes/ChatTrigger/ChatTrigger.description.js';
+import { evaluationTriggerDescription } from './nodes/EvaluationTrigger/EvaluationTrigger.description.js';
+import { evaluationDescription } from './nodes/Evaluation/Evaluation.description.js';
 import { errorTriggerDescription } from './nodes/ErrorTrigger/ErrorTrigger.description.js';
 import { executeWorkflowTriggerDescription } from './nodes/ExecuteWorkflowTrigger/ExecuteWorkflowTrigger.description.js';
 import { respondToWebhookDescription } from './nodes/RespondToWebhook/RespondToWebhook.description.js';
@@ -52,6 +54,16 @@ export const builtinNodeManifest: ILoadableNodeType[] = [
     type: `nomops.${chatTriggerDescription.name}`,
     description: chatTriggerDescription,
     load: () => import('./nodes/ChatTrigger/ChatTrigger.node.js').then((m) => m.ChatTrigger),
+  },
+  {
+    type: `nomops.${evaluationTriggerDescription.name}`,
+    description: evaluationTriggerDescription,
+    load: () => import('./nodes/EvaluationTrigger/EvaluationTrigger.node.js').then((m) => m.EvaluationTrigger),
+  },
+  {
+    type: `nomops.${evaluationDescription.name}`,
+    description: evaluationDescription,
+    load: () => import('./nodes/Evaluation/Evaluation.node.js').then((m) => m.Evaluation),
   },
   {
     type: `nomops.${errorTriggerDescription.name}`,

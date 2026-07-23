@@ -490,6 +490,55 @@ export const auditLogs = sqliteTable(
   (t) => [index('audit_logs_project_id_timestamp_idx').on(t.projectId, t.timestamp)],
 );
 
+/** 评测测试运行（backlog #31）：对某工作流用数据集跑一轮评测。归属沿用 workflow。 */
+export const testRuns = sqliteTable(
+  'test_runs',
+  {
+    id: uuidPk('id'),
+    workflowId: text('workflow_id').notNull(),
+    dataTableId: text('data_table_id'), // 数据集来源（null = trigger 未绑定，跑空）
+    triggerNode: text('trigger_node').notNull(),
+    status: text('status').notNull().default('running'), // running|completed|error|canceled
+    totalCases: integer('total_cases').notNull().default(0),
+    ranCases: integer('ran_cases').notNull().default(0),
+    passedCases: integer('passed_cases'), // null = 无 pass/fail 判定
+    metrics: text('metrics', { mode: 'json' })
+      .$type<Record<string, number>>()
+      .notNull()
+      .$defaultFn(() => ({})), // 聚合指标（各指标行均值）
+    error: text('error'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    completedAt: integer('completed_at', { mode: 'timestamp' }),
+  },
+  (t) => [index('test_runs_workflow_id_created_at_idx').on(t.workflowId, t.createdAt)],
+);
+
+/** 评测单用例结果（backlog #31）：数据集每行一条,链到实际 execution。 */
+export const testCaseRuns = sqliteTable(
+  'test_case_runs',
+  {
+    id: uuidPk('id'),
+    testRunId: text('test_run_id')
+      .notNull()
+      .references(() => testRuns.id),
+    executionId: text('execution_id'), // 该行触发的执行（null = 执行建立前就失败）
+    rowIndex: integer('row_index').notNull(),
+    input: text('input', { mode: 'json' }).$type<JsonObject>().notNull().$defaultFn(() => ({})),
+    metrics: text('metrics', { mode: 'json' })
+      .$type<Record<string, number>>()
+      .notNull()
+      .$defaultFn(() => ({})),
+    status: text('status').notNull(), // success|error
+    error: text('error'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('test_case_runs_test_run_id_idx').on(t.testRunId)],
+);
+
 export const sqliteSchema = {
   users,
   apiKeys,
@@ -522,4 +571,6 @@ export const sqliteSchema = {
   customRoles,
   chatAgents,
   chatSessions,
+  testRuns,
+  testCaseRuns,
 };
