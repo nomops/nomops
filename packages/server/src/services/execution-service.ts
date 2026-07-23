@@ -458,8 +458,11 @@ export class ExecutionService {
     return run;
   }
 
-  async list(projectId: string): Promise<Execution[]> {
-    return this.repos.executions.findAllByProject(projectId);
+  async list(
+    projectId: string,
+    filter?: { metaKey?: string; metaValue?: string },
+  ): Promise<Execution[]> {
+    return this.repos.executions.findAllByProject(projectId, filter);
   }
 
   /**
@@ -562,11 +565,15 @@ export class ExecutionService {
     return this.toSummary(execution.id, run);
   }
 
-  async getById(id: string, projectId: string): Promise<{ execution: Execution; data: JsonObject | null }> {
+  async getById(
+    id: string,
+    projectId: string,
+  ): Promise<{ execution: Execution; data: JsonObject | null; metadata: Array<{ key: string; value: string }> }> {
     const execution = await this.repos.executions.findById(id, projectId);
     if (!execution) throw new OperationalError('Execution record not found', { executionId: id, status: 404 });
     const data = await this.repos.executions.getData(id);
-    return { execution, data };
+    const metadata = await this.repos.executionMetadata.findByExecution(id); // #35：自定义元数据
+    return { execution, data, metadata };
   }
 
   /* ────────────── 内部 ────────────── */
@@ -749,6 +756,13 @@ export class ExecutionService {
     } else {
       await this.repos.executions.updateStatus(execution.id, run.status, new Date());
       await this.repos.executions.updateData(execution.id, run.data as unknown as JsonObject);
+      // #35：从 runData 提取 Set Metadata 节点写的 _nmMetadata → execution_metadata（引擎零耦合）
+      const meta = extractExecutionMetadata(run.data.resultData.runData);
+      if (meta.length > 0) {
+        await this.repos.executionMetadata
+          .replaceAll(execution.id, meta)
+          .catch((e: Error) => console.error(`[nomops] 执行元数据写入失败 ${execution.id}:`, e.message));
+      }
       if (run.status === 'error') {
         const err = run.data.resultData.error;
         this.fireErrorWorkflow(
@@ -894,4 +908,27 @@ export class ExecutionService {
       error: run.data.resultData.error?.message,
     };
   }
+}
+
+/** SetMetadata 节点写入 item.json 的保留键（与 packages/nodes 的 META_KEY 一致）。 */
+const EXEC_META_KEY = '_nmMetadata';
+
+/** 从 runData 扫出所有 item 的 _nmMetadata（跨节点合并,后写覆盖先写）→ [{key,value}]（#35）。 */
+function extractExecutionMetadata(
+  runData: IRun['data']['resultData']['runData'],
+): Array<{ key: string; value: string }> {
+  const merged: Record<string, string> = {};
+  for (const tasks of Object.values(runData)) {
+    for (const task of tasks) {
+      for (const port of Object.values(task.data ?? {})) {
+        for (const items of port) {
+          for (const item of items ?? []) {
+            const m = (item.json as Record<string, unknown>)[EXEC_META_KEY] as Record<string, string> | undefined;
+            if (m) for (const [k, v] of Object.entries(m)) merged[k] = String(v);
+          }
+        }
+      }
+    }
+  }
+  return Object.entries(merged).map(([key, value]) => ({ key, value }));
 }

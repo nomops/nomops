@@ -606,13 +606,25 @@ const canvasTab = ref<'editor' | 'executions' | 'evaluations'>('editor');
 const execList = ref<ExecutionRow[]>([]);
 const execAutoRefresh = ref(true);
 const selectedExecId = ref<string | null>(null);
-const execDetail = ref<{ execution: ExecutionRow; data: IRunExecutionData | null } | null>(null);
+const execDetail = ref<{
+  execution: ExecutionRow;
+  data: IRunExecutionData | null;
+  metadata?: Array<{ key: string; value: string }>;
+} | null>(null);
 const expandedNode = ref<string | null>(null);
 let execTimer: ReturnType<typeof setInterval> | null = null;
 
+/* 执行列表 metadata 过滤（#35） */
+const metaFilterKey = ref('');
+const metaFilterValue = ref('');
+
 async function loadExecList() {
   if (!editor.id) return;
-  const all = await api.executions.list().catch(() => [] as ExecutionRow[]);
+  const filter =
+    metaFilterKey.value.trim()
+      ? { metaKey: metaFilterKey.value.trim(), ...(metaFilterValue.value.trim() ? { metaValue: metaFilterValue.value.trim() } : {}) }
+      : undefined;
+  const all = await api.executions.list(filter).catch(() => [] as ExecutionRow[]);
   execList.value = all
     .filter((e) => e.workflowId === editor.id)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -1011,6 +1023,12 @@ async function loadSavePolicy() {
             Auto refresh
           </label>
         </div>
+        <!-- metadata 过滤(#35) -->
+        <div class="exec-meta-filter" data-test="exec-meta-filter">
+          <input v-model="metaFilterKey" placeholder="metadata key" data-test="meta-filter-key" @keyup.enter="loadExecList" />
+          <input v-model="metaFilterValue" placeholder="value" data-test="meta-filter-value" @keyup.enter="loadExecList" />
+          <button data-test="meta-filter-apply" title="Filter by metadata" @click="loadExecList">⏎</button>
+        </div>
         <p v-if="!execList.length" class="dim" style="padding: 14px 16px; font-size: 13px">No executions found</p>
         <button
           v-for="e in execList"
@@ -1131,6 +1149,14 @@ async function loadSavePolicy() {
               @change="saveAnnotation({ note: ($event.target as HTMLInputElement).value })"
               @keyup.enter="saveAnnotation({ note: ($event.target as HTMLInputElement).value })"
             />
+          </div>
+
+          <!-- 执行自定义元数据(#35):SetMetadata 节点写的 KV -->
+          <div v-if="execDetail.metadata && execDetail.metadata.length" class="exec-metadata" data-test="exec-metadata">
+            <span class="exec-meta-label">Metadata</span>
+            <span v-for="m in execDetail.metadata" :key="m.key" class="exec-meta-kv" data-test="exec-meta-kv">
+              <b>{{ m.key }}</b>{{ m.value }}
+            </span>
           </div>
 
           <!-- 只读斜纹画布快照(节点带执行态);执行 API 无快照,用当前工作流定义近似 -->
@@ -1872,6 +1898,15 @@ async function loadSavePolicy() {
 .annot-tag-x { border: none; background: none; color: var(--text-dim); cursor: pointer; font-size: 13px; line-height: 1; padding: 0; }
 .annot-tag-input { width: 80px; height: 28px; padding: 0 8px; border: 1px solid var(--border-color); border-radius: 6px; background: none; color: inherit; font-size: 12px; }
 .annot-note { flex: 1; min-width: 140px; height: 28px; padding: 0 10px; border: 1px solid var(--border-color); border-radius: 6px; background: none; color: inherit; font-size: 13px; }
+
+/* 执行 metadata 过滤 + 展示(#35) */
+.exec-meta-filter { display: flex; gap: 6px; padding: 0 16px 10px; }
+.exec-meta-filter input { flex: 1; min-width: 0; height: 28px; padding: 0 8px; border: 1px solid var(--border-color); border-radius: 6px; background: none; color: inherit; font-size: 12px; }
+.exec-meta-filter button { width: 30px; flex-shrink: 0; border: 1px solid var(--border-color); border-radius: 6px; background: none; color: var(--text-dim); cursor: pointer; }
+.exec-metadata { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 20px; border-bottom: var(--border-width) var(--border-style) var(--border-color); }
+.exec-meta-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim); }
+.exec-meta-kv { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; background: var(--color--background--light-1); border: 1px solid var(--border-color); border-radius: 6px; font-size: 12px; }
+.exec-meta-kv b { color: var(--text-dim); font-weight: 600; }
 .exec-trash-btn {
   display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px;
   background: var(--color--background--light-3); border: var(--border-width) var(--border-style) var(--border-color);

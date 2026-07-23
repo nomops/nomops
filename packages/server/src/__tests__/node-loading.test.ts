@@ -41,6 +41,7 @@ describe('内置节点通过加载器可用', () => {
       'schedule',
       'sendGrid',
       'set',
+      'setMetadata',
       'slack',
       'splitOut',
       'stickyNote',

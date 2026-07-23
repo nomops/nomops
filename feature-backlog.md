@@ -88,10 +88,7 @@
 
 - [x] **34. 每用户收藏（user_favorites）** `S` ✅ 2026-07-23（新表 user_favorites 复合主键(userId+resourceType+resourceId)双方言+迁移0027;FavoriteRepository(add/remove/listResourceIds/isFavorite/backfillFromWorkflowFlag);workflow-service.list 传 userId 时按本用户收藏覆写每行 favorite;/workflows/:id/favorite 改写 user_favorites 并回显本用户状态;bootstrap 一次性回填全局 favorite→各项目 owner(settings 标志位保证只跑一次,避免重启复活);workflows.favorite 列转休眠仅作回填来源;4 server 测(双用户各收藏不同流各见各的、同流互不影响、取消只影响本人、端点回显)验收"双用户各自星标互不可见";前端 API 形状不变无需改)
 
-- [ ] **35. 执行标注 + 自定义元数据** `M`（执行标注从 #31 拆出先行，评测其余仍归 #31）
-  n8n：execution_annotations(vote 👍👎 + note) + annotation_tag_entity(标注标签) + execution_metadata(运行中写 KV、列表可检索)。
-  → 三表 + 执行详情标注 UI + 工作流内 customData 写入口 + 执行列表按标注/元数据过滤。
-  验收：打分/笔记/标签往返；工作流写 customData 后列表能按键值筛出。
+- [x] **35. 执行标注 + 自定义元数据** `M` ✅ 2026-07-23（4 表双方言+迁移0028。**35a 标注**：execution_annotations(vote👍👎/note,1:1)+annotation_tags(name 唯一)+execution_annotation_tags(多对多);ExecutionAnnotationRepository(get/setAnnotation 部分更新不清空/setTags 全量替换/findOrCreateTag);GET/PUT /executions/:id/annotation+GET /annotation-tags(归属经 executions.getById 校验);前端 CanvasView 执行详情标注栏 👍👎+tag chip(datalist)+note(change+enter 双触发);5 server 测。**35b 元数据**：execution_metadata(KV 复合主键+key/value 索引);SetMetadata 节点(_nmMetadata 保留键,值转字符串,引擎零耦合);ExecutionService.runEngine 收尾从 runData 提取 KV→replaceAll(所有 run 模式单一 choke point);GET /executions?metaKey&metaValue 过滤(findAllByProject join+selectDistinct);getById 带 metadata;前端执行详情 METADATA chips+列表 key/value 过滤;3 节点测+3 server 测。全量 752 测通过;活体验证标注 👍/tag/note 落库刷新还原、SetMetadata 写 customerId/stage→详情 METADATA 展示+列表按键值筛出(nomatch→空)）
 
 - [ ] **36. SSO 身份绑定表 + 同步历史** `M`（正确性隐患）
   现 OIDC/LDAP 靠 email JIT 匹配，email 变更或多 provider 并存会错认归属。

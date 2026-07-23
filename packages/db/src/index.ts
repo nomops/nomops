@@ -41,6 +41,7 @@ export {
   TestRunRepository,
   FavoriteRepository,
   ExecutionAnnotationRepository,
+  ExecutionMetadataRepository,
 } from './repositories.js';
 export type {
   Repositories,

@@ -697,7 +697,12 @@ export function createApiRouter(services: AppServices): Router {
   router.get(
     '/executions',
     h(async (req, res) => {
-      res.json(await services.executions.list(auth(req).projectId));
+      // #35：按自定义元数据键(值可选)过滤
+      const metaKey = typeof req.query['metaKey'] === 'string' ? req.query['metaKey'] : undefined;
+      const metaValue = typeof req.query['metaValue'] === 'string' ? req.query['metaValue'] : undefined;
+      res.json(
+        await services.executions.list(auth(req).projectId, metaKey ? { metaKey, ...(metaValue ? { metaValue } : {}) } : undefined),
+      );
     }),
   );
 

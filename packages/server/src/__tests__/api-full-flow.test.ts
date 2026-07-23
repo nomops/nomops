@@ -259,6 +259,7 @@ describe('node-types', () => {
       'schedule',
       'sendGrid',
       'set',
+      'setMetadata',
       'slack',
       'splitOut',
       'stickyNote',

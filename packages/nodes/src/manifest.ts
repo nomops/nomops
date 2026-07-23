@@ -24,6 +24,7 @@ import { errorTriggerDescription } from './nodes/ErrorTrigger/ErrorTrigger.descr
 import { executeWorkflowTriggerDescription } from './nodes/ExecuteWorkflowTrigger/ExecuteWorkflowTrigger.description.js';
 import { respondToWebhookDescription } from './nodes/RespondToWebhook/RespondToWebhook.description.js';
 import { chatModelDescription } from './nodes/ChatModel/ChatModel.node.js';
+import { setMetadataDescription } from './nodes/SetMetadata/SetMetadata.node.js';
 import { httpToolDescription } from './nodes/HttpTool/HttpTool.node.js';
 import { windowMemoryDescription } from './nodes/WindowMemory/WindowMemory.node.js';
 import { stickyNoteDescription } from './nodes/StickyNote/StickyNote.node.js';
@@ -64,6 +65,11 @@ export const builtinNodeManifest: ILoadableNodeType[] = [
     type: `nomops.${evaluationDescription.name}`,
     description: evaluationDescription,
     load: () => import('./nodes/Evaluation/Evaluation.node.js').then((m) => m.Evaluation),
+  },
+  {
+    type: `nomops.${setMetadataDescription.name}`,
+    description: setMetadataDescription,
+    load: () => import('./nodes/SetMetadata/SetMetadata.node.js').then((m) => m.SetMetadata),
   },
   {
     type: `nomops.${errorTriggerDescription.name}`,

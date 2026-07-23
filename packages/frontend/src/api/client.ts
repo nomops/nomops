@@ -469,9 +469,19 @@ export const api = {
   },
 
   executions: {
-    list: () => http<ExecutionRow[]>('GET', '/api/executions'),
+    /* #35：可选 metadata 键值过滤 */
+    list: (filter?: { metaKey?: string; metaValue?: string }) => {
+      const qs = new URLSearchParams();
+      if (filter?.metaKey) qs.set('metaKey', filter.metaKey);
+      if (filter?.metaValue) qs.set('metaValue', filter.metaValue);
+      const q = qs.toString();
+      return http<ExecutionRow[]>('GET', `/api/executions${q ? `?${q}` : ''}`);
+    },
     get: (id: string) =>
-      http<{ execution: ExecutionRow; data: IRunExecutionData | null }>('GET', `/api/executions/${id}`),
+      http<{ execution: ExecutionRow; data: IRunExecutionData | null; metadata: Array<{ key: string; value: string }> }>(
+        'GET',
+        `/api/executions/${id}`,
+      ),
     remove: (id: string) => http<void>('DELETE', `/api/executions/${id}`),
     /* useOriginal=true 用执行时的定义快照重跑，否则用当前保存的草稿 */
     retry: (id: string, useOriginal: boolean) =>

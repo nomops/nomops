@@ -1017,7 +1017,31 @@ export class ExecutionRepository extends BaseRepository {
     return rows[0] ? (rows[0].executions as Execution) : null;
   }
 
-  async findAllByProject(projectId: string): Promise<Execution[]> {
+  /** filter.metaKey 传入时 join execution_metadata 按键(值可选)过滤（#35）。 */
+  async findAllByProject(
+    projectId: string,
+    filter?: { metaKey?: string; metaValue?: string },
+  ): Promise<Execution[]> {
+    if (filter?.metaKey) {
+      const conds = [
+        eq(this.schema.sharedWorkflows.projectId, projectId),
+        eq(this.schema.executionMetadata.key, filter.metaKey),
+      ];
+      if (filter.metaValue) conds.push(eq(this.schema.executionMetadata.value, filter.metaValue));
+      const rows = await this.db
+        .selectDistinct({ executions: this.schema.executions })
+        .from(this.schema.executions)
+        .innerJoin(
+          this.schema.sharedWorkflows,
+          eq(this.schema.sharedWorkflows.workflowId, this.schema.executions.workflowId),
+        )
+        .innerJoin(
+          this.schema.executionMetadata,
+          eq(this.schema.executionMetadata.executionId, this.schema.executions.id),
+        )
+        .where(and(...conds));
+      return rows.map((r: { executions: Execution }) => r.executions);
+    }
     const rows = await this.db
       .select()
       .from(this.schema.executions)
@@ -2101,6 +2125,32 @@ export class ExecutionAnnotationRepository extends BaseRepository {
   }
 }
 
+/**
+ * 执行自定义元数据（backlog #35）：运行收尾从 runData 提取 KV 落库,执行列表按键值检索。
+ * 归属经 execution → workflow 派生（查询走 ExecutionRepository 的 join，见其 findAllByProject）。
+ */
+export class ExecutionMetadataRepository extends BaseRepository {
+  /** 全量替换某执行的元数据（每次运行覆写）。 */
+  async replaceAll(executionId: string, entries: Array<{ key: string; value: string }>): Promise<void> {
+    await this.db
+      .delete(this.schema.executionMetadata)
+      .where(eq(this.schema.executionMetadata.executionId, executionId));
+    if (entries.length > 0) {
+      await this.db
+        .insert(this.schema.executionMetadata)
+        .values(entries.map((e) => ({ executionId, key: e.key, value: e.value })));
+    }
+  }
+
+  async findByExecution(executionId: string): Promise<Array<{ key: string; value: string }>> {
+    const rows = await this.db
+      .select({ key: this.schema.executionMetadata.key, value: this.schema.executionMetadata.value })
+      .from(this.schema.executionMetadata)
+      .where(eq(this.schema.executionMetadata.executionId, executionId));
+    return rows as Array<{ key: string; value: string }>;
+  }
+}
+
 export interface Repositories {
   users: UserRepository;
   apiKeys: ApiKeyRepository;
@@ -2125,6 +2175,7 @@ export interface Repositories {
   testRuns: TestRunRepository;
   favorites: FavoriteRepository;
   annotations: ExecutionAnnotationRepository;
+  executionMetadata: ExecutionMetadataRepository;
 }
 
 /** 用一个 DatabaseHandle 组装全部仓储。server 层在启动时调用一次。 */
@@ -2154,5 +2205,6 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
     testRuns: new TestRunRepository(db, schema),
     favorites: new FavoriteRepository(db, schema),
     annotations: new ExecutionAnnotationRepository(db, schema),
+    executionMetadata: new ExecutionMetadataRepository(db, schema),
   };
 }
