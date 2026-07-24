@@ -3,6 +3,7 @@ import type { IConnections, INode, JsonObject } from '@nomops/workflow';
 import { OperationalError } from '@nomops/workflow';
 import type { ExecutionService } from './execution-service.js';
 import { computeNextRun } from './scheduler-service.js';
+import { embed, cosine, topKMemories } from './embedding.js';
 
 /**
  * Agent 运行编排（backlog #44 M2）：把 agent 组装成后备工作流(ChatTrigger→AiAgent→ChatModel)
@@ -38,45 +39,8 @@ export function computeCost(model: string, inputTokens: number, outputTokens: nu
   return Math.round(inputTokens * p.in + outputTokens * p.out);
 }
 
-/* ── 分层记忆检索（#44 M3）── */
-const EMBED_DIM = 64;
-
-/**
- * 本地哈希词袋 embedding（MVP,可插拔）：docs/12 说「provider embedding」,但并非所有
- * provider 都有 embedding 端点,本地实现让检索可离线测/可活验;生产可注入真 provider embedding。
- */
-export function embed(text: string): number[] {
-  const v = new Array<number>(EMBED_DIM).fill(0);
-  for (const tok of text.toLowerCase().split(/[^a-z0-9]+/i).filter(Boolean)) {
-    let h = 2166136261;
-    for (let i = 0; i < tok.length; i++) {
-      h = (h ^ tok.charCodeAt(i)) >>> 0;
-      h = (h * 16777619) >>> 0;
-    }
-    const idx = h % EMBED_DIM;
-    v[idx] = (v[idx] ?? 0) + 1;
-  }
-  const norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0)) || 1;
-  return v.map((x) => x / norm);
-}
-
-/** 余弦相似度（两向量均已归一化 → 点积）。 */
-export function cosine(a: number[], b: number[]): number {
-  let d = 0;
-  const n = Math.min(a.length, b.length);
-  for (let i = 0; i < n; i++) d += (a[i] ?? 0) * (b[i] ?? 0);
-  return d;
-}
-
-/** 按相似度取 top-k（过滤低于阈值的噪声）。 */
-export function topKMemories<T extends { embedding: number[] }>(query: number[], items: T[], k = 3, min = 0.05): T[] {
-  return items
-    .map((m) => ({ m, score: cosine(query, m.embedding) }))
-    .filter((x) => x.score > min)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, k)
-    .map((x) => x.m);
-}
+/* ── 分层记忆检索（#44 M3）：embedding 已抽到 embedding.ts,与 #45 观察-反思记忆共用（docs/13 决策 4）── */
+export { embed, cosine, topKMemories };
 
 /** 从 runData 提取 AiAgent 写的 _nmUsage（跨节点累加）。 */
 export function extractUsage(runData: Record<string, unknown>): { inputTokens: number; outputTokens: number } {

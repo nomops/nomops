@@ -4,7 +4,7 @@
  * 左=线程列表,右=对话 + 工作态(state) + 检查点条(存/回滚)。核心演示：中断后从检查点恢复,状态一致。
  */
 import { computed, onMounted, ref } from 'vue';
-import { api, type InstanceAiThreadRow, type InstanceAiMessageRow, type InstanceAiCheckpointRow, type InstanceAiActionRow } from '../api/client.js';
+import { api, type InstanceAiThreadRow, type InstanceAiMessageRow, type InstanceAiCheckpointRow, type InstanceAiActionRow, type InstanceAiRunNodeRow, type InstanceAiMemoryRow } from '../api/client.js';
 
 const threads = ref<InstanceAiThreadRow[]>([]);
 const selected = ref<InstanceAiThreadRow | null>(null);
@@ -14,6 +14,17 @@ const actions = ref<InstanceAiActionRow[]>([]);
 const toolName = ref('archive_workflow');
 const toolArgs = ref('{ "id": "" }');
 const pendingActions = computed(() => actions.value.filter((a) => a.status === 'pending'));
+
+/* 运行树（#45 M4） */
+const runs = ref<InstanceAiRunNodeRow[]>([]);
+const rootRuns = computed(() => runs.value.filter((r) => !r.parentId));
+const childrenOf = (id: string) => runs.value.filter((r) => r.parentId === id);
+
+/* 观察-反思记忆（#45 M4） */
+const recallQuery = ref('');
+const recallResults = ref<InstanceAiMemoryRow[]>([]);
+const memContent = ref('');
+const memScope = ref('instance');
 const newTitle = ref('');
 const chatInput = ref('');
 const model = ref('');
@@ -37,6 +48,29 @@ function applyDetail(d: { thread: InstanceAiThreadRow; messages: InstanceAiMessa
 async function loadActions() {
   if (!selected.value) return;
   actions.value = await api.instanceAi.actions(selected.value.id).catch(() => []);
+  runs.value = await api.instanceAi.runs(selected.value.id).catch(() => []);
+}
+
+async function doRecall() {
+  if (!selected.value || !recallQuery.value.trim()) return;
+  recallResults.value = await api.instanceAi.recall(recallQuery.value.trim(), selected.value.id).catch(() => []);
+}
+async function remember() {
+  if (!selected.value || !memContent.value.trim()) return;
+  busy.value = 'mem';
+  error.value = '';
+  try {
+    await api.instanceAi.remember(selected.value.id, {
+      scope: memScope.value,
+      kind: memScope.value === 'instance' ? 'reflection' : 'observation',
+      content: memContent.value.trim(),
+    });
+    memContent.value = '';
+  } catch (e) {
+    error.value = (e as Error).message;
+  } finally {
+    busy.value = '';
+  }
 }
 
 async function select(t: InstanceAiThreadRow) {
@@ -253,6 +287,45 @@ async function remove(t: InstanceAiThreadRow) {
           </div>
         </li>
       </ul>
+
+      <!-- 运行树（#45 M4）：助手动作的调用树,供「观察」 -->
+      <h3 class="iai-side-title">Run tree <span class="dim" style="font-weight: 400">· observability</span></h3>
+      <p v-if="!rootRuns.length" class="dim">No runs yet. Execute a tool to see its call tree.</p>
+      <ul v-else class="iai-runs" data-test="iai-runs">
+        <li v-for="r in rootRuns" :key="r.id">
+          <div class="iai-run">
+            <span class="iai-run-dot" :class="r.status" />
+            <b>{{ r.label }}</b>
+            <span class="iai-badge">{{ r.status }}</span>
+          </div>
+          <div v-for="c in childrenOf(r.id)" :key="c.id" class="iai-run child">
+            <span class="iai-run-dot" :class="c.status" />
+            {{ c.label }}
+            <span class="iai-badge">{{ c.status }}</span>
+          </div>
+        </li>
+      </ul>
+
+      <!-- 观察-反思记忆（#45 M4）：embedding 跨线程召回 -->
+      <h3 class="iai-side-title">Memory <span class="dim" style="font-weight: 400">· cross-thread</span></h3>
+      <textarea v-model="memContent" class="iai-state" data-test="iai-mem-content" rows="2" placeholder="Record an observation / reflection…"></textarea>
+      <div class="iai-cp-new">
+        <select v-model="memScope" data-test="iai-mem-scope" style="flex: 0 0 110px; height: 32px; border: 1px solid var(--border-color, #2a2a33); border-radius: 6px; background: none; color: inherit">
+          <option value="instance">instance</option>
+          <option value="thread">thread</option>
+        </select>
+        <button class="btn primary" data-test="iai-mem-save" :disabled="busy === 'mem' || !memContent.trim()" @click="remember">Remember</button>
+      </div>
+      <div class="iai-cp-new" style="margin-top: 6px">
+        <input v-model="recallQuery" data-test="iai-recall-q" placeholder="Recall relevant memory…" @keyup.enter="doRecall" />
+        <button class="btn" data-test="iai-recall" @click="doRecall">Recall</button>
+      </div>
+      <ul v-if="recallResults.length" class="iai-cps" data-test="iai-recall-results">
+        <li v-for="m in recallResults" :key="m.id" class="iai-mem-hit">
+          <span class="iai-badge">{{ m.scope }}·{{ m.kind }}</span>
+          <span>{{ m.content }}</span>
+        </li>
+      </ul>
     </section>
     <section v-else class="iai-main empty"><p class="dim">Select or create a thread.</p></section>
    </div>
@@ -303,4 +376,12 @@ async function remove(t: InstanceAiThreadRow) {
 .iai-action-head { display: flex; gap: 8px; align-items: center; }
 .iai-action-reason { font-size: 12px; }
 .iai-action-btns { display: flex; gap: 6px; }
+.iai-runs { list-style: none; margin: 0; padding: 0; }
+.iai-run { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 12.5px; }
+.iai-run.child { padding-left: 18px; font-size: 12px; color: var(--text-dim, #9a9aa5); }
+.iai-run-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: var(--text-dim, #9a9aa5); }
+.iai-run-dot.success { background: #4cc38a; }
+.iai-run-dot.error { background: #e85959; }
+.iai-run-dot.running { background: var(--accent, #ff6900); }
+.iai-mem-hit { display: flex; gap: 6px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--border-color, #23232a); font-size: 12.5px; }
 </style>

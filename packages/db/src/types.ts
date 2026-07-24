@@ -64,6 +64,8 @@ export type InstanceAiThread = InferSelectModel<typeof sqliteSchema.instanceAiTh
 export type InstanceAiMessage = InferSelectModel<typeof sqliteSchema.instanceAiMessages>;
 export type InstanceAiCheckpoint = InferSelectModel<typeof sqliteSchema.instanceAiCheckpoints>;
 export type InstanceAiPendingAction = InferSelectModel<typeof sqliteSchema.instanceAiPendingActions>;
+export type InstanceAiRunNode = InferSelectModel<typeof sqliteSchema.instanceAiRunTree>;
+export type InstanceAiMemory = InferSelectModel<typeof sqliteSchema.instanceAiMemory>;
 
 /* ── 创建入参（区别于自动生成的 id/时间戳字段） ── */
 

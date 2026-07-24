@@ -13,6 +13,8 @@ export interface ToolContext {
   threadId: string;
   userId: string;
   projectId: string;
+  /** 记一个子调用到运行树（#45 M4）。工具可用它把多步操作记成子树,供「观察」。 */
+  span?: (label: string, input: JsonObject, fn: () => Promise<JsonObject>) => Promise<JsonObject>;
 }
 
 /** 工具执行器：给定工具名 + 参数 + 上下文 → 结果。 */
@@ -53,9 +55,17 @@ export function buildDefaultToolExecutor(repos: Repositories): ToolExecutor {
       }
       case 'archive_workflow': {
         const id = String(args['id'] ?? '');
-        const wf = id ? await repos.workflows.findById(id, ctx.projectId) : null;
-        if (!wf) throw new OperationalError('Workflow not found in this project', { status: 404 });
-        await repos.workflows.setFlags(id, { archived: true });
+        // 多步操作记成子树（#45 M4）：查 → 归档,供运行树「观察」
+        const span = ctx.span ?? ((_l, _i, fn) => fn());
+        const wf = (await span('find_workflow', { id }, async () => {
+          const found = id ? await repos.workflows.findById(id, ctx.projectId) : null;
+          if (!found) throw new OperationalError('Workflow not found in this project', { status: 404 });
+          return { id: found.id, name: found.name };
+        })) as { id: string; name: string };
+        await span('set_archived', { id }, async () => {
+          await repos.workflows.setFlags(id, { archived: true });
+          return { archived: true };
+        });
         return { archived: id, name: wf.name };
       }
       default:

@@ -64,6 +64,8 @@ import type {
   InstanceAiMessage,
   InstanceAiCheckpoint,
   InstanceAiPendingAction,
+  InstanceAiRunNode,
+  InstanceAiMemory,
 } from './types.js';
 
 /**
@@ -3456,6 +3458,56 @@ export class InstanceAiRepository extends BaseRepository {
       .update(this.schema.instanceAiPendingActions)
       .set({ status: patch.status, result: patch.result ?? null, decidedBy: patch.decidedBy, decidedAt: new Date() })
       .where(eq(this.schema.instanceAiPendingActions.id, id));
+  }
+
+  /* ── 运行树（#45 M4） ── */
+  async addRunNode(input: { threadId: string; parentId: string | null; label: string; nodeInput: JsonObject }): Promise<InstanceAiRunNode> {
+    const [row] = await this.db
+      .insert(this.schema.instanceAiRunTree)
+      .values({ threadId: input.threadId, parentId: input.parentId, label: input.label, input: input.nodeInput, status: 'running' })
+      .returning();
+    return row as InstanceAiRunNode;
+  }
+
+  async finishRunNode(id: string, status: string, output: JsonObject): Promise<void> {
+    await this.db
+      .update(this.schema.instanceAiRunTree)
+      .set({ status, output, endedAt: new Date() })
+      .where(eq(this.schema.instanceAiRunTree.id, id));
+  }
+
+  async listRunNodes(threadId: string): Promise<InstanceAiRunNode[]> {
+    return (await this.db
+      .select()
+      .from(this.schema.instanceAiRunTree)
+      .where(eq(this.schema.instanceAiRunTree.threadId, threadId))
+      .orderBy(this.schema.instanceAiRunTree.createdAt)) as InstanceAiRunNode[];
+  }
+
+  /* ── 观察-反思记忆（#45 M4）：embedding 检索,scope=instance 跨线程 ── */
+  async addMemory(input: { userId: string; threadId: string | null; scope: string; kind: string; content: string; embedding: number[] }): Promise<InstanceAiMemory> {
+    const [row] = await this.db
+      .insert(this.schema.instanceAiMemory)
+      .values(input)
+      .returning();
+    return row as InstanceAiMemory;
+  }
+
+  /** 召回候选：本用户的 instance 记忆(跨线程) + 当前线程的 thread 记忆。相似度排序在服务层。 */
+  async memoriesForRecall(userId: string, threadId: string | null): Promise<InstanceAiMemory[]> {
+    const rows = (await this.db
+      .select()
+      .from(this.schema.instanceAiMemory)
+      .where(eq(this.schema.instanceAiMemory.userId, userId))) as InstanceAiMemory[];
+    return rows.filter((m) => m.scope === 'instance' || (m.scope === 'thread' && m.threadId === threadId));
+  }
+
+  async listMemories(userId: string): Promise<InstanceAiMemory[]> {
+    return (await this.db
+      .select()
+      .from(this.schema.instanceAiMemory)
+      .where(eq(this.schema.instanceAiMemory.userId, userId))
+      .orderBy(desc(this.schema.instanceAiMemory.createdAt))) as InstanceAiMemory[];
   }
 }
 

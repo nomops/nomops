@@ -390,6 +390,52 @@ export const instanceAiPendingActions = sqliteTable(
   (t) => [index('instance_ai_pending_actions_thread_idx').on(t.threadId)],
 );
 
+/**
+ * AI 助手运行树（backlog #45 M4，docs/13 组 B）：一次助手动作的调用树（工具→子调用），供「观察」。
+ * parentId 自引用成树;每节点记 input/output/status。
+ */
+export const instanceAiRunTree = sqliteTable(
+  'instance_ai_run_tree',
+  {
+    id: uuidPk('id'),
+    threadId: text('thread_id')
+      .notNull()
+      .references(() => instanceAiThreads.id),
+    parentId: text('parent_id'), // 自引用（根节点为 null）
+    label: text('label').notNull(),
+    input: text('input', { mode: 'json' }).$type<JsonObject>().notNull().$defaultFn(() => ({})),
+    output: text('output', { mode: 'json' }).$type<JsonObject>(), // 完成后填
+    status: text('status').notNull().default('running'), // running|success|error
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    endedAt: integer('ended_at', { mode: 'timestamp' }),
+  },
+  (t) => [index('instance_ai_run_tree_thread_idx').on(t.threadId)],
+);
+
+/**
+ * AI 助手观察-反思记忆（backlog #45 M4）：助手从运行里提炼经验,embedding 检索。
+ * 与 #44 memory_entries 同构,共用 embedding.ts。scope=instance 跨线程可召回(按 userId);
+ * scope=thread 仅本线程。
+ */
+export const instanceAiMemory = sqliteTable(
+  'instance_ai_memory',
+  {
+    id: uuidPk('id'),
+    userId: text('user_id').notNull(),
+    threadId: text('thread_id'), // scope=thread 时限定线程
+    scope: text('scope').notNull().default('instance'), // instance|thread
+    kind: text('kind').notNull().default('observation'), // observation|reflection
+    content: text('content').notNull(),
+    embedding: text('embedding', { mode: 'json' }).$type<number[]>().notNull().$defaultFn(() => []),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('instance_ai_memory_user_idx').on(t.userId)],
+);
+
 /** 实例升级史（backlog #43）：每次启动检测版本变化即记一条。 */
 export const instanceVersionHistory = sqliteTable('instance_version_history', {
   id: uuidPk('id'),
@@ -1295,4 +1341,6 @@ export const sqliteSchema = {
   instanceAiMessages,
   instanceAiCheckpoints,
   instanceAiPendingActions,
+  instanceAiRunTree,
+  instanceAiMemory,
 };

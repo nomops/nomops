@@ -1957,6 +1957,33 @@ export function createApiRouter(services: AppServices): Router {
       res.json(await services.instanceAi.rejectAction(param(req, 'actionId'), auth(req).userId));
     }),
   );
+  // 运行树 + 观察-反思记忆（backlog #45 M4）
+  router.get(
+    '/instance-ai/threads/:id/runs',
+    h(async (req, res) => {
+      res.json(await services.instanceAi.listRuns(param(req, 'id'), auth(req).userId));
+    }),
+  );
+  router.post(
+    '/instance-ai/threads/:id/memory',
+    h(async (req, res) => {
+      const { scope, kind, content } = req.body as { scope?: string; kind?: string; content?: string };
+      if (!content?.trim()) throw new OperationalError('content is required', { status: 400 });
+      const m = await services.instanceAi.remember(param(req, 'id'), auth(req).userId, { scope, kind, content });
+      const { embedding: _e, ...rest } = m; // embedding 是内部检索向量,不出 API
+      res.status(201).json(rest);
+    }),
+  );
+  router.get(
+    '/instance-ai/recall',
+    h(async (req, res) => {
+      const q = typeof req.query['q'] === 'string' ? req.query['q'] : '';
+      if (!q.trim()) throw new OperationalError('q is required', { status: 400 });
+      const threadId = typeof req.query['threadId'] === 'string' ? req.query['threadId'] : null;
+      const mems = await services.instanceAi.recall(auth(req).userId, q, threadId);
+      res.json(mems.map(({ embedding: _e, ...rest }) => rest));
+    }),
+  );
 
   /* ── Chat 会话/个人 Agent 持久化（backlog #14,用户维度;原 localStorage 落库） ── */
   router.get(

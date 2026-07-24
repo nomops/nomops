@@ -1,8 +1,9 @@
-import type { InstanceAiCheckpoint, InstanceAiMessage, InstanceAiPendingAction, InstanceAiThread, Repositories } from '@nomops/db';
+import type { InstanceAiCheckpoint, InstanceAiMemory, InstanceAiMessage, InstanceAiPendingAction, InstanceAiRunNode, InstanceAiThread, Repositories } from '@nomops/db';
 import type { JsonObject } from '@nomops/workflow';
 import { OperationalError } from '@nomops/workflow';
 import type { AssistantService, ChatMessage } from './assistant-service.js';
-import { buildDefaultToolExecutor, classifyRisk, type ToolExecutor } from './instance-ai-tools.js';
+import { buildDefaultToolExecutor, classifyRisk, type ToolContext, type ToolExecutor } from './instance-ai-tools.js';
+import { embed, topKMemories } from './embedding.js';
 
 /**
  * 有检查点的 AI 线程底座（backlog #45 M2，docs/13 组 B）：实例助手的可回滚线程。
@@ -125,11 +126,35 @@ export class InstanceAiService {
    * 提议一个动作：安全(只读)直接执行并记 tool 消息;危险则挂 pending 等确认（不执行）。
    * 助手工具调用应走此入口——把「外发/不可逆先确认」的安全边界内建进助手。
    */
+  /** 在运行树里执行工具（#45 M4）：建根节点 → 执行(ctx.span 记子调用) → 收尾。供「观察」。 */
+  private async execToolWithTree(threadId: string, userId: string, projectId: string, tool: string, args: JsonObject): Promise<JsonObject> {
+    const root = await this.repos.instanceAi.addRunNode({ threadId, parentId: null, label: tool, nodeInput: args });
+    const span: ToolContext['span'] = async (label, input, fn) => {
+      const child = await this.repos.instanceAi.addRunNode({ threadId, parentId: root.id, label, nodeInput: input });
+      try {
+        const out = await fn();
+        await this.repos.instanceAi.finishRunNode(child.id, 'success', out);
+        return out;
+      } catch (e) {
+        await this.repos.instanceAi.finishRunNode(child.id, 'error', { error: (e as Error).message });
+        throw e;
+      }
+    };
+    try {
+      const result = await this.toolExecutor(tool, args, { threadId, userId, projectId, span });
+      await this.repos.instanceAi.finishRunNode(root.id, 'success', result);
+      return result;
+    } catch (e) {
+      await this.repos.instanceAi.finishRunNode(root.id, 'error', { error: (e as Error).message });
+      throw e;
+    }
+  }
+
   async proposeAction(threadId: string, userId: string, projectId: string, tool: string, args: JsonObject): Promise<ProposeResult> {
     await this.requireThread(threadId, userId);
     const verdict = classifyRisk(tool);
     if (verdict.risk === 'safe') {
-      const result = await this.toolExecutor(tool, args, { threadId, userId, projectId });
+      const result = await this.execToolWithTree(threadId, userId, projectId, tool, args);
       await this.append(threadId, userId, 'tool', { tool, args, result, risk: 'safe' });
       return { status: 'executed', result };
     }
@@ -155,7 +180,7 @@ export class InstanceAiService {
   async approveAction(actionId: string, userId: string, projectId: string): Promise<InstanceAiPendingAction> {
     const action = await this.requireAction(actionId, userId);
     if (action.status !== 'pending') throw new OperationalError(`Action already ${action.status}`, { status: 409 });
-    const result = await this.toolExecutor(action.tool, action.args, { threadId: action.threadId, userId, projectId });
+    const result = await this.execToolWithTree(action.threadId, userId, projectId, action.tool, action.args);
     await this.repos.instanceAi.decidePendingAction(actionId, { status: 'approved', result, decidedBy: userId });
     await this.append(action.threadId, userId, 'tool', { tool: action.tool, args: action.args, result, status: 'approved' });
     return (await this.repos.instanceAi.findPendingAction(actionId))!;
@@ -168,5 +193,33 @@ export class InstanceAiService {
     await this.repos.instanceAi.decidePendingAction(actionId, { status: 'rejected', result: null, decidedBy: userId });
     await this.append(action.threadId, userId, 'tool', { tool: action.tool, args: action.args, status: 'rejected' });
     return (await this.repos.instanceAi.findPendingAction(actionId))!;
+  }
+
+  /* ── 运行树（#45 M4）：助手动作的调用树,供「观察」 ── */
+  async listRuns(threadId: string, userId: string): Promise<InstanceAiRunNode[]> {
+    await this.requireThread(threadId, userId);
+    return this.repos.instanceAi.listRunNodes(threadId);
+  }
+
+  /* ── 观察-反思记忆（#45 M4）：embedding 检索,scope=instance 跨线程 ── */
+  /** 记一条经验：embed 内容 → 落库。scope=instance 跨线程可召回;kind=observation|reflection。 */
+  async remember(threadId: string, userId: string, input: { scope?: string; kind?: string; content: string }): Promise<InstanceAiMemory> {
+    await this.requireThread(threadId, userId);
+    const content = input.content.trim();
+    if (!content) throw new OperationalError('content is required', { status: 400 });
+    const scope = input.scope === 'thread' ? 'thread' : 'instance';
+    const kind = input.kind === 'reflection' ? 'reflection' : 'observation';
+    return this.repos.instanceAi.addMemory({ userId, threadId, scope, kind, content, embedding: embed(content) });
+  }
+
+  /** 召回相关经验：embed query → 候选(instance 跨线程 + 本线程 thread) top-k。 */
+  async recall(userId: string, query: string, threadId: string | null, limit = 5): Promise<InstanceAiMemory[]> {
+    const q = embed(query);
+    const candidates = await this.repos.instanceAi.memoriesForRecall(userId, threadId);
+    return topKMemories(q, candidates, limit);
+  }
+
+  listMemories(userId: string): Promise<InstanceAiMemory[]> {
+    return this.repos.instanceAi.listMemories(userId);
   }
 }

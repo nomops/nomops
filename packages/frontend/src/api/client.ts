@@ -140,6 +140,23 @@ export interface InstanceAiActionRow {
   result: Record<string, unknown> | null;
   createdAt: string;
 }
+export interface InstanceAiRunNodeRow {
+  id: string;
+  parentId: string | null;
+  label: string;
+  input: Record<string, unknown>;
+  output: Record<string, unknown> | null;
+  status: 'running' | 'success' | 'error';
+  createdAt: string;
+}
+export interface InstanceAiMemoryRow {
+  id: string;
+  threadId: string | null;
+  scope: 'instance' | 'thread';
+  kind: 'observation' | 'reflection';
+  content: string;
+  createdAt: string;
+}
 
 /** AI 建流会话（#45 M1）。 */
 export interface BuilderSessionRow {
@@ -764,6 +781,11 @@ export const api = {
         'POST', `/api/instance-ai/threads/${id}/actions`, { tool, args }),
     approve: (actionId: string) => http<InstanceAiActionRow>('POST', `/api/instance-ai/actions/${actionId}/approve`),
     reject: (actionId: string) => http<InstanceAiActionRow>('POST', `/api/instance-ai/actions/${actionId}/reject`),
+    runs: (id: string) => http<InstanceAiRunNodeRow[]>('GET', `/api/instance-ai/threads/${id}/runs`),
+    remember: (id: string, body: { scope: string; kind: string; content: string }) =>
+      http<InstanceAiMemoryRow>('POST', `/api/instance-ai/threads/${id}/memory`, body),
+    recall: (q: string, threadId?: string) =>
+      http<InstanceAiMemoryRow[]>('GET', `/api/instance-ai/recall?q=${encodeURIComponent(q)}${threadId ? `&threadId=${threadId}` : ''}`),
   },
 
   workflowsMeta: () => http<WorkflowMetaRow[]>('GET', '/api/workflows-meta'),

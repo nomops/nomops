@@ -309,6 +309,13 @@
       "when": 1784880960208,
       "tag": "0043_optimal_colleen_wing",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "6",
+      "when": 1784882109050,
+      "tag": "0044_old_silverclaw",
+      "breakpoints": true
     }
   ]
 }

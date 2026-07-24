@@ -325,6 +325,41 @@ export const instanceAiPendingActions = pgTable(
   (t) => [index('instance_ai_pending_actions_thread_idx').on(t.threadId)],
 );
 
+/** AI 助手运行树（backlog #45 M4）：调用树,parentId 自引用,记 input/output/status。 */
+export const instanceAiRunTree = pgTable(
+  'instance_ai_run_tree',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    threadId: uuid('thread_id')
+      .notNull()
+      .references(() => instanceAiThreads.id),
+    parentId: uuid('parent_id'),
+    label: text('label').notNull(),
+    input: jsonb('input').$type<JsonObject>().notNull().default({}),
+    output: jsonb('output').$type<JsonObject>(),
+    status: text('status').notNull().default('running'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    endedAt: timestamp('ended_at'),
+  },
+  (t) => [index('instance_ai_run_tree_thread_idx').on(t.threadId)],
+);
+
+/** AI 助手观察-反思记忆（backlog #45 M4）：embedding 检索,与 #44 共用 embedding.ts。 */
+export const instanceAiMemory = pgTable(
+  'instance_ai_memory',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').notNull(),
+    threadId: uuid('thread_id'),
+    scope: text('scope').notNull().default('instance'),
+    kind: text('kind').notNull().default('observation'),
+    content: text('content').notNull(),
+    embedding: jsonb('embedding').$type<number[]>().notNull().default([]),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('instance_ai_memory_user_idx').on(t.userId)],
+);
+
 /** 实例升级史（backlog #43）。 */
 export const instanceVersionHistory = pgTable('instance_version_history', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -1131,4 +1166,6 @@ export const pgSchema = {
   instanceAiMessages,
   instanceAiCheckpoints,
   instanceAiPendingActions,
+  instanceAiRunTree,
+  instanceAiMemory,
 };
