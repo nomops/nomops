@@ -100,9 +100,7 @@
 
 - [x] **39. Insights 预聚合管线** `M/L` ✅ 2026-07-23（卷积任务用 #38 调度器）。**39a**：3 表双方言+迁移0032(insights_raw 执行收尾事件,与 executions 保留期解耦;insights_by_period 日桶;insights_metadata 名快照);InsightsRepository;runEngine 收尾 recordInsights(算 runtime+快照名);/insights 改读 insights_raw+?scope=all 跨项目(admin);2 测(删执行后数字不变+跨项目)。**39b**：InsightsService(rollup 把边界(今-7天)前未卷积 raw 按项目×日折进 by_period+markRolledUp+prune;summary 合并 by_period(旧)+未卷积 raw(近期),findRawInRange 排除已卷积防重复计);bootstrap 注册全局 insights-rollup 调度作业(每小时,SchedulerService fire 按 kind 分派);2 测(卷积后合并两源数字不变+小时粒度近期只读 raw)。全量 774 测通过。验收：删执行后 Insights 数字不变✓;跨项目聚合视图可用✓
 
-- [ ] **40. 发布管线深化** `L`
-  workflow_publish_history(发布/回滚事件史) + publication_outbox(发布↔触发器激活原子化、失败重放) + publication_trigger_status(逐触发器激活状态/错误) + workflow_dependency/credential_dependency(版本级子流/凭证引用索引)。
-  验收：触发器激活失败在 UI 有状态与错误；发布史可回看；删被引用凭证前可见引用方。
+- [x] **40. 发布管线深化** `L` ✅ 2026-07-23（3 表双方言+迁移0033）。**40a**：workflow_publish_history(publish/rollback 事件史)+publication_trigger_status(逐触发器 active/error);PublishPipelineRepository;ActiveWorkflowManager.add 逐节点记 trigger status(webhook/schedule/poll 成功 active,冲突/无效 cron error 再抛);publish/restore 记史、deactivate 清状态;GET publish-history+trigger-status;前端 Publish Timeline tab 从占位改真实事件列表;3 测。**40b**：credential_dependency;WorkflowService.create/update 保存时从 node.credentials 重建索引、delete 清依赖;GET /credentials/:id/usage 列引用方;前端 CredentialModal 删前把引用工作流名列进确认框;3 测。全量 780 测通过。验收：触发器激活失败在 UI 有状态与错误✓;发布史可回看✓;删被引用凭证前可见引用方✓（publication_outbox 失败重放/workflow_dependency 子流索引不在验收内,未做）
 
 - [ ] **41. Chat 工具体系** `M/L`（与 #32 多模态互补）
   chat_hub_tools(工具定义) + session_tools/agent_tools(会话级/Agent 级挂载)；消息带 workflowId/executionId 关联。

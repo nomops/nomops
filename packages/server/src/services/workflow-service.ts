@@ -98,7 +98,14 @@ export class WorkflowService {
       projectId,
     );
     await this.snapshot(created, projectId, authorId); // 初始版本 v1
+    await this.indexCredentialDeps(created.id, input.nodes); // #40b：凭证引用索引
     return created;
+  }
+
+  /** #40b：从节点 credentials 提取引用的凭证 id,重建索引（保存时调）。 */
+  private async indexCredentialDeps(workflowId: string, nodes: INode[]): Promise<void> {
+    const credIds = nodes.flatMap((n) => Object.values(n.credentials ?? {}).map((c) => c.id));
+    await this.repos.publishPipeline.setCredentialDeps(workflowId, credIds);
   }
 
   async getById(id: string, projectId: string): Promise<WorkflowRow> {
@@ -232,6 +239,7 @@ export class WorkflowService {
     // 只有定义变更（nodes/connections）才快照；纯文件夹移动/改名不算一个版本。
     if ('nodes' in patch || 'connections' in patch) {
       await this.snapshot(updated, projectId, authorId);
+      await this.indexCredentialDeps(id, nodes as INode[]); // #40b：定义变更时重建凭证索引
     }
     return updated;
   }
@@ -241,6 +249,7 @@ export class WorkflowService {
     await this.assertOwnerProject(id, projectId); // 受享方(editor)不可删,只有归属项目可删
     await this.repos.workflowVersions.deleteByWorkflow(id); // 先清版本（FK 指向 workflows）
     await this.repos.tags.clearWorkflow(id); // 清标签映射（FK 指向 workflows）
+    await this.repos.publishPipeline.clearWorkflow(id); // #40：清凭证依赖 + 触发器状态（FK 指向 workflows）
     await this.repos.workflows.delete(id);
   }
 

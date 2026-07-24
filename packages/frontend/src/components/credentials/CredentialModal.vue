@@ -100,7 +100,13 @@ const deleting = ref(false);
 async function deleteCredential() {
   const id = credInfo.value?.id;
   if (!id || deleting.value) return;
-  if (!window.confirm('Delete this credential? Workflows using it will stop working.')) return;
+  // #40b：删前查引用方,把工作流名列进确认框
+  const usage = await api.credentials.usage(id).catch(() => ({ workflows: [] as Array<{ name: string }> }));
+  const used = usage.workflows;
+  const msg = used.length
+    ? `This credential is used by ${used.length} workflow(s):\n${used.map((w) => `• ${w.name}`).join('\n')}\n\nDelete anyway? They will stop working.`
+    : 'Delete this credential? Workflows using it will stop working.';
+  if (!window.confirm(msg)) return;
   deleting.value = true;
   try {
     await api.credentials.remove(id);

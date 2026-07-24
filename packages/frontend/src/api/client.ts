@@ -523,6 +523,8 @@ export const api = {
     test: (id: string) =>
       http<{ ok: boolean; tested: boolean; message?: string }>('POST', `/api/credentials/${id}/test`),
     remove: (id: string) => http<void>('DELETE', `/api/credentials/${id}`),
+    /* 引用方（#40b）：删前查被哪些工作流使用 */
+    usage: (id: string) => http<{ workflows: Array<{ id: string; name: string }> }>('GET', `/api/credentials/${id}/usage`),
     oauthStatus: (id: string) => http<{ connected: boolean }>('GET', `/api/credentials/${id}/oauth-status`),
   },
 

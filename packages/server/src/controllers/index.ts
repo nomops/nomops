@@ -927,6 +927,20 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
+  // #40b：删凭证前查引用方（前端在确认框里展示"被 N 个工作流使用"）
+  router.get(
+    '/credentials/:id/usage',
+    h(async (req, res) => {
+      const ids = await services.repos.publishPipeline.workflowsUsingCredential(param(req, 'id'));
+      const workflows = [];
+      for (const id of ids) {
+        const wf = await services.repos.workflows.findByIdUnscoped(id).catch(() => null);
+        if (wf) workflows.push({ id: wf.id, name: wf.name });
+      }
+      res.json({ workflows });
+    }),
+  );
+
   router.delete(
     '/credentials/:id',
     editor,
