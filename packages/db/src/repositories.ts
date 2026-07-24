@@ -2328,6 +2328,16 @@ export class SchedulerRepository extends BaseRepository {
     return (rows[0] as ScheduledJob | undefined) ?? null;
   }
 
+  /** 系统级作业按 kind 查（无 workflowId 的全局作业,如 insights-rollup）。 */
+  async findJobByKind(kind: string): Promise<ScheduledJob | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.scheduledJobs)
+      .where(eq(this.schema.scheduledJobs.kind, kind))
+      .limit(1);
+    return (rows[0] as ScheduledJob | undefined) ?? null;
+  }
+
   /** 到期的活跃作业（nextRunAt <= now）。调度循环据此物化 task。 */
   async findDueJobs(now: Date): Promise<ScheduledJob[]> {
     const rows = await this.db
@@ -2474,9 +2484,13 @@ export class InsightsRepository extends BaseRepository {
       });
   }
 
-  /** 范围内 raw 事件（projectId 省略 = 跨项目）。 */
+  /** 范围内未卷积的 raw 事件（projectId 省略 = 跨项目）。已卷积的在 by_period,不重复计。 */
   async findRawInRange(from: Date, to: Date, projectId?: string): Promise<InsightsRawEvent[]> {
-    const conds = [gte(this.schema.insightsRaw.at, from), lte(this.schema.insightsRaw.at, to)];
+    const conds = [
+      eq(this.schema.insightsRaw.rolledUp, false),
+      gte(this.schema.insightsRaw.at, from),
+      lte(this.schema.insightsRaw.at, to),
+    ];
     if (projectId) conds.push(eq(this.schema.insightsRaw.projectId, projectId));
     const rows = await this.db
       .select()

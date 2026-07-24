@@ -39,6 +39,7 @@ import { WaitTracker } from './services/wait-tracker.js';
 import { ExecutionPruner, prunerOptionsFromEnv } from './services/execution-pruner.js';
 import { SchedulerService } from './services/scheduler-service.js';
 import type { SchedulerOptions } from './services/scheduler-service.js';
+import { InsightsService } from './services/insights-service.js';
 import {
   ConcurrencyGate,
   concurrencyLimitFromEnv,
@@ -325,9 +326,15 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   });
   if (role === 'main') executionPruner.start();
 
+  const insights = new InsightsService(repos);
+
   // DB 调度器（#38 地基项）：Schedule Trigger 落库触发,重启不丢、多实例只触发一次。
-  // fire = 播种触发节点跑工作流;配额 429 跳过本次不重试。所有实例都跑循环,靠租约去重。
+  // fire 按 job.kind 分派;配额 429 跳过本次不重试。所有实例都跑循环,靠租约去重。
   const scheduler = new SchedulerService(repos, async (job) => {
+    if (job.kind === 'insights-rollup') {
+      await insights.rollup(); // #39b：卷积旧 raw → by_period + 剪旧
+      return null;
+    }
     if (!job.workflowId || !job.nodeName) return null;
     try {
       const summary = await executions.runTriggered(
@@ -342,6 +349,17 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
       throw e;
     }
   }, opts.scheduler);
+  // #39b：注册全局 Insights 卷积作业(每小时),幂等——已存在则不重复建
+  if (role === 'main' && !(await repos.scheduler.findJobByKind('insights-rollup'))) {
+    await repos.scheduler.createJob({
+      kind: 'insights-rollup',
+      workflowId: null,
+      nodeName: null,
+      config: { mode: 'interval', everySeconds: 3600 },
+      nextRunAt: new Date(Date.now() + 3600_000),
+      maxAttempts: 1,
+    });
+  }
   if (role === 'main') scheduler.start();
 
   const sso = new OidcService(repos, credentials, auth, baseUrl);
@@ -404,6 +422,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     dataTables,
     evaluations,
     stt,
+    insights,
     waitTracker,
     executionPruner,
     mcp,

@@ -24,6 +24,7 @@ import type { VariableService } from './services/variable-service.js';
 import type { DataTableService } from './services/data-table-service.js';
 import type { EvaluationService } from './services/evaluation-service.js';
 import type { SttService } from './services/stt-service.js';
+import type { InsightsService } from './services/insights-service.js';
 import type { WaitTracker } from './services/wait-tracker.js';
 import type { ExecutionPruner } from './services/execution-pruner.js';
 import type { ApiKeyService } from './services/api-key-service.js';
@@ -69,6 +70,7 @@ export interface AppServices {
   dataTables: DataTableService;
   evaluations: EvaluationService;
   stt: SttService;
+  insights: InsightsService;
   mailer: IMailer;
   waitTracker: WaitTracker;
   executionPruner: ExecutionPruner;

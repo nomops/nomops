@@ -19,7 +19,6 @@ import { API_SCOPES } from '../auth/api-scopes.js';
 import { verifyHandoff } from '../auth/handoff.js';
 import { requireFeature } from '../ee/license/license-service.js';
 import { isProjectRole, tierForScopes, PROJECT_SCOPES } from '../auth/rbac.js';
-import { computeInsights, insightsEventsToRows } from '../services/insights.js';
 import { CHAT_PROVIDERS } from '../services/assistant-service.js';
 import { getTemplate, templateSummaries } from '../services/template-registry.js';
 import {
@@ -1363,13 +1362,8 @@ export function createApiRouter(services: AppServices): Router {
 
       const crossProject = req.query['scope'] === 'all';
       if (crossProject) await assertInstanceAdmin(req);
-      // 略微前扩一天吸收桶边界（computeInsights 只计落桶的事件）
-      const events = await services.repos.insights.findRawInRange(
-        new Date(range.from.getTime() - 86_400_000),
-        range.to,
-        crossProject ? undefined : auth(req).projectId,
-      );
-      res.json(computeInsights(insightsEventsToRows(events), now, range));
+      // #39b：summary 合并 by_period(旧,已卷积) + raw(近期,未卷积)
+      res.json(await services.insights.summary(range.from, range.to, crossProject ? undefined : auth(req).projectId));
     }),
   );
 

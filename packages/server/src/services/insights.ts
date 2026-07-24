@@ -1,14 +1,4 @@
-import type { Execution, InsightsRawEvent } from '@nomops/db';
-
-/** #39：把 insights_raw 事件映射成 computeInsights 认的最小执行行形态。 */
-export function insightsEventsToRows(events: InsightsRawEvent[]): Execution[] {
-  return events.map((ev) => ({
-    createdAt: ev.at,
-    status: ev.status,
-    startedAt: ev.runtimeMs != null ? new Date(ev.at.getTime() - ev.runtimeMs) : null,
-    stoppedAt: ev.runtimeMs != null ? ev.at : null,
-  })) as unknown as Execution[];
-}
+import type { Execution } from '@nomops/db';
 
 export interface InsightsSummary {
   total: number;
