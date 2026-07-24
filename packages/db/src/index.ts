@@ -43,6 +43,7 @@ export {
   ExecutionAnnotationRepository,
   ExecutionMetadataRepository,
   AuthTokenBlacklistRepository,
+  AuthIdentityRepository,
 } from './repositories.js';
 export type {
   Repositories,
@@ -84,4 +85,6 @@ export type {
   ExecutionAnnotation,
   AnnotationTag,
   ExecutionMetadataRow,
+  AuthIdentity,
+  AuthProviderSyncRecord,
 } from './types.js';

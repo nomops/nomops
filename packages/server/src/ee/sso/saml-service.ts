@@ -239,10 +239,13 @@ export class SamlService {
       );
     }
 
+    // #36：按 SAML NameID 绑定归属——email 改了也认同一 user
+    const nameId = typeof profile.nameID === 'string' ? profile.nameID : null;
     return this.auth.loginViaSso({
       email,
       firstName: pick(attrs.firstName),
       lastName: pick(attrs.lastName),
+      ...(nameId ? { provider: { type: 'saml', id: nameId } } : {}),
     });
   }
 }

@@ -204,8 +204,16 @@ export class AuthService {
     email: string;
     firstName?: string | null;
     lastName?: string | null;
+    /** 外部身份（#36）：传入则优先按绑定认归属,email 变更不再错认;新用户登录后建绑定。 */
+    provider?: { type: string; id: string };
   }): Promise<{ user: User; provisioned: boolean }> {
-    let user = await this.repos.users.findByEmail(profile.email);
+    // #36：先按 provider 绑定找 —— email 在 IdP/目录改过也仍归同一 user
+    let user: User | null = null;
+    if (profile.provider) {
+      const boundId = await this.repos.authIdentities.findUserId(profile.provider.type, profile.provider.id);
+      if (boundId) user = await this.repos.users.findById(boundId);
+    }
+    if (!user) user = await this.repos.users.findByEmail(profile.email);
     let provisioned = false;
     if (!user) {
       user = await this.repos.users.create({
@@ -217,6 +225,8 @@ export class AuthService {
       });
       provisioned = true;
     }
+    // 建/保留绑定（幂等）——首次经此 provider 登录即锚定归属
+    if (profile.provider) await this.repos.authIdentities.bind(user.id, profile.provider.type, profile.provider.id);
     await this.ensurePersonalProject(user);
     return { user, provisioned };
   }
@@ -225,6 +235,7 @@ export class AuthService {
     email: string;
     firstName?: string | null;
     lastName?: string | null;
+    provider?: { type: string; id: string };
   }): Promise<{ result: IAuthResult; provisioned: boolean }> {
     const { user, provisioned } = await this.provisionSsoUser(profile);
     if (user.disabled) {

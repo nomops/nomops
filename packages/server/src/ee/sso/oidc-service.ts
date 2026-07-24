@@ -139,10 +139,13 @@ export class OidcService {
     if (!email) {
       throw new OperationalError('The IdP did not return an email claim, cannot sign in', { status: 400 });
     }
+    // #36：按 IdP 稳定 subject（sub）绑定归属——email 改了也认同一 user
+    const sub = typeof claims?.['sub'] === 'string' ? claims['sub'] : null;
     return this.auth.loginViaSso({
       email,
       firstName: typeof claims?.['given_name'] === 'string' ? claims['given_name'] : null,
       lastName: typeof claims?.['family_name'] === 'string' ? claims['family_name'] : null,
+      ...(sub ? { provider: { type: 'oidc', id: sub } } : {}),
     });
   }
 

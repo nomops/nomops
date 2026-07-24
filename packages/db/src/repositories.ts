@@ -38,6 +38,7 @@ import type {
   TestRun,
   TestCaseRun,
   AnnotationTag,
+  AuthProviderSyncRecord,
 } from './types.js';
 
 /**
@@ -115,7 +116,7 @@ export class UserRepository extends BaseRepository {
   /** 更新用户属性（SCIM replace/patch 用）。 */
   async update(
     id: string,
-    patch: Partial<Pick<User, 'firstName' | 'lastName' | 'disabled' | 'role'>>,
+    patch: Partial<Pick<User, 'firstName' | 'lastName' | 'disabled' | 'role' | 'email'>>,
   ): Promise<User> {
     const [row] = await this.db
       .update(this.schema.users)
@@ -2188,6 +2189,57 @@ export class AuthTokenBlacklistRepository extends BaseRepository {
   }
 }
 
+/**
+ * 外部身份绑定 + 同步历史（backlog #36）。登录时优先按 (providerType, providerId)
+ * 认归属——email 变更或多 provider 并存不再错认。
+ */
+export class AuthIdentityRepository extends BaseRepository {
+  /** 按 provider 绑定找 userId（命中即认此 user,忽略 email 变更）。 */
+  async findUserId(providerType: string, providerId: string): Promise<string | null> {
+    const rows = await this.db
+      .select({ userId: this.schema.authIdentities.userId })
+      .from(this.schema.authIdentities)
+      .where(
+        and(
+          eq(this.schema.authIdentities.providerType, providerType),
+          eq(this.schema.authIdentities.providerId, providerId),
+        ),
+      )
+      .limit(1);
+    return (rows[0]?.userId as string | undefined) ?? null;
+  }
+
+  /** 建绑定（幂等：同 provider+providerId 已存在则不动）。 */
+  async bind(userId: string, providerType: string, providerId: string): Promise<void> {
+    await this.db
+      .insert(this.schema.authIdentities)
+      .values({ userId, providerType, providerId })
+      .onConflictDoNothing();
+  }
+
+  async recordSync(entry: {
+    providerType: string;
+    status: string;
+    scanned: number;
+    created: number;
+    updated: number;
+    disabled: number;
+    error?: string | null;
+  }): Promise<void> {
+    await this.db.insert(this.schema.authProviderSyncHistory).values({ ...entry, error: entry.error ?? null });
+  }
+
+  /** 同步历史（最新在前）。 */
+  async listSyncHistory(providerType?: string, limit = 50): Promise<AuthProviderSyncRecord[]> {
+    const base = this.db.select().from(this.schema.authProviderSyncHistory);
+    const filtered = providerType
+      ? base.where(eq(this.schema.authProviderSyncHistory.providerType, providerType))
+      : base;
+    const rows = await filtered.orderBy(desc(this.schema.authProviderSyncHistory.runAt)).limit(limit);
+    return rows as AuthProviderSyncRecord[];
+  }
+}
+
 export interface Repositories {
   users: UserRepository;
   apiKeys: ApiKeyRepository;
@@ -2214,6 +2266,7 @@ export interface Repositories {
   annotations: ExecutionAnnotationRepository;
   executionMetadata: ExecutionMetadataRepository;
   authTokenBlacklist: AuthTokenBlacklistRepository;
+  authIdentities: AuthIdentityRepository;
 }
 
 /** 用一个 DatabaseHandle 组装全部仓储。server 层在启动时调用一次。 */
@@ -2245,5 +2298,6 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
     annotations: new ExecutionAnnotationRepository(db, schema),
     executionMetadata: new ExecutionMetadataRepository(db, schema),
     authTokenBlacklist: new AuthTokenBlacklistRepository(db, schema),
+    authIdentities: new AuthIdentityRepository(db, schema),
   };
 }

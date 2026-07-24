@@ -211,6 +211,13 @@
       "when": 1784797316194,
       "tag": "0029_swift_anita_blake",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1784857320977,
+      "tag": "0030_condemned_sphinx",
+      "breakpoints": true
     }
   ]
 }

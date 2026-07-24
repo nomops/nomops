@@ -887,7 +887,23 @@ export const api = {
         }>;
       }>('POST', '/api/ldap/sync/preview'),
     /** 执行同步（Run synchronization）。 */
-    sync: () => http<{ created: number; updated: number; unchanged: number }>('POST', '/api/ldap/sync'),
+    sync: () =>
+      http<{ scanned: number; created: number; updated: number; unchanged: number; disabled: number }>('POST', '/api/ldap/sync'),
+    /** 同步历史（#36）：持久化,跨刷新可查。 */
+    syncHistory: () =>
+      http<
+        Array<{
+          id: string;
+          providerType: string;
+          status: 'success' | 'error';
+          scanned: number;
+          created: number;
+          updated: number;
+          disabled: number;
+          error: string | null;
+          runAt: string;
+        }>
+      >('GET', '/api/ldap/sync-history'),
     login: (username: string, password: string) =>
       http<AuthResult>('POST', '/auth/ldap/login', { username, password }),
   },

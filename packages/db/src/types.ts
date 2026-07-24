@@ -37,6 +37,8 @@ export type UserFavorite = InferSelectModel<typeof sqliteSchema.userFavorites>;
 export type ExecutionAnnotation = InferSelectModel<typeof sqliteSchema.executionAnnotations>;
 export type AnnotationTag = InferSelectModel<typeof sqliteSchema.annotationTags>;
 export type ExecutionMetadataRow = InferSelectModel<typeof sqliteSchema.executionMetadata>;
+export type AuthIdentity = InferSelectModel<typeof sqliteSchema.authIdentities>;
+export type AuthProviderSyncRecord = InferSelectModel<typeof sqliteSchema.authProviderSyncHistory>;
 
 /* ── 创建入参（区别于自动生成的 id/时间戳字段） ── */
 

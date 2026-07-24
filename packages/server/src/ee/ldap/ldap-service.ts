@@ -48,6 +48,8 @@ export interface ILdapProfile {
   email: string;
   firstName: string | null;
   lastName: string | null;
+  /** 稳定目录 id（#36：按此绑定归属,email 变更不错认）。 */
+  ldapId?: string | null;
 }
 
 /** 目录用户条目（同步用）。 */
@@ -91,7 +93,12 @@ export class LdaptsAuthenticator implements ILdapAuthenticator {
       const { searchEntries } = await client.search(config.userSearchBase, {
         scope: 'sub',
         filter: this.loginFilter(config, login),
-        attributes: [config.emailAttribute, config.firstNameAttribute, config.lastNameAttribute],
+        attributes: [
+          config.emailAttribute,
+          config.firstNameAttribute,
+          config.lastNameAttribute,
+          config.ldapIdAttribute, // #36：稳定 id 用于身份绑定
+        ],
       });
       const entry = searchEntries[0];
       if (!entry) return null;
@@ -113,7 +120,12 @@ export class LdaptsAuthenticator implements ILdapAuthenticator {
       };
       const email = attr(config.emailAttribute);
       if (!email) return null;
-      return { email, firstName: attr(config.firstNameAttribute), lastName: attr(config.lastNameAttribute) };
+      return {
+        email,
+        firstName: attr(config.firstNameAttribute),
+        lastName: attr(config.lastNameAttribute),
+        ldapId: attr(config.ldapIdAttribute),
+      };
     } finally {
       await client.unbind().catch(() => undefined);
     }
@@ -274,25 +286,70 @@ export class LdapService {
     return rows;
   }
 
-  /** 执行同步：create → JIT 预配（随机口令+个人项目）;update → 覆写姓名。 */
-  async runSync(): Promise<{ created: number; updated: number; unchanged: number }> {
-    const rows = await this.previewSync();
+  /**
+   * 执行同步（#36 身份绑定感知）：先按 ldapId 绑定认归属,再退回 email——
+   * 目录用户改了 email 也不会被当成新用户重复建。每次记一条同步历史。
+   */
+  async runSync(): Promise<{ scanned: number; created: number; updated: number; unchanged: number; disabled: number }> {
+    const config = await this.getConfig();
+    if (!config?.url) throw new OperationalError('LDAP is not configured', { status: 400 });
+    if (!this.authenticator.listUsers) {
+      throw new OperationalError('LDAP synchronization is not supported by this authenticator', { status: 501 });
+    }
+    let remote: ILdapDirectoryUser[];
+    try {
+      remote = await this.authenticator.listUsers(config);
+    } catch (error) {
+      await this.repos.authIdentities.recordSync({
+        providerType: 'ldap',
+        status: 'error',
+        scanned: 0,
+        created: 0,
+        updated: 0,
+        disabled: 0,
+        error: (error as Error).message,
+      });
+      throw new OperationalError(`LDAP search failed: ${(error as Error).message}`, { status: 502 });
+    }
+
     let created = 0;
     let updated = 0;
     let unchanged = 0;
-    for (const row of rows) {
-      if (row.action === 'create') {
-        await this.auth.provisionSsoUser({ email: row.email, firstName: row.firstName, lastName: row.lastName });
+    for (const u of remote) {
+      const provider = u.ldapId ? { type: 'ldap', id: u.ldapId } : undefined;
+      // 归属解析：先 ldapId 绑定,再 email
+      let local = null;
+      if (provider) {
+        const boundId = await this.repos.authIdentities.findUserId(provider.type, provider.id);
+        if (boundId) local = await this.repos.users.findById(boundId);
+      }
+      if (!local) local = await this.repos.users.findByEmail(u.email);
+
+      if (!local) {
+        await this.auth.provisionSsoUser({ email: u.email, firstName: u.firstName, lastName: u.lastName, provider });
         created++;
-      } else if (row.action === 'update') {
-        const local = await this.repos.users.findByEmail(row.email);
-        if (local) await this.repos.users.update(local.id, { firstName: row.firstName, lastName: row.lastName });
-        updated++;
       } else {
-        unchanged++;
+        const changed =
+          (local.firstName ?? null) !== (u.firstName ?? null) ||
+          (local.lastName ?? null) !== (u.lastName ?? null) ||
+          local.email !== u.email;
+        if (changed) {
+          await this.repos.users.update(local.id, {
+            firstName: u.firstName,
+            lastName: u.lastName,
+            email: u.email,
+          });
+          updated++;
+        } else {
+          unchanged++;
+        }
+        if (provider) await this.repos.authIdentities.bind(local.id, provider.type, provider.id);
       }
     }
-    return { created, updated, unchanged };
+
+    const summary = { scanned: remote.length, created, updated, unchanged, disabled: 0 };
+    await this.repos.authIdentities.recordSync({ providerType: 'ldap', status: 'success', ...summary });
+    return summary;
   }
 
   /** LDAP 登录：校验凭据 → JIT 预配 → 签发 JWT。 */
@@ -317,6 +374,7 @@ export class LdapService {
       email: profile.email,
       firstName: profile.firstName,
       lastName: profile.lastName,
+      ...(profile.ldapId ? { provider: { type: 'ldap', id: profile.ldapId } } : {}),
     });
   }
 }

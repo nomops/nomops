@@ -90,10 +90,7 @@
 
 - [x] **35. 执行标注 + 自定义元数据** `M` ✅ 2026-07-23（4 表双方言+迁移0028。**35a 标注**：execution_annotations(vote👍👎/note,1:1)+annotation_tags(name 唯一)+execution_annotation_tags(多对多);ExecutionAnnotationRepository(get/setAnnotation 部分更新不清空/setTags 全量替换/findOrCreateTag);GET/PUT /executions/:id/annotation+GET /annotation-tags(归属经 executions.getById 校验);前端 CanvasView 执行详情标注栏 👍👎+tag chip(datalist)+note(change+enter 双触发);5 server 测。**35b 元数据**：execution_metadata(KV 复合主键+key/value 索引);SetMetadata 节点(_nmMetadata 保留键,值转字符串,引擎零耦合);ExecutionService.runEngine 收尾从 runData 提取 KV→replaceAll(所有 run 模式单一 choke point);GET /executions?metaKey&metaValue 过滤(findAllByProject join+selectDistinct);getById 带 metadata;前端执行详情 METADATA chips+列表 key/value 过滤;3 节点测+3 server 测。全量 752 测通过;活体验证标注 👍/tag/note 落库刷新还原、SetMetadata 写 customerId/stage→详情 METADATA 展示+列表按键值筛出(nomatch→空)）
 
-- [ ] **36. SSO 身份绑定表 + 同步历史** `M`（正确性隐患）
-  现 OIDC/LDAP 靠 email JIT 匹配，email 变更或多 provider 并存会错认归属。
-  → auth_identity(userId ↔ providerId/providerType)：登录时建绑定、此后优先按绑定匹配；auth_provider_sync_history 记每次 LDAP 同步的 scanned/created/updated/disabled 与错误。
-  验收：改 email 后同一 LDAP 账号仍归同一 user；同步历史可查。
+- [x] **36. SSO 身份绑定表 + 同步历史** `M` ✅ 2026-07-23（2 表双方言+迁移0030:auth_identities(userId↔providerType/providerId,unique(type,id))+auth_provider_sync_history(scanned/created/updated/disabled/error/status)。AuthIdentityRepository(findUserId/bind 幂等/recordSync/listSyncHistory);provisionSsoUser+loginViaSso 增 provider 参数——优先按绑定认归属(email 变更/多 provider 不错认),新用户登录后建绑定;OIDC 传 sub、SAML 传 nameID、LDAP 传 ldapId(authenticate 扩查 ldapIdAttribute,ILdapProfile 增 ldapId);runSync 改绑定感知(先 ldapId 后 email,改 email 不重复建)+记同步历史+返回 scanned/disabled;users.update 支持 email;GET /ldap/sync-history(admin);前端 LDAP 设置页加载持久化同步历史(跨刷新可查)。3 server 测(登录/同步改 email 后同一 user、跨路径绑定一致、同步历史可查)+更新既有 settings-wiring 测;全量 759 测通过）
 
 - [x] **37. 登出令牌黑名单（invalid_auth_token）** `S` ✅ 2026-07-23（新表 invalid_auth_tokens(token_hash PK + expires_at)双方言+迁移0029;AuthTokenBlacklistRepository 带内存缓存(鉴权热路径每请求查,不打库;add 增量更新;pruneExpired 顺手清过期);AuthService.logout(decode 取 exp→拉黑 sha256(JWT));POST /auth/logout(公开,验签通过才拉黑,幂等);中间件验签后查黑名单→401;**修正 JWT 同秒重签碰撞**:issueToken 加 jwtid(否则同秒同用户两 token 全同,登出误伤新 token);前端 auth store logout 调 api.logout 尽力拉黑;4 server 测(登出后旧 token 401、重登新 token 不受影响、幂等)验收"登出后旧 token 立即 401";全量 server 457+frontend 84+db 26 通过)
 

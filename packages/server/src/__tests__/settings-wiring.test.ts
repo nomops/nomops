@@ -135,7 +135,7 @@ describe('LDAP 扩展字段 + 同步', () => {
     expect(await boot.services.repos.users.findByEmail('new@corp.com')).toBeNull();
 
     const run = await request(app).post('/api/ldap/sync').set(admin()).expect(200);
-    expect(run.body).toEqual({ created: 1, updated: 1, unchanged: 0 });
+    expect(run.body).toEqual({ scanned: 2, created: 1, updated: 1, unchanged: 0, disabled: 0 });
     const created = await boot.services.repos.users.findByEmail('new@corp.com');
     expect(created).toBeTruthy();
     expect(created!.firstName).toBe('New');
@@ -144,7 +144,7 @@ describe('LDAP 扩展字段 + 同步', () => {
 
     // 再跑一次:全部 unchanged,幂等
     const again = await request(app).post('/api/ldap/sync').set(admin()).expect(200);
-    expect(again.body).toEqual({ created: 0, updated: 0, unchanged: 2 });
+    expect(again.body).toEqual({ scanned: 2, created: 0, updated: 0, unchanged: 2, disabled: 0 });
   });
 });
 

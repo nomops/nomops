@@ -445,6 +445,16 @@ export function registerEeRoutes(router: Router, services: AppServices): void {
     }),
   );
 
+  /** 同步历史（#36）：每次 LDAP 同步的 scanned/created/updated/disabled 与错误。 */
+  router.get(
+    '/ldap/sync-history',
+    requireFeature(services.license, 'ldap'),
+    h(async (req, res) => {
+      await assertInstanceAdmin(services, req);
+      res.json(await services.repos.authIdentities.listSyncHistory('ldap'));
+    }),
+  );
+
   /* ── 共享（backlog #12,功能位 sharing）:owner 项目管理共享面 ── */
   const sharingFeature = requireFeature(services.license, 'sharing');
   const assertProjectEditor = (req: Parameters<typeof auth>[0]): void => {

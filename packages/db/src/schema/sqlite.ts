@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 import type { IConnections, INode, IPinData, IWorkflowSettings, JsonObject } from '@nomops/workflow';
 
 /**
@@ -539,6 +539,41 @@ export const testCaseRuns = sqliteTable(
   (t) => [index('test_case_runs_test_run_id_idx').on(t.testRunId)],
 );
 
+/**
+ * 外部身份绑定（backlog #36）：user ↔ (providerType, providerId)。
+ * SSO/LDAP 登录优先按此绑定认归属——email 变更或多 provider 并存不再错认。
+ */
+export const authIdentities = sqliteTable(
+  'auth_identities',
+  {
+    id: uuidPk('id'),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    providerType: text('provider_type').notNull(), // 'oidc' | 'saml' | 'ldap'
+    providerId: text('provider_id').notNull(), // IdP sub / SAML nameID / LDAP 稳定 id
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [uniqueIndex('auth_identities_provider_uic').on(t.providerType, t.providerId)],
+);
+
+/** 认证 provider 同步历史（backlog #36）：每次 LDAP 同步记 scanned/created/updated/disabled 与错误。 */
+export const authProviderSyncHistory = sqliteTable('auth_provider_sync_history', {
+  id: uuidPk('id'),
+  providerType: text('provider_type').notNull(),
+  status: text('status').notNull(), // 'success' | 'error'
+  scanned: integer('scanned').notNull().default(0),
+  created: integer('created').notNull().default(0),
+  updated: integer('updated').notNull().default(0),
+  disabled: integer('disabled').notNull().default(0),
+  error: text('error'),
+  runAt: integer('run_at', { mode: 'timestamp' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 /** 登出令牌黑名单（backlog #37）：登出即拉黑该 JWT 哈希,到期后清理。 */
 export const invalidAuthTokens = sqliteTable('invalid_auth_tokens', {
   tokenHash: text('token_hash').primaryKey(), // sha256(JWT)，绝不存明文
@@ -652,4 +687,6 @@ export const sqliteSchema = {
   executionAnnotationTags,
   executionMetadata,
   invalidAuthTokens,
+  authIdentities,
+  authProviderSyncHistory,
 };

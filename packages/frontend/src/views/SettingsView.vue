@@ -344,7 +344,7 @@ async function ldapSyncRun() {
       endedAt: new Date().toLocaleString(),
       runMode: 'live',
       runTimeMs: Math.round(performance.now() - t0),
-      details: `${s.created} created · ${s.updated} updated · ${s.unchanged} unchanged`,
+      details: `${s.scanned} scanned · ${s.created} created · ${s.updated} updated · ${s.unchanged} unchanged`,
     });
   } catch (e) {
     ldapSyncRuns.value.unshift({
@@ -357,6 +357,21 @@ async function ldapSyncRun() {
   } finally {
     ldapSyncBusy.value = '';
   }
+  void loadLdapSyncHistory(); // 跑完刷新持久化历史
+}
+
+/** #36：拉持久化的 LDAP 同步历史（跨刷新可查），映射进 runs 展示。 */
+async function loadLdapSyncHistory() {
+  const rows = await api.ldap.syncHistory().catch(() => []);
+  ldapSyncRuns.value = rows.map((r) => ({
+    status: r.status,
+    endedAt: new Date(r.runAt).toLocaleString(),
+    runMode: 'live' as const,
+    runTimeMs: 0,
+    details: r.error
+      ? r.error
+      : `${r.scanned} scanned · ${r.created} created · ${r.updated} updated · ${r.disabled} disabled`,
+  }));
 }
 
 /** 存量 url ⇄ 表单三件套(address/port/security)。 */
@@ -1078,6 +1093,7 @@ async function loadSection() {
       };
       ldapFormFromUrl(cfg.url);
       ldapTestResult.value = '';
+      void loadLdapSyncHistory(); // #36：持久化同步历史,跨刷新可查
       void nextTick(() => (ldapDirty.value = false)); // 回填不算脏
     } catch (e) {
       ldapLoadError.value = (e as Error).message; // 社区版 403 / 非 admin 403
