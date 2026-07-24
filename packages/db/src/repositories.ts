@@ -19,6 +19,8 @@ import type {
   CreateUserInput,
   CreateWorkflowInput,
   Credential,
+  DynamicCredentialResolver,
+  DynamicCredentialEntry,
   Execution,
   ExecutionDataSnapshot,
   Folder,
@@ -937,6 +939,14 @@ export class CredentialRepository extends BaseRepository {
       .where(eq(this.schema.credentials.id, id));
   }
 
+  /** 标记/解除凭证的动态解析（#46）：resolverId=null 解除,恢复固定密文老行为。 */
+  async setResolver(id: string, resolverId: string | null): Promise<void> {
+    await this.db
+      .update(this.schema.credentials)
+      .set({ resolverId, isResolvable: resolverId !== null, updatedAt: new Date() })
+      .where(eq(this.schema.credentials.id, id));
+  }
+
   async delete(id: string): Promise<void> {
     await this.db
       .delete(this.schema.sharedCredentials)
@@ -1021,6 +1031,84 @@ export class CredentialRepository extends BaseRepository {
         ),
       );
     return rows.map((r: { credentials: Credential }) => r.credentials);
+  }
+}
+
+/**
+ * 动态凭证仓储（backlog #46 M1）：解析器 + 按 subject 的凭证值（密文）。归属按 projectId（铁律 2）。
+ * entry.data 是密文（加解密在服务层用凭证加密栈）。
+ */
+export class DynamicCredentialRepository extends BaseRepository {
+  /* ── 解析器 ── */
+  async createResolver(input: { projectId: string; name: string; kind: string; config: JsonObject }): Promise<DynamicCredentialResolver> {
+    const [row] = await this.db
+      .insert(this.schema.dynamicCredentialResolvers)
+      .values({ projectId: input.projectId, name: input.name, kind: input.kind, config: input.config })
+      .returning();
+    return row as DynamicCredentialResolver;
+  }
+
+  async listResolvers(projectId: string): Promise<DynamicCredentialResolver[]> {
+    return (await this.db
+      .select()
+      .from(this.schema.dynamicCredentialResolvers)
+      .where(eq(this.schema.dynamicCredentialResolvers.projectId, projectId))
+      .orderBy(desc(this.schema.dynamicCredentialResolvers.createdAt))) as DynamicCredentialResolver[];
+  }
+
+  /** 归属校验版（projectId 隔离）。 */
+  async findResolver(id: string, projectId: string): Promise<DynamicCredentialResolver | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.dynamicCredentialResolvers)
+      .where(and(eq(this.schema.dynamicCredentialResolvers.id, id), eq(this.schema.dynamicCredentialResolvers.projectId, projectId)))
+      .limit(1);
+    return (rows[0] as DynamicCredentialResolver | undefined) ?? null;
+  }
+
+  async deleteResolver(id: string): Promise<void> {
+    await this.db.delete(this.schema.dynamicCredentialEntries).where(eq(this.schema.dynamicCredentialEntries.resolverId, id));
+    await this.db.delete(this.schema.dynamicCredentialResolvers).where(eq(this.schema.dynamicCredentialResolvers.id, id));
+  }
+
+  /* ── 按 subject 的凭证值（entry） ── */
+  /** upsert：同 (resolverId, subject) 覆盖（unique 索引保证）。 */
+  async upsertEntry(input: { resolverId: string; subject: string; data: string }): Promise<void> {
+    await this.db
+      .insert(this.schema.dynamicCredentialEntries)
+      .values({ resolverId: input.resolverId, subject: input.subject, data: input.data })
+      .onConflictDoUpdate({
+        target: [this.schema.dynamicCredentialEntries.resolverId, this.schema.dynamicCredentialEntries.subject],
+        set: { data: input.data, updatedAt: new Date() },
+      });
+  }
+
+  async findEntry(resolverId: string, subject: string): Promise<DynamicCredentialEntry | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.dynamicCredentialEntries)
+      .where(and(eq(this.schema.dynamicCredentialEntries.resolverId, resolverId), eq(this.schema.dynamicCredentialEntries.subject, subject)))
+      .limit(1);
+    return (rows[0] as DynamicCredentialEntry | undefined) ?? null;
+  }
+
+  /** 列出某解析器的 subject（不含 data 密文！——铁律 3）。 */
+  async listEntrySubjects(resolverId: string): Promise<Array<{ id: string; subject: string; updatedAt: Date }>> {
+    return (await this.db
+      .select({
+        id: this.schema.dynamicCredentialEntries.id,
+        subject: this.schema.dynamicCredentialEntries.subject,
+        updatedAt: this.schema.dynamicCredentialEntries.updatedAt,
+      })
+      .from(this.schema.dynamicCredentialEntries)
+      .where(eq(this.schema.dynamicCredentialEntries.resolverId, resolverId))
+      .orderBy(this.schema.dynamicCredentialEntries.subject)) as Array<{ id: string; subject: string; updatedAt: Date }>;
+  }
+
+  async deleteEntry(resolverId: string, subject: string): Promise<void> {
+    await this.db
+      .delete(this.schema.dynamicCredentialEntries)
+      .where(and(eq(this.schema.dynamicCredentialEntries.resolverId, resolverId), eq(this.schema.dynamicCredentialEntries.subject, subject)));
   }
 }
 
@@ -3560,6 +3648,7 @@ export interface Repositories {
   workflowVersions: WorkflowVersionRepository;
   installedNodes: InstalledNodeRepository;
   credentials: CredentialRepository;
+  dynamicCredentials: DynamicCredentialRepository;
   variables: VariableRepository;
   dataTables: DataTableRepository;
   tags: TagRepository;
@@ -3600,6 +3689,7 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
     workflowVersions: new WorkflowVersionRepository(db, schema),
     installedNodes: new InstalledNodeRepository(db, schema),
     credentials: new CredentialRepository(db, schema),
+    dynamicCredentials: new DynamicCredentialRepository(db, schema),
     variables: new VariableRepository(db, schema),
     dataTables: new DataTableRepository(db, schema),
     tags: new TagRepository(db, schema),

@@ -79,6 +79,7 @@ export const ALL_TEST_FEATURES = [
   'quotas',
   'logStreaming',
   'externalSecrets',
+  'dynamicCredentials',
   'ldap',
   'sourceControl',
   'sharing',

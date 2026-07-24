@@ -678,6 +678,22 @@ export const api = {
     /* 引用方（#40b）：删前查被哪些工作流使用 */
     usage: (id: string) => http<{ workflows: Array<{ id: string; name: string }> }>('GET', `/api/credentials/${id}/usage`),
     oauthStatus: (id: string) => http<{ connected: boolean }>('GET', `/api/credentials/${id}/oauth-status`),
+    /* 动态凭证（#46）：挂/摘解析器 */
+    setResolver: (id: string, resolverId: string) => http<void>('POST', `/api/credentials/${id}/resolver`, { resolverId }),
+    clearResolver: (id: string) => http<void>('DELETE', `/api/credentials/${id}/resolver`),
+  },
+
+  /** 动态凭证解析器（#46 M1）：按 subject 解析凭证值。 */
+  dynamicCredentials: {
+    resolvers: () => http<Array<{ id: string; name: string; kind: string; createdAt: string }>>('GET', '/api/dynamic-credentials/resolvers'),
+    createResolver: (body: { name: string; kind?: string; config?: Record<string, unknown> }) =>
+      http<{ id: string; name: string; kind: string; createdAt: string }>('POST', '/api/dynamic-credentials/resolvers', body),
+    removeResolver: (id: string) => http<void>('DELETE', `/api/dynamic-credentials/resolvers/${id}`),
+    subjects: (id: string) => http<Array<{ id: string; subject: string; updatedAt: string }>>('GET', `/api/dynamic-credentials/resolvers/${id}/subjects`),
+    setEntry: (id: string, subject: string, data: Record<string, unknown>) =>
+      http<void>('PUT', `/api/dynamic-credentials/resolvers/${id}/entry`, { subject, data }),
+    removeEntry: (id: string, subject: string) =>
+      http<void>('DELETE', `/api/dynamic-credentials/resolvers/${id}/entry?subject=${encodeURIComponent(subject)}`),
   },
 
   /** 凭证 OAuth2「Connect my account」：拿提供方授权跳转 URL，前端开弹窗完成授权。 */

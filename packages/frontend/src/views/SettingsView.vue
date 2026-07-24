@@ -21,6 +21,7 @@ type Section =
   | 'roles'
   | 'api'
   | 'secrets'
+  | 'dynamiccreds'
   | 'sourcecontrol'
   | 'sso'
   | 'security'
@@ -270,6 +271,94 @@ function relativeTime(iso: string | null | undefined): string {
 const secretsStatus = ref<Awaited<ReturnType<typeof api.externalSecrets>> | null>(null);
 const secretsError = ref('');
 const secretRefExample = '{{ $secrets.KEY }}'; // 字面量，避免模板里 {{ }} 嵌套
+
+/* 动态凭证（#46 M1，企业）：resolvable 凭证运行时按 subject 解析实际值 */
+const dynResolvers = ref<Awaited<ReturnType<typeof api.dynamicCredentials.resolvers>>>([]);
+const dynError = ref('');
+const dynNewResolverName = ref('');
+const dynSelectedResolver = ref<string>('');
+const dynSubjects = ref<Awaited<ReturnType<typeof api.dynamicCredentials.subjects>>>([]);
+const dynNewSubject = ref('');
+const dynNewValue = ref('{ "accessToken": "" }');
+const dynBusy = ref('');
+const dynCredsList = ref<Array<{ id: string; name: string; type: string }>>([]);
+const dynAttachCred = ref('');
+async function loadDynResolvers() {
+  dynError.value = '';
+  try {
+    dynResolvers.value = await api.dynamicCredentials.resolvers();
+    dynCredsList.value = await api.credentials.list().catch(() => []);
+    if (dynSelectedResolver.value) await loadDynSubjects();
+  } catch (e) {
+    dynError.value = (e as Error).message; // 社区版 403
+  }
+}
+async function attachDynResolver() {
+  if (!dynSelectedResolver.value || !dynAttachCred.value) return;
+  dynBusy.value = 'attach';
+  dynError.value = '';
+  try {
+    await api.credentials.setResolver(dynAttachCred.value, dynSelectedResolver.value);
+    dynAttachCred.value = '';
+  } catch (e) {
+    dynError.value = (e as Error).message;
+  } finally {
+    dynBusy.value = '';
+  }
+}
+async function loadDynSubjects() {
+  if (!dynSelectedResolver.value) { dynSubjects.value = []; return; }
+  dynSubjects.value = await api.dynamicCredentials.subjects(dynSelectedResolver.value).catch(() => []);
+}
+async function createDynResolver() {
+  if (!dynNewResolverName.value.trim()) return;
+  dynBusy.value = 'resolver';
+  dynError.value = '';
+  try {
+    const r = await api.dynamicCredentials.createResolver({ name: dynNewResolverName.value.trim(), kind: 'table' });
+    dynNewResolverName.value = '';
+    await loadDynResolvers();
+    dynSelectedResolver.value = r.id;
+    await loadDynSubjects();
+  } catch (e) {
+    dynError.value = (e as Error).message;
+  } finally {
+    dynBusy.value = '';
+  }
+}
+async function removeDynResolver(id: string) {
+  if (!window.confirm('Delete this resolver and all its subject values?')) return;
+  await api.dynamicCredentials.removeResolver(id).catch(() => undefined);
+  if (dynSelectedResolver.value === id) dynSelectedResolver.value = '';
+  await loadDynResolvers();
+}
+async function selectDynResolver(id: string) {
+  dynSelectedResolver.value = id;
+  await loadDynSubjects();
+}
+async function addDynEntry() {
+  if (!dynSelectedResolver.value || !dynNewSubject.value.trim()) return;
+  let data: Record<string, unknown>;
+  try { data = JSON.parse(dynNewValue.value); } catch { dynError.value = 'Value must be valid JSON'; return; }
+  dynBusy.value = 'entry';
+  dynError.value = '';
+  try {
+    await api.dynamicCredentials.setEntry(dynSelectedResolver.value, dynNewSubject.value.trim(), data);
+    dynNewSubject.value = '';
+    dynNewValue.value = '{ "accessToken": "" }';
+    await loadDynSubjects();
+  } catch (e) {
+    dynError.value = (e as Error).message;
+  } finally {
+    dynBusy.value = '';
+  }
+}
+async function removeDynEntry(subject: string) {
+  if (!dynSelectedResolver.value) return;
+  await api.dynamicCredentials.removeEntry(dynSelectedResolver.value, subject).catch(() => undefined);
+  await loadDynSubjects();
+}
+const fmtDate = (iso: string) => new Date(iso).toLocaleString();
 
 /* LDAP（企业）:字段集对标基线表单,已全量贯通后端（backlog #9）。
    仅 synchronizationEnabled/Interval 仍为本地态:nomops 无定时同步调度器,
@@ -1107,6 +1196,8 @@ async function loadSection() {
     } catch (e) {
       secretsError.value = (e as Error).message; // 社区版 403
     }
+  } else if (section.value === 'dynamiccreds') {
+    await loadDynResolvers();
   } else if (section.value === 'api') {
     createdToken.value = ''; // 切到该页清掉上次明文
     await loadApiKeys();
@@ -2897,6 +2988,75 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         </div>
       </section>
 
+      <!-- Dynamic Credentials（backlog #46 M1）：resolvable 凭证运行时按 subject 解析实际值 -->
+      <section v-else-if="section === 'dynamiccreds'" data-test="settings-dynamiccreds">
+        <h1 class="page-title">Dynamic Credentials</h1>
+        <p class="sub">
+          For embed / white-label / multi-tenant setups: mark a credential <b>resolvable</b> and one logical credential
+          resolves to a different real value per <b>subject</b> (tenant / end-user) at run time. Values are stored encrypted
+          and never returned by the API.
+        </p>
+        <div v-if="!licensed('dynamicCredentials')" class="locked-card" data-test="dyncreds-locked">
+          <h2>Available on the Enterprise plan</h2>
+          <p>Resolve a single credential to per-tenant values at run time.</p>
+          <a class="btn primary" :href="LINKS.pricing" target="_blank" rel="noopener">See plans</a>
+        </div>
+        <template v-else>
+          <p v-if="dynError" class="error-text" data-test="dyncreds-error">{{ dynError }}</p>
+          <div class="set-cards">
+            <!-- 解析器列表 + 新建 -->
+            <div class="set-card">
+              <div class="set-field">
+                <label>Resolvers</label>
+                <p v-if="!dynResolvers.length" class="dim" style="font-size: 12px; margin: 4px 0">No resolvers yet.</p>
+                <ul v-else class="dyn-list" data-test="dyncreds-resolvers">
+                  <li v-for="r in dynResolvers" :key="r.id" class="dyn-row" :class="{ sel: dynSelectedResolver === r.id }" data-test="dyncreds-resolver" @click="selectDynResolver(r.id)">
+                    <span class="dyn-name">{{ r.name }}</span>
+                    <span class="dyn-badge">{{ r.kind }}</span>
+                    <button class="link" data-test="dyncreds-del-resolver" @click.stop="removeDynResolver(r.id)">✕</button>
+                  </li>
+                </ul>
+              </div>
+              <div class="set-field" style="display: flex; gap: 8px; align-items: flex-end">
+                <input v-model="dynNewResolverName" data-test="dyncreds-new-name" placeholder="Resolver name" style="flex: 1" @keyup.enter="createDynResolver" />
+                <button class="btn primary" data-test="dyncreds-create" :disabled="dynBusy === 'resolver' || !dynNewResolverName.trim()" @click="createDynResolver">Add resolver</button>
+              </div>
+              <div v-if="dynSelectedResolver" class="set-field" style="display: flex; gap: 8px; align-items: flex-end">
+                <div style="flex: 1">
+                  <label>Make a credential resolvable</label>
+                  <select v-model="dynAttachCred" data-test="dyncreds-attach-cred" style="width: 100%">
+                    <option value="" disabled>Pick a credential…</option>
+                    <option v-for="c in dynCredsList" :key="c.id" :value="c.id">{{ c.name }} ({{ c.type }})</option>
+                  </select>
+                </div>
+                <button class="btn" data-test="dyncreds-attach" :disabled="dynBusy === 'attach' || !dynAttachCred" @click="attachDynResolver">Attach resolver</button>
+              </div>
+            </div>
+
+            <!-- 选中解析器的 subject 值管理 -->
+            <div v-if="dynSelectedResolver" class="set-card" data-test="dyncreds-subjects-card">
+              <div class="set-field">
+                <label>Subject values <span class="dim" style="font-weight: 400">· stored encrypted, never returned</span></label>
+                <p v-if="!dynSubjects.length" class="dim" style="font-size: 12px; margin: 4px 0">No subjects yet.</p>
+                <ul v-else class="dyn-list" data-test="dyncreds-subjects">
+                  <li v-for="s in dynSubjects" :key="s.id" class="dyn-row">
+                    <span class="dyn-name">{{ s.subject }}</span>
+                    <span class="dim" style="font-size: 11.5px">{{ fmtDate(s.updatedAt) }}</span>
+                    <button class="link" data-test="dyncreds-del-subject" @click="removeDynEntry(s.subject)">✕</button>
+                  </li>
+                </ul>
+              </div>
+              <div class="set-field">
+                <label>Add / update a subject value</label>
+                <input v-model="dynNewSubject" data-test="dyncreds-subject" placeholder="subject (tenant / user id)" style="width: 100%; margin-bottom: 6px" />
+                <textarea v-model="dynNewValue" data-test="dyncreds-value" rows="3" spellcheck="false" style="width: 100%; font-family: var(--font-family--monospace, monospace); font-size: 12.5px"></textarea>
+                <button class="btn primary" data-test="dyncreds-add-entry" style="margin-top: 6px" :disabled="dynBusy === 'entry' || !dynNewSubject.trim()" @click="addDynEntry">Save value</button>
+              </div>
+            </div>
+          </div>
+        </template>
+      </section>
+
       <!-- Environments（Git 源码同步，对标基线 Environments） -->
       <section v-else-if="section === 'sourcecontrol'" data-test="settings-sourcecontrol" style="position: relative">
         <h1 class="page-title">Environments</h1>
@@ -4051,6 +4211,14 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 .locked-card h2 { margin: 0 0 14px; font-size: 20px; font-weight: 500; color: var(--text-hi); }
 .locked-card p { margin: 0 0 22px; color: var(--text-dim); font-size: 14px; }
 .locked-actions { display: flex; gap: 10px; justify-content: center; }
+
+/* Dynamic Credentials（#46） */
+.dyn-list { list-style: none; margin: 4px 0 0; padding: 0; }
+.dyn-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
+.dyn-row:hover { background: var(--bg-input); }
+.dyn-row.sel { border-color: var(--accent, #ff6900); background: var(--bg-input); }
+.dyn-name { flex: 1; font-weight: 500; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dyn-badge { font-size: 10.5px; padding: 2px 6px; border-radius: 10px; background: var(--bg-input); color: var(--text-dim); }
 
 /* Roles Enterprise 锁卡(对标基线 Community):三权限卡图形 + Upgrade to Enterprise */
 .ent-lock {

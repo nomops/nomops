@@ -2,6 +2,7 @@ import type { INodeLoader } from '@nomops/core';
 import type { Repositories } from '@nomops/db';
 import type { AuthService } from './auth/auth-service.js';
 import type { CredentialService } from './services/credential-service.js';
+import type { DynamicCredentialService } from './ee/services/dynamic-credential-service.js';
 import type { ExecutionService } from './services/execution-service.js';
 import type { WorkflowService } from './services/workflow-service.js';
 import type { PushHub } from './ws/push-hub.js';
@@ -52,6 +53,7 @@ export interface AppServices {
   git: GitService;
   sharing: SharingService;
   credentials: CredentialService;
+  dynamicCredentials: DynamicCredentialService;
   executions: ExecutionService;
   pushHub: PushHub;
   activeWorkflows: ActiveWorkflowManager;

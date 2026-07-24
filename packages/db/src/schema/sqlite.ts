@@ -666,6 +666,9 @@ export const credentials = sqliteTable('credentials', {
   name: text('name').notNull(),
   type: text('type').notNull(),
   data: text('data').notNull(), // 加密后的密文，绝不明文
+  // 动态凭证（backlog #46）：resolvable 时运行时按 subject 经解析器取值,不用 data。为空 = 老行为。
+  isResolvable: integer('is_resolvable', { mode: 'boolean' }).notNull().default(false),
+  resolverId: text('resolver_id'),
   createdAt: integer('created_at', { mode: 'timestamp' })
     .notNull()
     .$defaultFn(() => new Date()),
@@ -673,6 +676,45 @@ export const credentials = sqliteTable('credentials', {
     .notNull()
     .$defaultFn(() => new Date()),
 });
+
+/**
+ * 动态凭证解析器（backlog #46 M1，docs/14）：把一个逻辑凭证在运行时按 subject 解析成不同值。
+ * kind=table：值存 dynamic_credential_entries；kind=http：运行时打宿主端点取值（M2）。
+ */
+export const dynamicCredentialResolvers = sqliteTable(
+  'dynamic_credential_resolvers',
+  {
+    id: uuidPk('id'),
+    projectId: text('project_id').notNull(),
+    name: text('name').notNull(),
+    kind: text('kind').notNull().default('table'), // table|http
+    config: text('config', { mode: 'json' }).$type<JsonObject>().notNull().$defaultFn(() => ({})),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('dynamic_credential_resolvers_project_idx').on(t.projectId)],
+);
+
+/** 动态凭证 · 按 subject 的凭证值（backlog #46 M1）：data 是密文（复用凭证加密栈）。 */
+export const dynamicCredentialEntries = sqliteTable(
+  'dynamic_credential_entries',
+  {
+    id: uuidPk('id'),
+    resolverId: text('resolver_id')
+      .notNull()
+      .references(() => dynamicCredentialResolvers.id),
+    subject: text('subject').notNull(), // 租户/终端用户标识串
+    data: text('data').notNull(), // 加密后的密文，绝不明文
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [uniqueIndex('dynamic_credential_entries_resolver_subject_idx').on(t.resolverId, t.subject)],
+);
 
 export const sharedCredentials = sqliteTable(
   'shared_credentials',
@@ -1307,6 +1349,8 @@ export const sqliteSchema = {
   sharedWorkflows,
   credentials,
   sharedCredentials,
+  dynamicCredentialResolvers,
+  dynamicCredentialEntries,
   variables,
   dataTables,
   dataTableRows,

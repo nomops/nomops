@@ -28,6 +28,11 @@ export interface ICredentialView {
   updatedAt: Date;
 }
 
+/** 动态凭证解析端口（#46）：resolvable 凭证运行时按 subject 取值。注入后 CredentialService 生效。 */
+export interface IDynamicCredentialResolver {
+  resolve(resolverId: string, projectId: string, subject: string | undefined): Promise<JsonObject>;
+}
+
 export class CredentialService {
   constructor(
     private readonly repos: Repositories,
@@ -36,6 +41,8 @@ export class CredentialService {
     private readonly secrets?: ISecretResolver,
     /** 连接测试的 HTTP 客户端（缺省真实 fetch；测试注入假实现，不打真网）。 */
     private readonly tester: ICredentialTester = new FetchCredentialTester(),
+    /** 动态凭证解析（#46）。注入后 resolvable 凭证按 subject 解析实际值。 */
+    private readonly dynamicResolver?: IDynamicCredentialResolver,
   ) {}
 
   async create(input: { name: string; type: string; data: JsonObject }, projectId: string): Promise<ICredentialView> {
@@ -58,12 +65,16 @@ export class CredentialService {
     this.tokenRefresher = fn;
   }
 
-  async getDecryptedData(id: string, projectId: string): Promise<JsonObject> {
+  async getDecryptedData(id: string, projectId: string, subject?: string): Promise<JsonObject> {
     // OAuth2 token 临期自动续期（backlog #16;非 OAuth 凭证由 refresher 内部直接跳过）
     if (this.tokenRefresher) await this.tokenRefresher(id, projectId);
     const row = await this.repos.credentials.findById(id, projectId);
     if (!row) throw new OperationalError('Credential not found', { credentialId: id, status: 404 });
-    const data = await this.credentials.decrypt(row.data, { projectId });
+    // 动态凭证（#46）：resolvable 时经解析器按 subject 取实际值,不用 row.data（可能是占位）
+    const data =
+      row.isResolvable && row.resolverId && this.dynamicResolver
+        ? await this.dynamicResolver.resolve(row.resolverId, projectId, subject)
+        : await this.credentials.decrypt(row.data, { projectId });
     // oauthTokenData 摊平到顶层：声明式注入模板（如 Bearer {{access_token}}）直接可用
     const tok = data['oauthTokenData'];
     const merged =

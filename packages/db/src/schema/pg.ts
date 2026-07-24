@@ -562,9 +562,42 @@ export const credentials = pgTable('credentials', {
   name: text('name').notNull(),
   type: text('type').notNull(),
   data: text('data').notNull(), // 加密后的密文，绝不明文
+  // 动态凭证（backlog #46）：resolvable 时运行时按 subject 取值。
+  isResolvable: boolean('is_resolvable').notNull().default(false),
+  resolverId: uuid('resolver_id'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
+
+/** 动态凭证解析器（backlog #46 M1）：按 subject 解析凭证值。kind=table 值存 entries；http 打宿主端点。 */
+export const dynamicCredentialResolvers = pgTable(
+  'dynamic_credential_resolvers',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id').notNull(),
+    name: text('name').notNull(),
+    kind: text('kind').notNull().default('table'),
+    config: jsonb('config').$type<JsonObject>().notNull().default({}),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('dynamic_credential_resolvers_project_idx').on(t.projectId)],
+);
+
+/** 动态凭证 · 按 subject 的凭证值（backlog #46 M1）：data 密文。 */
+export const dynamicCredentialEntries = pgTable(
+  'dynamic_credential_entries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    resolverId: uuid('resolver_id')
+      .notNull()
+      .references(() => dynamicCredentialResolvers.id),
+    subject: text('subject').notNull(),
+    data: text('data').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('dynamic_credential_entries_resolver_subject_idx').on(t.resolverId, t.subject)],
+);
 
 export const sharedCredentials = pgTable(
   'shared_credentials',
@@ -1126,6 +1159,8 @@ export const pgSchema = {
   sharedWorkflows,
   credentials,
   sharedCredentials,
+  dynamicCredentialResolvers,
+  dynamicCredentialEntries,
   variables,
   dataTables,
   dataTableRows,

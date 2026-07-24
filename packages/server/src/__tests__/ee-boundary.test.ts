@@ -82,6 +82,7 @@ describe('LICENSE_EE 与真实目录', () => {
       quotas: 'services/quota-service.ts',
       logStreaming: 'services/log-streaming-service.ts',
       externalSecrets: 'services/secrets-service.ts',
+      dynamicCredentials: 'services/dynamic-credential-service.ts',
       ldap: 'ldap/ldap-service.ts',
       sourceControl: 'services/git-service.ts',
       sharing: 'services/sharing-service.ts',

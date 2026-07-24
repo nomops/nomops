@@ -15,6 +15,7 @@ import type { DatabaseConfig, DatabaseHandle, Repositories, SettingsRepository }
 import { builtinNodeManifest } from '@nomops/nodes';
 import { AuthService } from './auth/auth-service.js';
 import { CredentialService } from './services/credential-service.js';
+import { DynamicCredentialService } from './ee/services/dynamic-credential-service.js';
 import { ExecutionService } from './services/execution-service.js';
 import { WorkflowService } from './services/workflow-service.js';
 import { ApiKeyService } from './services/api-key-service.js';
@@ -264,7 +265,9 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     : secretsProviderFromEnv(process.env);
   if (secretsSelection.start) await secretsSelection.start(); // Vault 预热快照
   const secrets = new SecretsService(secretsSelection.provider, license);
-  const credentialService = new CredentialService(repos, credentials, secrets, opts.credentialTester);
+  // #46：动态凭证——resolvable 凭证运行时按 subject 解析实际值（解析在 getDecryptedData 切入）
+  const dynamicCredentials = new DynamicCredentialService(repos, credentials);
+  const credentialService = new CredentialService(repos, credentials, secrets, opts.credentialTester, dynamicCredentials);
   // 用量:社区无条件计数;企业版在其上加限额检查(ee 实现包住社区实现)
   const usageCounter = new CountingUsageGate(repos);
   const quota = new QuotaService(repos, license, usageCounter);
@@ -452,6 +455,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     sharing,
     mailer,
     credentials: credentialService,
+    dynamicCredentials,
     executions,
     pushHub,
     activeWorkflows,

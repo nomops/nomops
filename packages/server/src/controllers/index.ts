@@ -962,6 +962,93 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
+  /* ── 动态凭证（backlog #46 M1，license：dynamicCredentials）：resolvable 凭证按 subject 解析 ── */
+  const dynFeature = requireFeature(services.license, 'dynamicCredentials');
+  // 标记/解除某凭证的动态解析（挂/摘解析器）
+  router.post(
+    '/credentials/:id/resolver',
+    editor,
+    dynFeature,
+    h(async (req, res) => {
+      await services.credentials.assertOwnerProject(param(req, 'id'), auth(req).projectId); // 只有 owner 可改
+      const { resolverId } = req.body as { resolverId?: string };
+      if (!resolverId) throw new OperationalError('resolverId is required', { status: 400 });
+      // 解析器必须属于本项目
+      const r = await services.repos.dynamicCredentials.findResolver(resolverId, auth(req).projectId);
+      if (!r) throw new OperationalError('Resolver not found', { status: 404 });
+      await services.repos.credentials.setResolver(param(req, 'id'), resolverId);
+      recordAudit(services, req, 'credential.resolver-set', { type: 'credential', id: param(req, 'id') });
+      res.status(204).end();
+    }),
+  );
+  router.delete(
+    '/credentials/:id/resolver',
+    editor,
+    dynFeature,
+    h(async (req, res) => {
+      await services.credentials.assertOwnerProject(param(req, 'id'), auth(req).projectId);
+      await services.repos.credentials.setResolver(param(req, 'id'), null);
+      res.status(204).end();
+    }),
+  );
+  // 解析器 CRUD
+  router.get(
+    '/dynamic-credentials/resolvers',
+    dynFeature,
+    h(async (req, res) => {
+      res.json(await services.dynamicCredentials.listResolvers(auth(req).projectId));
+    }),
+  );
+  router.post(
+    '/dynamic-credentials/resolvers',
+    editor,
+    dynFeature,
+    h(async (req, res) => {
+      const { name, kind, config } = req.body as { name?: string; kind?: string; config?: Record<string, unknown> };
+      if (!name?.trim()) throw new OperationalError('name is required', { status: 400 });
+      res.status(201).json(await services.dynamicCredentials.createResolver(auth(req).projectId, { name, kind, config: (config ?? {}) as JsonObject }));
+    }),
+  );
+  router.delete(
+    '/dynamic-credentials/resolvers/:id',
+    editor,
+    dynFeature,
+    h(async (req, res) => {
+      await services.dynamicCredentials.deleteResolver(param(req, 'id'), auth(req).projectId);
+      res.status(204).end();
+    }),
+  );
+  // 按 subject 的凭证值（entry）：值只进不出（铁律 3）
+  router.get(
+    '/dynamic-credentials/resolvers/:id/subjects',
+    dynFeature,
+    h(async (req, res) => {
+      res.json(await services.dynamicCredentials.listSubjects(param(req, 'id'), auth(req).projectId));
+    }),
+  );
+  router.put(
+    '/dynamic-credentials/resolvers/:id/entry',
+    editor,
+    dynFeature,
+    h(async (req, res) => {
+      const { subject, data } = req.body as { subject?: string; data?: Record<string, unknown> };
+      if (!subject?.trim() || !data || typeof data !== 'object') throw new OperationalError('subject and data are required', { status: 400 });
+      await services.dynamicCredentials.setEntry(param(req, 'id'), auth(req).projectId, subject, data as JsonObject);
+      res.status(204).end();
+    }),
+  );
+  router.delete(
+    '/dynamic-credentials/resolvers/:id/entry',
+    editor,
+    dynFeature,
+    h(async (req, res) => {
+      const subject = typeof req.query['subject'] === 'string' ? req.query['subject'] : '';
+      if (!subject) throw new OperationalError('subject query param is required', { status: 400 });
+      await services.dynamicCredentials.deleteEntry(param(req, 'id'), auth(req).projectId, subject);
+      res.status(204).end();
+    }),
+  );
+
   // 发起凭证 OAuth2 授权：返回提供方跳转 URL（前端开弹窗）
   router.get(
     '/oauth2/auth',

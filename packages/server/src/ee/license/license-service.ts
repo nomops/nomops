@@ -29,6 +29,7 @@ export const LICENSE_FEATURES = [
   'quotas',
   'logStreaming',
   'externalSecrets',
+  'dynamicCredentials',
   'ldap',
   'sourceControl',
   'sharing',
