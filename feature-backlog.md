@@ -110,10 +110,10 @@
 
 ## P10 · n8n 表对照 · Epic/远期（独立立项，先规划再动工）
 
-- [ ] **44. EPIC-AGENTS Agents 平台** `XL`
+- [ ] **44. EPIC-AGENTS Agents 平台** `XL` 📋 规划已出（2026-07-23，见 [docs/12-EPIC-AGENTS-PLATFORM.md](docs/12-EPIC-AGENTS-PLATFORM.md)）——数据模型(定义/版本、线程化执行+成本、分层记忆+embedding、定时任务复用 #38、文件、外部渠道)、5 里程碑(M1 定义+版本 / M2 线程执行+成本 / M3 记忆+证据链 / M4 定时任务靠 #38 / M5 文件+渠道)、关键决策(不另造执行栈、不建 run_lock 靠 #38 租约、不引向量库)已定。**动工待专门立项**。
   n8n 20 表体系：agent 定义/发布版本（agents + agent_history）、线程化执行 + token/成本核算（agent_execution*）、分层记忆（memory_entries + observations，embedding + 证据链）、定时任务（task_definition + run_lock，依赖 #38）、文件、外部渠道订阅（Telegram 等）。现仅 chat_agents 单表（name + system）。先出规划文档再动工。
 
-- [ ] **45. EPIC-AI-BUILDER AI 生成工作流 + 实例助手** `XL`
+- [ ] **45. EPIC-AI-BUILDER AI 生成工作流 + 实例助手** `XL` 📋 规划已出（2026-07-23，见 [docs/13-EPIC-AI-BUILDER.md](docs/13-EPIC-AI-BUILDER.md)）——两条产品线(AI 建流会话 / 实例助手)共用「有检查点的 AI 线程」底座；数据模型(建流会话+临时流、线程/消息/检查点/运行树、HITL 待确认、观察-反思记忆、MCP 连接)、5 里程碑(M1 建流会话可独立交付)、关键决策(临时流隔离不进 workflows、检查点=可序列化状态、HITL 沿用安全边界、记忆/MCP 与 #44 共用抽象)已定。**动工待专门立项**。
   n8n 16 表体系：workflow_builder_session / ai_builder_temporary_workflow（AI 建流会话 + 临时流）、instance_ai_*（线程/检查点/运行树快照/HITL 待确认/观察-反思记忆/MCP 连接）。现 chat 的 wfSessionId 仅雏形。先出规划文档再动工。
 
 - [ ] **46. 动态凭证（dynamic credentials）** `L/XL`（远期：Cloud 嵌入式/多租户场景才有价值，触发前不动工）
