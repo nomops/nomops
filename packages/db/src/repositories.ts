@@ -2151,6 +2151,43 @@ export class ExecutionMetadataRepository extends BaseRepository {
   }
 }
 
+/**
+ * 登出令牌黑名单（backlog #37）。鉴权热路径每请求都查——内存缓存全部未过期哈希,
+ * add 时增量更新,避免每请求打库。过期哈希留在缓存无害（对应 JWT 本就已过期,verify 先拒）。
+ */
+export class AuthTokenBlacklistRepository extends BaseRepository {
+  private cache: Set<string> | null = null;
+
+  private async load(): Promise<Set<string>> {
+    if (this.cache) return this.cache;
+    const rows = await this.db
+      .select({ tokenHash: this.schema.invalidAuthTokens.tokenHash })
+      .from(this.schema.invalidAuthTokens);
+    this.cache = new Set(rows.map((r: { tokenHash: string }) => r.tokenHash));
+    return this.cache;
+  }
+
+  async isBlacklisted(tokenHash: string): Promise<boolean> {
+    return (await this.load()).has(tokenHash);
+  }
+
+  /** 拉黑一个 token 哈希；顺手清理已过期行（免单独调度器）。 */
+  async add(tokenHash: string, expiresAt: Date): Promise<void> {
+    await this.db
+      .insert(this.schema.invalidAuthTokens)
+      .values({ tokenHash, expiresAt })
+      .onConflictDoNothing();
+    (await this.load()).add(tokenHash);
+    await this.pruneExpired(new Date());
+  }
+
+  /** 删除已过期(exp < now)的黑名单行；同步剔出缓存（此时对应 JWT 也已失效）。 */
+  async pruneExpired(now: Date): Promise<void> {
+    await this.db.delete(this.schema.invalidAuthTokens).where(lt(this.schema.invalidAuthTokens.expiresAt, now));
+    this.cache = null; // 下次 load 重建（简单可靠,黑名单量小）
+  }
+}
+
 export interface Repositories {
   users: UserRepository;
   apiKeys: ApiKeyRepository;
@@ -2176,6 +2213,7 @@ export interface Repositories {
   favorites: FavoriteRepository;
   annotations: ExecutionAnnotationRepository;
   executionMetadata: ExecutionMetadataRepository;
+  authTokenBlacklist: AuthTokenBlacklistRepository;
 }
 
 /** 用一个 DatabaseHandle 组装全部仓储。server 层在启动时调用一次。 */
@@ -2206,5 +2244,6 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
     favorites: new FavoriteRepository(db, schema),
     annotations: new ExecutionAnnotationRepository(db, schema),
     executionMetadata: new ExecutionMetadataRepository(db, schema),
+    authTokenBlacklist: new AuthTokenBlacklistRepository(db, schema),
   };
 }

@@ -368,6 +368,7 @@ export const api = {
   needsSetup: () => http<{ needsSetup: boolean }>('GET', '/auth/needs-setup'),
   login: (email: string, password: string, mfaCode?: string) =>
     http<AuthResult | { mfaRequired: true }>('POST', '/auth/login', { email, password, mfaCode }),
+  logout: () => http<{ ok: true }>('POST', '/auth/logout'),
   forgotPassword: (email: string) => http<{ ok: true }>('POST', '/auth/forgot', { email }),
   resetPassword: (token: string, password: string) =>
     http<{ ok: true }>('POST', '/auth/reset', { token, password }),

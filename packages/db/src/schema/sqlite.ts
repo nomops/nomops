@@ -539,6 +539,12 @@ export const testCaseRuns = sqliteTable(
   (t) => [index('test_case_runs_test_run_id_idx').on(t.testRunId)],
 );
 
+/** 登出令牌黑名单（backlog #37）：登出即拉黑该 JWT 哈希,到期后清理。 */
+export const invalidAuthTokens = sqliteTable('invalid_auth_tokens', {
+  tokenHash: text('token_hash').primaryKey(), // sha256(JWT)，绝不存明文
+  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(), // = JWT exp,过期即可清理
+});
+
 /** 执行标注（backlog #35）：每次执行一条,👍👎 + 笔记。1:1 于 execution。 */
 export const executionAnnotations = sqliteTable('execution_annotations', {
   executionId: text('execution_id')
@@ -645,4 +651,5 @@ export const sqliteSchema = {
   annotationTags,
   executionAnnotationTags,
   executionMetadata,
+  invalidAuthTokens,
 };

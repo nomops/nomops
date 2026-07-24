@@ -95,9 +95,7 @@
   → auth_identity(userId ↔ providerId/providerType)：登录时建绑定、此后优先按绑定匹配；auth_provider_sync_history 记每次 LDAP 同步的 scanned/created/updated/disabled 与错误。
   验收：改 email 后同一 LDAP 账号仍归同一 user；同步历史可查。
 
-- [ ] **37. 登出令牌黑名单（invalid_auth_token）** `S`
-  现登出仅客户端删 cookie，JWT 到期前仍有效。→ 落库黑名单 + 鉴权中间件查表 + 过期行清理。
-  验收：登出后旧 token 立即 401。
+- [x] **37. 登出令牌黑名单（invalid_auth_token）** `S` ✅ 2026-07-23（新表 invalid_auth_tokens(token_hash PK + expires_at)双方言+迁移0029;AuthTokenBlacklistRepository 带内存缓存(鉴权热路径每请求查,不打库;add 增量更新;pruneExpired 顺手清过期);AuthService.logout(decode 取 exp→拉黑 sha256(JWT));POST /auth/logout(公开,验签通过才拉黑,幂等);中间件验签后查黑名单→401;**修正 JWT 同秒重签碰撞**:issueToken 加 jwtid(否则同秒同用户两 token 全同,登出误伤新 token);前端 auth store logout 调 api.logout 尽力拉黑;4 server 测(登出后旧 token 401、重登新 token 不受影响、幂等)验收"登出后旧 token 立即 401";全量 server 457+frontend 84+db 26 通过)
 
 ## P9 · n8n 表对照补差 · 基础设施
 

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 import type { Repositories } from '@nomops/db';
 import type { AuthService } from './auth-service.js';
@@ -105,14 +106,25 @@ export function createAuthMiddleware(authService: AuthService, repos: Repositori
       res.status(401).json({ error: 'Missing Authorization Bearer token' });
       return;
     }
+    const token = header.slice('Bearer '.length);
     let payload;
     try {
-      payload = authService.verify(header.slice('Bearer '.length));
+      payload = authService.verify(token);
     } catch {
       res.status(401).json({ error: 'Invalid or expired token' });
       return;
     }
-    attachAuth(repos, req, res, next, payload.sub, payload.projectId);
+    // 登出黑名单（#37）：验签通过后再查是否已被登出拉黑（内存缓存,热路径不打库）
+    void repos.authTokenBlacklist
+      .isBlacklisted(createHash('sha256').update(token).digest('hex'))
+      .then((revoked) => {
+        if (revoked) {
+          res.status(401).json({ error: 'Token has been revoked' });
+          return;
+        }
+        attachAuth(repos, req, res, next, payload.sub, payload.projectId);
+      })
+      .catch(next);
   };
 }
 

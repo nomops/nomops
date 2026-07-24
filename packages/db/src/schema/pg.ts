@@ -474,6 +474,12 @@ export const testCaseRuns = pgTable(
   (t) => [index('test_case_runs_test_run_id_idx').on(t.testRunId)],
 );
 
+/** 登出令牌黑名单（backlog #37）：登出即拉黑该 JWT 哈希,到期后清理。 */
+export const invalidAuthTokens = pgTable('invalid_auth_tokens', {
+  tokenHash: text('token_hash').primaryKey(), // sha256(JWT)，绝不存明文
+  expiresAt: timestamp('expires_at').notNull(), // = JWT exp,过期即可清理
+});
+
 /** 执行标注（backlog #35）：每次执行一条,👍👎 + 笔记。1:1 于 execution。 */
 export const executionAnnotations = pgTable('execution_annotations', {
   executionId: uuid('execution_id')
@@ -574,4 +580,5 @@ export const pgSchema = {
   annotationTags,
   executionAnnotationTags,
   executionMetadata,
+  invalidAuthTokens,
 };

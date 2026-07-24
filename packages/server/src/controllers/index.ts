@@ -183,6 +183,24 @@ export function createAuthRouter(services: AppServices): Router {
     }),
   );
 
+  // 登出（#37）：拉黑当前 JWT,到期前立即失效。幂等——无/无效 token 也回 200。
+  router.post(
+    '/logout',
+    h(async (req, res) => {
+      const header = req.headers.authorization;
+      const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : '';
+      if (token) {
+        try {
+          services.auth.verify(token); // 只拉黑验签通过的真 token
+          await services.auth.logout(token);
+        } catch {
+          // 无效/过期 token 无需拉黑
+        }
+      }
+      res.json({ ok: true });
+    }),
+  );
+
   // 忘记密码：生成一次性重置 token。无邮件基础设施 → 链接打服务端日志（生产接 SMTP）。
   // 恒回 { ok:true }，不暴露邮箱是否存在（避免枚举）。
   router.post(

@@ -34,6 +34,8 @@ export const useAuthStore = defineStore('auth', {
       localStorage.setItem('nomops.email', email);
     },
     logout() {
+      // 服务端拉黑该 token（#37）——尽力而为,失败不阻塞本地登出
+      if (this.token) void api.logout().catch(() => undefined);
       this.token = null;
       this.email = null;
       tokenStorage.clear();

@@ -42,6 +42,7 @@ export {
   FavoriteRepository,
   ExecutionAnnotationRepository,
   ExecutionMetadataRepository,
+  AuthTokenBlacklistRepository,
 } from './repositories.js';
 export type {
   Repositories,

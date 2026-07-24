@@ -275,8 +275,24 @@ export class AuthService {
     }
   }
 
+  /**
+   * 登出（backlog #37）：把该 JWT 哈希拉黑,到期前立即失效。token 已由中间件验签,
+   * 这里只 decode 取 exp 作黑名单清理时刻（decode 失败退回默认 TTL）。
+   */
+  async logout(token: string): Promise<void> {
+    const decoded = jwt.decode(token) as jwt.JwtPayload | null;
+    const expiresAt =
+      decoded?.exp != null ? new Date(decoded.exp * 1000) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    await this.repos.authTokenBlacklist.add(hashToken(token), expiresAt);
+  }
+
   private issueToken(user: User, projectId: string): IAuthResult {
-    const token = jwt.sign({ sub: user.id, projectId }, this.jwtSecret, { expiresIn: TOKEN_TTL });
+    // jti 唯一化：否则同一秒为同一用户签发的两个 token 完全相同（iat 秒级），
+    // 登出黑名单按 token 哈希拉黑时会误伤同秒重签的新 token（#37）。
+    const token = jwt.sign({ sub: user.id, projectId }, this.jwtSecret, {
+      expiresIn: TOKEN_TTL,
+      jwtid: randomBytes(9).toString('hex'),
+    });
     return {
       token,
       user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName },
