@@ -658,10 +658,13 @@ export const api = {
     }>('GET', `/api/insights${from_ && to ? `?from=${encodeURIComponent(from_)}&to=${encodeURIComponent(to)}` : ''}`),
 
   me: () =>
-    http<{ id: string; email: string; firstName: string | null; lastName: string | null; role: string; mfaEnabled: boolean; projectId: string }>(
+    http<{ id: string; email: string; firstName: string | null; lastName: string | null; role: string; mfaEnabled: boolean; projectId: string; settings?: Record<string, unknown> }>(
       'GET',
       '/api/me',
     ),
+  /* #43：每用户偏好落库（替 localStorage） */
+  saveSettings: (settings: Record<string, unknown>) =>
+    http<{ settings: Record<string, unknown> }>('PUT', '/api/me/settings', settings),
   /* 实例级 MCP（Settings → Instance-level MCP，Preview） */
   mcp: {
     status: () => http<McpStatus>('GET', '/api/mcp'),

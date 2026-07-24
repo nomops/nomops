@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia';
+import { api } from '../api/client.js';
 
 /** 视图注入命令面板的上下文命令（如画布的 Workflow 动作组）。 */
 export interface PaletteCommand {
@@ -30,15 +31,34 @@ export const useUiStore = defineStore('ui', {
     chatEnabled: true,
   }),
   actions: {
+    /** #43：从服务端 users.settings 水合偏好（登录后调用；DB 为准,localStorage 只当快取）。 */
+    hydrateFromServer(settings: Record<string, unknown> | undefined) {
+      if (!settings) return;
+      if (typeof settings['sidebarCollapsed'] === 'boolean') {
+        this.sidebarCollapsed = settings['sidebarCollapsed'];
+        localStorage.setItem('nomops.sidebarCollapsed', this.sidebarCollapsed ? '1' : '0');
+      }
+      const w = Number(settings['sidebarWidth']);
+      if (w >= SIDEBAR_MIN && w <= SIDEBAR_MAX) {
+        this.sidebarWidth = w;
+        localStorage.setItem('nomops.sidebarWidth', String(w));
+      }
+    },
+    /** 落库当前偏好（#43，fire-and-forget）。 */
+    persistToServer() {
+      void api.saveSettings({ sidebarCollapsed: this.sidebarCollapsed, sidebarWidth: this.sidebarWidth }).catch(() => undefined);
+    },
     toggleSidebar() {
       this.sidebarCollapsed = !this.sidebarCollapsed;
       localStorage.setItem('nomops.sidebarCollapsed', this.sidebarCollapsed ? '1' : '0');
+      this.persistToServer();
     },
     /** 拖拽调整侧栏宽度（clamp + 持久化）。 */
     setSidebarWidth(px: number) {
       const w = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(px)));
       this.sidebarWidth = w;
       localStorage.setItem('nomops.sidebarWidth', String(w));
+      this.persistToServer();
     },
     openPalette() {
       this.paletteOpen = true;

@@ -1851,6 +1851,7 @@ export function createApiRouter(services: AppServices): Router {
         lastName: user.lastName,
         role: user.role,
         mfaEnabled: user.mfaEnabled,
+        settings: user.settings ?? {}, // #43：每用户偏好
         projectId: auth(req).projectId,
       });
     }),
@@ -1863,6 +1864,63 @@ export function createApiRouter(services: AppServices): Router {
       const body = parseBody(updateMeSchema, req);
       const user = await services.repos.users.update(auth(req).userId, body);
       res.json({ id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName });
+    }),
+  );
+
+  /* #43：每用户偏好落库（替 localStorage,跨设备一致） */
+  router.put(
+    '/me/settings',
+    h(async (req, res) => {
+      const settings = (req.body ?? {}) as Record<string, unknown>;
+      await services.repos.users.updateSettings(auth(req).userId, settings);
+      res.json({ settings });
+    }),
+  );
+
+  /* #43：实例升级史（实例 admin） */
+  router.get(
+    '/instance/version-history',
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      res.json(await services.repos.platform.listVersionHistory());
+    }),
+  );
+
+  /* #43：MCP registry 缓存——列表 + 刷新（实例 admin 刷新，写入策划目录作缓存源） */
+  router.get(
+    '/mcp-registry',
+    h(async (_req, res) => {
+      res.json(await services.repos.platform.listRegistryServers());
+    }),
+  );
+  router.post(
+    '/mcp-registry/refresh',
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      // 无外部 registry 客户端时用策划目录充当缓存源（可后续替换为真实拉取）
+      await services.repos.platform.replaceRegistryServers([
+        { name: 'filesystem', url: 'npx -y @modelcontextprotocol/server-filesystem', description: 'Local filesystem access', category: 'storage' },
+        { name: 'github', url: 'npx -y @modelcontextprotocol/server-github', description: 'GitHub repos/issues/PRs', category: 'dev' },
+        { name: 'postgres', url: 'npx -y @modelcontextprotocol/server-postgres', description: 'Postgres read-only queries', category: 'database' },
+      ]);
+      res.json(await services.repos.platform.listRegistryServers());
+    }),
+  );
+
+  /* #43：文件夹打标 */
+  router.get(
+    '/folders/:id/tags',
+    h(async (req, res) => {
+      res.json(await services.repos.platform.folderTags(param(req, 'id')));
+    }),
+  );
+  router.put(
+    '/folders/:id/tags',
+    editor,
+    h(async (req, res) => {
+      const body = parseBody(workflowTagsSchema, req); // { tagIds }
+      await services.repos.platform.setFolderTags(param(req, 'id'), body.tagIds);
+      res.json(await services.repos.platform.folderTags(param(req, 'id')));
     }),
   );
 

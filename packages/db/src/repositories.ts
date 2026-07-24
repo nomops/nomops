@@ -46,6 +46,8 @@ import type {
   PublishHistoryRow,
   TriggerStatusRow,
   RoleMappingRule,
+  InstanceVersionRow,
+  McpRegistryServerRow,
 } from './types.js';
 
 /**
@@ -131,6 +133,11 @@ export class UserRepository extends BaseRepository {
       .where(eq(this.schema.users.id, id))
       .returning();
     return row as User;
+  }
+
+  /** 每用户偏好（backlog #43）：整存 settings JSON。 */
+  async updateSettings(id: string, settings: JsonObject): Promise<void> {
+    await this.db.update(this.schema.users).set({ settings }).where(eq(this.schema.users.id, id));
   }
 
   /** 更新两步验证状态（enable/disable/备份码消费）。 */
@@ -2717,6 +2724,62 @@ export class RoleMappingRepository extends BaseRepository {
   }
 }
 
+/** 平台零散补差（backlog #43）：实例升级史、MCP registry 缓存、文件夹打标。 */
+export class PlatformRepository extends BaseRepository {
+  /* ── 实例升级史 ── */
+  async latestVersion(): Promise<InstanceVersionRow | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.instanceVersionHistory)
+      .orderBy(desc(this.schema.instanceVersionHistory.recordedAt))
+      .limit(1);
+    return (rows[0] as InstanceVersionRow | undefined) ?? null;
+  }
+  async recordVersion(version: string): Promise<void> {
+    await this.db.insert(this.schema.instanceVersionHistory).values({ version });
+  }
+  async listVersionHistory(limit = 50): Promise<InstanceVersionRow[]> {
+    return (await this.db
+      .select()
+      .from(this.schema.instanceVersionHistory)
+      .orderBy(desc(this.schema.instanceVersionHistory.recordedAt))
+      .limit(limit)) as InstanceVersionRow[];
+  }
+
+  /* ── MCP registry 缓存 ── */
+  async listRegistryServers(): Promise<McpRegistryServerRow[]> {
+    return (await this.db.select().from(this.schema.mcpRegistryServer)) as McpRegistryServerRow[];
+  }
+  /** 全量刷新缓存（清空后写入）。 */
+  async replaceRegistryServers(
+    servers: Array<{ name: string; url: string; description?: string; category?: string }>,
+  ): Promise<void> {
+    await this.db.delete(this.schema.mcpRegistryServer);
+    if (servers.length > 0) {
+      await this.db.insert(this.schema.mcpRegistryServer).values(
+        servers.map((s) => ({ name: s.name, url: s.url, description: s.description ?? '', category: s.category ?? '' })),
+      );
+    }
+  }
+
+  /* ── 文件夹打标 ── */
+  async setFolderTags(folderId: string, tagIds: string[]): Promise<void> {
+    await this.db.delete(this.schema.folderTagMapping).where(eq(this.schema.folderTagMapping.folderId, folderId));
+    const uniq = [...new Set(tagIds)];
+    if (uniq.length > 0) {
+      await this.db.insert(this.schema.folderTagMapping).values(uniq.map((tagId) => ({ folderId, tagId })));
+    }
+  }
+  async folderTags(folderId: string): Promise<Tag[]> {
+    const rows = await this.db
+      .select({ id: this.schema.tags.id, name: this.schema.tags.name, projectId: this.schema.tags.projectId, createdAt: this.schema.tags.createdAt })
+      .from(this.schema.folderTagMapping)
+      .innerJoin(this.schema.tags, eq(this.schema.tags.id, this.schema.folderTagMapping.tagId))
+      .where(eq(this.schema.folderTagMapping.folderId, folderId));
+    return rows as Tag[];
+  }
+}
+
 export interface Repositories {
   users: UserRepository;
   apiKeys: ApiKeyRepository;
@@ -2748,6 +2811,7 @@ export interface Repositories {
   insights: InsightsRepository;
   publishPipeline: PublishPipelineRepository;
   roleMappings: RoleMappingRepository;
+  platform: PlatformRepository;
 }
 
 /** 用一个 DatabaseHandle 组装全部仓储。server 层在启动时调用一次。 */
@@ -2784,5 +2848,6 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
     insights: new InsightsRepository(db, schema),
     publishPipeline: new PublishPipelineRepository(db, schema),
     roleMappings: new RoleMappingRepository(db, schema),
+    platform: new PlatformRepository(db, schema),
   };
 }

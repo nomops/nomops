@@ -3,12 +3,21 @@ import { computed, onMounted, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useAuthStore } from './stores/auth.js';
 import { useProjectsStore } from './stores/projects.js';
+import { useUiStore } from './stores/ui.js';
+import { api } from './api/client.js';
 import SideBar from './components/shell/SideBar.vue';
 import CommandPalette from './components/shell/CommandPalette.vue';
 
 const auth = useAuthStore();
 const projects = useProjectsStore();
+const ui = useUiStore();
 const route = useRoute();
+
+/** #43：登录后从 users.settings 水合每用户偏好（DB 为准,替 localStorage）。 */
+async function hydratePrefs() {
+  const me = await api.me().catch(() => null);
+  if (me?.settings) ui.hydrateFromServer(me.settings);
+}
 
 // app 外壳（侧栏）：仅登录态。登录/注册等公开页走裸 RouterView。
 const showShell = computed(() => Boolean(auth.token));
@@ -16,13 +25,19 @@ const showShell = computed(() => Boolean(auth.token));
 const chatHubTakeover = computed(() => route.name === 'chat' || route.name === 'settings');
 
 onMounted(() => {
-  if (auth.token) void projects.fetch();
+  if (auth.token) {
+    void projects.fetch();
+    void hydratePrefs();
+  }
 });
 
 watch(
   () => auth.token,
   (token) => {
-    if (token) void projects.fetch();
+    if (token) {
+      void projects.fetch();
+      void hydratePrefs();
+    }
   },
 );
 </script>

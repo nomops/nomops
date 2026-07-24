@@ -48,6 +48,7 @@ export {
   InsightsRepository,
   PublishPipelineRepository,
   RoleMappingRepository,
+  PlatformRepository,
 } from './repositories.js';
 export type {
   Repositories,

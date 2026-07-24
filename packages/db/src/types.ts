@@ -46,6 +46,8 @@ export type InsightsPeriodRow = InferSelectModel<typeof sqliteSchema.insightsByP
 export type PublishHistoryRow = InferSelectModel<typeof sqliteSchema.workflowPublishHistory>;
 export type TriggerStatusRow = InferSelectModel<typeof sqliteSchema.publicationTriggerStatus>;
 export type RoleMappingRule = InferSelectModel<typeof sqliteSchema.roleMappingRule>;
+export type InstanceVersionRow = InferSelectModel<typeof sqliteSchema.instanceVersionHistory>;
+export type McpRegistryServerRow = InferSelectModel<typeof sqliteSchema.mcpRegistryServer>;
 
 /* ── 创建入参（区别于自动生成的 id/时间戳字段） ── */
 

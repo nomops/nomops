@@ -31,8 +31,40 @@ export const users = pgTable('users', {
   mfaBackupCodes: jsonb('mfa_backup_codes').$type<string[]>(),
   // 最近活跃时刻（每次鉴权请求节流更新;Users 列表显示 Last Active，D146）
   lastActiveAt: timestamp('last_active_at'),
+  settings: jsonb('settings').$type<JsonObject>(), // 每用户偏好（backlog #43）；可空避免 ADD NOT NULL 失败
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
+
+/** 实例升级史（backlog #43）。 */
+export const instanceVersionHistory = pgTable('instance_version_history', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  version: text('version').notNull(),
+  recordedAt: timestamp('recorded_at').notNull().defaultNow(),
+});
+
+/** MCP registry 缓存（backlog #43）。 */
+export const mcpRegistryServer = pgTable('mcp_registry_server', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  url: text('url').notNull(),
+  description: text('description').notNull().default(''),
+  category: text('category').notNull().default(''),
+  fetchedAt: timestamp('fetched_at').notNull().defaultNow(),
+});
+
+/** 文件夹打标（backlog #43）。 */
+export const folderTagMapping = pgTable(
+  'folder_tag_mapping',
+  {
+    folderId: uuid('folder_id')
+      .notNull()
+      .references(() => folders.id),
+    tagId: uuid('tag_id')
+      .notNull()
+      .references(() => tags.id),
+  },
+  (t) => [primaryKey({ columns: [t.folderId, t.tagId] })],
+);
 
 // 公共 REST API 令牌：存 token 的 sha256 哈希，明文仅创建时返回一次（铁律 3）。
 export const apiKeys = pgTable(
@@ -790,4 +822,7 @@ export const pgSchema = {
   credentialDependency,
   roleMappingRule,
   roleMappingRuleProject,
+  instanceVersionHistory,
+  mcpRegistryServer,
+  folderTagMapping,
 };

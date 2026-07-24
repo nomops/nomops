@@ -28,10 +28,48 @@ export const users = sqliteTable('users', {
   mfaBackupCodes: text('mfa_backup_codes', { mode: 'json' }).$type<string[]>(),
   // 最近活跃时刻（每次鉴权请求节流更新;Users 列表显示 Last Active，D146）
   lastActiveAt: integer('last_active_at', { mode: 'timestamp' }),
+  // 每用户偏好（backlog #43）：落库替 localStorage,跨设备一致。可空（读取处 ?? {}），
+  // 避免向已有数据的表 ADD NOT NULL 列失败。
+  settings: text('settings', { mode: 'json' }).$type<JsonObject>(),
   createdAt: integer('created_at', { mode: 'timestamp' })
     .notNull()
     .$defaultFn(() => new Date()),
 });
+
+/** 实例升级史（backlog #43）：每次启动检测版本变化即记一条。 */
+export const instanceVersionHistory = sqliteTable('instance_version_history', {
+  id: uuidPk('id'),
+  version: text('version').notNull(),
+  recordedAt: integer('recorded_at', { mode: 'timestamp' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+/** MCP registry 缓存（backlog #43）：缓存外部 registry 的 server 目录,减少远程往返。 */
+export const mcpRegistryServer = sqliteTable('mcp_registry_server', {
+  id: uuidPk('id'),
+  name: text('name').notNull(),
+  url: text('url').notNull(),
+  description: text('description').notNull().default(''),
+  category: text('category').notNull().default(''),
+  fetchedAt: integer('fetched_at', { mode: 'timestamp' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+/** 文件夹打标（backlog #43）：文件夹 ↔ 标签 多对多,复用现有 tags。 */
+export const folderTagMapping = sqliteTable(
+  'folder_tag_mapping',
+  {
+    folderId: text('folder_id')
+      .notNull()
+      .references(() => folders.id),
+    tagId: text('tag_id')
+      .notNull()
+      .references(() => tags.id),
+  },
+  (t) => [primaryKey({ columns: [t.folderId, t.tagId] })],
+);
 
 // 公共 REST API 令牌：存 token 的 sha256 哈希，明文仅创建时返回一次（铁律 3）。
 export const apiKeys = sqliteTable(
@@ -884,4 +922,7 @@ export const sqliteSchema = {
   credentialDependency,
   roleMappingRule,
   roleMappingRuleProject,
+  instanceVersionHistory,
+  mcpRegistryServer,
+  folderTagMapping,
 };

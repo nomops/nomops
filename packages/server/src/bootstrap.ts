@@ -362,6 +362,13 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   }
   if (role === 'main') scheduler.start();
 
+  // #43：实例升级史——版本变化即记一条（NOMOPS_VERSION 可覆盖，缺省 0.1.0）
+  if (role === 'main') {
+    const version = process.env['NOMOPS_VERSION'] ?? '0.1.0';
+    const latest = await repos.platform.latestVersion();
+    if (!latest || latest.version !== version) await repos.platform.recordVersion(version);
+  }
+
   const sso = new OidcService(repos, credentials, auth, baseUrl);
   const saml = new SamlService(repos, credentials, auth, baseUrl);
   const oauth2 = new OAuth2Service(credentialService, baseUrl);

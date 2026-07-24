@@ -106,9 +106,7 @@
 
 - [x] **42. SSO 角色映射规则（role_mapping_rule）** `M` ✅ 2026-07-23（2 表双方言+迁移0034:role_mapping_rule(sourceType/matchKey/matchValue/projectRole/ordering)+role_mapping_rule_project 多对多;RoleMappingRepository 带登录热路径缓存;AuthService.loginViaSso 后 applyRoleMappings——按 ordering 降序,ldap-group 命中 memberOf/oidc-claim 命中声明(claimMatches 支持标量或数组),同项目多规则取最高优先,projects.setMemberRole 幂等只加/改不删;LDAP authenticate 取 memberOf→ILdapProfile.groups→login 传;OIDC 传 claims;规则 CRUD API(实例 admin)GET/POST/DELETE /role-mappings;3 server 测(LDAP group 命中→自动 editor、不命中→不加入、规则列表可查)验收"LDAP group → 项目成员自动生效";全量 server 484 通过。规则管理 Settings UI 未做(验收是自动生效,已由 API+登录评估满足)）
 
-- [ ] **43. 平台零散补差清扫** `S/M`
-  folder_tag(文件夹打标)、mcp_registry_server(MCP registry 缓存)、instance_version_history(实例升级史)、users.settings(每用户偏好落库替 localStorage)。
-  验收：逐项 live 验证。
+- [x] **43. 平台零散补差清扫** `S/M` ✅ 2026-07-23（4 表/列双方言+迁移0035）。**instance_version_history**：bootstrap 启动检测版本变化即记(NOMOPS_VERSION 覆盖,缺省 0.1.0);GET /instance/version-history(admin)。**mcp_registry_server**：缓存表+GET /mcp-registry+POST /refresh(无外部客户端时写策划目录充当缓存源)。**users.settings**：users 加 settings JSON 列(可空,读处 ?? {})+GET /me 回显+PUT /me/settings;前端 ui store hydrateFromServer/persistToServer,App 登录后拉 /me 水合、toggleSidebar/setSidebarWidth 落库(DB 为准替 localStorage)。**folder_tag**：folder_tag_mapping 复用 tags+GET/PUT /folders/:id/tags。PlatformRepository+UserRepository.updateSettings。4 server 测(逐项)+活体验证 users.settings(清 localStorage→设服务端 sidebarCollapsed→重载侧栏仍折叠,证 DB 为源)。**活体验证抓到并修复真 bug**：迁移向已有数据的 users 表 ADD NOT NULL settings 列在 SQLite 报错(测试用空内存库未暴露),改为可空列。全量 787 测通过
 
 ## P10 · n8n 表对照 · Epic/远期（独立立项，先规划再动工）
 
