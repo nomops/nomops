@@ -4,7 +4,6 @@ import type { Express } from 'express';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
-import { ActiveWorkflowManager } from '../triggers/active-workflow-manager.js';
 import { InMemoryLockStore, LeaderElection } from '../queue/leader.js';
 
 /** Phase 5 验收：Webhook 触发、Cron 触发、双实例下 cron 只触发一次。 */
@@ -30,7 +29,8 @@ const webhookWorkflow = (path: string) => ({
 });
 
 beforeAll(async () => {
-  boot = await bootstrap({ dbConfig: { type: 'sqlite' } });
+  // #38：调度器轮询拉大,测试手动 tick（避免自动 loop 干扰断言）
+  boot = await bootstrap({ dbConfig: { type: 'sqlite' }, scheduler: { pollMs: 3_600_000, instanceId: 'trig' } });
   await boot.leader.start(); // regular 模式：内存锁，恒为 leader
   app = createApp(boot.services);
   await request(app).post('/auth/register').send({ email: 'trig@test.dev', password: 'password-123' });
@@ -90,34 +90,36 @@ describe('Webhook 触发（验收项）', () => {
   });
 });
 
-describe('Cron/Schedule 触发（验收项）', () => {
-  it('激活后按间隔自动触发，停用后停止', async () => {
+describe('Cron/Schedule 触发（验收项，#38 迁到 DB 调度器）', () => {
+  it('激活建 job → 到期 tick 触发,停用后不再触发', async () => {
     const id = await createWorkflow({
       name: 'cron-flow',
       nodes: [
-        { id: 'a', name: 'Timer', type: 'nomops.schedule', typeVersion: 1, position: [0, 0], parameters: { mode: 'interval', intervalSeconds: 0.05 } },
+        { id: 'a', name: 'Timer', type: 'nomops.schedule', typeVersion: 1, position: [0, 0], parameters: { mode: 'interval', intervalSeconds: 60 } },
         { id: 'b', name: 'Set', type: 'nomops.set', typeVersion: 1, position: [200, 0], parameters: { fields: { via: 'cron' } } },
       ],
       connections: { Timer: { main: [[{ node: 'Set', type: 'main', index: 0 }]] } },
     });
 
     await request(app).post(`/api/workflows/${id}/activate`).set(authed()).send({ active: true }).expect(200);
-    await new Promise((r) => setTimeout(r, 250)); // 等几个 tick
+    const runs = () =>
+      request(app)
+        .get('/api/executions')
+        .set(authed())
+        .expect(200)
+        .then((r) => (r.body as Array<{ workflowId: string; mode: string }>).filter((e) => e.workflowId === id && e.mode === 'trigger').length);
+
+    // 拨到过期 → tick 触发一次
+    const job = await boot.services.repos.scheduler.findJobByNode(id, 'Timer');
+    await boot.services.repos.scheduler.updateJob(job!.id, { nextRunAt: new Date(Date.now() - 1000) });
+    await boot.scheduler.tick();
+    expect(await runs()).toBe(1);
+
+    // 停用 → job.active=false → 再拨过期 + tick 也不触发
     await request(app).post(`/api/workflows/${id}/activate`).set(authed()).send({ active: false }).expect(200);
-
-    const executions = await request(app).get('/api/executions').set(authed()).expect(200);
-    const cronRuns = executions.body.filter(
-      (e: { workflowId: string; mode: string }) => e.workflowId === id && e.mode === 'trigger',
-    );
-    expect(cronRuns.length).toBeGreaterThanOrEqual(2); // 250ms / 50ms ≥ 2 次
-
-    // 停用后不再增长
-    const before = cronRuns.length;
-    await new Promise((r) => setTimeout(r, 200));
-    const after = (await request(app).get('/api/executions').set(authed()).expect(200)).body.filter(
-      (e: { workflowId: string; mode: string }) => e.workflowId === id && e.mode === 'trigger',
-    ).length;
-    expect(after).toBe(before);
+    await boot.services.repos.scheduler.updateJob(job!.id, { nextRunAt: new Date(Date.now() - 1000) });
+    await boot.scheduler.tick();
+    expect(await runs()).toBe(1); // 未增长
   });
 
   it('无效 cron 表达式激活报错', async () => {
@@ -137,63 +139,33 @@ describe('Cron/Schedule 触发（验收项）', () => {
   });
 });
 
-describe('Leader 选举（验收项：双实例 cron 只触发一次）', () => {
-  it('共享锁下只有一个实例成为 leader，只有 leader 起定时器', async () => {
-    const store = new InMemoryLockStore();
-    const electionA = new LeaderElection(store);
-    const electionB = new LeaderElection(store);
-    await electionA.start();
-    await electionB.start();
-    expect(electionA.isLeader()).toBe(true);
-    expect(electionB.isLeader()).toBe(false);
+describe('DB 调度器（验收项：双实例同一 cron 只触发一次，#38）', () => {
+  it('两实例并发 tick 同一到期作业只触发一次（租约乐观锁）', async () => {
+    const { SchedulerService } = await import('../services/scheduler-service.js');
+    const repos = boot.services.repos;
 
-    // 两个 AWM 模拟两个进程，各自查询自己的 leader 状态
+    // 直接建一条到期作业（不经工作流,聚焦调度器去重）
+    const job = await repos.scheduler.createJob({
+      kind: 'workflow-schedule',
+      workflowId: null,
+      nodeName: null,
+      config: { mode: 'interval', everySeconds: 60 },
+      nextRunAt: new Date('2026-01-01T00:00:00Z'),
+      maxAttempts: 1,
+    });
+
     let fires = 0;
-    const fakeExecutions = {
-      runTriggered: async () => {
-        fires += 1;
-        return { executionId: 'x', status: 'success' as const };
-      },
-    };
-    const row = {
-      id: 'wf-1',
-      name: 'cron',
-      active: true,
-      nodes: [
-        { id: 'a', name: 'Timer', type: 'nomops.schedule', typeVersion: 1, position: [0, 0] as [number, number], parameters: { mode: 'interval', intervalSeconds: 0.05 } },
-      ],
-      connections: {},
-      settings: null,
-      staticData: null,
-      versionId: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
+    const now = () => new Date('2026-01-01T00:00:05Z');
+    const mk = (id: string) => new SchedulerService(repos, async () => { fires += 1; return `e-${id}`; }, { now, instanceId: id });
+    const a = mk('A');
+    const b = mk('B');
+    const [ra, rb] = [await a.tick(), await b.tick()];
 
-    const awmA = new ActiveWorkflowManager(
-      boot.services.repos,
-      boot.services.nodeLoader,
-      fakeExecutions as never,
-      () => electionA.isLeader(),
-    );
-    const awmB = new ActiveWorkflowManager(
-      boot.services.repos,
-      boot.services.nodeLoader,
-      fakeExecutions as never,
-      () => electionB.isLeader(),
-    );
-
-    await awmA.add(row as never);
-    await awmB.add(row as never);
-    await new Promise((r) => setTimeout(r, 180));
-    await awmA.shutdown();
-    await awmB.shutdown();
-    await electionA.stop();
-    await electionB.stop();
-
-    // 双实例 250ms 内若都跑，fires 会翻倍（≥6）；只有 leader 跑则 ~3
-    expect(fires).toBeGreaterThanOrEqual(2);
-    expect(fires).toBeLessThanOrEqual(4);
+    expect(fires).toBe(1); // 双实例只触发一次
+    expect(ra.fired + rb.fired).toBe(1);
+    // 作业 nextRunAt 已推进
+    const after = await repos.scheduler.findJobById(job.id);
+    expect(after!.nextRunAt).toEqual(new Date('2026-01-01T00:01:00Z'));
   });
 
   it('leader 退出后另一实例接任', async () => {

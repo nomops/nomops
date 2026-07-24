@@ -37,6 +37,8 @@ import { EvaluationService } from './services/evaluation-service.js';
 import { SttService } from './services/stt-service.js';
 import { WaitTracker } from './services/wait-tracker.js';
 import { ExecutionPruner, prunerOptionsFromEnv } from './services/execution-pruner.js';
+import { SchedulerService } from './services/scheduler-service.js';
+import type { SchedulerOptions } from './services/scheduler-service.js';
 import {
   ConcurrencyGate,
   concurrencyLimitFromEnv,
@@ -137,6 +139,8 @@ export interface BootstrapOptions {
   waitTrackerIntervalMs?: number;
   /** 执行历史清理配置（测试注入；生产走 NOMOPS_EXECUTIONS_* 环境变量）。 */
   pruner?: IExecutionPrunerOptions;
+  /** DB 调度器配置（#38；测试注入短轮询/固定时钟/instanceId）。 */
+  scheduler?: SchedulerOptions;
   /** 生产执行并发上限；-1 = 不限。缺省走 NOMOPS_CONCURRENCY_PRODUCTION_LIMIT。 */
   concurrencyLimit?: number;
   /** 等待队列深度上限；缺省 2× 并发上限。超出即 503。 */
@@ -151,6 +155,8 @@ export interface BootstrapResult {
   mode: ExecutionsMode;
   leader: LeaderElection;
   redis: RedisOptions | null;
+  /** DB 调度器（#38；测试可手动 tick）。 */
+  scheduler: SchedulerService;
   shutdown(): Promise<void>;
 }
 
@@ -318,6 +324,26 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     sweepOrphanBinaries: () => executions.sweepOrphanBinaries(),
   });
   if (role === 'main') executionPruner.start();
+
+  // DB 调度器（#38 地基项）：Schedule Trigger 落库触发,重启不丢、多实例只触发一次。
+  // fire = 播种触发节点跑工作流;配额 429 跳过本次不重试。所有实例都跑循环,靠租约去重。
+  const scheduler = new SchedulerService(repos, async (job) => {
+    if (!job.workflowId || !job.nodeName) return null;
+    try {
+      const summary = await executions.runTriggered(
+        job.workflowId,
+        'trigger',
+        [{ json: { timestamp: new Date().toISOString() } }],
+        job.nodeName,
+      );
+      return summary.executionId;
+    } catch (e) {
+      if ((e as { status?: number }).status === 429) return null; // 配额超限：跳过,不重试风暴
+      throw e;
+    }
+  }, opts.scheduler);
+  if (role === 'main') scheduler.start();
+
   const sso = new OidcService(repos, credentials, auth, baseUrl);
   const saml = new SamlService(repos, credentials, auth, baseUrl);
   const oauth2 = new OAuth2Service(credentialService, baseUrl);
@@ -410,9 +436,11 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     mode,
     leader,
     redis,
+    scheduler,
     shutdown: async () => {
       waitTracker.stop();
       executionPruner.stop();
+      scheduler.stop();
       await activeWorkflows.shutdown();
       await leader.stop();
       await queue?.close();

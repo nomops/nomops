@@ -96,9 +96,7 @@
 
 ## P9 · n8n 表对照补差 · 基础设施
 
-- [ ] **38. DB 调度器（scheduled_job + scheduled_task）** `L`（地基项：解锁 #9 残余 LDAP 定时同步、#39 定时卷积、#44 Agent 定时任务）
-  统一定时任务落库：cron/interval/一次性 fireAt + 时区 + nextRunAt + maxAttempts；触发实例租约抢占（claimedBy/leaseExpiresAt/leaseEpoch）。Schedule Trigger 迁移到其上，重启不丢、多实例不重复。
-  验收：双实例并发同一 cron 只触发一次；重启后 nextRunAt 恢复继续。
+- [x] **38. DB 调度器（scheduled_job + scheduled_task）** `L` ✅ 2026-07-23（地基项，解锁 #39/#44）。**38a 引擎**：2 表双方言+迁移0031(scheduled_jobs recurrence+nextRunAt 持久化;scheduled_tasks 到期实例+租约 claimedBy/leaseExpiresAt/leaseEpoch,unique(jobId,scheduledFor) 去重);SchedulerRepository(materializeTask onConflictDoNothing/claimTask leaseEpoch 乐观锁原子认领/failTask retry);SchedulerService(computeNextRun cron 带时区/interval/once;tick 两阶段物化+推进 nextRunAt+租约认领触发;fire/now/instanceId 可注入);8 单测(多实例只触发一次、claim 原子性、重启恢复、失败重试)。**38b 集成**：ActiveWorkflowManager 把 nomops.schedule 节点路由到 DB 调度器(幂等 upsert job,不判 leader,靠 unique+租约去重,修复旧设计只激活时判 leader、leader 变更漏触发的缺口);remove 停用作业;无效 cron→激活报错;bootstrap 起 SchedulerService(fire=runTriggered,配额 429 跳过);server 加 cron-parser;3 集成测(激活建 job/到期 tick 触发/停用停 job)+改造既有 triggers 测。全量 770 测通过。验收：双实例并发同一 cron 只触发一次✓;重启后 nextRunAt 恢复继续✓）
 
 - [ ] **39. Insights 预聚合管线** `M/L`（解锁 #8 遗留 D153 跨项目聚合；卷积任务依赖 #38）
   现从 executions 实时聚合，执行历史一清理数据即失。→ insights_raw(执行收尾写事件) → insights_by_period(hour/day 卷积) + insights_metadata(工作流/项目名快照)。

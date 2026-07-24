@@ -10,6 +10,7 @@ import type {
   JsonObject,
 } from '@nomops/workflow';
 import { OperationalError } from '@nomops/workflow';
+import { computeNextRun } from '../services/scheduler-service.js';
 import type { ExecutionService } from '../services/execution-service.js';
 import type { AuditService } from '../services/audit-service.js';
 
@@ -105,8 +106,12 @@ export class ActiveWorkflowManager {
         closer.push(async () => this.repos.webhooks.deleteByWorkflow(row.id));
       }
 
-      // 定时型：节点自带 trigger()，仅 leader 起
-      if (nodeType.trigger && this.isLeader()) {
+      // 定时型 Schedule 节点 → DB 调度器（#38）：落库 nextRunAt,重启不丢、多实例只触发一次。
+      // 不判 leader——job 落库幂等,触发去重交给调度器的 unique + 租约乐观锁。
+      if (node.type === 'nomops.schedule') {
+        await this.upsertScheduleJob(row.id, node);
+      } else if (nodeType.trigger && this.isLeader()) {
+        // 其它 trigger() 型仍走进程内 leader 定时器（当前无此类节点,保留兜底）
         const context = this.buildTriggerContext(row, node);
         const response = await nodeType.trigger.call(context);
         if (response.closeFunction) closer.push(response.closeFunction);
@@ -150,11 +155,42 @@ export class ActiveWorkflowManager {
     for (const poll of this.pollFns.get(workflowId) ?? []) await poll();
   }
 
-  /** 停用：注销路由 + 关掉定时器。幂等。 */
+  /** Schedule 节点 → DB 调度作业（#38）：幂等 upsert,计算初始 nextRunAt。 */
+  private async upsertScheduleJob(workflowId: string, node: INode): Promise<void> {
+    const mode = node.parameters['mode'] === 'cron' ? 'cron' : 'interval';
+    const config =
+      mode === 'cron'
+        ? { mode: 'cron', cron: String(node.parameters['cronExpression'] ?? '*/5 * * * *') }
+        : { mode: 'interval', everySeconds: Math.max(1, Number(node.parameters['intervalSeconds'] ?? 60)) };
+    let nextRunAt: Date;
+    try {
+      nextRunAt = computeNextRun(config, 'UTC', new Date()) ?? new Date();
+    } catch (e) {
+      // 无效 cron 表达式 → 激活失败（activationError,与旧行为一致）
+      throw new OperationalError(`Invalid cron expression: ${(e as Error).message}`, { node: node.name });
+    }
+    const existing = await this.repos.scheduler.findJobByNode(workflowId, node.name);
+    if (existing) {
+      await this.repos.scheduler.updateJob(existing.id, { config, timezone: 'UTC', active: true, nextRunAt });
+    } else {
+      await this.repos.scheduler.createJob({
+        kind: 'workflow-schedule',
+        workflowId,
+        nodeName: node.name,
+        config,
+        timezone: 'UTC',
+        nextRunAt,
+        maxAttempts: 1,
+      });
+    }
+  }
+
+  /** 停用：注销路由 + 关掉定时器 + 停用调度作业。幂等。 */
   async remove(workflowId: string): Promise<void> {
     const closer = this.closers.get(workflowId);
     this.closers.delete(workflowId);
     await this.repos.webhooks.deleteByWorkflow(workflowId);
+    await this.repos.scheduler.deactivateJobsForWorkflow(workflowId); // #38：下线其定时作业
     for (const close of closer ?? []) {
       await close().catch((error: Error) =>
         console.error(`[nomops] 关闭触发器失败 ${workflowId}:`, error.message),
