@@ -3,9 +3,9 @@
  * Agents 平台管理页（backlog #44 M1）：建 agent、编辑 system、发布、版本回滚。
  * M1 只覆盖定义+版本;工具/记忆/定时(M2-M4)后续接入。
  */
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { api, type AgentRow, type AgentTaskRow, type CredentialView } from '../api/client.js';
+import { api, type AgentChannelRow, type AgentFileRow, type AgentRow, type AgentTaskRow, type CredentialView } from '../api/client.js';
 
 const router = useRouter();
 const agents = ref<AgentRow[]>([]);
@@ -77,6 +77,83 @@ async function removeTask(t: AgentTaskRow) {
 const scheduleLabel = (t: AgentTaskRow) =>
   t.schedule.mode === 'cron' ? `cron ${t.schedule.cron}` : t.schedule.mode === 'once' ? `once @ ${t.schedule.fireAt}` : `every ${t.schedule.everySeconds}s`;
 
+/* 文件 + 外部渠道（#44 M5） */
+const files = ref<AgentFileRow[]>([]);
+const channels = ref<AgentChannelRow[]>([]);
+const channelCredentialId = ref('');
+async function loadFilesChannels() {
+  if (!selected.value) return;
+  files.value = await api.agents.files(selected.value.id).catch(() => []);
+  channels.value = await api.agents.channels(selected.value.id).catch(() => []);
+}
+async function uploadFile(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const f = input.files?.[0];
+  if (!f || !selected.value) return;
+  busy.value = 'file';
+  error.value = '';
+  try {
+    const buf = await f.arrayBuffer();
+    let bin = '';
+    const bytes = new Uint8Array(buf);
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    await api.agents.uploadFile(selected.value.id, { fileName: f.name, mimeType: f.type || 'application/octet-stream', data: btoa(bin) });
+    input.value = '';
+    await loadFilesChannels();
+  } catch (err) {
+    error.value = (err as Error).message;
+  } finally {
+    busy.value = '';
+  }
+}
+async function removeFile(f: AgentFileRow) {
+  if (!selected.value || !window.confirm(`Delete file "${f.fileName}"?`)) return;
+  await api.agents.removeFile(selected.value.id, f.id).catch(() => undefined);
+  await loadFilesChannels();
+}
+function downloadFile(f: AgentFileRow) {
+  if (!selected.value) return;
+  void fetch(api.agents.fileDownloadUrl(selected.value.id, f.id), {
+    headers: { Authorization: `Bearer ${localStorage.getItem('nomops.token') ?? ''}` },
+  })
+    .then((r) => r.blob())
+    .then((blob) => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = f.fileName;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+}
+const fmtSize = (n: number) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`);
+const telegramCredentials = computed(() => credentials.value.filter((c) => c.type === 'telegramApi'));
+async function addChannel() {
+  if (!selected.value || !channelCredentialId.value) return;
+  busy.value = 'channel';
+  error.value = '';
+  try {
+    await api.agents.createChannel(selected.value.id, { type: 'telegram', credentialId: channelCredentialId.value });
+    await loadFilesChannels();
+  } catch (e) {
+    error.value = (e as Error).message;
+  } finally {
+    busy.value = '';
+  }
+}
+async function toggleChannel(c: AgentChannelRow) {
+  if (!selected.value) return;
+  await api.agents.updateChannel(selected.value.id, c.id, { active: !c.active }).catch(() => undefined);
+  await loadFilesChannels();
+}
+async function removeChannel(c: AgentChannelRow) {
+  if (!selected.value || !window.confirm('Delete this channel?')) return;
+  await api.agents.removeChannel(selected.value.id, c.id).catch(() => undefined);
+  await loadFilesChannels();
+}
+async function copyWebhookUrl(c: AgentChannelRow) {
+  await navigator.clipboard.writeText(c.webhookUrl).catch(() => undefined);
+}
+
 async function load() {
   agents.value = await api.agents.list().catch(() => []);
 }
@@ -96,6 +173,7 @@ async function select(a: AgentRow) {
   threadId.value = null;
   await loadMemory();
   await loadTasks();
+  await loadFilesChannels();
 }
 
 async function sendChat() {
@@ -310,6 +388,50 @@ const fmt = (iso: string) => new Date(iso).toLocaleString();
         </li>
       </ul>
 
+      <!-- 文件（#44 M5）：binaryStore 存储,上传/下载/删除 -->
+      <h3 class="agent-versions-title">Files</h3>
+      <label class="agent-file-upload">
+        <input type="file" data-test="agent-file-input" style="display: none" @change="uploadFile" />
+        <span class="btn">{{ busy === 'file' ? 'Uploading…' : 'Upload file' }}</span>
+      </label>
+      <p v-if="!files.length" class="dim">No files.</p>
+      <ul v-else class="agent-tasks" data-test="agent-files">
+        <li v-for="f in files" :key="f.id" class="agent-task">
+          <span class="agent-task-main">
+            <b>{{ f.fileName }}</b>
+            <span class="agent-mem-badge">{{ f.mimeType }} · {{ fmtSize(f.size) }}</span>
+          </span>
+          <span class="agent-task-side">
+            <button class="link" data-test="agent-file-download" @click="downloadFile(f)">Download</button>
+            <button class="link" data-test="agent-file-delete" @click="removeFile(f)">Delete</button>
+          </span>
+        </li>
+      </ul>
+
+      <!-- 外部渠道（#44 M5）：Telegram bot webhook → agent 线程 → 回复回渠道 -->
+      <h3 class="agent-versions-title">Channels <span class="dim" style="font-weight: 400">· Telegram</span></h3>
+      <div class="agent-task-new" data-test="agent-channel-new">
+        <select v-model="channelCredentialId" data-test="agent-channel-cred">
+          <option value="" disabled>Telegram bot credential…</option>
+          <option v-for="c in telegramCredentials" :key="c.id" :value="c.id">{{ c.name }}</option>
+        </select>
+        <button class="btn primary" data-test="agent-channel-add" :disabled="busy === 'channel' || !channelCredentialId" @click="addChannel">Connect Telegram</button>
+        <span v-if="!telegramCredentials.length" class="dim" style="align-self: center">Create a Telegram API credential first.</span>
+      </div>
+      <ul v-if="channels.length" class="agent-tasks" data-test="agent-channels">
+        <li v-for="c in channels" :key="c.id" class="agent-task">
+          <span class="agent-task-main">
+            <b>{{ c.type }}</b>
+            <span v-if="!c.active" class="agent-mem-badge">paused</span>
+          </span>
+          <span class="agent-task-side">
+            <button class="link" data-test="agent-channel-copy" title="Copy webhook URL" @click="copyWebhookUrl(c)">Copy webhook URL</button>
+            <button class="link" data-test="agent-channel-toggle" @click="toggleChannel(c)">{{ c.active ? 'Pause' : 'Resume' }}</button>
+            <button class="link" data-test="agent-channel-delete" @click="removeChannel(c)">Delete</button>
+          </span>
+        </li>
+      </ul>
+
       <!-- 分层记忆 + 证据链（#44 M3）：跨线程召回的记忆,每条可追溯到来源运行 -->
       <h3 class="agent-versions-title">Memory <span class="dim" style="font-weight: 400">· recalled across threads</span></h3>
       <p v-if="!memories.length" class="dim">No memories yet — chat with the agent to build them.</p>
@@ -386,4 +508,5 @@ const fmt = (iso: string) => new Date(iso).toLocaleString();
 .agent-task { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border-color, #23232a); font-size: 13px; }
 .agent-task-main { display: flex; gap: 8px; align-items: center; min-width: 0; }
 .agent-task-side { display: flex; gap: 10px; align-items: center; flex-shrink: 0; font-size: 12px; }
+.agent-file-upload { align-self: flex-start; cursor: pointer; }
 </style>

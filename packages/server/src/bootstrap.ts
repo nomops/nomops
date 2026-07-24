@@ -41,6 +41,7 @@ import { SchedulerService } from './services/scheduler-service.js';
 import type { SchedulerOptions } from './services/scheduler-service.js';
 import { InsightsService } from './services/insights-service.js';
 import { AgentRunService } from './services/agent-run-service.js';
+import { AgentChannelService } from './services/agent-channel-service.js';
 import {
   ConcurrencyGate,
   concurrencyLimitFromEnv,
@@ -129,6 +130,8 @@ export interface BootstrapOptions {
   ldapAuthenticator?: ILdapAuthenticator;
   /** STT 转写 fetch（缺省全局 fetch；测试注入假实现）。 */
   sttFetch?: typeof fetch;
+  /** Telegram Bot API fetch（#44 M5；测试注入假实现,不打真实网络）。 */
+  telegramFetch?: typeof fetch;
   /** 邮件投递（测试注入记录桩;生产按 NOMOPS_SMTP_* 环境变量,未配置为 NullMailer）。 */
   mailer?: IMailer;
   /** 社区节点安装器（缺省 npm 真实实现；测试注入假实现映射到本地 fixture）。 */
@@ -332,6 +335,8 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
 
   const insights = new InsightsService(repos);
   const agentRuns = new AgentRunService(repos, executions);
+  // #44 M5：外部渠道（Telegram webhook → agent 线程 → 回复回渠道）
+  const agentChannels = new AgentChannelService(repos, agentRuns, credentialService, baseUrl, opts.telegramFetch);
 
   // DB 调度器（#38 地基项）：Schedule Trigger 落库触发,重启不丢、多实例只触发一次。
   // fire 按 job.kind 分派;配额 429 跳过本次不重试。所有实例都跑循环,靠租约去重。
@@ -463,6 +468,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     stt,
     insights,
     agentRuns,
+    agentChannels,
     waitTracker,
     executionPruner,
     mcp,

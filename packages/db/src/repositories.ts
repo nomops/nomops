@@ -56,6 +56,8 @@ import type {
   MemoryEntry,
   MemoryObservation,
   AgentTaskDefinition,
+  AgentFile,
+  AgentChannel,
 } from './types.js';
 
 /**
@@ -2889,12 +2891,34 @@ export class AgentRepository extends BaseRepository {
     await this.db.update(this.schema.agents).set({ backingWorkflowId: workflowId }).where(eq(this.schema.agents.id, agentId));
   }
 
-  async createThread(input: { agentId: string; projectId: string; channel?: string; title?: string }): Promise<AgentThread> {
+  async createThread(input: { agentId: string; projectId: string; channel?: string; title?: string; externalRef?: string }): Promise<AgentThread> {
     const [row] = await this.db
       .insert(this.schema.agentThreads)
-      .values({ agentId: input.agentId, projectId: input.projectId, channel: input.channel ?? 'canvas', title: input.title ?? 'New thread' })
+      .values({
+        agentId: input.agentId,
+        projectId: input.projectId,
+        channel: input.channel ?? 'canvas',
+        title: input.title ?? 'New thread',
+        externalRef: input.externalRef ?? null,
+      })
       .returning();
     return row as AgentThread;
+  }
+
+  /** 渠道会话映射（#44 M5）：同一外部会话（如 Telegram chat_id）复用同一线程。 */
+  async findThreadByExternalRef(agentId: string, channel: string, externalRef: string): Promise<AgentThread | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.agentThreads)
+      .where(
+        and(
+          eq(this.schema.agentThreads.agentId, agentId),
+          eq(this.schema.agentThreads.channel, channel),
+          eq(this.schema.agentThreads.externalRef, externalRef),
+        ),
+      )
+      .limit(1);
+    return (rows[0] as AgentThread | undefined) ?? null;
   }
 
   async findThread(id: string, agentId: string): Promise<AgentThread | null> {
@@ -3083,6 +3107,107 @@ export class AgentRepository extends BaseRepository {
 
   async deleteTask(id: string): Promise<void> {
     await this.db.delete(this.schema.agentTaskDefinitions).where(eq(this.schema.agentTaskDefinitions.id, id));
+  }
+
+  /* ── 文件（#44 M5）：binaryId 复用 #32 binaryStore ── */
+  async addFile(input: {
+    agentId: string;
+    threadId?: string | null;
+    binaryId: string;
+    fileName: string;
+    mimeType: string;
+    size: number;
+  }): Promise<AgentFile> {
+    const [row] = await this.db
+      .insert(this.schema.agentFiles)
+      .values({
+        agentId: input.agentId,
+        threadId: input.threadId ?? null,
+        binaryId: input.binaryId,
+        fileName: input.fileName,
+        mimeType: input.mimeType,
+        size: input.size,
+      })
+      .returning();
+    return row as AgentFile;
+  }
+
+  async listFiles(agentId: string): Promise<AgentFile[]> {
+    return (await this.db
+      .select()
+      .from(this.schema.agentFiles)
+      .where(eq(this.schema.agentFiles.agentId, agentId))
+      .orderBy(desc(this.schema.agentFiles.createdAt))) as AgentFile[];
+  }
+
+  async findFile(id: string, agentId: string): Promise<AgentFile | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.agentFiles)
+      .where(and(eq(this.schema.agentFiles.id, id), eq(this.schema.agentFiles.agentId, agentId)))
+      .limit(1);
+    return (rows[0] as AgentFile | undefined) ?? null;
+  }
+
+  async deleteFile(id: string): Promise<void> {
+    await this.db.delete(this.schema.agentFiles).where(eq(this.schema.agentFiles.id, id));
+  }
+
+  /* ── 外部渠道（#44 M5） ── */
+  async createChannel(input: {
+    agentId: string;
+    projectId: string;
+    type: string;
+    credentialId: string;
+    config: JsonObject;
+  }): Promise<AgentChannel> {
+    const [row] = await this.db
+      .insert(this.schema.agentChannels)
+      .values({
+        agentId: input.agentId,
+        projectId: input.projectId,
+        type: input.type,
+        credentialId: input.credentialId,
+        config: input.config,
+      })
+      .returning();
+    return row as AgentChannel;
+  }
+
+  async listChannels(agentId: string): Promise<AgentChannel[]> {
+    return (await this.db
+      .select()
+      .from(this.schema.agentChannels)
+      .where(eq(this.schema.agentChannels.agentId, agentId))
+      .orderBy(desc(this.schema.agentChannels.createdAt))) as AgentChannel[];
+  }
+
+  /** 归属校验版（API 侧）。 */
+  async findChannel(id: string, agentId: string): Promise<AgentChannel | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.agentChannels)
+      .where(and(eq(this.schema.agentChannels.id, id), eq(this.schema.agentChannels.agentId, agentId)))
+      .limit(1);
+    return (rows[0] as AgentChannel | undefined) ?? null;
+  }
+
+  /** 无归属版（公开 webhook 侧按 id 取,secret 校验在服务层）。 */
+  async findChannelById(id: string): Promise<AgentChannel | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.agentChannels)
+      .where(eq(this.schema.agentChannels.id, id))
+      .limit(1);
+    return (rows[0] as AgentChannel | undefined) ?? null;
+  }
+
+  async updateChannel(id: string, patch: Partial<{ active: boolean; config: JsonObject }>): Promise<void> {
+    await this.db.update(this.schema.agentChannels).set(patch).where(eq(this.schema.agentChannels.id, id));
+  }
+
+  async deleteChannel(id: string): Promise<void> {
+    await this.db.delete(this.schema.agentChannels).where(eq(this.schema.agentChannels.id, id));
   }
 }
 

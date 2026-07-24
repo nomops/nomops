@@ -133,6 +133,49 @@ export const agentTaskDefinitions = sqliteTable(
   (t) => [index('agent_task_definitions_agent_idx').on(t.agentId)],
 );
 
+/** Agents 平台 · 文件（backlog #44 M5）：agent 上传/产出的文件,binaryId 复用 #32 binaryStore。 */
+export const agentFiles = sqliteTable(
+  'agent_files',
+  {
+    id: uuidPk('id'),
+    agentId: text('agent_id')
+      .notNull()
+      .references(() => agents.id),
+    threadId: text('thread_id'), // 产出自某线程时回链（可空）
+    binaryId: text('binary_id').notNull(),
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull().default('application/octet-stream'),
+    size: integer('size').notNull().default(0),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('agent_files_agent_idx').on(t.agentId)],
+);
+
+/**
+ * Agents 平台 · 外部渠道订阅（backlog #44 M5）：type=telegram 时 bot token 存凭证系统
+ * (credentialId,铁律 3 解密即用即弃),config 存 webhookSecret 等非密设置。
+ */
+export const agentChannels = sqliteTable(
+  'agent_channels',
+  {
+    id: uuidPk('id'),
+    agentId: text('agent_id')
+      .notNull()
+      .references(() => agents.id),
+    projectId: text('project_id').notNull(), // 冗余存,webhook 侧免 join 拿归属
+    type: text('type').notNull(), // telegram|slack|…
+    credentialId: text('credential_id').notNull(),
+    config: text('config', { mode: 'json' }).$type<JsonObject>().notNull().$defaultFn(() => ({})),
+    active: integer('active', { mode: 'boolean' }).notNull().default(true),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('agent_channels_agent_idx').on(t.agentId)],
+);
+
 /** Agents 平台 · 会话线程（backlog #44 M2）：跨多次运行的上下文边界。 */
 export const agentThreads = sqliteTable(
   'agent_threads',
@@ -1109,4 +1152,6 @@ export const sqliteSchema = {
   memoryEntries,
   memoryObservations,
   agentTaskDefinitions,
+  agentFiles,
+  agentChannels,
 };

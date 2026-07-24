@@ -56,6 +56,8 @@ export type AgentMessage = InferSelectModel<typeof sqliteSchema.agentMessages>;
 export type MemoryEntry = InferSelectModel<typeof sqliteSchema.memoryEntries>;
 export type MemoryObservation = InferSelectModel<typeof sqliteSchema.memoryObservations>;
 export type AgentTaskDefinition = InferSelectModel<typeof sqliteSchema.agentTaskDefinitions>;
+export type AgentFile = InferSelectModel<typeof sqliteSchema.agentFiles>;
+export type AgentChannel = InferSelectModel<typeof sqliteSchema.agentChannels>;
 
 /* ── 创建入参（区别于自动生成的 id/时间戳字段） ── */
 

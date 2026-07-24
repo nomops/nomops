@@ -101,6 +101,28 @@ export interface AgentRow {
   updatedAt: string;
 }
 
+/** Agent 文件（#44 M5；binaryId 为内部存储引用,不出 API）。 */
+export interface AgentFileRow {
+  id: string;
+  agentId: string;
+  threadId: string | null;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  createdAt: string;
+}
+
+/** Agent 外部渠道（#44 M5）。webhookUrl 带 secret,仅归属方可见。 */
+export interface AgentChannelRow {
+  id: string;
+  agentId: string;
+  type: string;
+  credentialId: string;
+  active: boolean;
+  createdAt: string;
+  webhookUrl: string;
+}
+
 /** Agent 定时任务定义（#44 M4）。 */
 export interface AgentTaskRow {
   id: string;
@@ -628,6 +650,17 @@ export const api = {
           observations: Array<{ id: string; runId: string; evidence: Record<string, unknown>; createdAt: string }>;
         }>
       >('GET', `/api/agents/${id}/memory`),
+    files: (id: string) => http<AgentFileRow[]>('GET', `/api/agents/${id}/files`),
+    uploadFile: (id: string, body: { fileName: string; mimeType: string; data: string }) =>
+      http<AgentFileRow>('POST', `/api/agents/${id}/files`, body),
+    removeFile: (id: string, fileId: string) => http<void>('DELETE', `/api/agents/${id}/files/${fileId}`),
+    fileDownloadUrl: (id: string, fileId: string) => `/api/agents/${id}/files/${fileId}/download`,
+    channels: (id: string) => http<AgentChannelRow[]>('GET', `/api/agents/${id}/channels`),
+    createChannel: (id: string, body: { type: string; credentialId: string }) =>
+      http<AgentChannelRow>('POST', `/api/agents/${id}/channels`, body),
+    updateChannel: (id: string, channelId: string, body: { active: boolean }) =>
+      http<AgentChannelRow>('PATCH', `/api/agents/${id}/channels/${channelId}`, body),
+    removeChannel: (id: string, channelId: string) => http<void>('DELETE', `/api/agents/${id}/channels/${channelId}`),
     tasks: (id: string) => http<AgentTaskRow[]>('GET', `/api/agents/${id}/tasks`),
     createTask: (id: string, body: { name: string; message: string; schedule: Record<string, unknown>; timezone?: string }) =>
       http<AgentTaskRow>('POST', `/api/agents/${id}/tasks`, body),

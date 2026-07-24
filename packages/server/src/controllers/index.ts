@@ -1335,6 +1335,94 @@ export function createApiRouter(services: AppServices): Router {
       res.status(204).end();
     }),
   );
+  // 文件（backlog #44 M5）：binaryId 复用 #32 binaryStore,上传走 base64（15mb json 上限内）。
+  router.get(
+    '/agents/:id/files',
+    h(async (req, res) => {
+      await getAgentOr404(req);
+      const files = await services.repos.agents.listFiles(param(req, 'id'));
+      res.json(files.map(({ binaryId: _b, ...rest }) => rest)); // binaryId 是内部存储引用,不出 API
+    }),
+  );
+  router.post(
+    '/agents/:id/files',
+    h(async (req, res) => {
+      await getAgentOr404(req);
+      const { fileName, mimeType, data } = req.body as { fileName?: string; mimeType?: string; data?: string };
+      if (!fileName?.trim() || !data) throw new OperationalError('fileName and data (base64) are required', { status: 400 });
+      const store = services.executions.getBinaryStore();
+      if (!store) throw new OperationalError('Binary storage is not configured', { status: 404 });
+      const buffer = Buffer.from(data, 'base64');
+      const ref = await store.put(buffer, { mimeType: mimeType ?? 'application/octet-stream', fileName });
+      const file = await services.repos.agents.addFile({
+        agentId: param(req, 'id'),
+        binaryId: ref.id!,
+        fileName,
+        mimeType: mimeType ?? 'application/octet-stream',
+        size: buffer.length,
+      });
+      const { binaryId: _b, ...rest } = file;
+      res.status(201).json(rest);
+    }),
+  );
+  router.get(
+    '/agents/:id/files/:fileId/download',
+    h(async (req, res) => {
+      await getAgentOr404(req);
+      const file = await services.repos.agents.findFile(param(req, 'fileId'), param(req, 'id'));
+      if (!file) throw new OperationalError('File not found', { status: 404 });
+      const store = services.executions.getBinaryStore();
+      if (!store) throw new OperationalError('Binary storage is not configured', { status: 404 });
+      res.setHeader('content-type', file.mimeType);
+      res.setHeader('content-disposition', `attachment; filename="${encodeURIComponent(file.fileName)}"`);
+      res.send(await store.get(file.binaryId));
+    }),
+  );
+  router.delete(
+    '/agents/:id/files/:fileId',
+    h(async (req, res) => {
+      await getAgentOr404(req);
+      const file = await services.repos.agents.findFile(param(req, 'fileId'), param(req, 'id'));
+      if (!file) throw new OperationalError('File not found', { status: 404 });
+      const store = services.executions.getBinaryStore();
+      await store?.delete?.(file.binaryId).catch(() => undefined); // 存储清理尽力而为
+      await services.repos.agents.deleteFile(file.id);
+      res.status(204).end();
+    }),
+  );
+  // 外部渠道（backlog #44 M5）：Telegram bot webhook → agent 线程 → 回复回渠道。
+  router.get(
+    '/agents/:id/channels',
+    h(async (req, res) => {
+      await getAgentOr404(req);
+      res.json(await services.agentChannels.list(param(req, 'id')));
+    }),
+  );
+  router.post(
+    '/agents/:id/channels',
+    h(async (req, res) => {
+      await getAgentOr404(req);
+      const { type, credentialId } = req.body as { type?: string; credentialId?: string };
+      if (!type || !credentialId) throw new OperationalError('type and credentialId are required', { status: 400 });
+      res.status(201).json(await services.agentChannels.create(param(req, 'id'), auth(req).projectId, { type, credentialId }));
+    }),
+  );
+  router.patch(
+    '/agents/:id/channels/:channelId',
+    h(async (req, res) => {
+      await getAgentOr404(req);
+      const { active } = req.body as { active?: boolean };
+      res.json(await services.agentChannels.setActive(param(req, 'id'), param(req, 'channelId'), active !== false));
+    }),
+  );
+  router.delete(
+    '/agents/:id/channels/:channelId',
+    h(async (req, res) => {
+      await getAgentOr404(req);
+      await services.agentChannels.remove(param(req, 'id'), param(req, 'channelId'));
+      res.status(204).end();
+    }),
+  );
 
   /* ── SSO 角色映射规则（backlog #42，实例 admin）：SSO 声明/LDAP group → 项目角色 ── */
   router.get(
@@ -2326,6 +2414,19 @@ export function createApiRouter(services: AppServices): Router {
  */
 export function createWebhookRouter(services: AppServices): Router {
   const router = Router();
+  // Agent 外部渠道入口（backlog #44 M5,先于通配路由注册）：路径带随机 secret,校验在服务层。
+  router.post(
+    '/webhook/agent-channel/:channelId/:secret',
+    h(async (req, res) => {
+      res.json(
+        await services.agentChannels.handleTelegramUpdate(
+          param(req, 'channelId'),
+          param(req, 'secret'),
+          (req.body ?? {}) as Record<string, never>,
+        ),
+      );
+    }),
+  );
   router.all(
     '/webhook/*path',
     h(async (req, res) => {

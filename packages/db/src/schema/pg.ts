@@ -112,6 +112,42 @@ export const agentTaskDefinitions = pgTable(
   (t) => [index('agent_task_definitions_agent_idx').on(t.agentId)],
 );
 
+/** Agents 平台 · 文件（backlog #44 M5）：binaryId 复用 #32 binaryStore。 */
+export const agentFiles = pgTable(
+  'agent_files',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    agentId: uuid('agent_id')
+      .notNull()
+      .references(() => agents.id),
+    threadId: uuid('thread_id'),
+    binaryId: text('binary_id').notNull(),
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull().default('application/octet-stream'),
+    size: integer('size').notNull().default(0),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('agent_files_agent_idx').on(t.agentId)],
+);
+
+/** Agents 平台 · 外部渠道订阅（backlog #44 M5）：bot token 走凭证系统（铁律 3）。 */
+export const agentChannels = pgTable(
+  'agent_channels',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    agentId: uuid('agent_id')
+      .notNull()
+      .references(() => agents.id),
+    projectId: uuid('project_id').notNull(),
+    type: text('type').notNull(),
+    credentialId: uuid('credential_id').notNull(),
+    config: jsonb('config').$type<JsonObject>().notNull().default({}),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('agent_channels_agent_idx').on(t.agentId)],
+);
+
 /** Agents 平台 · 会话线程（backlog #44 M2）。 */
 export const agentThreads = pgTable(
   'agent_threads',
@@ -981,4 +1017,6 @@ export const pgSchema = {
   memoryEntries,
   memoryObservations,
   agentTaskDefinitions,
+  agentFiles,
+  agentChannels,
 };
