@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';
 import type { JsonObject } from '@nomops/workflow';
 import type { DatabaseHandle, NomopsSchema } from './client.js';
 import type {
@@ -41,6 +41,8 @@ import type {
   AuthProviderSyncRecord,
   ScheduledJob,
   ScheduledTask,
+  InsightsRawEvent,
+  InsightsPeriodRow,
 } from './types.js';
 
 /**
@@ -2433,6 +2435,121 @@ export class SchedulerRepository extends BaseRepository {
   }
 }
 
+/**
+ * Insights 预聚合管线（backlog #39）：执行收尾写 insights_raw（与 executions 保留期解耦）;
+ * 卷积任务把旧 raw 折进 insights_by_period 并剪旧行;读取合并 by_period(旧) + 未卷积 raw(近期)。
+ */
+export class InsightsRepository extends BaseRepository {
+  /** 执行收尾写事件 + 快照工作流/项目名。 */
+  async recordEvent(input: {
+    executionId: string;
+    workflowId: string;
+    projectId: string;
+    status: string;
+    runtimeMs: number | null;
+    at: Date;
+    workflowName: string;
+    projectName: string;
+  }): Promise<void> {
+    await this.db.insert(this.schema.insightsRaw).values({
+      executionId: input.executionId,
+      workflowId: input.workflowId,
+      projectId: input.projectId,
+      status: input.status,
+      runtimeMs: input.runtimeMs,
+      at: input.at,
+    });
+    await this.db
+      .insert(this.schema.insightsMetadata)
+      .values({
+        workflowId: input.workflowId,
+        workflowName: input.workflowName,
+        projectId: input.projectId,
+        projectName: input.projectName,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: this.schema.insightsMetadata.workflowId,
+        set: { workflowName: input.workflowName, projectName: input.projectName, updatedAt: new Date() },
+      });
+  }
+
+  /** 范围内 raw 事件（projectId 省略 = 跨项目）。 */
+  async findRawInRange(from: Date, to: Date, projectId?: string): Promise<InsightsRawEvent[]> {
+    const conds = [gte(this.schema.insightsRaw.at, from), lte(this.schema.insightsRaw.at, to)];
+    if (projectId) conds.push(eq(this.schema.insightsRaw.projectId, projectId));
+    const rows = await this.db
+      .select()
+      .from(this.schema.insightsRaw)
+      .where(and(...conds));
+    return rows as InsightsRawEvent[];
+  }
+
+  /* ── 卷积（#39b） ── */
+
+  /** 未卷积且早于 before 的 raw 事件（按项目×日折叠用）。 */
+  async findUnrolledBefore(before: Date, limit = 5000): Promise<InsightsRawEvent[]> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.insightsRaw)
+      .where(and(eq(this.schema.insightsRaw.rolledUp, false), lt(this.schema.insightsRaw.at, before)))
+      .limit(limit);
+    return rows as InsightsRawEvent[];
+  }
+
+  /** 累加一个项目×日桶（卷积写入）。 */
+  async addToPeriod(
+    projectId: string,
+    period: string,
+    delta: { total: number; success: number; error: number; runtimeSum: number; runtimeCount: number },
+  ): Promise<void> {
+    await this.db
+      .insert(this.schema.insightsByPeriod)
+      .values({ projectId, period, ...delta })
+      .onConflictDoUpdate({
+        target: [this.schema.insightsByPeriod.projectId, this.schema.insightsByPeriod.period],
+        set: {
+          total: sql`${this.schema.insightsByPeriod.total} + ${delta.total}`,
+          success: sql`${this.schema.insightsByPeriod.success} + ${delta.success}`,
+          error: sql`${this.schema.insightsByPeriod.error} + ${delta.error}`,
+          runtimeSum: sql`${this.schema.insightsByPeriod.runtimeSum} + ${delta.runtimeSum}`,
+          runtimeCount: sql`${this.schema.insightsByPeriod.runtimeCount} + ${delta.runtimeCount}`,
+        },
+      });
+  }
+
+  async markRolledUp(ids: string[]): Promise<void> {
+    if (!ids.length) return;
+    await this.db
+      .update(this.schema.insightsRaw)
+      .set({ rolledUp: true })
+      .where(inArray(this.schema.insightsRaw.id, ids));
+  }
+
+  /** 剪掉已卷积的旧 raw（by_period 已留存,可删）。 */
+  async pruneRolledBefore(before: Date): Promise<number> {
+    const rows = await this.db
+      .delete(this.schema.insightsRaw)
+      .where(and(eq(this.schema.insightsRaw.rolledUp, true), lt(this.schema.insightsRaw.at, before)))
+      .returning({ id: this.schema.insightsRaw.id });
+    return rows.length;
+  }
+
+  /** 范围内的日桶（period 在 [fromDay, toDay]，projectId 省略 = 跨项目）。 */
+  async findPeriodsInRange(fromDay: string, toDay: string, projectId?: string): Promise<InsightsPeriodRow[]> {
+    const conds = [
+      gte(this.schema.insightsByPeriod.period, fromDay),
+      lte(this.schema.insightsByPeriod.period, toDay),
+    ];
+    if (projectId) conds.push(eq(this.schema.insightsByPeriod.projectId, projectId));
+    const rows = await this.db
+      .select()
+      .from(this.schema.insightsByPeriod)
+      .where(and(...conds));
+    return rows as InsightsPeriodRow[];
+  }
+}
+
 export interface Repositories {
   users: UserRepository;
   apiKeys: ApiKeyRepository;
@@ -2461,6 +2578,7 @@ export interface Repositories {
   authTokenBlacklist: AuthTokenBlacklistRepository;
   authIdentities: AuthIdentityRepository;
   scheduler: SchedulerRepository;
+  insights: InsightsRepository;
 }
 
 /** 用一个 DatabaseHandle 组装全部仓储。server 层在启动时调用一次。 */
@@ -2494,5 +2612,6 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
     authTokenBlacklist: new AuthTokenBlacklistRepository(db, schema),
     authIdentities: new AuthIdentityRepository(db, schema),
     scheduler: new SchedulerRepository(db, schema),
+    insights: new InsightsRepository(db, schema),
   };
 }

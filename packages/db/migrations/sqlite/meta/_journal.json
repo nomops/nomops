@@ -225,6 +225,13 @@
       "when": 1784858861876,
       "tag": "0031_past_shaman",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1784860394739,
+      "tag": "0032_steep_jean_grey",
+      "breakpoints": true
     }
   ]
 }

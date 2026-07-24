@@ -45,6 +45,7 @@ export {
   AuthTokenBlacklistRepository,
   AuthIdentityRepository,
   SchedulerRepository,
+  InsightsRepository,
 } from './repositories.js';
 export type {
   Repositories,
@@ -91,4 +92,6 @@ export type {
   AuthProviderSyncRecord,
   ScheduledJob,
   ScheduledTask,
+  InsightsRawEvent,
+  InsightsPeriodRow,
 } from './types.js';

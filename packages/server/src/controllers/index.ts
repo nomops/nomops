@@ -19,7 +19,7 @@ import { API_SCOPES } from '../auth/api-scopes.js';
 import { verifyHandoff } from '../auth/handoff.js';
 import { requireFeature } from '../ee/license/license-service.js';
 import { isProjectRole, tierForScopes, PROJECT_SCOPES } from '../auth/rbac.js';
-import { computeInsights } from '../services/insights.js';
+import { computeInsights, insightsEventsToRows } from '../services/insights.js';
 import { CHAT_PROVIDERS } from '../services/assistant-service.js';
 import { getTemplate, templateSummaries } from '../services/template-registry.js';
 import {
@@ -1346,21 +1346,30 @@ export function createApiRouter(services: AppServices): Router {
   // ★企业路由集中注册（C1）：实现在 ee/routes.ts，社区侧只留这一个入口
   registerEeRoutes(router, services);
 
-  /* ── insights（当前 project 执行聚合，任意成员可读） ── */
+  /* ── insights（#39：读 insights_raw 而非 executions——清理执行历史后数字不变；
+     ?scope=all 跨项目聚合，实例 admin 可读） ── */
   router.get(
     '/insights',
     h(async (req, res) => {
-      const executions = await services.executions.list(auth(req).projectId);
-      // E2 对标基线：?from=ISO&to=ISO 自定义日期范围；缺省近 7 日
       const parse = (v: unknown): Date | null => {
         if (typeof v !== 'string' || !v) return null;
         const d = new Date(v);
         return Number.isNaN(d.getTime()) ? null : d;
       };
+      const now = new Date();
       const from = parse(req.query['from']);
       const to = parse(req.query['to']);
-      const range = from && to && from.getTime() <= to.getTime() ? { from, to } : undefined;
-      res.json(computeInsights(executions, new Date(), range));
+      const range = from && to && from.getTime() <= to.getTime() ? { from, to } : { from: new Date(now.getTime() - 6 * 86_400_000), to: now };
+
+      const crossProject = req.query['scope'] === 'all';
+      if (crossProject) await assertInstanceAdmin(req);
+      // 略微前扩一天吸收桶边界（computeInsights 只计落桶的事件）
+      const events = await services.repos.insights.findRawInRange(
+        new Date(range.from.getTime() - 86_400_000),
+        range.to,
+        crossProject ? undefined : auth(req).projectId,
+      );
+      res.json(computeInsights(insightsEventsToRows(events), now, range));
     }),
   );
 

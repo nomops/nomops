@@ -225,6 +225,13 @@
       "when": 1784858863152,
       "tag": "0031_adorable_the_hand",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1784860396253,
+      "tag": "0032_loose_lockjaw",
+      "breakpoints": true
     }
   ]
 }

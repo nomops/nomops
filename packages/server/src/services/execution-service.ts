@@ -669,6 +669,40 @@ export class ExecutionService {
    * 组装引擎（凭证注入 + WS hooks），执行并收尾落库。mode 用于失败时派发 errorWorkflow（防级联）。
    * staticData：执行期挂到引擎（触发器游标/AI 记忆等），结束后有变更则写回工作流行。
    */
+  /** #39：执行收尾写 Insights 原始事件 + 快照工作流/项目名（best-effort）。 */
+  private async recordInsights(
+    execution: Pick<Execution, 'id' | 'workflowId'>,
+    projectId: string,
+    run: IRun,
+  ): Promise<void> {
+    // runtime：首节点开始到末节点结束
+    let minStart = Infinity;
+    let maxEnd = -Infinity;
+    for (const runs of Object.values(run.data.resultData.runData)) {
+      for (const t of runs) {
+        if (typeof t.startTime === 'number') {
+          minStart = Math.min(minStart, t.startTime);
+          maxEnd = Math.max(maxEnd, t.startTime + (t.executionTime ?? 0));
+        }
+      }
+    }
+    const runtimeMs = Number.isFinite(minStart) && maxEnd >= minStart ? Math.round(maxEnd - minStart) : null;
+    const [wfRow, proj] = await Promise.all([
+      this.repos.workflows.findByIdUnscoped(execution.workflowId).catch(() => null),
+      this.repos.projects.findById(projectId).catch(() => null),
+    ]);
+    await this.repos.insights.recordEvent({
+      executionId: execution.id,
+      workflowId: execution.workflowId,
+      projectId,
+      status: run.status,
+      runtimeMs,
+      at: new Date(),
+      workflowName: wfRow?.name ?? 'Unknown workflow',
+      projectName: proj?.name ?? 'Unknown project',
+    });
+  }
+
   private async runEngine(
     workflow: Workflow,
     execution: Pick<Execution, 'id' | 'workflowId'>,
@@ -763,6 +797,10 @@ export class ExecutionService {
           .replaceAll(execution.id, meta)
           .catch((e: Error) => console.error(`[nomops] 执行元数据写入失败 ${execution.id}:`, e.message));
       }
+      // #39：写 Insights 原始事件（与 executions 保留期解耦——清理执行历史后 Insights 数字不变）
+      void this.recordInsights(execution, projectId, run).catch((e: Error) =>
+        console.error(`[nomops] Insights 事件写入失败 ${execution.id}:`, e.message),
+      );
       if (run.status === 'error') {
         const err = run.data.resultData.error;
         this.fireErrorWorkflow(

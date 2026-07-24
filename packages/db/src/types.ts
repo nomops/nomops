@@ -41,6 +41,8 @@ export type AuthIdentity = InferSelectModel<typeof sqliteSchema.authIdentities>;
 export type AuthProviderSyncRecord = InferSelectModel<typeof sqliteSchema.authProviderSyncHistory>;
 export type ScheduledJob = InferSelectModel<typeof sqliteSchema.scheduledJobs>;
 export type ScheduledTask = InferSelectModel<typeof sqliteSchema.scheduledTasks>;
+export type InsightsRawEvent = InferSelectModel<typeof sqliteSchema.insightsRaw>;
+export type InsightsPeriodRow = InferSelectModel<typeof sqliteSchema.insightsByPeriod>;
 
 /* ── 创建入参（区别于自动生成的 id/时间戳字段） ── */
 

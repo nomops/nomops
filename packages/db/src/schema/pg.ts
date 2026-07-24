@@ -476,6 +476,48 @@ export const testCaseRuns = pgTable(
 );
 
 /**
+ * Insights 原始事件（backlog #39）：执行收尾写一条,与 executions 保留期解耦。
+ */
+export const insightsRaw = pgTable(
+  'insights_raw',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    executionId: uuid('execution_id').notNull(),
+    workflowId: uuid('workflow_id').notNull(),
+    projectId: uuid('project_id').notNull(),
+    status: text('status').notNull(),
+    runtimeMs: integer('runtime_ms'),
+    at: timestamp('at').notNull(),
+    rolledUp: boolean('rolled_up').notNull().default(false),
+  },
+  (t) => [index('insights_raw_project_at_idx').on(t.projectId, t.at)],
+);
+
+/** Insights 日粒度卷积（backlog #39）。 */
+export const insightsByPeriod = pgTable(
+  'insights_by_period',
+  {
+    projectId: uuid('project_id').notNull(),
+    period: text('period').notNull(),
+    total: integer('total').notNull().default(0),
+    success: integer('success').notNull().default(0),
+    error: integer('error').notNull().default(0),
+    runtimeSum: integer('runtime_sum').notNull().default(0),
+    runtimeCount: integer('runtime_count').notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.projectId, t.period] })],
+);
+
+/** Insights 元数据快照（backlog #39）。 */
+export const insightsMetadata = pgTable('insights_metadata', {
+  workflowId: uuid('workflow_id').primaryKey(),
+  workflowName: text('workflow_name').notNull(),
+  projectId: uuid('project_id').notNull(),
+  projectName: text('project_name').notNull(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+/**
  * DB 调度器 · 作业定义（backlog #38 地基项）：统一定时任务落库,重启不丢。
  * kind 可扩展：workflow-schedule / ldap-sync / insights-rollup / agent-task。
  */
@@ -667,4 +709,7 @@ export const pgSchema = {
   authProviderSyncHistory,
   scheduledJobs,
   scheduledTasks,
+  insightsRaw,
+  insightsByPeriod,
+  insightsMetadata,
 };

@@ -540,6 +540,51 @@ export const testCaseRuns = sqliteTable(
 );
 
 /**
+ * Insights 原始事件（backlog #39）：执行收尾写一条,与 executions 保留期解耦——
+ * 执行历史被清理后 Insights 数字不变。卷积后可按 rollupAt 剪旧行。
+ */
+export const insightsRaw = sqliteTable(
+  'insights_raw',
+  {
+    id: uuidPk('id'),
+    executionId: text('execution_id').notNull(),
+    workflowId: text('workflow_id').notNull(),
+    projectId: text('project_id').notNull(),
+    status: text('status').notNull(), // success|error|canceled|...
+    runtimeMs: integer('runtime_ms'), // stoppedAt-startedAt,null=未知
+    at: integer('at', { mode: 'timestamp_ms' }).notNull(), // 收尾时刻
+    rolledUp: integer('rolled_up', { mode: 'boolean' }).notNull().default(false),
+  },
+  (t) => [index('insights_raw_project_at_idx').on(t.projectId, t.at)],
+);
+
+/** Insights 日粒度卷积（backlog #39）：insights_raw → 项目×日聚合,长期留存。 */
+export const insightsByPeriod = sqliteTable(
+  'insights_by_period',
+  {
+    projectId: text('project_id').notNull(),
+    period: text('period').notNull(), // 'YYYY-MM-DD'（UTC 日）
+    total: integer('total').notNull().default(0),
+    success: integer('success').notNull().default(0),
+    error: integer('error').notNull().default(0),
+    runtimeSum: integer('runtime_sum').notNull().default(0),
+    runtimeCount: integer('runtime_count').notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.projectId, t.period] })],
+);
+
+/** Insights 元数据快照（backlog #39）：工作流/项目名冻结,删源后仍可展示。 */
+export const insightsMetadata = sqliteTable('insights_metadata', {
+  workflowId: text('workflow_id').primaryKey(),
+  workflowName: text('workflow_name').notNull(),
+  projectId: text('project_id').notNull(),
+  projectName: text('project_name').notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+/**
  * DB 调度器 · 作业定义（backlog #38 地基项）：统一定时任务落库,重启不丢。
  * kind 可扩展：workflow-schedule / ldap-sync / insights-rollup / agent-task。
  */
@@ -750,4 +795,7 @@ export const sqliteSchema = {
   authProviderSyncHistory,
   scheduledJobs,
   scheduledTasks,
+  insightsRaw,
+  insightsByPeriod,
+  insightsMetadata,
 };
