@@ -1984,6 +1984,34 @@ export function createApiRouter(services: AppServices): Router {
       res.json(mems.map(({ embedding: _e, ...rest }) => rest));
     }),
   );
+  // MCP 连接（backlog #45 M5）：挂 MCP server → 其工具进工具集,经 HITL gate 执行。
+  router.get(
+    '/instance-ai/mcp/connections',
+    h(async (req, res) => {
+      res.json(await services.instanceAi.listMcpConnections(auth(req).userId));
+    }),
+  );
+  router.get(
+    '/instance-ai/mcp/registry',
+    h(async (req, res) => {
+      res.json(await services.instanceAi.mcpRegistryCandidates());
+    }),
+  );
+  router.post(
+    '/instance-ai/threads/:id/mcp/connect',
+    h(async (req, res) => {
+      const { serverName, url, config } = req.body as { serverName?: string; url?: string; config?: Record<string, unknown> };
+      if (!url?.trim()) throw new OperationalError('url is required', { status: 400 });
+      res.status(201).json(await services.instanceAi.connectMcp(auth(req).userId, param(req, 'id'), { serverName: serverName ?? '', url, config: (config ?? {}) as JsonObject }));
+    }),
+  );
+  router.delete(
+    '/instance-ai/mcp/connections/:connId',
+    h(async (req, res) => {
+      await services.instanceAi.disconnectMcp(param(req, 'connId'), auth(req).userId);
+      res.status(204).end();
+    }),
+  );
 
   /* ── Chat 会话/个人 Agent 持久化（backlog #14,用户维度;原 localStorage 落库） ── */
   router.get(

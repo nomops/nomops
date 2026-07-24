@@ -66,6 +66,7 @@ import type {
   InstanceAiPendingAction,
   InstanceAiRunNode,
   InstanceAiMemory,
+  InstanceAiMcpConnection,
 } from './types.js';
 
 /**
@@ -3508,6 +3509,43 @@ export class InstanceAiRepository extends BaseRepository {
       .from(this.schema.instanceAiMemory)
       .where(eq(this.schema.instanceAiMemory.userId, userId))
       .orderBy(desc(this.schema.instanceAiMemory.createdAt))) as InstanceAiMemory[];
+  }
+
+  /* ── MCP 连接（#45 M5） ── */
+  async addMcpConnection(input: {
+    userId: string;
+    threadId: string | null;
+    serverName: string;
+    url: string;
+    config: JsonObject;
+    tools: Array<{ name: string; description: string }>;
+  }): Promise<InstanceAiMcpConnection> {
+    const [row] = await this.db
+      .insert(this.schema.instanceAiMcpConnections)
+      .values({ ...input, status: 'connected' })
+      .returning();
+    return row as InstanceAiMcpConnection;
+  }
+
+  async listMcpConnections(userId: string): Promise<InstanceAiMcpConnection[]> {
+    return (await this.db
+      .select()
+      .from(this.schema.instanceAiMcpConnections)
+      .where(eq(this.schema.instanceAiMcpConnections.userId, userId))
+      .orderBy(desc(this.schema.instanceAiMcpConnections.createdAt))) as InstanceAiMcpConnection[];
+  }
+
+  async findMcpConnection(id: string): Promise<InstanceAiMcpConnection | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.instanceAiMcpConnections)
+      .where(eq(this.schema.instanceAiMcpConnections.id, id))
+      .limit(1);
+    return (rows[0] as InstanceAiMcpConnection | undefined) ?? null;
+  }
+
+  async deleteMcpConnection(id: string): Promise<void> {
+    await this.db.delete(this.schema.instanceAiMcpConnections).where(eq(this.schema.instanceAiMcpConnections.id, id));
   }
 }
 

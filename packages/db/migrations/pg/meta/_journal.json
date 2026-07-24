@@ -316,6 +316,13 @@
       "when": 1784882110365,
       "tag": "0044_fuzzy_puma",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1784883352476,
+      "tag": "0045_glamorous_warstar",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,7 @@
 import type { Repositories } from '@nomops/db';
 import type { JsonObject } from '@nomops/workflow';
 import { OperationalError } from '@nomops/workflow';
+import { HttpMcpClient, isMcpTool, parseMcpTool, type McpClient } from './instance-ai-mcp.js';
 
 /**
  * 实例助手工具集 + 风险分级（backlog #45 M3）。
@@ -28,9 +29,10 @@ export interface RiskVerdict {
   reason: string;
 }
 
-/** 风险分级：白名单内=safe;其余(含未知工具)=dangerous（fail-safe）。 */
+/** 风险分级：白名单内=safe;其余(含未知/MCP 外部工具)=dangerous（fail-safe）。 */
 export function classifyRisk(tool: string): RiskVerdict {
   if (SAFE_TOOLS.has(tool)) return { risk: 'safe', reason: 'Read-only tool' };
+  if (isMcpTool(tool)) return { risk: 'dangerous', reason: 'External MCP tool — requires approval' };
   const known: Record<string, string> = {
     archive_workflow: 'Archives a workflow (modifies instance state)',
     delete_workflow: 'Permanently deletes a workflow',
@@ -44,8 +46,15 @@ export function classifyRisk(tool: string): RiskVerdict {
  * 内置工具执行器（生产缺省）。危险工具都经归属校验（铁律 2）。
  * 可插拔：bootstrap 传入,M5 会扩到 MCP 工具。
  */
-export function buildDefaultToolExecutor(repos: Repositories): ToolExecutor {
+export function buildDefaultToolExecutor(repos: Repositories, mcpClient: McpClient = new HttpMcpClient()): ToolExecutor {
   return async (tool, args, ctx) => {
+    // MCP 工具（#45 M5）：mcp/<connId>/<tool> → 经连接的 MCP client 调用（归属校验）
+    const mcp = parseMcpTool(tool);
+    if (mcp) {
+      const conn = await repos.instanceAi.findMcpConnection(mcp.connectionId);
+      if (!conn || conn.userId !== ctx.userId) throw new OperationalError('MCP connection not found', { status: 404 });
+      return mcpClient.callTool(conn.url, conn.config, mcp.toolName, args);
+    }
     switch (tool) {
       case 'echo':
         return { echoed: args };

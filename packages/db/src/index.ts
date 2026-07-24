@@ -122,4 +122,6 @@ export type {
   InstanceAiPendingAction,
   InstanceAiRunNode,
   InstanceAiMemory,
+  InstanceAiMcpConnection,
+  McpRegistryServerRow,
 } from './types.js';

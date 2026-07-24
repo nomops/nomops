@@ -1,9 +1,10 @@
-import type { InstanceAiCheckpoint, InstanceAiMemory, InstanceAiMessage, InstanceAiPendingAction, InstanceAiRunNode, InstanceAiThread, Repositories } from '@nomops/db';
+import type { InstanceAiCheckpoint, InstanceAiMcpConnection, InstanceAiMemory, InstanceAiMessage, InstanceAiPendingAction, InstanceAiRunNode, InstanceAiThread, McpRegistryServerRow, Repositories } from '@nomops/db';
 import type { JsonObject } from '@nomops/workflow';
 import { OperationalError } from '@nomops/workflow';
 import type { AssistantService, ChatMessage } from './assistant-service.js';
 import { buildDefaultToolExecutor, classifyRisk, type ToolContext, type ToolExecutor } from './instance-ai-tools.js';
 import { embed, topKMemories } from './embedding.js';
+import { HttpMcpClient, mcpToolName, type McpClient } from './instance-ai-mcp.js';
 
 /**
  * 有检查点的 AI 线程底座（backlog #45 M2，docs/13 组 B）：实例助手的可回滚线程。
@@ -24,16 +25,31 @@ export type ProposeResult =
   | { status: 'executed'; result: JsonObject }
   | { status: 'pending'; action: InstanceAiPendingAction };
 
+/** MCP 连接视图（#45 M5）：config 含 token,不出 API（铁律 3 精神）。 */
+export interface McpConnectionView {
+  id: string;
+  threadId: string | null;
+  serverName: string;
+  url: string;
+  status: string;
+  tools: Array<{ name: string; description: string }>;
+  createdAt: Date;
+}
+
 export class InstanceAiService {
   private readonly toolExecutor: ToolExecutor;
+  private readonly mcpClient: McpClient;
 
   constructor(
     private readonly repos: Repositories,
     private readonly assistant: AssistantService,
     /** 工具执行器（#45 M3；缺省内置,可注入 MCP/假实现）。 */
     toolExecutor?: ToolExecutor,
+    /** MCP 客户端（#45 M5；缺省真·HTTP,可注入假实现）。 */
+    mcpClient?: McpClient,
   ) {
-    this.toolExecutor = toolExecutor ?? buildDefaultToolExecutor(repos);
+    this.mcpClient = mcpClient ?? new HttpMcpClient();
+    this.toolExecutor = toolExecutor ?? buildDefaultToolExecutor(repos, this.mcpClient);
   }
 
   async createThread(userId: string, input: { kind?: string; title?: string }): Promise<InstanceAiThread> {
@@ -221,5 +237,43 @@ export class InstanceAiService {
 
   listMemories(userId: string): Promise<InstanceAiMemory[]> {
     return this.repos.instanceAi.listMemories(userId);
+  }
+
+  /* ── MCP 连接（#45 M5）：挂 MCP server → 其工具进工具集,经 HITL gate + 运行树执行 ── */
+
+  private static connView(conn: InstanceAiMcpConnection): McpConnectionView {
+    // config(含 token)不出 API（铁律 3 精神）
+    return { id: conn.id, threadId: conn.threadId, serverName: conn.serverName, url: conn.url, status: conn.status, tools: conn.tools, createdAt: conn.createdAt };
+  }
+
+  /** 连接一个 MCP server：拉工具清单 → 落库。其工具即刻可经 mcp/<id>/<tool> 提议(走 HITL)。 */
+  async connectMcp(userId: string, threadId: string | null, input: { serverName: string; url: string; config?: JsonObject }): Promise<McpConnectionView> {
+    const url = input.url.trim();
+    if (!/^https?:\/\//.test(url)) throw new OperationalError('url must be http(s)', { status: 400 });
+    if (threadId) await this.requireThread(threadId, userId);
+    const config = input.config ?? {};
+    const tools = await this.mcpClient.listTools(url, config); // 连不上/无工具 → 抛,不落坏连接
+    const conn = await this.repos.instanceAi.addMcpConnection({ userId, threadId, serverName: input.serverName.trim() || url, url, config, tools });
+    return InstanceAiService.connView(conn);
+  }
+
+  async listMcpConnections(userId: string): Promise<McpConnectionView[]> {
+    return (await this.repos.instanceAi.listMcpConnections(userId)).map(InstanceAiService.connView);
+  }
+
+  async disconnectMcp(id: string, userId: string): Promise<void> {
+    const conn = await this.repos.instanceAi.findMcpConnection(id);
+    if (!conn || conn.userId !== userId) throw new OperationalError('MCP connection not found', { status: 404 });
+    await this.repos.instanceAi.deleteMcpConnection(id);
+  }
+
+  /** 候选源：#43 registry 缓存（挂 MCP 时可从中选）。 */
+  mcpRegistryCandidates(): Promise<McpRegistryServerRow[]> {
+    return this.repos.platform.listRegistryServers();
+  }
+
+  /** 某连接某工具的完整工具名（mcp/<id>/<tool>），供 proposeAction 用。 */
+  static toolNameFor(connectionId: string, tool: string): string {
+    return mcpToolName(connectionId, tool);
   }
 }

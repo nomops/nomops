@@ -134,6 +134,8 @@ export interface BootstrapOptions {
   sttFetch?: typeof fetch;
   /** Telegram Bot API fetch（#44 M5；测试注入假实现,不打真实网络）。 */
   telegramFetch?: typeof fetch;
+  /** MCP 客户端（#45 M5；测试注入假实现,不打真实网络）。 */
+  mcpClient?: import('./services/instance-ai-mcp.js').McpClient;
   /** 邮件投递（测试注入记录桩;生产按 NOMOPS_SMTP_* 环境变量,未配置为 NullMailer）。 */
   mailer?: IMailer;
   /** 社区节点安装器（缺省 npm 真实实现；测试注入假实现映射到本地 fixture）。 */
@@ -431,7 +433,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   // #45 M1：AI 建流会话（多轮迭代临时草稿 → Apply 物化为正式 workflow）
   const workflowBuilder = new WorkflowBuilderService(repos, assistant, workflows);
   // #45 M2：有检查点的 AI 线程底座（实例助手,可回滚续跑）
-  const instanceAi = new InstanceAiService(repos, assistant);
+  const instanceAi = new InstanceAiService(repos, assistant, undefined, opts.mcpClient);
   // 实例级 MCP：把勾选的工作流暴露为 MCP tools（Preview）
   const mcp = new McpService(repos, executions, workflows);
   const sharing = new SharingService(repos, workflows, credentialService);

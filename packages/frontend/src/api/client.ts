@@ -157,6 +157,15 @@ export interface InstanceAiMemoryRow {
   content: string;
   createdAt: string;
 }
+export interface InstanceAiMcpRow {
+  id: string;
+  threadId: string | null;
+  serverName: string;
+  url: string;
+  status: string;
+  tools: Array<{ name: string; description: string }>;
+  createdAt: string;
+}
 
 /** AI 建流会话（#45 M1）。 */
 export interface BuilderSessionRow {
@@ -786,6 +795,11 @@ export const api = {
       http<InstanceAiMemoryRow>('POST', `/api/instance-ai/threads/${id}/memory`, body),
     recall: (q: string, threadId?: string) =>
       http<InstanceAiMemoryRow[]>('GET', `/api/instance-ai/recall?q=${encodeURIComponent(q)}${threadId ? `&threadId=${threadId}` : ''}`),
+    mcpConnections: () => http<InstanceAiMcpRow[]>('GET', '/api/instance-ai/mcp/connections'),
+    mcpRegistry: () => http<Array<{ id: string; name: string; url: string; description: string; category: string }>>('GET', '/api/instance-ai/mcp/registry'),
+    mcpConnect: (id: string, body: { serverName: string; url: string; config?: Record<string, unknown> }) =>
+      http<InstanceAiMcpRow>('POST', `/api/instance-ai/threads/${id}/mcp/connect`, body),
+    mcpDisconnect: (connId: string) => http<void>('DELETE', `/api/instance-ai/mcp/connections/${connId}`),
   },
 
   workflowsMeta: () => http<WorkflowMetaRow[]>('GET', '/api/workflows-meta'),

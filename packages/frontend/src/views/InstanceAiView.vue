@@ -4,7 +4,7 @@
  * 左=线程列表,右=对话 + 工作态(state) + 检查点条(存/回滚)。核心演示：中断后从检查点恢复,状态一致。
  */
 import { computed, onMounted, ref } from 'vue';
-import { api, type InstanceAiThreadRow, type InstanceAiMessageRow, type InstanceAiCheckpointRow, type InstanceAiActionRow, type InstanceAiRunNodeRow, type InstanceAiMemoryRow } from '../api/client.js';
+import { api, type InstanceAiThreadRow, type InstanceAiMessageRow, type InstanceAiCheckpointRow, type InstanceAiActionRow, type InstanceAiRunNodeRow, type InstanceAiMemoryRow, type InstanceAiMcpRow } from '../api/client.js';
 
 const threads = ref<InstanceAiThreadRow[]>([]);
 const selected = ref<InstanceAiThreadRow | null>(null);
@@ -25,6 +25,12 @@ const recallQuery = ref('');
 const recallResults = ref<InstanceAiMemoryRow[]>([]);
 const memContent = ref('');
 const memScope = ref('instance');
+
+/* MCP 连接（#45 M5） */
+const mcpConns = ref<InstanceAiMcpRow[]>([]);
+const mcpServerName = ref('');
+const mcpUrl = ref('');
+const mcpToken = ref('');
 const newTitle = ref('');
 const chatInput = ref('');
 const model = ref('');
@@ -49,6 +55,46 @@ async function loadActions() {
   if (!selected.value) return;
   actions.value = await api.instanceAi.actions(selected.value.id).catch(() => []);
   runs.value = await api.instanceAi.runs(selected.value.id).catch(() => []);
+  mcpConns.value = await api.instanceAi.mcpConnections().catch(() => []);
+}
+
+async function mcpConnect() {
+  if (!selected.value || !mcpUrl.value.trim()) return;
+  busy.value = 'mcp';
+  error.value = '';
+  try {
+    await api.instanceAi.mcpConnect(selected.value.id, {
+      serverName: mcpServerName.value.trim(),
+      url: mcpUrl.value.trim(),
+      ...(mcpToken.value.trim() ? { config: { token: mcpToken.value.trim() } } : {}),
+    });
+    mcpServerName.value = '';
+    mcpUrl.value = '';
+    mcpToken.value = '';
+    await refresh();
+  } catch (e) {
+    error.value = (e as Error).message;
+  } finally {
+    busy.value = '';
+  }
+}
+async function mcpDisconnect(c: InstanceAiMcpRow) {
+  if (!window.confirm(`Disconnect "${c.serverName}"?`)) return;
+  await api.instanceAi.mcpDisconnect(c.id).catch(() => undefined);
+  await refresh();
+}
+async function proposeMcpTool(c: InstanceAiMcpRow, tool: string) {
+  if (!selected.value) return;
+  busy.value = 'mcp';
+  error.value = '';
+  try {
+    await api.instanceAi.propose(selected.value.id, `mcp/${c.id}/${tool}`, {});
+    await refresh();
+  } catch (e) {
+    error.value = (e as Error).message;
+  } finally {
+    busy.value = '';
+  }
 }
 
 async function doRecall() {
@@ -326,6 +372,32 @@ async function remove(t: InstanceAiThreadRow) {
           <span>{{ m.content }}</span>
         </li>
       </ul>
+
+      <!-- MCP 连接（#45 M5）：挂 MCP server → 其工具进工具集(经 HITL gate) -->
+      <h3 class="iai-side-title">MCP servers <span class="dim" style="font-weight: 400">· tools</span></h3>
+      <div class="iai-cp-new">
+        <input v-model="mcpServerName" data-test="iai-mcp-name" placeholder="name" style="flex: 0 0 90px" />
+        <input v-model="mcpUrl" data-test="iai-mcp-url" placeholder="MCP server URL" class="mono-in" />
+      </div>
+      <div class="iai-cp-new" style="margin-top: 6px">
+        <input v-model="mcpToken" data-test="iai-mcp-token" placeholder="bearer token (optional)" class="mono-in" type="password" />
+        <button class="btn primary" data-test="iai-mcp-connect" :disabled="busy === 'mcp' || !mcpUrl.trim()" @click="mcpConnect">Connect</button>
+      </div>
+      <p v-if="!mcpConns.length" class="dim">No MCP servers connected.</p>
+      <ul v-else class="iai-cps" data-test="iai-mcp-conns">
+        <li v-for="c in mcpConns" :key="c.id" class="iai-mcp">
+          <div class="iai-mcp-head">
+            <b>{{ c.serverName }}</b>
+            <span class="iai-badge">{{ c.status }}</span>
+            <button class="link" data-test="iai-mcp-disconnect" style="margin-left: auto" @click="mcpDisconnect(c)">✕</button>
+          </div>
+          <div class="iai-mcp-tools">
+            <button v-for="t in c.tools" :key="t.name" class="iai-tool-chip" data-test="iai-mcp-tool" :title="t.description" :disabled="busy === 'mcp'" @click="proposeMcpTool(c, t.name)">
+              {{ t.name }}
+            </button>
+          </div>
+        </li>
+      </ul>
     </section>
     <section v-else class="iai-main empty"><p class="dim">Select or create a thread.</p></section>
    </div>
@@ -384,4 +456,9 @@ async function remove(t: InstanceAiThreadRow) {
 .iai-run-dot.error { background: #e85959; }
 .iai-run-dot.running { background: var(--accent, #ff6900); }
 .iai-mem-hit { display: flex; gap: 6px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--border-color, #23232a); font-size: 12.5px; }
+.iai-mcp { padding: 8px 0; border-bottom: 1px solid var(--border-color, #23232a); }
+.iai-mcp-head { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.iai-mcp-tools { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 5px; }
+.iai-tool-chip { padding: 3px 9px; border: 1px solid var(--border-color, #2a2a33); border-radius: 12px; background: none; color: inherit; font-size: 11.5px; cursor: pointer; font-family: var(--font-family--monospace, monospace); }
+.iai-tool-chip:hover { border-color: var(--accent, #ff6900); color: var(--accent, #ff6900); }
 </style>

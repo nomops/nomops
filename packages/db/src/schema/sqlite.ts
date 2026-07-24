@@ -436,6 +436,29 @@ export const instanceAiMemory = sqliteTable(
   (t) => [index('instance_ai_memory_user_idx').on(t.userId)],
 );
 
+/**
+ * 助手连接的 MCP server（backlog #45 M5，docs/13 组 C）：挂一个 MCP server → 其工具进工具集。
+ * config 存连接配置(含 token,不出 API/不进日志——铁律 3 精神);tools 缓存连接时发现的工具清单。
+ * 候选源 = #43 mcp_registry_server 缓存。
+ */
+export const instanceAiMcpConnections = sqliteTable(
+  'instance_ai_mcp_connections',
+  {
+    id: uuidPk('id'),
+    userId: text('user_id').notNull(),
+    threadId: text('thread_id'), // 线程域连接（可空 = 实例级）
+    serverName: text('server_name').notNull(),
+    url: text('url').notNull(),
+    config: text('config', { mode: 'json' }).$type<JsonObject>().notNull().$defaultFn(() => ({})),
+    status: text('status').notNull().default('connected'), // connected|error|disconnected
+    tools: text('tools', { mode: 'json' }).$type<Array<{ name: string; description: string }>>().notNull().$defaultFn(() => []),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('instance_ai_mcp_connections_user_idx').on(t.userId)],
+);
+
 /** 实例升级史（backlog #43）：每次启动检测版本变化即记一条。 */
 export const instanceVersionHistory = sqliteTable('instance_version_history', {
   id: uuidPk('id'),
@@ -1343,4 +1366,5 @@ export const sqliteSchema = {
   instanceAiPendingActions,
   instanceAiRunTree,
   instanceAiMemory,
+  instanceAiMcpConnections,
 };

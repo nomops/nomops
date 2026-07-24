@@ -360,6 +360,23 @@ export const instanceAiMemory = pgTable(
   (t) => [index('instance_ai_memory_user_idx').on(t.userId)],
 );
 
+/** 助手连接的 MCP server（backlog #45 M5）：挂 MCP server → 其工具进工具集。候选源 = #43 registry 缓存。 */
+export const instanceAiMcpConnections = pgTable(
+  'instance_ai_mcp_connections',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').notNull(),
+    threadId: uuid('thread_id'),
+    serverName: text('server_name').notNull(),
+    url: text('url').notNull(),
+    config: jsonb('config').$type<JsonObject>().notNull().default({}),
+    status: text('status').notNull().default('connected'),
+    tools: jsonb('tools').$type<Array<{ name: string; description: string }>>().notNull().default([]),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('instance_ai_mcp_connections_user_idx').on(t.userId)],
+);
+
 /** 实例升级史（backlog #43）。 */
 export const instanceVersionHistory = pgTable('instance_version_history', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -1168,4 +1185,5 @@ export const pgSchema = {
   instanceAiPendingActions,
   instanceAiRunTree,
   instanceAiMemory,
+  instanceAiMcpConnections,
 };
