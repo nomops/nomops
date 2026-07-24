@@ -247,6 +247,12 @@ async function openAbout() {
       <span v-if="!collapsed" class="badge-preview">{{ t('Preview') }}</span>
     </RouterLink>
 
+    <!-- Agents 平台（#44 M1） -->
+    <RouterLink class="nav-item" :class="{ active: route.name === 'agents' }" :title="t('Agents')" data-test="nav-agents" :to="{ name: 'agents' }">
+      <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="2" /><path d="M12 8V4M9 14h.01M15 14h.01" /></svg>
+      <span class="lbl">{{ t('Agents') }}</span>
+    </RouterLink>
+
     <!-- D004 对标基线:无独立 "Personal" 项(个人空间即 Overview 默认上下文) -->
 
     <!-- 团队项目 -->

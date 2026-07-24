@@ -73,6 +73,19 @@ export interface FolderRow {
   updatedAt: string;
 }
 
+/** Agents 平台 agent（#44 M1）。 */
+export interface AgentRow {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string;
+  config: Record<string, unknown>;
+  publishedVersionId: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** 节点类型信息：描述 + 全名 type（内置 nomops.* 与社区 <pkg>.* 一致）。 */
 export type NodeTypeInfo = INodeTypeDescription & { type: string };
 
@@ -548,6 +561,22 @@ export const api = {
     remove: (id: string) => http<void>('DELETE', `/api/tags/${id}`),
     setForWorkflow: (workflowId: string, tagIds: string[]) =>
       http<{ ok: true }>('PUT', `/api/workflows/${workflowId}/tags`, { tagIds }),
+  },
+
+  /* Agents 平台（#44 M1）：项目级 agent 定义 + 版本 */
+  agents: {
+    list: () => http<AgentRow[]>('GET', '/api/agents'),
+    get: (id: string) => http<AgentRow>('GET', `/api/agents/${id}`),
+    create: (body: { name: string; description?: string; config?: Record<string, unknown> }) =>
+      http<AgentRow>('POST', '/api/agents', body),
+    update: (id: string, body: { name?: string; description?: string; config?: Record<string, unknown> }) =>
+      http<AgentRow>('PATCH', `/api/agents/${id}`, body),
+    remove: (id: string) => http<void>('DELETE', `/api/agents/${id}`),
+    publish: (id: string) => http<{ id: string; publishedVersionId: string; versionNumber: number }>('POST', `/api/agents/${id}/publish`),
+    versions: (id: string) =>
+      http<Array<{ id: string; versionNumber: number; name: string; config: Record<string, unknown>; createdAt: string }>>('GET', `/api/agents/${id}/versions`),
+    restore: (id: string, versionId: string) =>
+      http<{ id: string; versionNumber: number }>('POST', `/api/agents/${id}/versions/${versionId}/restore`),
   },
 
   workflowsMeta: () => http<WorkflowMetaRow[]>('GET', '/api/workflows-meta'),

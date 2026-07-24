@@ -128,6 +128,14 @@ export const chatSessionUpsertSchema = z.object({
   messages: z.array(z.record(z.unknown())).max(500),
 });
 
+/** Agents 平台 · agent 定义（backlog #44 M1，项目级）。config 至少含 system。 */
+export const agentBodySchema = z.object({
+  name: z.string().min(1).max(200),
+  description: z.string().max(2000).optional(),
+  config: z.record(z.unknown()).optional().default({}),
+});
+export const agentPatchSchema = agentBodySchema.partial();
+
 /** 个人 Chat Agent upsert。 */
 export const chatAgentUpsertSchema = z.object({
   name: z.string().min(1).max(200),

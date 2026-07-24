@@ -48,6 +48,8 @@ import type {
   RoleMappingRule,
   InstanceVersionRow,
   McpRegistryServerRow,
+  Agent,
+  AgentVersion,
 } from './types.js';
 
 /**
@@ -2780,6 +2782,103 @@ export class PlatformRepository extends BaseRepository {
   }
 }
 
+/**
+ * Agents 平台仓储（backlog #44 M1）：项目级 agent 定义 + 版本史（发布/回滚）。
+ * 归属直过滤 projectId（同 DataTableRepository）；版本模式仿 workflow_versions。
+ */
+export class AgentRepository extends BaseRepository {
+  async findAllByProject(projectId: string): Promise<Agent[]> {
+    return (await this.db
+      .select()
+      .from(this.schema.agents)
+      .where(eq(this.schema.agents.projectId, projectId))
+      .orderBy(desc(this.schema.agents.createdAt))) as Agent[];
+  }
+
+  async findById(id: string, projectId: string): Promise<Agent | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.agents)
+      .where(and(eq(this.schema.agents.id, id), eq(this.schema.agents.projectId, projectId)))
+      .limit(1);
+    return (rows[0] as Agent | undefined) ?? null;
+  }
+
+  async create(input: { projectId: string; name: string; description?: string; config: JsonObject }): Promise<Agent> {
+    const [row] = await this.db
+      .insert(this.schema.agents)
+      .values({
+        projectId: input.projectId,
+        name: input.name,
+        description: input.description ?? '',
+        config: input.config,
+      })
+      .returning();
+    return row as Agent;
+  }
+
+  async update(id: string, patch: Partial<{ name: string; description: string; config: JsonObject }>): Promise<Agent> {
+    const [row] = await this.db
+      .update(this.schema.agents)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(this.schema.agents.id, id))
+      .returning();
+    return row as Agent;
+  }
+
+  async setActive(id: string, active: boolean): Promise<void> {
+    await this.db.update(this.schema.agents).set({ active, updatedAt: new Date() }).where(eq(this.schema.agents.id, id));
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.db.delete(this.schema.agentHistory).where(eq(this.schema.agentHistory.agentId, id));
+    await this.db.delete(this.schema.agents).where(eq(this.schema.agents.id, id));
+  }
+
+  /* ── 版本史 ── */
+  private async nextVersionNumber(agentId: string): Promise<number> {
+    const rows = await this.db
+      .select({ versionNumber: this.schema.agentHistory.versionNumber })
+      .from(this.schema.agentHistory)
+      .where(eq(this.schema.agentHistory.agentId, agentId))
+      .orderBy(desc(this.schema.agentHistory.versionNumber))
+      .limit(1);
+    return (rows[0]?.versionNumber ?? 0) + 1;
+  }
+
+  /** 快照当前定义为一个版本,并把它标为已发布。返回版本行。 */
+  async publish(agent: Agent, createdBy: string | null): Promise<AgentVersion> {
+    const versionNumber = await this.nextVersionNumber(agent.id);
+    const [version] = await this.db
+      .insert(this.schema.agentHistory)
+      .values({ agentId: agent.id, versionNumber, name: agent.name, config: agent.config, createdBy })
+      .returning();
+    const v = version as AgentVersion;
+    await this.db
+      .update(this.schema.agents)
+      .set({ publishedVersionId: v.id, updatedAt: new Date() })
+      .where(eq(this.schema.agents.id, agent.id));
+    return v;
+  }
+
+  async listVersions(agentId: string): Promise<AgentVersion[]> {
+    return (await this.db
+      .select()
+      .from(this.schema.agentHistory)
+      .where(eq(this.schema.agentHistory.agentId, agentId))
+      .orderBy(desc(this.schema.agentHistory.versionNumber))) as AgentVersion[];
+  }
+
+  async findVersion(agentId: string, versionId: string): Promise<AgentVersion | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.agentHistory)
+      .where(and(eq(this.schema.agentHistory.id, versionId), eq(this.schema.agentHistory.agentId, agentId)))
+      .limit(1);
+    return (rows[0] as AgentVersion | undefined) ?? null;
+  }
+}
+
 export interface Repositories {
   users: UserRepository;
   apiKeys: ApiKeyRepository;
@@ -2812,6 +2911,7 @@ export interface Repositories {
   publishPipeline: PublishPipelineRepository;
   roleMappings: RoleMappingRepository;
   platform: PlatformRepository;
+  agents: AgentRepository;
 }
 
 /** 用一个 DatabaseHandle 组装全部仓储。server 层在启动时调用一次。 */
@@ -2849,5 +2949,6 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
     publishPipeline: new PublishPipelineRepository(db, schema),
     roleMappings: new RoleMappingRepository(db, schema),
     platform: new PlatformRepository(db, schema),
+    agents: new AgentRepository(db, schema),
   };
 }

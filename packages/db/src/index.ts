@@ -49,6 +49,7 @@ export {
   PublishPipelineRepository,
   RoleMappingRepository,
   PlatformRepository,
+  AgentRepository,
 } from './repositories.js';
 export type {
   Repositories,
@@ -101,4 +102,6 @@ export type {
   PublishHistoryRow,
   TriggerStatusRow,
   RoleMappingRule,
+  Agent,
+  AgentVersion,
 } from './types.js';

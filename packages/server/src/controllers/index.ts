@@ -48,6 +48,8 @@ import {
   transcribeBodySchema,
   executionAnnotationSchema,
   roleMappingSchema,
+  agentBodySchema,
+  agentPatchSchema,
   updateMeSchema,
   changePasswordSchema,
   ssoConfigSchema,
@@ -1170,6 +1172,90 @@ export function createApiRouter(services: AppServices): Router {
     '/projects',
     h(async (req, res) => {
       res.json(await services.repos.projects.findAllByUserWithRole(auth(req).userId));
+    }),
+  );
+
+  /* ── Agents 平台（backlog #44 M1）：项目级 agent 定义 + 版本 + 发布/回滚 ── */
+  const getAgentOr404 = async (req: Request) => {
+    const agent = await services.repos.agents.findById(param(req, 'id'), auth(req).projectId);
+    if (!agent) throw new OperationalError('Agent not found', { status: 404 });
+    return agent;
+  };
+  router.get(
+    '/agents',
+    h(async (req, res) => {
+      res.json(await services.repos.agents.findAllByProject(auth(req).projectId));
+    }),
+  );
+  router.post(
+    '/agents',
+    editor,
+    h(async (req, res) => {
+      const body = parseBody(agentBodySchema, req);
+      const agent = await services.repos.agents.create({
+        projectId: auth(req).projectId,
+        name: body.name,
+        description: body.description,
+        config: body.config as JsonObject,
+      });
+      recordAudit(services, req, 'agent.create', { type: 'agent', id: agent.id });
+      res.status(201).json(agent);
+    }),
+  );
+  router.get(
+    '/agents/:id',
+    h(async (req, res) => {
+      res.json(await getAgentOr404(req));
+    }),
+  );
+  router.patch(
+    '/agents/:id',
+    editor,
+    h(async (req, res) => {
+      await getAgentOr404(req); // 归属校验
+      const body = parseBody(agentPatchSchema, req);
+      res.json(await services.repos.agents.update(param(req, 'id'), body as Partial<{ name: string; description: string; config: JsonObject }>));
+    }),
+  );
+  router.delete(
+    '/agents/:id',
+    editor,
+    h(async (req, res) => {
+      await getAgentOr404(req);
+      await services.repos.agents.delete(param(req, 'id'));
+      recordAudit(services, req, 'agent.delete', { type: 'agent', id: param(req, 'id') });
+      res.status(204).end();
+    }),
+  );
+  router.post(
+    '/agents/:id/publish',
+    editor,
+    h(async (req, res) => {
+      const agent = await getAgentOr404(req);
+      const version = await services.repos.agents.publish(agent, auth(req).userId);
+      recordAudit(services, req, 'agent.publish', { type: 'agent', id: agent.id }, { versionNumber: version.versionNumber });
+      res.json({ id: agent.id, publishedVersionId: version.id, versionNumber: version.versionNumber });
+    }),
+  );
+  router.get(
+    '/agents/:id/versions',
+    h(async (req, res) => {
+      await getAgentOr404(req);
+      res.json(await services.repos.agents.listVersions(param(req, 'id')));
+    }),
+  );
+  router.post(
+    '/agents/:id/versions/:versionId/restore',
+    editor,
+    h(async (req, res) => {
+      await getAgentOr404(req);
+      const version = await services.repos.agents.findVersion(param(req, 'id'), param(req, 'versionId'));
+      if (!version) throw new OperationalError('Agent version not found', { status: 404 });
+      // 回滚 = 用该版本定义覆写当前 + 再发布一版（史线保持线性，同 workflow restore）
+      const updated = await services.repos.agents.update(param(req, 'id'), { name: version.name, config: version.config });
+      const newVersion = await services.repos.agents.publish(updated, auth(req).userId);
+      recordAudit(services, req, 'agent.restore', { type: 'agent', id: updated.id }, { restoredFrom: version.versionNumber });
+      res.json({ id: updated.id, publishedVersionId: newVersion.id, versionNumber: newVersion.versionNumber });
     }),
   );
 

@@ -36,6 +36,51 @@ export const users = sqliteTable('users', {
     .$defaultFn(() => new Date()),
 });
 
+/**
+ * Agents 平台 · agent 定义（backlog #44 M1，docs/12）：项目级共享,有版本、可发布/回滚。
+ * config 引用模型/工具/记忆策略(不内联),M1 仅需 { system, model? }。
+ */
+export const agents = sqliteTable(
+  'agents',
+  {
+    id: uuidPk('id'),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    name: text('name').notNull(),
+    description: text('description').notNull().default(''),
+    config: text('config', { mode: 'json' }).$type<JsonObject>().notNull().$defaultFn(() => ({})),
+    publishedVersionId: text('published_version_id'),
+    active: integer('active', { mode: 'boolean' }).notNull().default(false),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('agents_project_id_idx').on(t.projectId)],
+);
+
+/** Agents 平台 · 发布版本史（backlog #44 M1）：同 workflow_versions 的版本快照模式。 */
+export const agentHistory = sqliteTable(
+  'agent_history',
+  {
+    id: uuidPk('id'),
+    agentId: text('agent_id')
+      .notNull()
+      .references(() => agents.id),
+    versionNumber: integer('version_number').notNull(),
+    name: text('name').notNull(),
+    config: text('config', { mode: 'json' }).$type<JsonObject>().notNull(),
+    createdBy: text('created_by'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('agent_history_agent_idx').on(t.agentId)],
+);
+
 /** 实例升级史（backlog #43）：每次启动检测版本变化即记一条。 */
 export const instanceVersionHistory = sqliteTable('instance_version_history', {
   id: uuidPk('id'),
@@ -925,4 +970,6 @@ export const sqliteSchema = {
   instanceVersionHistory,
   mcpRegistryServer,
   folderTagMapping,
+  agents,
+  agentHistory,
 };

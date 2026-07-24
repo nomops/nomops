@@ -369,6 +369,24 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     if (!latest || latest.version !== version) await repos.platform.recordVersion(version);
   }
 
+  // #44 M1：一次性把旧 chat_agents(个人 chat agent) 迁进新 agents 平台（迁至各自个人项目,
+  // config={system}）——非破坏,chat_agents 原样保留;settings 标志位保证只跑一次。
+  if (role === 'main' && !(await repos.settings.get('agents.backfilled'))) {
+    let moved = 0;
+    for (const user of await repos.users.findAll().catch(() => [])) {
+      const projects = await repos.projects.findAllByUser(user.id).catch(() => []);
+      const personal = projects.find((p) => p.type === 'personal') ?? projects[0];
+      if (!personal) continue;
+      for (const ca of await repos.chat.listAgents(user.id).catch(() => [])) {
+        await repos.agents
+          .create({ projectId: personal.id, name: ca.name, description: '', config: { system: ca.system } })
+          .then(() => (moved += 1))
+          .catch(() => undefined);
+      }
+    }
+    await repos.settings.set('agents.backfilled', String(moved));
+  }
+
   const sso = new OidcService(repos, credentials, auth, baseUrl);
   const saml = new SamlService(repos, credentials, auth, baseUrl);
   const oauth2 = new OAuth2Service(credentialService, baseUrl);

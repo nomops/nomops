@@ -48,6 +48,8 @@ export type TriggerStatusRow = InferSelectModel<typeof sqliteSchema.publicationT
 export type RoleMappingRule = InferSelectModel<typeof sqliteSchema.roleMappingRule>;
 export type InstanceVersionRow = InferSelectModel<typeof sqliteSchema.instanceVersionHistory>;
 export type McpRegistryServerRow = InferSelectModel<typeof sqliteSchema.mcpRegistryServer>;
+export type Agent = InferSelectModel<typeof sqliteSchema.agents>;
+export type AgentVersion = InferSelectModel<typeof sqliteSchema.agentHistory>;
 
 /* ── 创建入参（区别于自动生成的 id/时间戳字段） ── */
 

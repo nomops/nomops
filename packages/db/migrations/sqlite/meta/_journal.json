@@ -253,6 +253,13 @@
       "when": 1784864911609,
       "tag": "0035_famous_nicolaos",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1784870899978,
+      "tag": "0036_high_captain_cross",
+      "breakpoints": true
     }
   ]
 }

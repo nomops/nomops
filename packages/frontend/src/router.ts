@@ -27,6 +27,7 @@ export const router = createRouter({
     { path: '/audit', name: 'audit', component: () => import('./views/AuditView.vue') },
     { path: '/insights/:metric?', name: 'insights', component: () => import('./views/InsightsView.vue') },
     { path: '/templates', name: 'templates', component: () => import('./views/TemplatesView.vue') },
+    { path: '/agents', name: 'agents', component: () => import('./views/AgentsView.vue') },
     { path: '/settings', name: 'settings', component: () => import('./views/SettingsView.vue') },
     { path: '/sso/done', name: 'ssoDone', component: () => import('./views/SsoDoneView.vue'), meta: { public: true } },
 
