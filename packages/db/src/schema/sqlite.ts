@@ -540,6 +540,65 @@ export const testCaseRuns = sqliteTable(
 );
 
 /**
+ * DB 调度器 · 作业定义（backlog #38 地基项）：统一定时任务落库,重启不丢。
+ * kind 可扩展：workflow-schedule / ldap-sync / insights-rollup / agent-task。
+ */
+export const scheduledJobs = sqliteTable(
+  'scheduled_jobs',
+  {
+    id: uuidPk('id'),
+    kind: text('kind').notNull(),
+    workflowId: text('workflow_id'), // workflow-schedule 用
+    nodeName: text('node_name'), // 哪个 Schedule Trigger 节点
+    config: text('config', { mode: 'json' })
+      .$type<JsonObject>()
+      .notNull()
+      .$defaultFn(() => ({})), // { mode:'cron'|'interval'|'once', cron?, everySeconds?, fireAt? }
+    timezone: text('timezone').notNull().default('UTC'),
+    active: integer('active', { mode: 'boolean' }).notNull().default(true),
+    nextRunAt: integer('next_run_at', { mode: 'timestamp_ms' }), // null = 不再触发（once 已触发/停用）
+    maxAttempts: integer('max_attempts').notNull().default(1),
+    lastRunAt: integer('last_run_at', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('scheduled_jobs_active_next_run_idx').on(t.active, t.nextRunAt)],
+);
+
+/**
+ * DB 调度器 · 到期触发实例（backlog #38）：一次到期一条,租约抢占保证多实例只触发一次。
+ * unique(jobId, scheduledFor)：同一作业同一时刻只物化一条 → 天然去重。
+ */
+export const scheduledTasks = sqliteTable(
+  'scheduled_tasks',
+  {
+    id: uuidPk('id'),
+    jobId: text('job_id')
+      .notNull()
+      .references(() => scheduledJobs.id),
+    scheduledFor: integer('scheduled_for', { mode: 'timestamp_ms' }).notNull(),
+    status: text('status').notNull().default('pending'), // pending|running|done|error
+    attempts: integer('attempts').notNull().default(0),
+    claimedBy: text('claimed_by'), // 抢到租约的实例 id
+    leaseExpiresAt: integer('lease_expires_at', { mode: 'timestamp_ms' }),
+    leaseEpoch: integer('lease_epoch').notNull().default(0), // 乐观锁：claim 时 +1
+    executionId: text('execution_id'),
+    error: text('error'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [
+    uniqueIndex('scheduled_tasks_job_time_uic').on(t.jobId, t.scheduledFor),
+    index('scheduled_tasks_status_idx').on(t.status, t.leaseExpiresAt),
+  ],
+);
+
+/**
  * 外部身份绑定（backlog #36）：user ↔ (providerType, providerId)。
  * SSO/LDAP 登录优先按此绑定认归属——email 变更或多 provider 并存不再错认。
  */
@@ -689,4 +748,6 @@ export const sqliteSchema = {
   invalidAuthTokens,
   authIdentities,
   authProviderSyncHistory,
+  scheduledJobs,
+  scheduledTasks,
 };

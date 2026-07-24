@@ -218,6 +218,13 @@
       "when": 1784857320977,
       "tag": "0030_condemned_sphinx",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1784858863152,
+      "tag": "0031_adorable_the_hand",
+      "breakpoints": true
     }
   ]
 }

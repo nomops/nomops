@@ -44,12 +44,14 @@ export {
   ExecutionMetadataRepository,
   AuthTokenBlacklistRepository,
   AuthIdentityRepository,
+  SchedulerRepository,
 } from './repositories.js';
 export type {
   Repositories,
   WorkflowVersionMeta,
   CreateWorkflowVersionInput,
   ExecutionAnnotationView,
+  ScheduledJobInput,
 } from './repositories.js';
 
 export type {
@@ -87,4 +89,6 @@ export type {
   ExecutionMetadataRow,
   AuthIdentity,
   AuthProviderSyncRecord,
+  ScheduledJob,
+  ScheduledTask,
 } from './types.js';

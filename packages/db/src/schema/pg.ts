@@ -476,6 +476,56 @@ export const testCaseRuns = pgTable(
 );
 
 /**
+ * DB 调度器 · 作业定义（backlog #38 地基项）：统一定时任务落库,重启不丢。
+ * kind 可扩展：workflow-schedule / ldap-sync / insights-rollup / agent-task。
+ */
+export const scheduledJobs = pgTable(
+  'scheduled_jobs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    kind: text('kind').notNull(),
+    workflowId: uuid('workflow_id'),
+    nodeName: text('node_name'),
+    config: jsonb('config').$type<JsonObject>().notNull().default({}),
+    timezone: text('timezone').notNull().default('UTC'),
+    active: boolean('active').notNull().default(true),
+    nextRunAt: timestamp('next_run_at', { withTimezone: false }), // null = 不再触发
+    maxAttempts: integer('max_attempts').notNull().default(1),
+    lastRunAt: timestamp('last_run_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [index('scheduled_jobs_active_next_run_idx').on(t.active, t.nextRunAt)],
+);
+
+/**
+ * DB 调度器 · 到期触发实例（backlog #38）：一次到期一条,租约抢占保证多实例只触发一次。
+ * unique(jobId, scheduledFor)：同一作业同一时刻只物化一条 → 天然去重。
+ */
+export const scheduledTasks = pgTable(
+  'scheduled_tasks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    jobId: uuid('job_id')
+      .notNull()
+      .references(() => scheduledJobs.id),
+    scheduledFor: timestamp('scheduled_for').notNull(),
+    status: text('status').notNull().default('pending'), // pending|running|done|error
+    attempts: integer('attempts').notNull().default(0),
+    claimedBy: text('claimed_by'),
+    leaseExpiresAt: timestamp('lease_expires_at'),
+    leaseEpoch: integer('lease_epoch').notNull().default(0),
+    executionId: uuid('execution_id'),
+    error: text('error'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('scheduled_tasks_job_time_uic').on(t.jobId, t.scheduledFor),
+    index('scheduled_tasks_status_idx').on(t.status, t.leaseExpiresAt),
+  ],
+);
+
+/**
  * 外部身份绑定（backlog #36）：user ↔ (providerType, providerId)。
  * SSO/LDAP 登录优先按此绑定认归属——email 变更或多 provider 并存不再错认。
  */
@@ -615,4 +665,6 @@ export const pgSchema = {
   invalidAuthTokens,
   authIdentities,
   authProviderSyncHistory,
+  scheduledJobs,
+  scheduledTasks,
 };

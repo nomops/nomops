@@ -34,6 +34,7 @@
     "@nomops/workflow": "workspace:*",
     "argon2": "^0.41.1",
     "bullmq": "^5.79.3",
+    "cron-parser": "^5.0.0",
     "express": "^5.1.0",
     "ioredis": "^5.11.1",
     "jose": "^6.2.3",

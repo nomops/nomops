@@ -160,6 +160,9 @@ importers:
       bullmq:
         specifier: ^5.79.3
         version: 5.79.3
+      cron-parser:
+        specifier: ^5.0.0
+        version: 5.6.1
       express:
         specifier: ^5.1.0
         version: 5.2.1

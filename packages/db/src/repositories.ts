@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, lt, lte, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';
 import type { JsonObject } from '@nomops/workflow';
 import type { DatabaseHandle, NomopsSchema } from './client.js';
 import type {
@@ -39,6 +39,8 @@ import type {
   TestCaseRun,
   AnnotationTag,
   AuthProviderSyncRecord,
+  ScheduledJob,
+  ScheduledTask,
 } from './types.js';
 
 /**
@@ -2240,6 +2242,197 @@ export class AuthIdentityRepository extends BaseRepository {
   }
 }
 
+/** 调度作业创建/更新入参。 */
+export interface ScheduledJobInput {
+  kind: string;
+  workflowId?: string | null;
+  nodeName?: string | null;
+  config: JsonObject;
+  timezone?: string;
+  nextRunAt: Date | null;
+  maxAttempts?: number;
+}
+
+/**
+ * DB 调度器仓储（backlog #38 地基项）。租约抢占用乐观锁（leaseEpoch）实现原子 claim——
+ * 多实例并发查到同一到期 task,只有一个 UPDATE 命中(epoch 匹配),保证只触发一次。
+ */
+export class SchedulerRepository extends BaseRepository {
+  /* ── 作业（recurrence 定义） ── */
+
+  async createJob(input: ScheduledJobInput): Promise<ScheduledJob> {
+    const [row] = await this.db
+      .insert(this.schema.scheduledJobs)
+      .values({
+        kind: input.kind,
+        workflowId: input.workflowId ?? null,
+        nodeName: input.nodeName ?? null,
+        config: input.config,
+        timezone: input.timezone ?? 'UTC',
+        nextRunAt: input.nextRunAt,
+        maxAttempts: input.maxAttempts ?? 1,
+        active: true,
+      })
+      .returning();
+    return row as ScheduledJob;
+  }
+
+  /** 某工作流某节点的作业（激活时 upsert 用；一个 Schedule 节点一条）。 */
+  async findJobByNode(workflowId: string, nodeName: string): Promise<ScheduledJob | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.scheduledJobs)
+      .where(
+        and(
+          eq(this.schema.scheduledJobs.workflowId, workflowId),
+          eq(this.schema.scheduledJobs.nodeName, nodeName),
+        ),
+      )
+      .limit(1);
+    return (rows[0] as ScheduledJob | undefined) ?? null;
+  }
+
+  async updateJob(
+    id: string,
+    patch: Partial<{
+      config: JsonObject;
+      timezone: string;
+      active: boolean;
+      nextRunAt: Date | null;
+      lastRunAt: Date | null;
+      maxAttempts: number;
+    }>,
+  ): Promise<void> {
+    await this.db
+      .update(this.schema.scheduledJobs)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(this.schema.scheduledJobs.id, id));
+  }
+
+  /** 停用某工作流的全部调度作业（工作流下线时）。 */
+  async deactivateJobsForWorkflow(workflowId: string): Promise<void> {
+    await this.db
+      .update(this.schema.scheduledJobs)
+      .set({ active: false, nextRunAt: null, updatedAt: new Date() })
+      .where(eq(this.schema.scheduledJobs.workflowId, workflowId));
+  }
+
+  async findJobById(id: string): Promise<ScheduledJob | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.scheduledJobs)
+      .where(eq(this.schema.scheduledJobs.id, id))
+      .limit(1);
+    return (rows[0] as ScheduledJob | undefined) ?? null;
+  }
+
+  /** 到期的活跃作业（nextRunAt <= now）。调度循环据此物化 task。 */
+  async findDueJobs(now: Date): Promise<ScheduledJob[]> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.scheduledJobs)
+      .where(
+        and(
+          eq(this.schema.scheduledJobs.active, true),
+          lte(this.schema.scheduledJobs.nextRunAt, now),
+        ),
+      );
+    return rows as ScheduledJob[];
+  }
+
+  /* ── 到期触发实例（lease） ── */
+
+  /**
+   * 物化一条到期 task（unique(jobId, scheduledFor) 去重）。
+   * 返回 true = 本次新建（由本实例负责随后推进 nextRunAt）；false = 已存在（别的实例先建了）。
+   */
+  async materializeTask(jobId: string, scheduledFor: Date): Promise<boolean> {
+    const rows = await this.db
+      .insert(this.schema.scheduledTasks)
+      .values({ jobId, scheduledFor, status: 'pending' })
+      .onConflictDoNothing()
+      .returning({ id: this.schema.scheduledTasks.id });
+    return rows.length > 0;
+  }
+
+  /** 可认领的 task：pending,或 running 但租约已过期（持有者疑似崩溃）。 */
+  async findClaimableTasks(now: Date, limit = 50): Promise<ScheduledTask[]> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.scheduledTasks)
+      .where(
+        or(
+          eq(this.schema.scheduledTasks.status, 'pending'),
+          and(
+            eq(this.schema.scheduledTasks.status, 'running'),
+            lt(this.schema.scheduledTasks.leaseExpiresAt, now),
+          ),
+        ),
+      )
+      .limit(limit);
+    return rows as ScheduledTask[];
+  }
+
+  /**
+   * 原子认领（乐观锁）：仅当 leaseEpoch 仍等于观察值时命中——并发下只一个实例成功。
+   * 返回认领到的 task（含新 epoch）或 null（被别人抢先）。
+   */
+  async claimTask(
+    id: string,
+    expectedEpoch: number,
+    instanceId: string,
+    leaseExpiresAt: Date,
+  ): Promise<ScheduledTask | null> {
+    const rows = await this.db
+      .update(this.schema.scheduledTasks)
+      .set({
+        status: 'running',
+        claimedBy: instanceId,
+        leaseExpiresAt,
+        leaseEpoch: expectedEpoch + 1,
+        attempts: sql`${this.schema.scheduledTasks.attempts} + 1`,
+      })
+      .where(
+        and(
+          eq(this.schema.scheduledTasks.id, id),
+          eq(this.schema.scheduledTasks.leaseEpoch, expectedEpoch),
+        ),
+      )
+      .returning();
+    return (rows[0] as ScheduledTask | undefined) ?? null;
+  }
+
+  async completeTask(id: string, executionId: string | null): Promise<void> {
+    await this.db
+      .update(this.schema.scheduledTasks)
+      .set({ status: 'done', executionId, leaseExpiresAt: null, claimedBy: null })
+      .where(eq(this.schema.scheduledTasks.id, id));
+  }
+
+  /** 失败：retry=true → 回 pending 等下轮重试；否则 error 终态。 */
+  async failTask(id: string, error: string, retry: boolean): Promise<void> {
+    await this.db
+      .update(this.schema.scheduledTasks)
+      .set({
+        status: retry ? 'pending' : 'error',
+        error,
+        leaseExpiresAt: null,
+        claimedBy: null,
+      })
+      .where(eq(this.schema.scheduledTasks.id, id));
+  }
+
+  async listTasksForJob(jobId: string, limit = 50): Promise<ScheduledTask[]> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.scheduledTasks)
+      .where(eq(this.schema.scheduledTasks.jobId, jobId))
+      .orderBy(desc(this.schema.scheduledTasks.scheduledFor))
+      .limit(limit);
+    return rows as ScheduledTask[];
+  }
+}
+
 export interface Repositories {
   users: UserRepository;
   apiKeys: ApiKeyRepository;
@@ -2267,6 +2460,7 @@ export interface Repositories {
   executionMetadata: ExecutionMetadataRepository;
   authTokenBlacklist: AuthTokenBlacklistRepository;
   authIdentities: AuthIdentityRepository;
+  scheduler: SchedulerRepository;
 }
 
 /** 用一个 DatabaseHandle 组装全部仓储。server 层在启动时调用一次。 */
@@ -2299,5 +2493,6 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
     executionMetadata: new ExecutionMetadataRepository(db, schema),
     authTokenBlacklist: new AuthTokenBlacklistRepository(db, schema),
     authIdentities: new AuthIdentityRepository(db, schema),
+    scheduler: new SchedulerRepository(db, schema),
   };
 }
