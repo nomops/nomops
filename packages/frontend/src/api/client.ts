@@ -101,6 +101,20 @@ export interface AgentRow {
   updatedAt: string;
 }
 
+/** Agent 定时任务定义（#44 M4）。 */
+export interface AgentTaskRow {
+  id: string;
+  agentId: string;
+  name: string;
+  message: string;
+  schedule: { mode: string; cron?: string; everySeconds?: number; fireAt?: string };
+  timezone: string;
+  active: boolean;
+  threadId: string | null;
+  lastRunAt: string | null;
+  createdAt: string;
+}
+
 /** 节点类型信息：描述 + 全名 type（内置 nomops.* 与社区 <pkg>.* 一致）。 */
 export type NodeTypeInfo = INodeTypeDescription & { type: string };
 
@@ -614,6 +628,12 @@ export const api = {
           observations: Array<{ id: string; runId: string; evidence: Record<string, unknown>; createdAt: string }>;
         }>
       >('GET', `/api/agents/${id}/memory`),
+    tasks: (id: string) => http<AgentTaskRow[]>('GET', `/api/agents/${id}/tasks`),
+    createTask: (id: string, body: { name: string; message: string; schedule: Record<string, unknown>; timezone?: string }) =>
+      http<AgentTaskRow>('POST', `/api/agents/${id}/tasks`, body),
+    updateTask: (id: string, taskId: string, body: Partial<{ name: string; message: string; schedule: Record<string, unknown>; timezone: string; active: boolean }>) =>
+      http<AgentTaskRow>('PATCH', `/api/agents/${id}/tasks/${taskId}`, body),
+    removeTask: (id: string, taskId: string) => http<void>('DELETE', `/api/agents/${id}/tasks/${taskId}`),
   },
 
   workflowsMeta: () => http<WorkflowMetaRow[]>('GET', '/api/workflows-meta'),

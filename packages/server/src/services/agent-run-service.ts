@@ -1,7 +1,8 @@
-import type { Agent, AgentThread, Repositories } from '@nomops/db';
+import type { Agent, AgentTaskDefinition, AgentThread, Repositories } from '@nomops/db';
 import type { IConnections, INode, JsonObject } from '@nomops/workflow';
 import { OperationalError } from '@nomops/workflow';
 import type { ExecutionService } from './execution-service.js';
+import { computeNextRun } from './scheduler-service.js';
 
 /**
  * Agent 运行编排（backlog #44 M2）：把 agent 组装成后备工作流(ChatTrigger→AiAgent→ChatModel)
@@ -245,5 +246,87 @@ export class AgentRunService {
       outputTokens,
       costMicros,
     };
+  }
+
+  /* ── 定时任务（#44 M4）：任务定义 ↔ #38 调度作业(kind=agent-task),触发去重靠租约 ── */
+
+  /** 首次/变更后的 nextRunAt。once 用 fireAt;cron/interval 走 computeNextRun。无效配置抛 400。 */
+  private initialNextRun(schedule: JsonObject, timezone: string): Date {
+    if (schedule['mode'] === 'once') {
+      const at = new Date(String(schedule['fireAt'] ?? ''));
+      if (Number.isNaN(at.getTime())) throw new OperationalError('Invalid fireAt', { status: 400 });
+      return at;
+    }
+    try {
+      const next = computeNextRun(schedule, timezone, new Date());
+      if (!next) throw new Error('no next run');
+      return next;
+    } catch {
+      throw new OperationalError('Invalid schedule config', { status: 400 });
+    }
+  }
+
+  /** 建任务：task 行 + scheduled_job(kind=agent-task,config.taskId 回链)。 */
+  async createTask(
+    agentId: string,
+    projectId: string,
+    input: { name: string; message: string; schedule: JsonObject; timezone?: string },
+  ): Promise<AgentTaskDefinition> {
+    const agent = await this.repos.agents.findById(agentId, projectId);
+    if (!agent) throw new OperationalError('Agent not found', { status: 404 });
+    const timezone = input.timezone ?? 'UTC';
+    const nextRunAt = this.initialNextRun(input.schedule, timezone); // 先校验,再落库
+    const task = await this.repos.agents.createTask({ agentId, projectId, name: input.name, message: input.message, schedule: input.schedule, timezone });
+    const job = await this.repos.scheduler.createJob({
+      kind: 'agent-task',
+      config: { ...input.schedule, taskId: task.id },
+      timezone,
+      nextRunAt,
+    });
+    await this.repos.agents.updateTask(task.id, { jobId: job.id });
+    return { ...task, jobId: job.id };
+  }
+
+  /** 改任务：schedule/timezone 变更重算 nextRunAt;active 开关同步停启作业。 */
+  async updateTaskDef(
+    agentId: string,
+    taskId: string,
+    patch: Partial<{ name: string; message: string; schedule: JsonObject; timezone: string; active: boolean }>,
+  ): Promise<AgentTaskDefinition> {
+    const task = await this.repos.agents.findTask(taskId, agentId);
+    if (!task) throw new OperationalError('Task not found', { status: 404 });
+    const schedule = patch.schedule ?? task.schedule;
+    const timezone = patch.timezone ?? task.timezone;
+    const active = patch.active ?? task.active;
+    const nextRunAt = active ? this.initialNextRun(schedule, timezone) : null;
+    await this.repos.agents.updateTask(taskId, { ...patch });
+    if (task.jobId) {
+      await this.repos.scheduler.updateJob(task.jobId, { config: { ...schedule, taskId }, timezone, active, nextRunAt });
+    }
+    return (await this.repos.agents.findTask(taskId, agentId))!;
+  }
+
+  /** 删任务：停用对应作业(历史 scheduled_tasks 留痕),删任务行。 */
+  async deleteTaskDef(agentId: string, taskId: string): Promise<void> {
+    const task = await this.repos.agents.findTask(taskId, agentId);
+    if (!task) throw new OperationalError('Task not found', { status: 404 });
+    if (task.jobId) await this.repos.scheduler.updateJob(task.jobId, { active: false, nextRunAt: null });
+    await this.repos.agents.deleteTask(taskId);
+  }
+
+  /** 调度 fire 分派入口：按任务定义触发一次 agent 运行。任务已删/停用 → 静默跳过。 */
+  async runTask(taskId: string): Promise<string | null> {
+    const task = await this.repos.agents.findTaskById(taskId);
+    if (!task || !task.active) return null;
+    // 专属线程：历次触发聚在一条线程,渠道标 schedule,可回看
+    let threadId = task.threadId;
+    if (!threadId || !(await this.repos.agents.findThread(threadId, task.agentId))) {
+      const thread = await this.repos.agents.createThread({ agentId: task.agentId, projectId: task.projectId, channel: 'schedule' });
+      threadId = thread.id;
+      await this.repos.agents.updateTask(task.id, { threadId });
+    }
+    const res = await this.chat(task.agentId, task.projectId, task.message, threadId, 'scheduler');
+    await this.repos.agents.updateTask(task.id, { lastRunAt: new Date() });
+    return res.executionId;
   }
 }

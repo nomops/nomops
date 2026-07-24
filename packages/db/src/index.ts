@@ -109,4 +109,5 @@ export type {
   AgentMessage,
   MemoryEntry,
   MemoryObservation,
+  AgentTaskDefinition,
 } from './types.js';

@@ -5,7 +5,7 @@
  */
 import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { api, type AgentRow, type CredentialView } from '../api/client.js';
+import { api, type AgentRow, type AgentTaskRow, type CredentialView } from '../api/client.js';
 
 const router = useRouter();
 const agents = ref<AgentRow[]>([]);
@@ -37,6 +37,46 @@ async function loadMemory() {
   memories.value = await api.agents.memory(selected.value.id).catch(() => []);
 }
 
+/* 定时任务（#44 M4）：任务定义 ↔ #38 调度作业 */
+const tasks = ref<AgentTaskRow[]>([]);
+const taskName = ref('');
+const taskMessage = ref('');
+const taskMode = ref<'cron' | 'interval'>('interval');
+const taskCron = ref('0 9 * * *');
+const taskEvery = ref(3600);
+async function loadTasks() {
+  if (!selected.value) return;
+  tasks.value = await api.agents.tasks(selected.value.id).catch(() => []);
+}
+async function createTask() {
+  if (!selected.value || !taskName.value.trim() || !taskMessage.value.trim()) return;
+  busy.value = 'task';
+  error.value = '';
+  try {
+    const schedule = taskMode.value === 'cron' ? { mode: 'cron', cron: taskCron.value } : { mode: 'interval', everySeconds: taskEvery.value };
+    await api.agents.createTask(selected.value.id, { name: taskName.value.trim(), message: taskMessage.value.trim(), schedule });
+    taskName.value = '';
+    taskMessage.value = '';
+    await loadTasks();
+  } catch (e) {
+    error.value = (e as Error).message;
+  } finally {
+    busy.value = '';
+  }
+}
+async function toggleTask(t: AgentTaskRow) {
+  if (!selected.value) return;
+  await api.agents.updateTask(selected.value.id, t.id, { active: !t.active }).catch(() => undefined);
+  await loadTasks();
+}
+async function removeTask(t: AgentTaskRow) {
+  if (!selected.value || !window.confirm(`Delete task "${t.name}"?`)) return;
+  await api.agents.removeTask(selected.value.id, t.id).catch(() => undefined);
+  await loadTasks();
+}
+const scheduleLabel = (t: AgentTaskRow) =>
+  t.schedule.mode === 'cron' ? `cron ${t.schedule.cron}` : t.schedule.mode === 'once' ? `once @ ${t.schedule.fireAt}` : `every ${t.schedule.everySeconds}s`;
+
 async function load() {
   agents.value = await api.agents.list().catch(() => []);
 }
@@ -55,6 +95,7 @@ async function select(a: AgentRow) {
   messages.value = [];
   threadId.value = null;
   await loadMemory();
+  await loadTasks();
 }
 
 async function sendChat() {
@@ -240,6 +281,35 @@ const fmt = (iso: string) => new Date(iso).toLocaleString();
         </li>
       </ul>
 
+      <!-- 定时任务（#44 M4）：任务定义 ↔ #38 调度作业,历次触发聚在专属线程 -->
+      <h3 class="agent-versions-title">Scheduled tasks</h3>
+      <div class="agent-task-new" data-test="agent-task-new">
+        <input v-model="taskName" data-test="agent-task-name" placeholder="Task name" />
+        <input v-model="taskMessage" data-test="agent-task-message" placeholder="Message to send the agent" class="grow" />
+        <select v-model="taskMode" data-test="agent-task-mode">
+          <option value="interval">Interval</option>
+          <option value="cron">Cron</option>
+        </select>
+        <input v-if="taskMode === 'cron'" v-model="taskCron" data-test="agent-task-cron" placeholder="0 9 * * *" class="mono" />
+        <input v-else v-model.number="taskEvery" data-test="agent-task-every" type="number" min="60" class="mono" title="seconds" />
+        <button class="btn primary" data-test="agent-task-create" :disabled="busy === 'task' || !taskName.trim() || !taskMessage.trim()" @click="createTask">Add</button>
+      </div>
+      <p v-if="!tasks.length" class="dim">No scheduled tasks.</p>
+      <ul v-else class="agent-tasks" data-test="agent-tasks">
+        <li v-for="t in tasks" :key="t.id" class="agent-task">
+          <span class="agent-task-main">
+            <b>{{ t.name }}</b>
+            <span class="agent-mem-badge">{{ scheduleLabel(t) }}</span>
+            <span v-if="!t.active" class="agent-mem-badge">paused</span>
+          </span>
+          <span class="agent-task-side">
+            <span class="dim" v-if="t.lastRunAt">last run {{ fmt(t.lastRunAt) }}</span>
+            <button class="link" data-test="agent-task-toggle" @click="toggleTask(t)">{{ t.active ? 'Pause' : 'Resume' }}</button>
+            <button class="link" data-test="agent-task-delete" @click="removeTask(t)">Delete</button>
+          </span>
+        </li>
+      </ul>
+
       <!-- 分层记忆 + 证据链（#44 M3）：跨线程召回的记忆,每条可追溯到来源运行 -->
       <h3 class="agent-versions-title">Memory <span class="dim" style="font-weight: 400">· recalled across threads</span></h3>
       <p v-if="!memories.length" class="dim">No memories yet — chat with the agent to build them.</p>
@@ -308,4 +378,12 @@ const fmt = (iso: string) => new Date(iso).toLocaleString();
 .agent-mem-badge { font-size: 10.5px; padding: 2px 6px; border-radius: 10px; background: var(--color--background--light-1, rgba(127,127,127,0.12)); color: var(--text-dim, #9a9aa5); flex-shrink: 0; }
 .agent-mem-content { white-space: pre-wrap; }
 .agent-mem-obs { margin-top: 3px; font-size: 11.5px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.agent-task-new { display: flex; gap: 6px; flex-wrap: wrap; max-width: 900px; }
+.agent-task-new input, .agent-task-new select { height: 32px; padding: 0 8px; border: 1px solid var(--border-color, #2a2a33); border-radius: 6px; background: none; color: inherit; }
+.agent-task-new .grow { flex: 1; min-width: 220px; }
+.agent-task-new .mono { width: 110px; font-family: var(--font-family--monospace, monospace); font-size: 12.5px; }
+.agent-tasks { list-style: none; margin: 0; padding: 0; max-width: 900px; }
+.agent-task { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border-color, #23232a); font-size: 13px; }
+.agent-task-main { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.agent-task-side { display: flex; gap: 10px; align-items: center; flex-shrink: 0; font-size: 12px; }
 </style>

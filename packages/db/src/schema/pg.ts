@@ -89,6 +89,29 @@ export const memoryObservations = pgTable(
   (t) => [index('memory_observations_entry_idx').on(t.entryId)],
 );
 
+/** Agents 平台 · 定时任务定义（backlog #44 M4）：每任务 upsert 一条 scheduled_job(kind=agent-task)。 */
+export const agentTaskDefinitions = pgTable(
+  'agent_task_definitions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    agentId: uuid('agent_id')
+      .notNull()
+      .references(() => agents.id),
+    projectId: uuid('project_id').notNull(),
+    name: text('name').notNull(),
+    message: text('message').notNull(),
+    schedule: jsonb('schedule').$type<JsonObject>().notNull().default({}),
+    timezone: text('timezone').notNull().default('UTC'),
+    active: boolean('active').notNull().default(true),
+    jobId: uuid('job_id'),
+    threadId: uuid('thread_id'),
+    lastRunAt: timestamp('last_run_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [index('agent_task_definitions_agent_idx').on(t.agentId)],
+);
+
 /** Agents 平台 · 会话线程（backlog #44 M2）。 */
 export const agentThreads = pgTable(
   'agent_threads',
@@ -957,4 +980,5 @@ export const pgSchema = {
   agentMessages,
   memoryEntries,
   memoryObservations,
+  agentTaskDefinitions,
 };

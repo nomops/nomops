@@ -1299,6 +1299,42 @@ export function createApiRouter(services: AppServices): Router {
       res.json(await services.repos.agents.listMemoriesWithObservations(param(req, 'id')));
     }),
   );
+  // 定时任务（backlog #44 M4）：任务定义 ↔ #38 调度作业,双实例只触发一次靠租约。
+  router.get(
+    '/agents/:id/tasks',
+    h(async (req, res) => {
+      await getAgentOr404(req);
+      res.json(await services.repos.agents.listTasks(param(req, 'id')));
+    }),
+  );
+  router.post(
+    '/agents/:id/tasks',
+    h(async (req, res) => {
+      await getAgentOr404(req);
+      const { name, message, schedule, timezone } = req.body as {
+        name?: string; message?: string; schedule?: Record<string, unknown>; timezone?: string;
+      };
+      if (!name?.trim() || !message?.trim() || !schedule) {
+        throw new OperationalError('name, message and schedule are required', { status: 400 });
+      }
+      res.status(201).json(await services.agentRuns.createTask(param(req, 'id'), auth(req).projectId, { name, message, schedule, timezone }));
+    }),
+  );
+  router.patch(
+    '/agents/:id/tasks/:taskId',
+    h(async (req, res) => {
+      await getAgentOr404(req);
+      res.json(await services.agentRuns.updateTaskDef(param(req, 'id'), param(req, 'taskId'), req.body as Record<string, never>));
+    }),
+  );
+  router.delete(
+    '/agents/:id/tasks/:taskId',
+    h(async (req, res) => {
+      await getAgentOr404(req);
+      await services.agentRuns.deleteTaskDef(param(req, 'id'), param(req, 'taskId'));
+      res.status(204).end();
+    }),
+  );
 
   /* ── SSO 角色映射规则（backlog #42，实例 admin）：SSO 声明/LDAP group → 项目角色 ── */
   router.get(

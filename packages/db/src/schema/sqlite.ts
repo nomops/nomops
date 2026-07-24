@@ -102,6 +102,37 @@ export const memoryObservations = sqliteTable(
   (t) => [index('memory_observations_entry_idx').on(t.entryId)],
 );
 
+/**
+ * Agents 平台 · 定时任务定义（backlog #44 M4）：agent 的周期指令。schedule 复用 #38 的
+ * config 形态({mode:'cron'|'interval'|'once',...});每个任务 upsert 一条 scheduled_job
+ * (kind=agent-task,config.taskId 回链),触发去重靠 #38 租约(docs/12 决策：不建 run_lock)。
+ */
+export const agentTaskDefinitions = sqliteTable(
+  'agent_task_definitions',
+  {
+    id: uuidPk('id'),
+    agentId: text('agent_id')
+      .notNull()
+      .references(() => agents.id),
+    projectId: text('project_id').notNull(), // 冗余存,fire 侧免 join 拿归属
+    name: text('name').notNull(),
+    message: text('message').notNull(), // 每次触发发给 agent 的指令
+    schedule: text('schedule', { mode: 'json' }).$type<JsonObject>().notNull().$defaultFn(() => ({})),
+    timezone: text('timezone').notNull().default('UTC'),
+    active: integer('active', { mode: 'boolean' }).notNull().default(true),
+    jobId: text('job_id'), // 对应 scheduled_jobs.id（松耦合,不建 FK,同 workflowId 惯例）
+    threadId: text('thread_id'), // 专属线程：历次触发的 run 聚在一条线程里可回看
+    lastRunAt: integer('last_run_at', { mode: 'timestamp' }),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('agent_task_definitions_agent_idx').on(t.agentId)],
+);
+
 /** Agents 平台 · 会话线程（backlog #44 M2）：跨多次运行的上下文边界。 */
 export const agentThreads = sqliteTable(
   'agent_threads',
@@ -1077,4 +1108,5 @@ export const sqliteSchema = {
   agentMessages,
   memoryEntries,
   memoryObservations,
+  agentTaskDefinitions,
 };

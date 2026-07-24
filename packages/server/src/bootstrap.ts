@@ -340,6 +340,15 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
       await insights.rollup(); // #39b：卷积旧 raw → by_period + 剪旧
       return null;
     }
+    if (job.kind === 'agent-task') {
+      // #44 M4：定时触发 agent。任务已删/停用→静默跳过;配额 429 同工作流口径跳过不重试
+      try {
+        return await agentRuns.runTask(String(job.config['taskId'] ?? ''));
+      } catch (e) {
+        if ((e as { status?: number }).status === 429) return null;
+        throw e;
+      }
+    }
     if (!job.workflowId || !job.nodeName) return null;
     try {
       const summary = await executions.runTriggered(

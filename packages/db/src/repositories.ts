@@ -55,6 +55,7 @@ import type {
   AgentMessage,
   MemoryEntry,
   MemoryObservation,
+  AgentTaskDefinition,
 } from './types.js';
 
 /**
@@ -3008,6 +3009,80 @@ export class AgentRepository extends BaseRepository {
       out.push({ ...e, observations: obs });
     }
     return out;
+  }
+
+  /* ── 定时任务定义（#44 M4） ── */
+  async createTask(input: {
+    agentId: string;
+    projectId: string;
+    name: string;
+    message: string;
+    schedule: JsonObject;
+    timezone?: string;
+  }): Promise<AgentTaskDefinition> {
+    const [row] = await this.db
+      .insert(this.schema.agentTaskDefinitions)
+      .values({
+        agentId: input.agentId,
+        projectId: input.projectId,
+        name: input.name,
+        message: input.message,
+        schedule: input.schedule,
+        timezone: input.timezone ?? 'UTC',
+      })
+      .returning();
+    return row as AgentTaskDefinition;
+  }
+
+  async listTasks(agentId: string): Promise<AgentTaskDefinition[]> {
+    return (await this.db
+      .select()
+      .from(this.schema.agentTaskDefinitions)
+      .where(eq(this.schema.agentTaskDefinitions.agentId, agentId))
+      .orderBy(desc(this.schema.agentTaskDefinitions.createdAt))) as AgentTaskDefinition[];
+  }
+
+  /** 归属校验版（API 侧：任务必须属于该 agent）。 */
+  async findTask(id: string, agentId: string): Promise<AgentTaskDefinition | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.agentTaskDefinitions)
+      .where(and(eq(this.schema.agentTaskDefinitions.id, id), eq(this.schema.agentTaskDefinitions.agentId, agentId)))
+      .limit(1);
+    return (rows[0] as AgentTaskDefinition | undefined) ?? null;
+  }
+
+  /** 无归属版（调度 fire 侧：系统上下文按 id 取,projectId 已冗余在行内）。 */
+  async findTaskById(id: string): Promise<AgentTaskDefinition | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.agentTaskDefinitions)
+      .where(eq(this.schema.agentTaskDefinitions.id, id))
+      .limit(1);
+    return (rows[0] as AgentTaskDefinition | undefined) ?? null;
+  }
+
+  async updateTask(
+    id: string,
+    patch: Partial<{
+      name: string;
+      message: string;
+      schedule: JsonObject;
+      timezone: string;
+      active: boolean;
+      jobId: string | null;
+      threadId: string | null;
+      lastRunAt: Date;
+    }>,
+  ): Promise<void> {
+    await this.db
+      .update(this.schema.agentTaskDefinitions)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(this.schema.agentTaskDefinitions.id, id));
+  }
+
+  async deleteTask(id: string): Promise<void> {
+    await this.db.delete(this.schema.agentTaskDefinitions).where(eq(this.schema.agentTaskDefinitions.id, id));
   }
 }
 
