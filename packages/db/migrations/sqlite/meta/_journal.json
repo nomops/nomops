@@ -267,6 +267,13 @@
       "when": 1784872425736,
       "tag": "0037_woozy_paladin",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1784873759417,
+      "tag": "0038_romantic_stellaris",
+      "breakpoints": true
     }
   ]
 }

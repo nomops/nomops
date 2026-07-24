@@ -64,6 +64,44 @@ export const agents = sqliteTable(
   (t) => [index('agents_project_id_idx').on(t.projectId)],
 );
 
+/** Agents 平台 · 记忆条目（backlog #44 M3）：scope 分层(thread<agent<global),embedding 存 JSON。 */
+export const memoryEntries = sqliteTable(
+  'memory_entries',
+  {
+    id: uuidPk('id'),
+    agentId: text('agent_id')
+      .notNull()
+      .references(() => agents.id),
+    threadId: text('thread_id'), // scope=thread 时限定线程
+    scope: text('scope').notNull().default('agent'), // thread|agent|global
+    kind: text('kind').notNull().default('fact'), // fact|summary|preference
+    content: text('content').notNull(),
+    embedding: text('embedding', { mode: 'json' }).$type<number[]>().notNull().$defaultFn(() => []),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    lastUsedAt: integer('last_used_at', { mode: 'timestamp' }),
+  },
+  (t) => [index('memory_entries_agent_idx').on(t.agentId)],
+);
+
+/** Agents 平台 · 记忆证据链（backlog #44 M3）：某条记忆源自哪次运行、依据什么观察。 */
+export const memoryObservations = sqliteTable(
+  'memory_observations',
+  {
+    id: uuidPk('id'),
+    entryId: text('entry_id')
+      .notNull()
+      .references(() => memoryEntries.id),
+    runId: text('run_id').notNull(),
+    evidence: text('evidence', { mode: 'json' }).$type<JsonObject>().notNull().$defaultFn(() => ({})),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('memory_observations_entry_idx').on(t.entryId)],
+);
+
 /** Agents 平台 · 会话线程（backlog #44 M2）：跨多次运行的上下文边界。 */
 export const agentThreads = sqliteTable(
   'agent_threads',
@@ -1037,4 +1075,6 @@ export const sqliteSchema = {
   agentThreads,
   agentRuns,
   agentMessages,
+  memoryEntries,
+  memoryObservations,
 };

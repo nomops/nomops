@@ -1291,6 +1291,14 @@ export function createApiRouter(services: AppServices): Router {
       });
     }),
   );
+  // 分层记忆 + 证据链（backlog #44 M3）：每条记忆可追溯到来源运行。
+  router.get(
+    '/agents/:id/memory',
+    h(async (req, res) => {
+      await getAgentOr404(req);
+      res.json(await services.repos.agents.listMemoriesWithObservations(param(req, 'id')));
+    }),
+  );
 
   /* ── SSO 角色映射规则（backlog #42，实例 admin）：SSO 声明/LDAP group → 项目角色 ── */
   router.get(

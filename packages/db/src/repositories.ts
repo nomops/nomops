@@ -53,6 +53,8 @@ import type {
   AgentThread,
   AgentRun,
   AgentMessage,
+  MemoryEntry,
+  MemoryObservation,
 } from './types.js';
 
 /**
@@ -2949,6 +2951,63 @@ export class AgentRepository extends BaseRepository {
       .from(this.schema.agentMessages)
       .where(eq(this.schema.agentMessages.threadId, threadId))
       .orderBy(this.schema.agentMessages.createdAt)) as AgentMessage[];
+  }
+
+  /* ── 分层记忆 + 证据链（#44 M3） ── */
+  async addMemory(input: {
+    agentId: string;
+    threadId?: string | null;
+    scope?: string;
+    kind?: string;
+    content: string;
+    embedding: number[];
+  }): Promise<MemoryEntry> {
+    const [row] = await this.db
+      .insert(this.schema.memoryEntries)
+      .values({
+        agentId: input.agentId,
+        threadId: input.threadId ?? null,
+        scope: input.scope ?? 'agent',
+        kind: input.kind ?? 'fact',
+        content: input.content,
+        embedding: input.embedding,
+      })
+      .returning();
+    return row as MemoryEntry;
+  }
+
+  /** agent 可见的记忆（agent/global scope + 本线程的 thread scope）。检索用。 */
+  async memoriesForAgent(agentId: string): Promise<MemoryEntry[]> {
+    return (await this.db
+      .select()
+      .from(this.schema.memoryEntries)
+      .where(eq(this.schema.memoryEntries.agentId, agentId))) as MemoryEntry[];
+  }
+
+  async touchMemory(id: string): Promise<void> {
+    await this.db.update(this.schema.memoryEntries).set({ lastUsedAt: new Date() }).where(eq(this.schema.memoryEntries.id, id));
+  }
+
+  async addObservation(entryId: string, runId: string, evidence: JsonObject): Promise<void> {
+    await this.db.insert(this.schema.memoryObservations).values({ entryId, runId, evidence });
+  }
+
+  /** 记忆 + 其证据链（记忆视图 / "查到来源运行"）。 */
+  async listMemoriesWithObservations(agentId: string): Promise<Array<MemoryEntry & { observations: MemoryObservation[] }>> {
+    const entries = (await this.db
+      .select()
+      .from(this.schema.memoryEntries)
+      .where(eq(this.schema.memoryEntries.agentId, agentId))
+      .orderBy(desc(this.schema.memoryEntries.createdAt))) as MemoryEntry[];
+    const out: Array<MemoryEntry & { observations: MemoryObservation[] }> = [];
+    for (const e of entries) {
+      const obs = (await this.db
+        .select()
+        .from(this.schema.memoryObservations)
+        .where(eq(this.schema.memoryObservations.entryId, e.id))) as MemoryObservation[];
+      out.push({ ...e, observations: obs });
+    }
+    return out;
   }
 }
 

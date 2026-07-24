@@ -107,4 +107,6 @@ export type {
   AgentThread,
   AgentRun,
   AgentMessage,
+  MemoryEntry,
+  MemoryObservation,
 } from './types.js';

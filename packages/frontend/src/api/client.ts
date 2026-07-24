@@ -602,6 +602,18 @@ export const api = {
         runs: Array<{ id: string; executionId: string | null; status: string; inputTokens: number; outputTokens: number; costMicros: number; model: string }>;
         messages: Array<{ id: string; runId: string | null; role: string; content: { text?: string } }>;
       }>('GET', `/api/agents/${id}/threads/${threadId}`),
+    memory: (id: string) =>
+      http<
+        Array<{
+          id: string;
+          scope: string;
+          kind: string;
+          content: string;
+          createdAt: string;
+          lastUsedAt: string | null;
+          observations: Array<{ id: string; runId: string; evidence: Record<string, unknown>; createdAt: string }>;
+        }>
+      >('GET', `/api/agents/${id}/memory`),
   },
 
   workflowsMeta: () => http<WorkflowMetaRow[]>('GET', '/api/workflows-meta'),

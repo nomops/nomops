@@ -37,6 +37,46 @@ export function computeCost(model: string, inputTokens: number, outputTokens: nu
   return Math.round(inputTokens * p.in + outputTokens * p.out);
 }
 
+/* ── 分层记忆检索（#44 M3）── */
+const EMBED_DIM = 64;
+
+/**
+ * 本地哈希词袋 embedding（MVP,可插拔）：docs/12 说「provider embedding」,但并非所有
+ * provider 都有 embedding 端点,本地实现让检索可离线测/可活验;生产可注入真 provider embedding。
+ */
+export function embed(text: string): number[] {
+  const v = new Array<number>(EMBED_DIM).fill(0);
+  for (const tok of text.toLowerCase().split(/[^a-z0-9]+/i).filter(Boolean)) {
+    let h = 2166136261;
+    for (let i = 0; i < tok.length; i++) {
+      h = (h ^ tok.charCodeAt(i)) >>> 0;
+      h = (h * 16777619) >>> 0;
+    }
+    const idx = h % EMBED_DIM;
+    v[idx] = (v[idx] ?? 0) + 1;
+  }
+  const norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0)) || 1;
+  return v.map((x) => x / norm);
+}
+
+/** 余弦相似度（两向量均已归一化 → 点积）。 */
+export function cosine(a: number[], b: number[]): number {
+  let d = 0;
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) d += (a[i] ?? 0) * (b[i] ?? 0);
+  return d;
+}
+
+/** 按相似度取 top-k（过滤低于阈值的噪声）。 */
+export function topKMemories<T extends { embedding: number[] }>(query: number[], items: T[], k = 3, min = 0.05): T[] {
+  return items
+    .map((m) => ({ m, score: cosine(query, m.embedding) }))
+    .filter((x) => x.score > min)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, k)
+    .map((x) => x.m);
+}
+
 /** 从 runData 提取 AiAgent 写的 _nmUsage（跨节点累加）。 */
 export function extractUsage(runData: Record<string, unknown>): { inputTokens: number; outputTokens: number } {
   let inputTokens = 0;
@@ -76,10 +116,12 @@ export class AgentRunService {
   constructor(
     private readonly repos: Repositories,
     private readonly executions: ExecutionService,
+    /** embedding 函数（#44 M3；缺省本地哈希词袋,生产可注入 provider embedding）。 */
+    private readonly embedImpl: (text: string) => number[] | Promise<number[]> = embed,
   ) {}
 
-  /** 按 agent config 组装后备工作流节点。 */
-  private buildBackingNodes(config: JsonObject): { nodes: INode[]; connections: IConnections } {
+  /** 按 agent config 组装后备工作流节点。systemOverride 用于把检索到的记忆注入本轮 system。 */
+  private buildBackingNodes(config: JsonObject, systemOverride?: string): { nodes: INode[]; connections: IConnections } {
     const provider = String(config['provider'] ?? 'anthropic');
     const model = String(config['model'] ?? '');
     const credentialId = config['credentialId'] ? String(config['credentialId']) : null;
@@ -102,7 +144,7 @@ export class AgentRunService {
           type: 'nomops.aiAgent',
           typeVersion: 1,
           position: [260, 0],
-          parameters: { system: String(config['system'] ?? ''), prompt: '={{ $json.chatInput }}' },
+          parameters: { system: systemOverride ?? String(config['system'] ?? ''), prompt: '={{ $json.chatInput }}' },
         },
         modelNode,
       ],
@@ -113,10 +155,11 @@ export class AgentRunService {
     };
   }
 
-  /** 确保 agent 有一份与 config 同步的后备工作流,返回其 id。 */
-  private async ensureBacking(agent: Agent, projectId: string): Promise<string> {
-    const { nodes, connections } = this.buildBackingNodes(agent.config);
-    if (agent.backingWorkflowId) {
+  /** 确保 agent 有一份与 config 同步的后备工作流,返回其 id。systemOverride 注入本轮记忆。 */
+  private async ensureBacking(agent: Agent, projectId: string, systemOverride?: string): Promise<string> {
+    const { nodes, connections } = this.buildBackingNodes(agent.config, systemOverride);
+    // 后备工作流可能被手动删除 → update 会抛 "Workflow not found"。先核实存在,不存在则重建。
+    if (agent.backingWorkflowId && (await this.repos.workflows.findById(agent.backingWorkflowId, projectId))) {
       await this.repos.workflows.update(agent.backingWorkflowId, { nodes, connections });
       return agent.backingWorkflowId;
     }
@@ -138,8 +181,19 @@ export class AgentRunService {
     const agent = await this.repos.agents.findById(agentId, projectId);
     if (!agent) throw new OperationalError('Agent not found', { status: 404 });
     const thread = await this.ensureThread(agent, projectId, threadId);
-    const backingWorkflowId = await this.ensureBacking(agent, projectId);
     const model = String((agent.config as JsonObject)['model'] ?? '');
+
+    // 分层记忆检索（#44 M3）：embed 本轮消息 → agent 域记忆 top-k → 注入本轮 system。
+    const queryVec = await this.embedImpl(message);
+    const allMemories = await this.repos.agents.memoriesForAgent(agent.id);
+    const recalled = topKMemories(queryVec, allMemories);
+    const baseSystem = String((agent.config as JsonObject)['system'] ?? '');
+    const systemOverride = recalled.length
+      ? `${baseSystem}\n\n[Recalled from earlier conversations with this user]\n${recalled.map((m) => `- ${m.content}`).join('\n')}`.trim()
+      : undefined;
+    for (const m of recalled) await this.repos.agents.touchMemory(m.id);
+
+    const backingWorkflowId = await this.ensureBacking(agent, projectId, systemOverride);
 
     await this.repos.agents.addMessage({ threadId: thread.id, role: 'user', content: { text: message } });
 
@@ -166,6 +220,18 @@ export class AgentRunService {
       error: res.error ?? null,
     });
     await this.repos.agents.addMessage({ threadId: thread.id, runId: run.id, role: 'assistant', content: { text: res.error ?? res.reply } });
+
+    // 写记忆 + 证据链（#44 M3）：把本轮用户消息存为 agent 域记忆,并把来源运行记为一条观测。
+    // MVP 存全部用户消息（跨线程可召回偏好）;生产可加去重/摘要/重要性打分。
+    const entry = await this.repos.agents.addMemory({
+      agentId: agent.id,
+      threadId: thread.id,
+      scope: 'agent',
+      kind: 'fact',
+      content: message,
+      embedding: queryVec,
+    });
+    await this.repos.agents.addObservation(entry.id, run.id, { source: 'user-message', threadId: thread.id });
 
     return {
       runId: run.id,

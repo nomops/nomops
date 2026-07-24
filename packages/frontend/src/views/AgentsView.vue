@@ -29,6 +29,14 @@ const messages = ref<ChatMsg[]>([]);
 const threadId = ref<string | null>(null);
 const chatInput = ref('');
 
+/* 分层记忆 + 证据链（#44 M3）：跨线程记住的记忆,每条可追溯到来源运行 */
+type MemoryRow = Awaited<ReturnType<typeof api.agents.memory>>[number];
+const memories = ref<MemoryRow[]>([]);
+async function loadMemory() {
+  if (!selected.value) return;
+  memories.value = await api.agents.memory(selected.value.id).catch(() => []);
+}
+
 async function load() {
   agents.value = await api.agents.list().catch(() => []);
 }
@@ -46,6 +54,7 @@ async function select(a: AgentRow) {
   versions.value = await api.agents.versions(a.id).catch(() => []);
   messages.value = [];
   threadId.value = null;
+  await loadMemory();
 }
 
 async function sendChat() {
@@ -63,6 +72,7 @@ async function sendChat() {
       run: { executionId: res.executionId, inputTokens: res.inputTokens, outputTokens: res.outputTokens, costMicros: res.costMicros, model: res.model },
     });
     if (!selected.value['backingWorkflowId']) selected.value = await api.agents.get(selected.value.id).catch(() => selected.value);
+    await loadMemory();
   } catch (e) {
     messages.value.push({ role: 'assistant', text: `[error] ${(e as Error).message}` });
   } finally {
@@ -229,6 +239,30 @@ const fmt = (iso: string) => new Date(iso).toLocaleString();
           <button class="link" data-test="agent-rollback" :disabled="busy === 'rollback'" @click="rollback(v.id)">Roll back to this</button>
         </li>
       </ul>
+
+      <!-- 分层记忆 + 证据链（#44 M3）：跨线程召回的记忆,每条可追溯到来源运行 -->
+      <h3 class="agent-versions-title">Memory <span class="dim" style="font-weight: 400">· recalled across threads</span></h3>
+      <p v-if="!memories.length" class="dim">No memories yet — chat with the agent to build them.</p>
+      <ul v-else class="agent-memory" data-test="agent-memory">
+        <li v-for="m in memories" :key="m.id" class="agent-mem">
+          <div class="agent-mem-head">
+            <span class="agent-mem-badge">{{ m.scope }}·{{ m.kind }}</span>
+            <span class="agent-mem-content">{{ m.content }}</span>
+          </div>
+          <div class="agent-mem-obs" data-test="agent-mem-obs">
+            <span class="dim">from run{{ m.observations.length > 1 ? 's' : '' }}:</span>
+            <button
+              v-for="o in m.observations"
+              :key="o.id"
+              class="link"
+              data-test="agent-mem-run"
+              @click="o.runId && router.push({ name: 'canvas', params: { id: (selected as AgentRow).backingWorkflowId }, query: { tab: 'executions' } })"
+            >
+              {{ o.runId.slice(0, 8) }} ↗
+            </button>
+          </div>
+        </li>
+      </ul>
     </section>
     <section v-else class="agent-detail empty"><p class="dim">Select or create an agent.</p></section>
   </div>
@@ -268,4 +302,10 @@ const fmt = (iso: string) => new Date(iso).toLocaleString();
 .agent-run-meta { font-size: 11.5px; color: var(--text-dim, #9a9aa5); display: flex; gap: 8px; align-items: center; }
 .agent-chat-input { display: flex; gap: 8px; margin-top: 4px; }
 .agent-chat-input input { flex: 1; height: 34px; padding: 0 12px; border: 1px solid var(--border-color, #2a2a33); border-radius: 8px; background: none; color: inherit; }
+.agent-memory { list-style: none; margin: 0; padding: 0; max-width: 720px; }
+.agent-mem { padding: 8px 0; border-bottom: 1px solid var(--border-color, #23232a); font-size: 13px; }
+.agent-mem-head { display: flex; gap: 8px; align-items: baseline; }
+.agent-mem-badge { font-size: 10.5px; padding: 2px 6px; border-radius: 10px; background: var(--color--background--light-1, rgba(127,127,127,0.12)); color: var(--text-dim, #9a9aa5); flex-shrink: 0; }
+.agent-mem-content { white-space: pre-wrap; }
+.agent-mem-obs { margin-top: 3px; font-size: 11.5px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 </style>

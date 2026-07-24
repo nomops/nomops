@@ -55,6 +55,40 @@ export const agents = pgTable(
   (t) => [index('agents_project_id_idx').on(t.projectId)],
 );
 
+/** Agents 平台 · 记忆条目（backlog #44 M3）。 */
+export const memoryEntries = pgTable(
+  'memory_entries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    agentId: uuid('agent_id')
+      .notNull()
+      .references(() => agents.id),
+    threadId: uuid('thread_id'),
+    scope: text('scope').notNull().default('agent'),
+    kind: text('kind').notNull().default('fact'),
+    content: text('content').notNull(),
+    embedding: jsonb('embedding').$type<number[]>().notNull().default([]),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    lastUsedAt: timestamp('last_used_at'),
+  },
+  (t) => [index('memory_entries_agent_idx').on(t.agentId)],
+);
+
+/** Agents 平台 · 记忆证据链（backlog #44 M3）。 */
+export const memoryObservations = pgTable(
+  'memory_observations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    entryId: uuid('entry_id')
+      .notNull()
+      .references(() => memoryEntries.id),
+    runId: uuid('run_id').notNull(),
+    evidence: jsonb('evidence').$type<JsonObject>().notNull().default({}),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('memory_observations_entry_idx').on(t.entryId)],
+);
+
 /** Agents 平台 · 会话线程（backlog #44 M2）。 */
 export const agentThreads = pgTable(
   'agent_threads',
@@ -921,4 +955,6 @@ export const pgSchema = {
   agentThreads,
   agentRuns,
   agentMessages,
+  memoryEntries,
+  memoryObservations,
 };
