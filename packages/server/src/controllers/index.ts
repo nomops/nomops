@@ -1259,6 +1259,39 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
+  /* ── Agent 线程化执行 + 成本核算（backlog #44 M2） ── */
+  router.post(
+    '/agents/:id/chat',
+    editor,
+    h(async (req, res) => {
+      const body = (req.body ?? {}) as { message?: unknown; threadId?: unknown };
+      const message = typeof body.message === 'string' ? body.message.trim() : '';
+      if (!message) throw new OperationalError('message is required', { status: 400 });
+      const threadId = typeof body.threadId === 'string' ? body.threadId : undefined;
+      res.json(await services.agentRuns.chat(param(req, 'id'), auth(req).projectId, message, threadId, auth(req).userId));
+    }),
+  );
+  router.get(
+    '/agents/:id/threads',
+    h(async (req, res) => {
+      await getAgentOr404(req);
+      res.json(await services.repos.agents.listThreads(param(req, 'id')));
+    }),
+  );
+  router.get(
+    '/agents/:id/threads/:threadId',
+    h(async (req, res) => {
+      await getAgentOr404(req);
+      const thread = await services.repos.agents.findThread(param(req, 'threadId'), param(req, 'id'));
+      if (!thread) throw new OperationalError('Thread not found', { status: 404 });
+      res.json({
+        thread,
+        runs: await services.repos.agents.listRuns(thread.id),
+        messages: await services.repos.agents.listMessages(thread.id),
+      });
+    }),
+  );
+
   /* ── SSO 角色映射规则（backlog #42，实例 admin）：SSO 声明/LDAP group → 项目角色 ── */
   router.get(
     '/role-mappings',

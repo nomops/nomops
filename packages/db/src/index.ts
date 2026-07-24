@@ -104,4 +104,7 @@ export type {
   RoleMappingRule,
   Agent,
   AgentVersion,
+  AgentThread,
+  AgentRun,
+  AgentMessage,
 } from './types.js';

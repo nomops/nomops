@@ -50,6 +50,9 @@ export type InstanceVersionRow = InferSelectModel<typeof sqliteSchema.instanceVe
 export type McpRegistryServerRow = InferSelectModel<typeof sqliteSchema.mcpRegistryServer>;
 export type Agent = InferSelectModel<typeof sqliteSchema.agents>;
 export type AgentVersion = InferSelectModel<typeof sqliteSchema.agentHistory>;
+export type AgentThread = InferSelectModel<typeof sqliteSchema.agentThreads>;
+export type AgentRun = InferSelectModel<typeof sqliteSchema.agentRuns>;
+export type AgentMessage = InferSelectModel<typeof sqliteSchema.agentMessages>;
 
 /* ── 创建入参（区别于自动生成的 id/时间戳字段） ── */
 

@@ -50,6 +50,9 @@ import type {
   McpRegistryServerRow,
   Agent,
   AgentVersion,
+  AgentThread,
+  AgentRun,
+  AgentMessage,
 } from './types.js';
 
 /**
@@ -2876,6 +2879,76 @@ export class AgentRepository extends BaseRepository {
       .where(and(eq(this.schema.agentHistory.id, versionId), eq(this.schema.agentHistory.agentId, agentId)))
       .limit(1);
     return (rows[0] as AgentVersion | undefined) ?? null;
+  }
+
+  /* ── 后备工作流 + 线程/运行/消息（#44 M2） ── */
+  async setBackingWorkflow(agentId: string, workflowId: string): Promise<void> {
+    await this.db.update(this.schema.agents).set({ backingWorkflowId: workflowId }).where(eq(this.schema.agents.id, agentId));
+  }
+
+  async createThread(input: { agentId: string; projectId: string; channel?: string; title?: string }): Promise<AgentThread> {
+    const [row] = await this.db
+      .insert(this.schema.agentThreads)
+      .values({ agentId: input.agentId, projectId: input.projectId, channel: input.channel ?? 'canvas', title: input.title ?? 'New thread' })
+      .returning();
+    return row as AgentThread;
+  }
+
+  async findThread(id: string, agentId: string): Promise<AgentThread | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.agentThreads)
+      .where(and(eq(this.schema.agentThreads.id, id), eq(this.schema.agentThreads.agentId, agentId)))
+      .limit(1);
+    return (rows[0] as AgentThread | undefined) ?? null;
+  }
+
+  async listThreads(agentId: string): Promise<AgentThread[]> {
+    return (await this.db
+      .select()
+      .from(this.schema.agentThreads)
+      .where(eq(this.schema.agentThreads.agentId, agentId))
+      .orderBy(desc(this.schema.agentThreads.createdAt))) as AgentThread[];
+  }
+
+  async createRun(input: {
+    threadId: string;
+    agentId: string;
+    executionId: string | null;
+    status: string;
+    inputTokens: number;
+    outputTokens: number;
+    costMicros: number;
+    model: string;
+    error?: string | null;
+  }): Promise<AgentRun> {
+    const [row] = await this.db
+      .insert(this.schema.agentRuns)
+      .values({ ...input, error: input.error ?? null })
+      .returning();
+    return row as AgentRun;
+  }
+
+  async listRuns(threadId: string): Promise<AgentRun[]> {
+    return (await this.db
+      .select()
+      .from(this.schema.agentRuns)
+      .where(eq(this.schema.agentRuns.threadId, threadId))
+      .orderBy(desc(this.schema.agentRuns.createdAt))) as AgentRun[];
+  }
+
+  async addMessage(input: { threadId: string; runId?: string | null; role: string; content: JsonObject }): Promise<void> {
+    await this.db
+      .insert(this.schema.agentMessages)
+      .values({ threadId: input.threadId, runId: input.runId ?? null, role: input.role, content: input.content });
+  }
+
+  async listMessages(threadId: string): Promise<AgentMessage[]> {
+    return (await this.db
+      .select()
+      .from(this.schema.agentMessages)
+      .where(eq(this.schema.agentMessages.threadId, threadId))
+      .orderBy(this.schema.agentMessages.createdAt)) as AgentMessage[];
   }
 }
 

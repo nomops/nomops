@@ -4,8 +4,10 @@
  * M1 只覆盖定义+版本;工具/记忆/定时(M2-M4)后续接入。
  */
 import { onMounted, ref } from 'vue';
-import { api, type AgentRow } from '../api/client.js';
+import { useRouter } from 'vue-router';
+import { api, type AgentRow, type CredentialView } from '../api/client.js';
 
+const router = useRouter();
 const agents = ref<AgentRow[]>([]);
 const selected = ref<AgentRow | null>(null);
 const versions = ref<Array<{ id: string; versionNumber: number; createdAt: string }>>([]);
@@ -14,15 +16,64 @@ const systemDraft = ref('');
 const busy = ref('');
 const error = ref('');
 
+/* 模型配置（#44 M2） */
+const provider = ref('anthropic');
+const model = ref('claude-sonnet-5');
+const credentialId = ref('');
+const credentials = ref<CredentialView[]>([]);
+
+/* 测试对话 + 运行（#44 M2） */
+interface RunMeta { executionId: string | null; inputTokens: number; outputTokens: number; costMicros: number; model: string }
+interface ChatMsg { role: string; text: string; run?: RunMeta }
+const messages = ref<ChatMsg[]>([]);
+const threadId = ref<string | null>(null);
+const chatInput = ref('');
+
 async function load() {
   agents.value = await api.agents.list().catch(() => []);
 }
-onMounted(load);
+onMounted(async () => {
+  await load();
+  credentials.value = await api.credentials.list().catch(() => []);
+});
 
 async function select(a: AgentRow) {
   selected.value = a;
   systemDraft.value = String(a.config?.['system'] ?? '');
+  provider.value = String(a.config?.['provider'] ?? 'anthropic');
+  model.value = String(a.config?.['model'] ?? '');
+  credentialId.value = String(a.config?.['credentialId'] ?? '');
   versions.value = await api.agents.versions(a.id).catch(() => []);
+  messages.value = [];
+  threadId.value = null;
+}
+
+async function sendChat() {
+  const msg = chatInput.value.trim();
+  if (!msg || !selected.value || busy.value === 'chat') return;
+  chatInput.value = '';
+  messages.value.push({ role: 'user', text: msg });
+  busy.value = 'chat';
+  try {
+    const res = await api.agents.chat(selected.value.id, msg, threadId.value ?? undefined);
+    threadId.value = res.threadId;
+    messages.value.push({
+      role: 'assistant',
+      text: res.error ?? res.reply,
+      run: { executionId: res.executionId, inputTokens: res.inputTokens, outputTokens: res.outputTokens, costMicros: res.costMicros, model: res.model },
+    });
+    if (!selected.value['backingWorkflowId']) selected.value = await api.agents.get(selected.value.id).catch(() => selected.value);
+  } catch (e) {
+    messages.value.push({ role: 'assistant', text: `[error] ${(e as Error).message}` });
+  } finally {
+    busy.value = '';
+  }
+}
+
+const usd = (micros: number) => `$${(micros / 1_000_000).toFixed(6)}`;
+function openExecution(execId: string) {
+  const wf = selected.value?.['backingWorkflowId'] as string | null | undefined;
+  if (wf) void router.push({ name: 'canvas', params: { id: wf }, query: { tab: 'executions', exec: execId } });
 }
 
 async function create() {
@@ -43,7 +94,9 @@ async function saveSystem() {
   if (!selected.value) return;
   busy.value = 'save';
   try {
-    const a = await api.agents.update(selected.value.id, { config: { ...selected.value.config, system: systemDraft.value } });
+    const a = await api.agents.update(selected.value.id, {
+      config: { ...selected.value.config, system: systemDraft.value, provider: provider.value, model: model.value, credentialId: credentialId.value },
+    });
     selected.value = a;
     await load();
   } finally {
@@ -124,11 +177,48 @@ const fmt = (iso: string) => new Date(iso).toLocaleString();
       </header>
 
       <label class="agent-label">System prompt</label>
-      <textarea v-model="systemDraft" class="agent-system" data-test="agent-system" rows="8" placeholder="You are a helpful assistant…" />
+      <textarea v-model="systemDraft" class="agent-system" data-test="agent-system" rows="6" placeholder="You are a helpful assistant…" />
+
+      <!-- 模型配置（#44 M2） -->
+      <label class="agent-label">Model</label>
+      <div class="agent-model-row">
+        <select v-model="provider" data-test="agent-provider">
+          <option value="anthropic">Anthropic</option>
+          <option value="openai">OpenAI</option>
+          <option value="deepseek">DeepSeek</option>
+          <option value="doubao">Doubao</option>
+          <option value="qwen">Qwen</option>
+          <option value="kimi">Kimi</option>
+          <option value="glm">GLM</option>
+        </select>
+        <input v-model="model" data-test="agent-model" placeholder="model id (e.g. claude-sonnet-5)" />
+        <select v-model="credentialId" data-test="agent-credential">
+          <option value="">— credential —</option>
+          <option v-for="c in credentials" :key="c.id" :value="c.id">{{ c.name }} ({{ c.type }})</option>
+        </select>
+      </div>
       <div>
         <button class="btn neutral" data-test="agent-save" :disabled="busy === 'save'" @click="saveSystem">
           {{ busy === 'save' ? 'Saving…' : 'Save' }}
         </button>
+      </div>
+
+      <!-- 测试对话（#44 M2）：触发运行 + token/成本 + 跳 execution -->
+      <h3 class="agent-versions-title">Test chat</h3>
+      <div class="agent-chat" data-test="agent-chat">
+        <div v-for="(m, i) in messages" :key="i" class="agent-msg" :class="m.role">
+          <div class="agent-bubble">{{ m.text }}</div>
+          <div v-if="m.run" class="agent-run-meta" data-test="agent-run-meta">
+            {{ m.run.model }} · {{ m.run.inputTokens }}→{{ m.run.outputTokens }} tok · {{ usd(m.run.costMicros) }}
+            <button v-if="m.run.executionId" class="link" data-test="agent-open-exec" @click="openExecution(m.run.executionId)">open execution ↗</button>
+          </div>
+        </div>
+        <div class="agent-chat-input">
+          <input v-model="chatInput" data-test="agent-chat-input" placeholder="Message the agent…" @keyup.enter="sendChat" />
+          <button class="btn primary" data-test="agent-chat-send" :disabled="busy === 'chat' || !chatInput.trim()" @click="sendChat">
+            {{ busy === 'chat' ? 'Running…' : 'Send' }}
+          </button>
+        </div>
       </div>
 
       <h3 class="agent-versions-title">Version history</h3>
@@ -166,4 +256,16 @@ const fmt = (iso: string) => new Date(iso).toLocaleString();
 .agent-versions-title { margin: 10px 0 4px; font-size: 15px; }
 .agent-versions { list-style: none; margin: 0; padding: 0; }
 .agent-version { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-color, #23232a); font-size: 13px; }
+.agent-model-row { display: flex; gap: 8px; }
+.agent-model-row select, .agent-model-row input { height: 32px; padding: 0 8px; border: 1px solid var(--border-color, #2a2a33); border-radius: 6px; background: none; color: inherit; }
+.agent-model-row input { flex: 1; min-width: 0; }
+.agent-chat { display: flex; flex-direction: column; gap: 10px; max-width: 720px; }
+.agent-msg { display: flex; flex-direction: column; gap: 3px; }
+.agent-msg.user { align-items: flex-end; }
+.agent-bubble { max-width: 80%; padding: 8px 12px; border-radius: 12px; font-size: 13.5px; white-space: pre-wrap; }
+.agent-msg.user .agent-bubble { background: var(--accent, #ff6900); color: #fff; }
+.agent-msg.assistant .agent-bubble { background: var(--color--background--light-1, rgba(127,127,127,0.12)); }
+.agent-run-meta { font-size: 11.5px; color: var(--text-dim, #9a9aa5); display: flex; gap: 8px; align-items: center; }
+.agent-chat-input { display: flex; gap: 8px; margin-top: 4px; }
+.agent-chat-input input { flex: 1; height: 34px; padding: 0 12px; border: 1px solid var(--border-color, #2a2a33); border-radius: 8px; background: none; color: inherit; }
 </style>

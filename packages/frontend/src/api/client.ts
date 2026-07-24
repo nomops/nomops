@@ -73,6 +73,20 @@ export interface FolderRow {
   updatedAt: string;
 }
 
+/** Agent 运行结果（#44 M2）。 */
+export interface AgentChatResult {
+  runId: string;
+  threadId: string;
+  executionId: string | null;
+  status: string;
+  reply: string;
+  error?: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  costMicros: number;
+}
+
 /** Agents 平台 agent（#44 M1）。 */
 export interface AgentRow {
   id: string;
@@ -82,6 +96,7 @@ export interface AgentRow {
   config: Record<string, unknown>;
   publishedVersionId: string | null;
   active: boolean;
+  backingWorkflowId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -577,6 +592,16 @@ export const api = {
       http<Array<{ id: string; versionNumber: number; name: string; config: Record<string, unknown>; createdAt: string }>>('GET', `/api/agents/${id}/versions`),
     restore: (id: string, versionId: string) =>
       http<{ id: string; versionNumber: number }>('POST', `/api/agents/${id}/versions/${versionId}/restore`),
+    /* 线程化执行 + 成本（#44 M2） */
+    chat: (id: string, message: string, threadId?: string) =>
+      http<AgentChatResult>('POST', `/api/agents/${id}/chat`, { message, ...(threadId ? { threadId } : {}) }),
+    threads: (id: string) => http<Array<{ id: string; title: string; channel: string; createdAt: string }>>('GET', `/api/agents/${id}/threads`),
+    thread: (id: string, threadId: string) =>
+      http<{
+        thread: { id: string; title: string };
+        runs: Array<{ id: string; executionId: string | null; status: string; inputTokens: number; outputTokens: number; costMicros: number; model: string }>;
+        messages: Array<{ id: string; runId: string | null; role: string; content: { text?: string } }>;
+      }>('GET', `/api/agents/${id}/threads/${threadId}`),
   },
 
   workflowsMeta: () => http<WorkflowMetaRow[]>('GET', '/api/workflows-meta'),

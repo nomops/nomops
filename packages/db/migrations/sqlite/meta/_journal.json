@@ -260,6 +260,13 @@
       "when": 1784870899978,
       "tag": "0036_high_captain_cross",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "6",
+      "when": 1784872425736,
+      "tag": "0037_woozy_paladin",
+      "breakpoints": true
     }
   ]
 }

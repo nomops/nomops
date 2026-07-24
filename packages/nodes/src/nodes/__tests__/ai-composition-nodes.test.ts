@@ -94,12 +94,30 @@ describe('AI Agent — 组合模式', () => {
       }),
     );
 
-    expect(out[0]![0]!.json).toEqual({ output: 'answer based on result-for-42', toolRounds: 1 });
+    expect(out[0]![0]!.json).toMatchObject({ output: 'answer based on result-for-42', toolRounds: 1 });
+    expect(out[0]![0]!.json['_nmUsage']).toEqual({ inputTokens: 0, outputTokens: 0 }); // fake 模型无 usage（#44 M2）
     // 第二次模型调用能看到 assistant 的 toolCalls 与 tool 结果
     expect(chatLog[1]!.some((m) => m.role === 'assistant' && m.toolCalls?.length === 1)).toBe(true);
     expect(chatLog[1]!.some((m) => m.role === 'tool' && m.toolCallId === 't1')).toBe(true);
     // 记忆里存了完整回合（system 由 memory 实现自行过滤，Agent 原样传）
     expect(saved['s1']!.some((m) => m.role === 'user' && m.content === 'find 42')).toBe(true);
+  });
+
+  it('token 用量跨轮累加 → _nmUsage（成本核算，#44 M2）', async () => {
+    let round = 0;
+    const model: IAiLanguageModel = {
+      chat: async () => {
+        round++;
+        // 第一轮请求工具(usage 10/5)，第二轮给答案(usage 8/3)
+        if (round === 1) return { content: '', toolCalls: [{ id: 't1', name: 'noop', arguments: {} }], usage: { inputTokens: 10, outputTokens: 5 } };
+        return { content: 'done', usage: { inputTokens: 8, outputTokens: 3 } };
+      },
+    };
+    const tool: IAiTool = { spec: { name: 'noop', description: 'x' }, invoke: async () => 'ok' };
+    const out = await new AiAgent().execute!.call(
+      execContext({ inputs: [{ json: {} }], params: { prompt: 'go', maxIterations: 3 }, connections: { ai_languageModel: [model], ai_tool: [tool] } }),
+    );
+    expect(out[0]![0]!.json['_nmUsage']).toEqual({ inputTokens: 18, outputTokens: 8 }); // 10+8, 5+3
   });
 
   it('超过 maxIterations 停止循环；未知工具回错误文本', async () => {

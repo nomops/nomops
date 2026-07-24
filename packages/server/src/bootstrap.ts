@@ -40,6 +40,7 @@ import { ExecutionPruner, prunerOptionsFromEnv } from './services/execution-prun
 import { SchedulerService } from './services/scheduler-service.js';
 import type { SchedulerOptions } from './services/scheduler-service.js';
 import { InsightsService } from './services/insights-service.js';
+import { AgentRunService } from './services/agent-run-service.js';
 import {
   ConcurrencyGate,
   concurrencyLimitFromEnv,
@@ -142,6 +143,8 @@ export interface BootstrapOptions {
   pruner?: IExecutionPrunerOptions;
   /** DB 调度器配置（#38；测试注入短轮询/固定时钟/instanceId）。 */
   scheduler?: SchedulerOptions;
+  /** 引擎 httpRequest 覆盖（#44 M2；测试注入假 AI provider，避免打真实网络）。 */
+  httpRequest?: (options: unknown) => Promise<unknown>;
   /** 生产执行并发上限；-1 = 不限。缺省走 NOMOPS_CONCURRENCY_PRODUCTION_LIMIT。 */
   concurrencyLimit?: number;
   /** 等待队列深度上限；缺省 2× 并发上限。超出即 503。 */
@@ -286,6 +289,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     ),
     baseUrl,
     (trace) => otel.exportExecution(trace),
+    opts.httpRequest, // #44 M2：测试注入假 provider
   );
 
   // binary GC（#22）：删执行记录（单删/批删/pruner/save-policy）前先清其 binary 引用
@@ -327,6 +331,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   if (role === 'main') executionPruner.start();
 
   const insights = new InsightsService(repos);
+  const agentRuns = new AgentRunService(repos, executions);
 
   // DB 调度器（#38 地基项）：Schedule Trigger 落库触发,重启不丢、多实例只触发一次。
   // fire 按 job.kind 分派;配额 429 跳过本次不重试。所有实例都跑循环,靠租约去重。
@@ -448,6 +453,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     evaluations,
     stt,
     insights,
+    agentRuns,
     waitTracker,
     executionPruner,
     mcp,

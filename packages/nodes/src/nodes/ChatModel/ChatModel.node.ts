@@ -269,13 +269,16 @@ export class ChatModel implements INodeType {
               ...(tools.length > 0 ? { tools } : {}),
               messages: apiMessages,
             },
-          })) as { content?: IAnthropicBlock[] };
+          })) as { content?: IAnthropicBlock[]; usage?: { input_tokens?: number; output_tokens?: number } };
           const blocks = response.content ?? [];
           const content = blocks.filter((b) => b.type === 'text').map((b) => b.text ?? '').join('');
           const toolCalls = blocks
             .filter((b) => b.type === 'tool_use')
             .map((b) => ({ id: b.id ?? '', name: b.name ?? '', arguments: (b.input ?? {}) as JsonObject }));
-          return { content, ...(toolCalls.length > 0 ? { toolCalls } : {}) };
+          const usage = response.usage
+            ? { inputTokens: Number(response.usage.input_tokens ?? 0), outputTokens: Number(response.usage.output_tokens ?? 0) }
+            : undefined;
+          return { content, ...(toolCalls.length > 0 ? { toolCalls } : {}), ...(usage ? { usage } : {}) };
         }
 
         // OpenAI Chat Completions 兼容
@@ -302,7 +305,10 @@ export class ChatModel implements INodeType {
             ...(tools.length > 0 ? { tools } : {}),
             messages: toOpenAiMessages(messages),
           },
-        })) as { choices?: Array<{ message?: { content?: string | null; tool_calls?: IOpenAiToolCall[] } }> };
+        })) as {
+          choices?: Array<{ message?: { content?: string | null; tool_calls?: IOpenAiToolCall[] } }>;
+          usage?: { prompt_tokens?: number; completion_tokens?: number };
+        };
         const message = response.choices?.[0]?.message;
         const content = message?.content ?? '';
         const toolCalls = (message?.tool_calls ?? []).map((c) => ({
@@ -310,7 +316,10 @@ export class ChatModel implements INodeType {
           name: c.function.name,
           arguments: parseArgs(c.function.arguments),
         }));
-        return { content, ...(toolCalls.length > 0 ? { toolCalls } : {}) };
+        const usage = response.usage
+          ? { inputTokens: Number(response.usage.prompt_tokens ?? 0), outputTokens: Number(response.usage.completion_tokens ?? 0) }
+          : undefined;
+        return { content, ...(toolCalls.length > 0 ? { toolCalls } : {}), ...(usage ? { usage } : {}) };
       },
     };
   }

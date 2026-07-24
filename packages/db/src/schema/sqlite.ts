@@ -52,6 +52,8 @@ export const agents = sqliteTable(
     config: text('config', { mode: 'json' }).$type<JsonObject>().notNull().$defaultFn(() => ({})),
     publishedVersionId: text('published_version_id'),
     active: integer('active', { mode: 'boolean' }).notNull().default(false),
+    // #44 M2：agent 运行经引擎跑的后备工作流(ChatTrigger→AiAgent→ChatModel,按 config 组装)
+    backingWorkflowId: text('backing_workflow_id'),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -60,6 +62,66 @@ export const agents = sqliteTable(
       .$defaultFn(() => new Date()),
   },
   (t) => [index('agents_project_id_idx').on(t.projectId)],
+);
+
+/** Agents 平台 · 会话线程（backlog #44 M2）：跨多次运行的上下文边界。 */
+export const agentThreads = sqliteTable(
+  'agent_threads',
+  {
+    id: uuidPk('id'),
+    agentId: text('agent_id')
+      .notNull()
+      .references(() => agents.id),
+    projectId: text('project_id').notNull(),
+    channel: text('channel').notNull().default('canvas'), // canvas|telegram|task
+    externalRef: text('external_ref'),
+    title: text('title').notNull().default('New thread'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('agent_threads_agent_idx').on(t.agentId)],
+);
+
+/** Agents 平台 · 一次 agent 运行（backlog #44 M2）：链到 execution,带 token/成本账。 */
+export const agentRuns = sqliteTable(
+  'agent_runs',
+  {
+    id: uuidPk('id'),
+    threadId: text('thread_id')
+      .notNull()
+      .references(() => agentThreads.id),
+    agentId: text('agent_id').notNull(),
+    executionId: text('execution_id'),
+    status: text('status').notNull(),
+    inputTokens: integer('input_tokens').notNull().default(0),
+    outputTokens: integer('output_tokens').notNull().default(0),
+    costMicros: integer('cost_micros').notNull().default(0), // 成本(百万分之一货币单位)
+    model: text('model').notNull().default(''),
+    error: text('error'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('agent_runs_thread_idx').on(t.threadId)],
+);
+
+/** Agents 平台 · 线程消息（backlog #44 M2）。 */
+export const agentMessages = sqliteTable(
+  'agent_messages',
+  {
+    id: uuidPk('id'),
+    threadId: text('thread_id')
+      .notNull()
+      .references(() => agentThreads.id),
+    runId: text('run_id'),
+    role: text('role').notNull(), // user|assistant
+    content: text('content', { mode: 'json' }).$type<JsonObject>().notNull().$defaultFn(() => ({})),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('agent_messages_thread_idx').on(t.threadId)],
 );
 
 /** Agents 平台 · 发布版本史（backlog #44 M1）：同 workflow_versions 的版本快照模式。 */
@@ -972,4 +1034,7 @@ export const sqliteSchema = {
   folderTagMapping,
   agents,
   agentHistory,
+  agentThreads,
+  agentRuns,
+  agentMessages,
 };

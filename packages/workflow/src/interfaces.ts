@@ -331,6 +331,8 @@ export interface IAiMessage {
 export interface IAiChatResponse {
   content: string;
   toolCalls?: IAiToolCall[];
+  /** token 用量（成本核算，backlog #44 M2）；provider 未返回则缺省。 */
+  usage?: { inputTokens: number; outputTokens: number };
 }
 
 /** ai_languageModel 子节点供给：聊天补全（可带工具声明）。 */

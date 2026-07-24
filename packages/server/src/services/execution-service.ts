@@ -77,6 +77,8 @@ export class ExecutionService {
       endedAtMs: number;
       nodes: Array<{ name: string; startedAtMs: number; endedAtMs: number; error?: string }>;
     }) => void,
+    /** 引擎 httpRequest 覆盖（#44 M2 测试注入假 provider；生产缺省走 defaultHttpRequest）。 */
+    private readonly httpRequestImpl?: (options: unknown) => Promise<unknown>,
   ) {}
 
   /** 本进程在跑的引擎实例（executionId → engine）；stop 经此直达 cancel。 */
@@ -662,6 +664,7 @@ export class ExecutionService {
       executeSubWorkflow: (workflowId: string, items: INodeExecutionData[]) =>
         this.runSubWorkflow(workflowId, projectId, items, depth, production),
       ...(this.binaryStore ? { binaryStore: this.binaryStore } : {}),
+      ...(this.httpRequestImpl ? { httpRequest: this.httpRequestImpl } : {}), // 测试注入假 provider（#44 M2）
     };
   }
 

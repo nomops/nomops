@@ -48,10 +48,65 @@ export const agents = pgTable(
     config: jsonb('config').$type<JsonObject>().notNull().default({}),
     publishedVersionId: uuid('published_version_id'),
     active: boolean('active').notNull().default(false),
+    backingWorkflowId: uuid('backing_workflow_id'), // #44 M2
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
   (t) => [index('agents_project_id_idx').on(t.projectId)],
+);
+
+/** Agents 平台 · 会话线程（backlog #44 M2）。 */
+export const agentThreads = pgTable(
+  'agent_threads',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    agentId: uuid('agent_id')
+      .notNull()
+      .references(() => agents.id),
+    projectId: uuid('project_id').notNull(),
+    channel: text('channel').notNull().default('canvas'),
+    externalRef: text('external_ref'),
+    title: text('title').notNull().default('New thread'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('agent_threads_agent_idx').on(t.agentId)],
+);
+
+/** Agents 平台 · 一次 agent 运行（backlog #44 M2）。 */
+export const agentRuns = pgTable(
+  'agent_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    threadId: uuid('thread_id')
+      .notNull()
+      .references(() => agentThreads.id),
+    agentId: uuid('agent_id').notNull(),
+    executionId: uuid('execution_id'),
+    status: text('status').notNull(),
+    inputTokens: integer('input_tokens').notNull().default(0),
+    outputTokens: integer('output_tokens').notNull().default(0),
+    costMicros: integer('cost_micros').notNull().default(0),
+    model: text('model').notNull().default(''),
+    error: text('error'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('agent_runs_thread_idx').on(t.threadId)],
+);
+
+/** Agents 平台 · 线程消息（backlog #44 M2）。 */
+export const agentMessages = pgTable(
+  'agent_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    threadId: uuid('thread_id')
+      .notNull()
+      .references(() => agentThreads.id),
+    runId: uuid('run_id'),
+    role: text('role').notNull(),
+    content: jsonb('content').$type<JsonObject>().notNull().default({}),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('agent_messages_thread_idx').on(t.threadId)],
 );
 
 /** Agents 平台 · 发布版本史（backlog #44 M1）。 */
@@ -863,4 +918,7 @@ export const pgSchema = {
   folderTagMapping,
   agents,
   agentHistory,
+  agentThreads,
+  agentRuns,
+  agentMessages,
 };

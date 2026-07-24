@@ -71,8 +71,18 @@ export class AiAgent implements INodeType {
       ];
 
       // Agent 循环：模型请求工具 → 逐个执行 → 结果回喂，直到纯文本或到达上限
+      // token 用量跨轮累加（成本核算，backlog #44 M2）
       let toolRounds = 0;
+      let inputTokens = 0;
+      let outputTokens = 0;
+      const addUsage = (r: typeof reply) => {
+        if (r.usage) {
+          inputTokens += r.usage.inputTokens;
+          outputTokens += r.usage.outputTokens;
+        }
+      };
       let reply = await model.chat(messages, { tools: tools.map((t) => t.spec) });
+      addUsage(reply);
       while (reply.toolCalls?.length && toolRounds < maxIterations) {
         toolRounds++;
         messages.push({ role: 'assistant', content: reply.content, toolCalls: reply.toolCalls });
@@ -84,13 +94,15 @@ export class AiAgent implements INodeType {
           messages.push({ role: 'tool', content: result, toolCallId: call.id });
         }
         reply = await model.chat(messages, { tools: tools.map((t) => t.spec) });
+        addUsage(reply);
       }
 
       messages.push({ role: 'assistant', content: reply.content });
       if (memory) await memory.save(sessionId, messages);
 
       returnData.push({
-        json: { output: reply.content, toolRounds },
+        // _nmUsage 保留键：AgentRunService 跑完从 runData 提取 → 成本核算（#44 M2）
+        json: { output: reply.content, toolRounds, _nmUsage: { inputTokens, outputTokens } },
         pairedItem: { item: i },
       });
     }
