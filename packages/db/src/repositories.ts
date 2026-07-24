@@ -43,6 +43,8 @@ import type {
   ScheduledTask,
   InsightsRawEvent,
   InsightsPeriodRow,
+  PublishHistoryRow,
+  TriggerStatusRow,
 } from './types.js';
 
 /**
@@ -2564,6 +2566,87 @@ export class InsightsRepository extends BaseRepository {
   }
 }
 
+/**
+ * 发布管线深化（backlog #40）：发布/回滚事件史、逐触发器激活状态、凭证引用索引。
+ */
+export class PublishPipelineRepository extends BaseRepository {
+  /* ── 发布史 ── */
+  async recordPublish(workflowId: string, versionId: string, action: string, userId: string | null): Promise<void> {
+    await this.db
+      .insert(this.schema.workflowPublishHistory)
+      .values({ workflowId, versionId, action, userId });
+  }
+
+  async listPublishHistory(workflowId: string, limit = 50): Promise<PublishHistoryRow[]> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.workflowPublishHistory)
+      .where(eq(this.schema.workflowPublishHistory.workflowId, workflowId))
+      .orderBy(desc(this.schema.workflowPublishHistory.createdAt))
+      .limit(limit);
+    return rows as PublishHistoryRow[];
+  }
+
+  /* ── 逐触发器激活状态 ── */
+  async setTriggerStatus(
+    workflowId: string,
+    nodeName: string,
+    triggerType: string,
+    status: string,
+    error: string | null,
+  ): Promise<void> {
+    await this.db
+      .insert(this.schema.publicationTriggerStatus)
+      .values({ workflowId, nodeName, triggerType, status, error, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: [this.schema.publicationTriggerStatus.workflowId, this.schema.publicationTriggerStatus.nodeName],
+        set: { triggerType, status, error, updatedAt: new Date() },
+      });
+  }
+
+  async clearTriggerStatus(workflowId: string): Promise<void> {
+    await this.db
+      .delete(this.schema.publicationTriggerStatus)
+      .where(eq(this.schema.publicationTriggerStatus.workflowId, workflowId));
+  }
+
+  async listTriggerStatus(workflowId: string): Promise<TriggerStatusRow[]> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.publicationTriggerStatus)
+      .where(eq(this.schema.publicationTriggerStatus.workflowId, workflowId));
+    return rows as TriggerStatusRow[];
+  }
+
+  /* ── 凭证引用索引（#40b） ── */
+  /** 全量替换某工作流的凭证依赖（保存时重建）。 */
+  async setCredentialDeps(workflowId: string, credentialIds: string[]): Promise<void> {
+    await this.db
+      .delete(this.schema.credentialDependency)
+      .where(eq(this.schema.credentialDependency.workflowId, workflowId));
+    const uniq = [...new Set(credentialIds)];
+    if (uniq.length > 0) {
+      await this.db
+        .insert(this.schema.credentialDependency)
+        .values(uniq.map((credentialId) => ({ workflowId, credentialId })));
+    }
+  }
+
+  /** 引用某凭证的工作流 id 集合（删凭证前查引用方）。 */
+  async workflowsUsingCredential(credentialId: string): Promise<string[]> {
+    const rows = await this.db
+      .select({ workflowId: this.schema.credentialDependency.workflowId })
+      .from(this.schema.credentialDependency)
+      .where(eq(this.schema.credentialDependency.credentialId, credentialId));
+    return rows.map((r: { workflowId: string }) => r.workflowId);
+  }
+
+  async clearWorkflow(workflowId: string): Promise<void> {
+    await this.db.delete(this.schema.credentialDependency).where(eq(this.schema.credentialDependency.workflowId, workflowId));
+    await this.db.delete(this.schema.publicationTriggerStatus).where(eq(this.schema.publicationTriggerStatus.workflowId, workflowId));
+  }
+}
+
 export interface Repositories {
   users: UserRepository;
   apiKeys: ApiKeyRepository;
@@ -2593,6 +2676,7 @@ export interface Repositories {
   authIdentities: AuthIdentityRepository;
   scheduler: SchedulerRepository;
   insights: InsightsRepository;
+  publishPipeline: PublishPipelineRepository;
 }
 
 /** 用一个 DatabaseHandle 组装全部仓储。server 层在启动时调用一次。 */
@@ -2627,5 +2711,6 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
     authIdentities: new AuthIdentityRepository(db, schema),
     scheduler: new SchedulerRepository(db, schema),
     insights: new InsightsRepository(db, schema),
+    publishPipeline: new PublishPipelineRepository(db, schema),
   };
 }

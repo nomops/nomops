@@ -46,6 +46,7 @@ export {
   AuthIdentityRepository,
   SchedulerRepository,
   InsightsRepository,
+  PublishPipelineRepository,
 } from './repositories.js';
 export type {
   Repositories,
@@ -94,4 +95,6 @@ export type {
   ScheduledTask,
   InsightsRawEvent,
   InsightsPeriodRow,
+  PublishHistoryRow,
+  TriggerStatusRow,
 } from './types.js';

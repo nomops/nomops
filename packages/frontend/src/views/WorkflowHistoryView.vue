@@ -36,6 +36,14 @@ const tab = ref<'versions' | 'timeline'>('versions');
 const actionsOpen = ref(false);
 const busy = ref('');
 
+/* 发布时间线（#40）：按需拉发布/回滚事件史 */
+const publishHistory = ref<Array<{ id: string; versionId: string; action: 'publish' | 'rollback'; createdAt: string }>>([]);
+watch(tab, async (t) => {
+  if (t === 'timeline' && publishHistory.value.length === 0 && workflowId.value) {
+    publishHistory.value = await api.workflows.publishHistory(workflowId.value).catch(() => []);
+  }
+});
+
 // Current changes = 当前工作副本(始终置顶,独立于「N versions」分组);其下为已保存版本
 const currentEntry = computed<Entry>(() => ({ id: null, label: 'Current changes', author: auth.email ?? 'You', date: '' }));
 const savedEntries = computed<Entry[]>(() =>
@@ -237,7 +245,18 @@ function download() {
           </div>
         </template>
 
-        <div v-else class="wh-timeline-tab dim">Publish Timeline shows when each version was published to production.</div>
+        <div v-else class="wh-timeline-tab" data-test="publish-timeline">
+          <p v-if="!publishHistory.length" class="dim" style="padding: 12px">No publish events yet.</p>
+          <ul v-else class="wh-list">
+            <li v-for="h in publishHistory" :key="h.id" class="wh-item" data-test="publish-event">
+              <span class="wh-timeline"><span class="wh-dot" :class="{ latest: h.action === 'publish' }" /></span>
+              <div class="wh-item-body">
+                <div class="wh-main" style="text-transform: capitalize">{{ h.action === 'rollback' ? '↩ Rollback' : '⇧ Publish' }}</div>
+                <div class="wh-meta"><time>{{ fmtVersionDate(h.createdAt) }}</time></div>
+              </div>
+            </li>
+          </ul>
+        </div>
       </aside>
     </div>
   </div>

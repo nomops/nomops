@@ -43,6 +43,8 @@ export type ScheduledJob = InferSelectModel<typeof sqliteSchema.scheduledJobs>;
 export type ScheduledTask = InferSelectModel<typeof sqliteSchema.scheduledTasks>;
 export type InsightsRawEvent = InferSelectModel<typeof sqliteSchema.insightsRaw>;
 export type InsightsPeriodRow = InferSelectModel<typeof sqliteSchema.insightsByPeriod>;
+export type PublishHistoryRow = InferSelectModel<typeof sqliteSchema.workflowPublishHistory>;
+export type TriggerStatusRow = InferSelectModel<typeof sqliteSchema.publicationTriggerStatus>;
 
 /* ── 创建入参（区别于自动生成的 id/时间戳字段） ── */
 

@@ -475,6 +475,54 @@ export const testCaseRuns = pgTable(
   (t) => [index('test_case_runs_test_run_id_idx').on(t.testRunId)],
 );
 
+/** 发布/回滚事件史（backlog #40）。 */
+export const workflowPublishHistory = pgTable(
+  'workflow_publish_history',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workflowId: uuid('workflow_id')
+      .notNull()
+      .references(() => workflows.id),
+    versionId: uuid('version_id').notNull(),
+    action: text('action').notNull(),
+    userId: uuid('user_id'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('workflow_publish_history_workflow_idx').on(t.workflowId, t.createdAt)],
+);
+
+/** 逐触发器激活状态（backlog #40）。 */
+export const publicationTriggerStatus = pgTable(
+  'publication_trigger_status',
+  {
+    workflowId: uuid('workflow_id')
+      .notNull()
+      .references(() => workflows.id),
+    nodeName: text('node_name').notNull(),
+    triggerType: text('trigger_type').notNull(),
+    status: text('status').notNull(),
+    error: text('error'),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.workflowId, t.nodeName] })],
+);
+
+/** 凭证引用索引（backlog #40）。 */
+export const credentialDependency = pgTable(
+  'credential_dependency',
+  {
+    workflowId: uuid('workflow_id')
+      .notNull()
+      .references(() => workflows.id),
+    credentialId: uuid('credential_id').notNull(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.workflowId, t.credentialId] }),
+    index('credential_dependency_cred_idx').on(t.credentialId),
+  ],
+);
+
 /**
  * Insights 原始事件（backlog #39）：执行收尾写一条,与 executions 保留期解耦。
  */
@@ -712,4 +760,7 @@ export const pgSchema = {
   insightsRaw,
   insightsByPeriod,
   insightsMetadata,
+  workflowPublishHistory,
+  publicationTriggerStatus,
+  credentialDependency,
 };

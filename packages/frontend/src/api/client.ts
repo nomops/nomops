@@ -459,6 +459,17 @@ export const api = {
       http<WorkflowVersion>('GET', `/api/workflows/${id}/versions/${versionId}`),
     restore: (id: string, versionId: string) =>
       http<WorkflowRow>('POST', `/api/workflows/${id}/versions/${versionId}/restore`),
+    /* 发布史 + 逐触发器激活状态（#40） */
+    publishHistory: (id: string) =>
+      http<Array<{ id: string; versionId: string; action: 'publish' | 'rollback'; userId: string | null; createdAt: string }>>(
+        'GET',
+        `/api/workflows/${id}/publish-history`,
+      ),
+    triggerStatus: (id: string) =>
+      http<Array<{ nodeName: string; triggerType: string; status: 'active' | 'error'; error: string | null; updatedAt: string }>>(
+        'GET',
+        `/api/workflows/${id}/trigger-status`,
+      ),
   },
 
   folders: {

@@ -424,6 +424,9 @@ export function createApiRouter(services: AppServices): Router {
       const row = await services.workflows.publish(param(req, 'id'), auth(req).projectId, auth(req).userId);
       // 激活中的工作流重发布 → 重注册触发器（webhook 路径/轮询间隔可能变了）
       if (row.active) await services.activeWorkflows.add(row);
+      if (row.publishedVersionId) {
+        await services.repos.publishPipeline.recordPublish(row.id, row.publishedVersionId, 'publish', auth(req).userId); // #40
+      }
       recordAudit(services, req, 'workflow.publish', { type: 'workflow', id: row.id });
       res.json({ id: row.id, publishedVersionId: row.publishedVersionId, publishedAt: row.publishedAt, publishedDirty: false });
     }),
@@ -483,6 +486,7 @@ export function createApiRouter(services: AppServices): Router {
         auth(req).projectId,
         auth(req).userId,
       );
+      await services.repos.publishPipeline.recordPublish(restored.id, param(req, 'versionId'), 'rollback', auth(req).userId); // #40
       recordAudit(
         services,
         req,
@@ -491,6 +495,22 @@ export function createApiRouter(services: AppServices): Router {
         { versionId: param(req, 'versionId') },
       );
       res.json(restored);
+    }),
+  );
+
+  /* ── 发布史 + 逐触发器激活状态（backlog #40） ── */
+  router.get(
+    '/workflows/:id/publish-history',
+    h(async (req, res) => {
+      await services.workflows.getById(param(req, 'id'), auth(req).projectId); // 归属校验
+      res.json(await services.repos.publishPipeline.listPublishHistory(param(req, 'id')));
+    }),
+  );
+  router.get(
+    '/workflows/:id/trigger-status',
+    h(async (req, res) => {
+      await services.workflows.getById(param(req, 'id'), auth(req).projectId); // 归属校验
+      res.json(await services.repos.publishPipeline.listTriggerStatus(param(req, 'id')));
     }),
   );
 
@@ -669,6 +689,7 @@ export function createApiRouter(services: AppServices): Router {
       } else {
         await services.activeWorkflows.remove(row.id);
         await services.repos.workflows.setActive(row.id, false);
+        await services.repos.publishPipeline.clearTriggerStatus(row.id); // #40：下线即清逐触发器状态
       }
       recordAudit(services, req, body.active ? 'workflow.activate' : 'workflow.deactivate', {
         type: 'workflow',

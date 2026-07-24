@@ -539,6 +539,60 @@ export const testCaseRuns = sqliteTable(
   (t) => [index('test_case_runs_test_run_id_idx').on(t.testRunId)],
 );
 
+/** 发布/回滚事件史（backlog #40）：每次 publish/rollback 一条,可回看。 */
+export const workflowPublishHistory = sqliteTable(
+  'workflow_publish_history',
+  {
+    id: uuidPk('id'),
+    workflowId: text('workflow_id')
+      .notNull()
+      .references(() => workflows.id),
+    versionId: text('version_id').notNull(), // 发布/回滚到的版本
+    action: text('action').notNull(), // 'publish' | 'rollback'
+    userId: text('user_id'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('workflow_publish_history_workflow_idx').on(t.workflowId, t.createdAt)],
+);
+
+/** 逐触发器激活状态（backlog #40）：激活时一节点一条,失败带 error 供 UI 展示。 */
+export const publicationTriggerStatus = sqliteTable(
+  'publication_trigger_status',
+  {
+    workflowId: text('workflow_id')
+      .notNull()
+      .references(() => workflows.id),
+    nodeName: text('node_name').notNull(),
+    triggerType: text('trigger_type').notNull(), // webhook|schedule|poll
+    status: text('status').notNull(), // active|error
+    error: text('error'),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [primaryKey({ columns: [t.workflowId, t.nodeName] })],
+);
+
+/** 凭证引用索引（backlog #40）：工作流保存时重建,删凭证前查引用方。 */
+export const credentialDependency = sqliteTable(
+  'credential_dependency',
+  {
+    workflowId: text('workflow_id')
+      .notNull()
+      .references(() => workflows.id),
+    credentialId: text('credential_id').notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [
+    primaryKey({ columns: [t.workflowId, t.credentialId] }),
+    index('credential_dependency_cred_idx').on(t.credentialId),
+  ],
+);
+
 /**
  * Insights 原始事件（backlog #39）：执行收尾写一条,与 executions 保留期解耦——
  * 执行历史被清理后 Insights 数字不变。卷积后可按 rollupAt 剪旧行。
@@ -798,4 +852,7 @@ export const sqliteSchema = {
   insightsRaw,
   insightsByPeriod,
   insightsMetadata,
+  workflowPublishHistory,
+  publicationTriggerStatus,
+  credentialDependency,
 };

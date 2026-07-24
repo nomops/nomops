@@ -232,6 +232,13 @@
       "when": 1784860394739,
       "tag": "0032_steep_jean_grey",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1784861890678,
+      "tag": "0033_magical_hardball",
+      "breakpoints": true
     }
   ]
 }

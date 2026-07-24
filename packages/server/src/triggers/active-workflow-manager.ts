@@ -75,6 +75,7 @@ export class ActiveWorkflowManager {
   async add(input: WorkflowRow): Promise<void> {
     const row = await this.productionRow(input);
     await this.remove(row.id); // 幂等：先清旧注册（update/republish 场景）
+    await this.repos.publishPipeline.clearTriggerStatus(row.id); // #40：重记逐触发器状态
     const closer: Array<() => Promise<void>> = [];
     this.closers.set(row.id, closer);
 
@@ -91,11 +92,10 @@ export class ActiveWorkflowManager {
         const method = resolveWebhookValue(webhook.httpMethod, node).toUpperCase();
         const existing = await this.repos.webhooks.findByPathAndMethod(path, method);
         if (existing && existing.workflowId !== row.id) {
+          const msg = `Webhook path conflict: ${method} /webhook/${path} is already in use by another workflow`;
+          await this.repos.publishPipeline.setTriggerStatus(row.id, node.name, 'webhook', 'error', msg); // #40
           await this.remove(row.id);
-          throw new OperationalError(
-            `Webhook path conflict: ${method} /webhook/${path} is already in use by another workflow`,
-            { path, method, conflictWorkflowId: existing.workflowId },
-          );
+          throw new OperationalError(msg, { path, method, conflictWorkflowId: existing.workflowId });
         }
         await this.repos.webhooks.upsert({
           webhookPath: path,
@@ -103,13 +103,20 @@ export class ActiveWorkflowManager {
           workflowId: row.id,
           node: node.name,
         });
+        await this.repos.publishPipeline.setTriggerStatus(row.id, node.name, 'webhook', 'active', null); // #40
         closer.push(async () => this.repos.webhooks.deleteByWorkflow(row.id));
       }
 
       // 定时型 Schedule 节点 → DB 调度器（#38）：落库 nextRunAt,重启不丢、多实例只触发一次。
       // 不判 leader——job 落库幂等,触发去重交给调度器的 unique + 租约乐观锁。
       if (node.type === 'nomops.schedule') {
-        await this.upsertScheduleJob(row.id, node);
+        try {
+          await this.upsertScheduleJob(row.id, node);
+          await this.repos.publishPipeline.setTriggerStatus(row.id, node.name, 'schedule', 'active', null); // #40
+        } catch (e) {
+          await this.repos.publishPipeline.setTriggerStatus(row.id, node.name, 'schedule', 'error', (e as Error).message);
+          throw e;
+        }
       } else if (nodeType.trigger && this.isLeader()) {
         // 其它 trigger() 型仍走进程内 leader 定时器（当前无此类节点,保留兜底）
         const context = this.buildTriggerContext(row, node);
@@ -145,6 +152,7 @@ export class ActiveWorkflowManager {
           clearInterval(timer);
           this.pollFns.delete(row.id);
         });
+        await this.repos.publishPipeline.setTriggerStatus(row.id, node.name, 'poll', 'active', null); // #40
         await doPoll(); // 激活即拉一轮（建立基线并触发首批新条目）
       }
     }
