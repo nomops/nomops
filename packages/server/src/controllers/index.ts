@@ -1860,6 +1860,77 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
+  /* ── 有检查点的 AI 线程（backlog #45 M2）：可序列化状态检查点 + 回滚续跑 ── */
+  router.get(
+    '/instance-ai/threads',
+    h(async (req, res) => {
+      res.json(await services.instanceAi.listThreads(auth(req).userId));
+    }),
+  );
+  router.post(
+    '/instance-ai/threads',
+    h(async (req, res) => {
+      const { kind, title } = req.body as { kind?: string; title?: string };
+      res.status(201).json(await services.instanceAi.createThread(auth(req).userId, { kind, title }));
+    }),
+  );
+  router.get(
+    '/instance-ai/threads/:id',
+    h(async (req, res) => {
+      res.json(await services.instanceAi.getThread(param(req, 'id'), auth(req).userId));
+    }),
+  );
+  router.delete(
+    '/instance-ai/threads/:id',
+    h(async (req, res) => {
+      await services.instanceAi.deleteThread(param(req, 'id'), auth(req).userId);
+      res.status(204).end();
+    }),
+  );
+  router.post(
+    '/instance-ai/threads/:id/messages',
+    h(async (req, res) => {
+      const { role, content } = req.body as { role?: string; content?: Record<string, unknown> };
+      if (!role || !content) throw new OperationalError('role and content are required', { status: 400 });
+      res.status(201).json(await services.instanceAi.append(param(req, 'id'), auth(req).userId, role, content as JsonObject));
+    }),
+  );
+  router.put(
+    '/instance-ai/threads/:id/state',
+    h(async (req, res) => {
+      const { state } = req.body as { state?: Record<string, unknown> };
+      if (state === undefined || state === null || typeof state !== 'object') throw new OperationalError('state object is required', { status: 400 });
+      res.json(await services.instanceAi.setState(param(req, 'id'), auth(req).userId, state as JsonObject));
+    }),
+  );
+  router.post(
+    '/instance-ai/threads/:id/checkpoints',
+    h(async (req, res) => {
+      const { label } = req.body as { label?: string };
+      res.status(201).json(await services.instanceAi.checkpoint(param(req, 'id'), auth(req).userId, label ?? ''));
+    }),
+  );
+  router.post(
+    '/instance-ai/threads/:id/restore',
+    h(async (req, res) => {
+      const { checkpointId } = req.body as { checkpointId?: string };
+      if (!checkpointId) throw new OperationalError('checkpointId is required', { status: 400 });
+      res.json(await services.instanceAi.restore(param(req, 'id'), auth(req).userId, checkpointId));
+    }),
+  );
+  router.post(
+    '/instance-ai/threads/:id/chat',
+    h(async (req, res) => {
+      if ((await services.repos.settings.get('chat.enabled')) === 'false') {
+        throw new OperationalError('Chat is disabled on this instance', { status: 403 });
+      }
+      const { message, model, credentialId } = req.body as { message?: string; model?: string; credentialId?: string };
+      if (!message?.trim()) throw new OperationalError('message is required', { status: 400 });
+      const safeModel = typeof model === 'string' && /^[a-zA-Z0-9][\w.-]{1,63}$/.test(model) ? model : undefined;
+      res.json(await services.instanceAi.chat(param(req, 'id'), auth(req).userId, auth(req).projectId, message, safeModel, credentialId));
+    }),
+  );
+
   /* ── Chat 会话/个人 Agent 持久化（backlog #14,用户维度;原 localStorage 落库） ── */
   router.get(
     '/chat/sessions',

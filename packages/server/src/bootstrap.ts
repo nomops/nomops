@@ -43,6 +43,7 @@ import { InsightsService } from './services/insights-service.js';
 import { AgentRunService } from './services/agent-run-service.js';
 import { AgentChannelService } from './services/agent-channel-service.js';
 import { WorkflowBuilderService } from './services/workflow-builder-service.js';
+import { InstanceAiService } from './services/instance-ai-service.js';
 import {
   ConcurrencyGate,
   concurrencyLimitFromEnv,
@@ -429,6 +430,8 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   const assistant = new AssistantService(repos, credentialService, nodeLoader, opts.callClaude);
   // #45 M1：AI 建流会话（多轮迭代临时草稿 → Apply 物化为正式 workflow）
   const workflowBuilder = new WorkflowBuilderService(repos, assistant, workflows);
+  // #45 M2：有检查点的 AI 线程底座（实例助手,可回滚续跑）
+  const instanceAi = new InstanceAiService(repos, assistant);
   // 实例级 MCP：把勾选的工作流暴露为 MCP tools（Preview）
   const mcp = new McpService(repos, executions, workflows);
   const sharing = new SharingService(repos, workflows, credentialService);
@@ -473,6 +476,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     agentRuns,
     agentChannels,
     workflowBuilder,
+    instanceAi,
     waitTracker,
     executionPruner,
     mcp,

@@ -302,6 +302,68 @@ export const aiBuilderTemporaryWorkflows = sqliteTable(
   (t) => [index('ai_builder_temporary_workflows_session_idx').on(t.sessionId)],
 );
 
+/**
+ * 有检查点的 AI 线程（backlog #45 M2，docs/13 组 B）：实例助手的底座。
+ * state 是线程当前的可序列化工作态（铁律 4，JSON.stringify 安全）;检查点存整段快照,可回滚续跑。
+ */
+export const instanceAiThreads = sqliteTable(
+  'instance_ai_threads',
+  {
+    id: uuidPk('id'),
+    userId: text('user_id').notNull(),
+    kind: text('kind').notNull().default('ops'), // ops|builder
+    title: text('title').notNull().default('New thread'),
+    state: text('state', { mode: 'json' }).$type<JsonObject>().notNull().$defaultFn(() => ({})), // 当前工作态
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('instance_ai_threads_user_idx').on(t.userId)],
+);
+
+/** AI 线程消息（backlog #45 M2）：追加日志,seq 递增;回滚时截断 seq > 检查点 messageCount 的。 */
+export const instanceAiMessages = sqliteTable(
+  'instance_ai_messages',
+  {
+    id: uuidPk('id'),
+    threadId: text('thread_id')
+      .notNull()
+      .references(() => instanceAiThreads.id),
+    seq: integer('seq').notNull(), // 1-based 顺序
+    role: text('role').notNull(), // user|assistant|tool|system
+    content: text('content', { mode: 'json' }).$type<JsonObject>().notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('instance_ai_messages_thread_idx').on(t.threadId)],
+);
+
+/**
+ * AI 线程检查点（backlog #45 M2）：某步的完整可序列化状态快照（铁律 4，同 RunExecutionData 哲学）。
+ * restore 时把线程 state 还原、并截断 messageCount 之后的消息 → 线程回到该检查点,状态一致,可续跑。
+ */
+export const instanceAiCheckpoints = sqliteTable(
+  'instance_ai_checkpoints',
+  {
+    id: uuidPk('id'),
+    threadId: text('thread_id')
+      .notNull()
+      .references(() => instanceAiThreads.id),
+    seq: integer('seq').notNull(), // 检查点序号(1-based)
+    label: text('label').notNull().default(''),
+    state: text('state', { mode: 'json' }).$type<JsonObject>().notNull(), // 快照时的 thread.state
+    messageCount: integer('message_count').notNull(), // 快照时的消息条数(回滚截断依据)
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('instance_ai_checkpoints_thread_idx').on(t.threadId)],
+);
+
 /** 实例升级史（backlog #43）：每次启动检测版本变化即记一条。 */
 export const instanceVersionHistory = sqliteTable('instance_version_history', {
   id: uuidPk('id'),
@@ -1203,4 +1265,7 @@ export const sqliteSchema = {
   agentChannels,
   workflowBuilderSessions,
   aiBuilderTemporaryWorkflows,
+  instanceAiThreads,
+  instanceAiMessages,
+  instanceAiCheckpoints,
 };

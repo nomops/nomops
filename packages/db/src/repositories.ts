@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';
 import type { IConnections, INode, JsonObject } from '@nomops/workflow';
 import type { DatabaseHandle, NomopsSchema } from './client.js';
 import type {
@@ -60,6 +60,9 @@ import type {
   AgentChannel,
   WorkflowBuilderSession,
   AiBuilderTemporaryWorkflow,
+  InstanceAiThread,
+  InstanceAiMessage,
+  InstanceAiCheckpoint,
 } from './types.js';
 
 /**
@@ -3300,6 +3303,128 @@ export class WorkflowBuilderRepository extends BaseRepository {
   }
 }
 
+/**
+ * 有检查点的 AI 线程仓储（backlog #45 M2）：线程 + 追加消息日志 + 可序列化状态检查点。
+ * 归属按 userId（实例助手多为实例/用户级）。回滚 = 还原 state + 截断检查点之后的消息。
+ */
+export class InstanceAiRepository extends BaseRepository {
+  /* ── 线程 ── */
+  async createThread(input: { userId: string; kind: string; title: string }): Promise<InstanceAiThread> {
+    const [row] = await this.db
+      .insert(this.schema.instanceAiThreads)
+      .values({ userId: input.userId, kind: input.kind, title: input.title, state: {} })
+      .returning();
+    return row as InstanceAiThread;
+  }
+
+  async listThreads(userId: string): Promise<InstanceAiThread[]> {
+    return (await this.db
+      .select()
+      .from(this.schema.instanceAiThreads)
+      .where(eq(this.schema.instanceAiThreads.userId, userId))
+      .orderBy(desc(this.schema.instanceAiThreads.updatedAt))) as InstanceAiThread[];
+  }
+
+  /** 归属校验版（userId 隔离）。 */
+  async findThread(id: string, userId: string): Promise<InstanceAiThread | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.instanceAiThreads)
+      .where(and(eq(this.schema.instanceAiThreads.id, id), eq(this.schema.instanceAiThreads.userId, userId)))
+      .limit(1);
+    return (rows[0] as InstanceAiThread | undefined) ?? null;
+  }
+
+  async setThreadState(id: string, state: JsonObject): Promise<void> {
+    await this.db.update(this.schema.instanceAiThreads).set({ state, updatedAt: new Date() }).where(eq(this.schema.instanceAiThreads.id, id));
+  }
+
+  async renameThread(id: string, title: string): Promise<void> {
+    await this.db.update(this.schema.instanceAiThreads).set({ title, updatedAt: new Date() }).where(eq(this.schema.instanceAiThreads.id, id));
+  }
+
+  async deleteThread(id: string): Promise<void> {
+    // 子记录先清（无级联 FK）
+    await this.db.delete(this.schema.instanceAiCheckpoints).where(eq(this.schema.instanceAiCheckpoints.threadId, id));
+    await this.db.delete(this.schema.instanceAiMessages).where(eq(this.schema.instanceAiMessages.threadId, id));
+    await this.db.delete(this.schema.instanceAiThreads).where(eq(this.schema.instanceAiThreads.id, id));
+  }
+
+  /* ── 消息（追加日志） ── */
+  async countMessages(threadId: string): Promise<number> {
+    const rows = (await this.db
+      .select({ seq: this.schema.instanceAiMessages.seq })
+      .from(this.schema.instanceAiMessages)
+      .where(eq(this.schema.instanceAiMessages.threadId, threadId))) as Array<{ seq: number }>;
+    return rows.length;
+  }
+
+  async appendMessage(threadId: string, seq: number, role: string, content: JsonObject): Promise<InstanceAiMessage> {
+    const [row] = await this.db
+      .insert(this.schema.instanceAiMessages)
+      .values({ threadId, seq, role, content })
+      .returning();
+    await this.db.update(this.schema.instanceAiThreads).set({ updatedAt: new Date() }).where(eq(this.schema.instanceAiThreads.id, threadId));
+    return row as InstanceAiMessage;
+  }
+
+  async listMessages(threadId: string): Promise<InstanceAiMessage[]> {
+    return (await this.db
+      .select()
+      .from(this.schema.instanceAiMessages)
+      .where(eq(this.schema.instanceAiMessages.threadId, threadId))
+      .orderBy(this.schema.instanceAiMessages.seq)) as InstanceAiMessage[];
+  }
+
+  /** 截断 seq > cutoff 的消息（回滚时用）。返回删除条数。 */
+  async truncateMessagesAfter(threadId: string, cutoff: number): Promise<void> {
+    await this.db
+      .delete(this.schema.instanceAiMessages)
+      .where(and(eq(this.schema.instanceAiMessages.threadId, threadId), gt(this.schema.instanceAiMessages.seq, cutoff)));
+  }
+
+  /* ── 检查点 ── */
+  async countCheckpoints(threadId: string): Promise<number> {
+    const rows = (await this.db
+      .select({ seq: this.schema.instanceAiCheckpoints.seq })
+      .from(this.schema.instanceAiCheckpoints)
+      .where(eq(this.schema.instanceAiCheckpoints.threadId, threadId))) as Array<{ seq: number }>;
+    return rows.length;
+  }
+
+  async addCheckpoint(input: { threadId: string; seq: number; label: string; state: JsonObject; messageCount: number }): Promise<InstanceAiCheckpoint> {
+    const [row] = await this.db
+      .insert(this.schema.instanceAiCheckpoints)
+      .values(input)
+      .returning();
+    return row as InstanceAiCheckpoint;
+  }
+
+  async listCheckpoints(threadId: string): Promise<InstanceAiCheckpoint[]> {
+    return (await this.db
+      .select()
+      .from(this.schema.instanceAiCheckpoints)
+      .where(eq(this.schema.instanceAiCheckpoints.threadId, threadId))
+      .orderBy(this.schema.instanceAiCheckpoints.seq)) as InstanceAiCheckpoint[];
+  }
+
+  async findCheckpoint(id: string, threadId: string): Promise<InstanceAiCheckpoint | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.instanceAiCheckpoints)
+      .where(and(eq(this.schema.instanceAiCheckpoints.id, id), eq(this.schema.instanceAiCheckpoints.threadId, threadId)))
+      .limit(1);
+    return (rows[0] as InstanceAiCheckpoint | undefined) ?? null;
+  }
+
+  /** 回滚后于该检查点之后建的检查点也作废（截断 seq > 检查点 seq）。 */
+  async truncateCheckpointsAfter(threadId: string, cutoffSeq: number): Promise<void> {
+    await this.db
+      .delete(this.schema.instanceAiCheckpoints)
+      .where(and(eq(this.schema.instanceAiCheckpoints.threadId, threadId), gt(this.schema.instanceAiCheckpoints.seq, cutoffSeq)));
+  }
+}
+
 export interface Repositories {
   users: UserRepository;
   apiKeys: ApiKeyRepository;
@@ -3334,6 +3459,7 @@ export interface Repositories {
   platform: PlatformRepository;
   agents: AgentRepository;
   workflowBuilder: WorkflowBuilderRepository;
+  instanceAi: InstanceAiRepository;
 }
 
 /** 用一个 DatabaseHandle 组装全部仓储。server 层在启动时调用一次。 */
@@ -3373,5 +3499,6 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
     platform: new PlatformRepository(db, schema),
     agents: new AgentRepository(db, schema),
     workflowBuilder: new WorkflowBuilderRepository(db, schema),
+    instanceAi: new InstanceAiRepository(db, schema),
   };
 }

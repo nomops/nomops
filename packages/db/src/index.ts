@@ -51,6 +51,7 @@ export {
   PlatformRepository,
   AgentRepository,
   WorkflowBuilderRepository,
+  InstanceAiRepository,
 } from './repositories.js';
 export type {
   Repositories,
@@ -115,4 +116,7 @@ export type {
   AgentChannel,
   WorkflowBuilderSession,
   AiBuilderTemporaryWorkflow,
+  InstanceAiThread,
+  InstanceAiMessage,
+  InstanceAiCheckpoint,
 } from './types.js';

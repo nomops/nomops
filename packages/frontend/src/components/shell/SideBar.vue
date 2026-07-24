@@ -260,6 +260,13 @@ async function openAbout() {
       <span v-if="!collapsed" class="badge-preview">{{ t('Preview') }}</span>
     </RouterLink>
 
+    <!-- 实例助手 · 有检查点的 AI 线程（#45 M2） -->
+    <RouterLink v-if="chatEnabled" class="nav-item" :class="{ active: route.name === 'instanceAi' }" :title="t('Assistant')" data-test="nav-assistant" :to="{ name: 'instanceAi' }">
+      <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a4 4 0 0 1 4 4v1a4 4 0 0 1-8 0V7a4 4 0 0 1 4-4zM5 21v-1a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v1M9 11l2 2 4-4" /></svg>
+      <span class="lbl">{{ t('Assistant') }}</span>
+      <span v-if="!collapsed" class="badge-preview">{{ t('Preview') }}</span>
+    </RouterLink>
+
     <!-- D004 对标基线:无独立 "Personal" 项(个人空间即 Overview 默认上下文) -->
 
     <!-- 团队项目 -->

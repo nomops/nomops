@@ -29,6 +29,7 @@ export const router = createRouter({
     { path: '/templates', name: 'templates', component: () => import('./views/TemplatesView.vue') },
     { path: '/agents', name: 'agents', component: () => import('./views/AgentsView.vue') },
     { path: '/builder/:id?', name: 'builder', component: () => import('./views/BuilderView.vue') },
+    { path: '/assistant/:id?', name: 'instanceAi', component: () => import('./views/InstanceAiView.vue') },
     { path: '/settings', name: 'settings', component: () => import('./views/SettingsView.vue') },
     { path: '/sso/done', name: 'ssoDone', component: () => import('./views/SsoDoneView.vue'), meta: { public: true } },
 

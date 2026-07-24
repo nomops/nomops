@@ -256,6 +256,54 @@ export const aiBuilderTemporaryWorkflows = pgTable(
   (t) => [index('ai_builder_temporary_workflows_session_idx').on(t.sessionId)],
 );
 
+/** 有检查点的 AI 线程（backlog #45 M2）：实例助手底座,state 可序列化,检查点可回滚续跑。 */
+export const instanceAiThreads = pgTable(
+  'instance_ai_threads',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').notNull(),
+    kind: text('kind').notNull().default('ops'),
+    title: text('title').notNull().default('New thread'),
+    state: jsonb('state').$type<JsonObject>().notNull().default({}),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [index('instance_ai_threads_user_idx').on(t.userId)],
+);
+
+/** AI 线程消息（backlog #45 M2）：追加日志,回滚截断 seq > 检查点 messageCount 的。 */
+export const instanceAiMessages = pgTable(
+  'instance_ai_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    threadId: uuid('thread_id')
+      .notNull()
+      .references(() => instanceAiThreads.id),
+    seq: integer('seq').notNull(),
+    role: text('role').notNull(),
+    content: jsonb('content').$type<JsonObject>().notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('instance_ai_messages_thread_idx').on(t.threadId)],
+);
+
+/** AI 线程检查点（backlog #45 M2）：可序列化状态快照,restore 还原 state + 截断后续消息。 */
+export const instanceAiCheckpoints = pgTable(
+  'instance_ai_checkpoints',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    threadId: uuid('thread_id')
+      .notNull()
+      .references(() => instanceAiThreads.id),
+    seq: integer('seq').notNull(),
+    label: text('label').notNull().default(''),
+    state: jsonb('state').$type<JsonObject>().notNull(),
+    messageCount: integer('message_count').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('instance_ai_checkpoints_thread_idx').on(t.threadId)],
+);
+
 /** 实例升级史（backlog #43）。 */
 export const instanceVersionHistory = pgTable('instance_version_history', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -1058,4 +1106,7 @@ export const pgSchema = {
   agentChannels,
   workflowBuilderSessions,
   aiBuilderTemporaryWorkflows,
+  instanceAiThreads,
+  instanceAiMessages,
+  instanceAiCheckpoints,
 };

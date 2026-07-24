@@ -60,6 +60,9 @@ export type AgentFile = InferSelectModel<typeof sqliteSchema.agentFiles>;
 export type AgentChannel = InferSelectModel<typeof sqliteSchema.agentChannels>;
 export type WorkflowBuilderSession = InferSelectModel<typeof sqliteSchema.workflowBuilderSessions>;
 export type AiBuilderTemporaryWorkflow = InferSelectModel<typeof sqliteSchema.aiBuilderTemporaryWorkflows>;
+export type InstanceAiThread = InferSelectModel<typeof sqliteSchema.instanceAiThreads>;
+export type InstanceAiMessage = InferSelectModel<typeof sqliteSchema.instanceAiMessages>;
+export type InstanceAiCheckpoint = InferSelectModel<typeof sqliteSchema.instanceAiCheckpoints>;
 
 /* ── 创建入参（区别于自动生成的 id/时间戳字段） ── */
 

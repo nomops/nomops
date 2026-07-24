@@ -295,6 +295,13 @@
       "when": 1784877862280,
       "tag": "0041_zippy_norman_osborn",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1784880105678,
+      "tag": "0042_aromatic_pride",
+      "breakpoints": true
     }
   ]
 }

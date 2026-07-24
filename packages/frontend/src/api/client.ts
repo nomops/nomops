@@ -101,6 +101,36 @@ export interface AgentRow {
   updatedAt: string;
 }
 
+/** 有检查点的 AI 线程（#45 M2）。 */
+export interface InstanceAiThreadRow {
+  id: string;
+  kind: string;
+  title: string;
+  state: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface InstanceAiMessageRow {
+  id: string;
+  seq: number;
+  role: string;
+  content: { text?: string; [k: string]: unknown };
+  createdAt: string;
+}
+export interface InstanceAiCheckpointRow {
+  id: string;
+  seq: number;
+  label: string;
+  state: Record<string, unknown>;
+  messageCount: number;
+  createdAt: string;
+}
+export interface InstanceAiThreadDetail {
+  thread: InstanceAiThreadRow;
+  messages: InstanceAiMessageRow[];
+  checkpoints: InstanceAiCheckpointRow[];
+}
+
 /** AI 建流会话（#45 M1）。 */
 export interface BuilderSessionRow {
   id: string;
@@ -705,6 +735,19 @@ export const api = {
     apply: (id: string, revisionId?: string) =>
       http<{ workflowId: string; name: string }>('POST', `/api/builder/sessions/${id}/apply`, revisionId ? { revisionId } : {}),
     discard: (id: string) => http<void>('DELETE', `/api/builder/sessions/${id}`),
+  },
+
+  // 有检查点的 AI 线程（#45 M2）
+  instanceAi: {
+    list: () => http<InstanceAiThreadRow[]>('GET', '/api/instance-ai/threads'),
+    create: (title: string) => http<InstanceAiThreadRow>('POST', '/api/instance-ai/threads', { title }),
+    get: (id: string) => http<InstanceAiThreadDetail>('GET', `/api/instance-ai/threads/${id}`),
+    remove: (id: string) => http<void>('DELETE', `/api/instance-ai/threads/${id}`),
+    setState: (id: string, state: Record<string, unknown>) => http<InstanceAiThreadRow>('PUT', `/api/instance-ai/threads/${id}/state`, { state }),
+    checkpoint: (id: string, label: string) => http<InstanceAiCheckpointRow>('POST', `/api/instance-ai/threads/${id}/checkpoints`, { label }),
+    restore: (id: string, checkpointId: string) => http<InstanceAiThreadDetail>('POST', `/api/instance-ai/threads/${id}/restore`, { checkpointId }),
+    chat: (id: string, message: string, model?: string) =>
+      http<{ reply: string; message: InstanceAiMessageRow }>('POST', `/api/instance-ai/threads/${id}/chat`, { message, ...(model ? { model } : {}) }),
   },
 
   workflowsMeta: () => http<WorkflowMetaRow[]>('GET', '/api/workflows-meta'),
