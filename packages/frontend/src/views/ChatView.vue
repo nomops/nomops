@@ -17,6 +17,9 @@ interface Msg {
   content: string;
   workflow?: { name: string; nodes: unknown[]; connections: unknown } | null;
   error?: boolean;
+  /** #41：工作流工具触发的执行 —— 消息可跳执行详情。 */
+  executionId?: string;
+  workflowId?: string;
 }
 interface PersonalAgent {
   id: string;
@@ -360,7 +363,13 @@ async function send() {
     const target = session.target;
     if (target.type === 'workflow' && target.workflowId) {
       const res = await api.workflows.chat(target.workflowId, content, session.wfSessionId ?? 'default', pending);
-      session.messages.push({ role: 'assistant', content: res.error ?? res.reply, error: Boolean(res.error) });
+      // #41：工作流工具触发了一次执行 —— 把 executionId 挂到消息,供跳执行详情
+      session.messages.push({
+        role: 'assistant',
+        content: res.error ?? res.reply,
+        error: Boolean(res.error),
+        ...(res.executionId ? { executionId: res.executionId, workflowId: target.workflowId } : {}),
+      });
     } else {
       const history = session.messages.filter((m) => !m.error).map((m) => ({ role: m.role, content: m.content }));
       const system = target.type === 'agent' ? agents.value.find((a) => a.id === target.agentId)?.system : undefined;
@@ -377,6 +386,11 @@ async function send() {
     busy.value = false;
     void scrollDown();
   }
+}
+
+/** #41：跳到工作流工具触发的那次执行详情。 */
+function openExecution(workflowId: string, executionId: string) {
+  void router.push({ name: 'canvas', params: { id: workflowId }, query: { tab: 'executions', exec: executionId } });
 }
 
 async function applyWorkflow(m: Msg) {
@@ -617,6 +631,16 @@ function chatWith(target: ChatTarget) {
                 <button v-if="m.workflow" class="apply" :data-test-apply="i" @click="applyWorkflow(m)">
                   <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12l1-8.5z" /></svg>
                   Add to canvas — {{ m.workflow.name }} ({{ m.workflow.nodes.length }} nodes)
+                </button>
+                <!-- #41：工作流工具触发的执行 → 跳执行详情 -->
+                <button
+                  v-if="m.executionId && m.workflowId"
+                  class="apply"
+                  data-test="open-execution"
+                  @click="openExecution(m.workflowId, m.executionId)"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><path d="M15 3h6v6M10 14 21 3" /></svg>
+                  Open execution
                 </button>
               </div>
             </div>

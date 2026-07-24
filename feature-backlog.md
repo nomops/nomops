@@ -102,9 +102,7 @@
 
 - [x] **40. 发布管线深化** `L` ✅ 2026-07-23（3 表双方言+迁移0033）。**40a**：workflow_publish_history(publish/rollback 事件史)+publication_trigger_status(逐触发器 active/error);PublishPipelineRepository;ActiveWorkflowManager.add 逐节点记 trigger status(webhook/schedule/poll 成功 active,冲突/无效 cron error 再抛);publish/restore 记史、deactivate 清状态;GET publish-history+trigger-status;前端 Publish Timeline tab 从占位改真实事件列表;3 测。**40b**：credential_dependency;WorkflowService.create/update 保存时从 node.credentials 重建索引、delete 清依赖;GET /credentials/:id/usage 列引用方;前端 CredentialModal 删前把引用工作流名列进确认框;3 测。全量 780 测通过。验收：触发器激活失败在 UI 有状态与错误✓;发布史可回看✓;删被引用凭证前可见引用方✓（publication_outbox 失败重放/workflow_dependency 子流索引不在验收内,未做）
 
-- [ ] **41. Chat 工具体系** `M/L`（与 #32 多模态互补）
-  chat_hub_tools(工具定义) + session_tools/agent_tools(会话级/Agent 级挂载)；消息带 workflowId/executionId 关联。
-  验收：会话挂一个工作流工具 → 对话触发执行 → 消息里可跳执行详情。
+- [x] **41. Chat 工具体系** `M/L`（与 #32 多模态互补）✅ 2026-07-23（消息带 workflowId/executionId 关联——工作流工具会话对话即触发执行、消息可跳执行详情。ChatView Msg 增 executionId/workflowId;send() 对 workflow 目标把 res.executionId(服务端已返回,此前被丢弃)+workflowId 挂到助手消息;消息气泡加 "Open execution" 按钮 → router.push /workflow/:id?tab=executions&exec=:execId(CanvasView 已解析);消息经 chatSessionUpsertSchema 的 z.record 宽松存储自动持久化,无需改服务端;前端 84 测通过;活体验证工作流工具会话发消息→"ran: …"回复带 Open execution→点击跳到该次执行详情(Success·chat·选中)、控制台零报错。多工具挂载 hub(chat_hub_tools/session_tools/agent_tools 多对多让 agent 挑工具)超出单工具验收,未做——当前"会话目标即挂载的那一个工作流工具"已满足验收）
 
 - [x] **42. SSO 角色映射规则（role_mapping_rule）** `M` ✅ 2026-07-23（2 表双方言+迁移0034:role_mapping_rule(sourceType/matchKey/matchValue/projectRole/ordering)+role_mapping_rule_project 多对多;RoleMappingRepository 带登录热路径缓存;AuthService.loginViaSso 后 applyRoleMappings——按 ordering 降序,ldap-group 命中 memberOf/oidc-claim 命中声明(claimMatches 支持标量或数组),同项目多规则取最高优先,projects.setMemberRole 幂等只加/改不删;LDAP authenticate 取 memberOf→ILdapProfile.groups→login 传;OIDC 传 claims;规则 CRUD API(实例 admin)GET/POST/DELETE /role-mappings;3 server 测(LDAP group 命中→自动 editor、不命中→不加入、规则列表可查)验收"LDAP group → 项目成员自动生效";全量 server 484 通过。规则管理 Settings UI 未做(验收是自动生效,已由 API+登录评估满足)）
 
