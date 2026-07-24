@@ -63,6 +63,7 @@ import type {
   InstanceAiThread,
   InstanceAiMessage,
   InstanceAiCheckpoint,
+  InstanceAiPendingAction,
 } from './types.js';
 
 /**
@@ -3422,6 +3423,39 @@ export class InstanceAiRepository extends BaseRepository {
     await this.db
       .delete(this.schema.instanceAiCheckpoints)
       .where(and(eq(this.schema.instanceAiCheckpoints.threadId, threadId), gt(this.schema.instanceAiCheckpoints.seq, cutoffSeq)));
+  }
+
+  /* ── HITL 待确认动作（#45 M3） ── */
+  async addPendingAction(input: { threadId: string; tool: string; args: JsonObject; reason: string }): Promise<InstanceAiPendingAction> {
+    const [row] = await this.db
+      .insert(this.schema.instanceAiPendingActions)
+      .values({ threadId: input.threadId, tool: input.tool, args: input.args, reason: input.reason, risk: 'dangerous', status: 'pending' })
+      .returning();
+    return row as InstanceAiPendingAction;
+  }
+
+  async listPendingActions(threadId: string): Promise<InstanceAiPendingAction[]> {
+    return (await this.db
+      .select()
+      .from(this.schema.instanceAiPendingActions)
+      .where(eq(this.schema.instanceAiPendingActions.threadId, threadId))
+      .orderBy(desc(this.schema.instanceAiPendingActions.createdAt))) as InstanceAiPendingAction[];
+  }
+
+  async findPendingAction(id: string): Promise<InstanceAiPendingAction | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.instanceAiPendingActions)
+      .where(eq(this.schema.instanceAiPendingActions.id, id))
+      .limit(1);
+    return (rows[0] as InstanceAiPendingAction | undefined) ?? null;
+  }
+
+  async decidePendingAction(id: string, patch: { status: string; result?: JsonObject | null; decidedBy: string }): Promise<void> {
+    await this.db
+      .update(this.schema.instanceAiPendingActions)
+      .set({ status: patch.status, result: patch.result ?? null, decidedBy: patch.decidedBy, decidedAt: new Date() })
+      .where(eq(this.schema.instanceAiPendingActions.id, id));
   }
 }
 

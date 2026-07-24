@@ -63,6 +63,7 @@ export type AiBuilderTemporaryWorkflow = InferSelectModel<typeof sqliteSchema.ai
 export type InstanceAiThread = InferSelectModel<typeof sqliteSchema.instanceAiThreads>;
 export type InstanceAiMessage = InferSelectModel<typeof sqliteSchema.instanceAiMessages>;
 export type InstanceAiCheckpoint = InferSelectModel<typeof sqliteSchema.instanceAiCheckpoints>;
+export type InstanceAiPendingAction = InferSelectModel<typeof sqliteSchema.instanceAiPendingActions>;
 
 /* ── 创建入参（区别于自动生成的 id/时间戳字段） ── */
 

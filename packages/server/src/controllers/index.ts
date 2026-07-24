@@ -1930,6 +1930,33 @@ export function createApiRouter(services: AppServices): Router {
       res.json(await services.instanceAi.chat(param(req, 'id'), auth(req).userId, auth(req).projectId, message, safeModel, credentialId));
     }),
   );
+  // HITL 待确认（backlog #45 M3）：危险动作先挂 pending,人确认后才执行。
+  router.get(
+    '/instance-ai/threads/:id/actions',
+    h(async (req, res) => {
+      res.json(await services.instanceAi.listActions(param(req, 'id'), auth(req).userId));
+    }),
+  );
+  router.post(
+    '/instance-ai/threads/:id/actions',
+    h(async (req, res) => {
+      const { tool, args } = req.body as { tool?: string; args?: Record<string, unknown> };
+      if (!tool?.trim()) throw new OperationalError('tool is required', { status: 400 });
+      res.json(await services.instanceAi.proposeAction(param(req, 'id'), auth(req).userId, auth(req).projectId, tool, (args ?? {}) as JsonObject));
+    }),
+  );
+  router.post(
+    '/instance-ai/actions/:actionId/approve',
+    h(async (req, res) => {
+      res.json(await services.instanceAi.approveAction(param(req, 'actionId'), auth(req).userId, auth(req).projectId));
+    }),
+  );
+  router.post(
+    '/instance-ai/actions/:actionId/reject',
+    h(async (req, res) => {
+      res.json(await services.instanceAi.rejectAction(param(req, 'actionId'), auth(req).userId));
+    }),
+  );
 
   /* ── Chat 会话/个人 Agent 持久化（backlog #14,用户维度;原 localStorage 落库） ── */
   router.get(

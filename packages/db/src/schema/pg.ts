@@ -304,6 +304,27 @@ export const instanceAiCheckpoints = pgTable(
   (t) => [index('instance_ai_checkpoints_thread_idx').on(t.threadId)],
 );
 
+/** HITL 待确认动作（backlog #45 M3）：危险动作先挂 pending,人确认后才执行。 */
+export const instanceAiPendingActions = pgTable(
+  'instance_ai_pending_actions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    threadId: uuid('thread_id')
+      .notNull()
+      .references(() => instanceAiThreads.id),
+    tool: text('tool').notNull(),
+    args: jsonb('args').$type<JsonObject>().notNull().default({}),
+    risk: text('risk').notNull().default('dangerous'),
+    reason: text('reason').notNull().default(''),
+    status: text('status').notNull().default('pending'),
+    result: jsonb('result').$type<JsonObject>(),
+    decidedBy: uuid('decided_by'),
+    decidedAt: timestamp('decided_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('instance_ai_pending_actions_thread_idx').on(t.threadId)],
+);
+
 /** 实例升级史（backlog #43）。 */
 export const instanceVersionHistory = pgTable('instance_version_history', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -1109,4 +1130,5 @@ export const pgSchema = {
   instanceAiThreads,
   instanceAiMessages,
   instanceAiCheckpoints,
+  instanceAiPendingActions,
 };

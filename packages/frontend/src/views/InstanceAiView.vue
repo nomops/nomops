@@ -3,13 +3,17 @@
  * 实例助手 · 有检查点的 AI 线程（#45 M2）：可序列化状态检查点 + 回滚续跑。
  * 左=线程列表,右=对话 + 工作态(state) + 检查点条(存/回滚)。核心演示：中断后从检查点恢复,状态一致。
  */
-import { onMounted, ref } from 'vue';
-import { api, type InstanceAiThreadRow, type InstanceAiMessageRow, type InstanceAiCheckpointRow } from '../api/client.js';
+import { computed, onMounted, ref } from 'vue';
+import { api, type InstanceAiThreadRow, type InstanceAiMessageRow, type InstanceAiCheckpointRow, type InstanceAiActionRow } from '../api/client.js';
 
 const threads = ref<InstanceAiThreadRow[]>([]);
 const selected = ref<InstanceAiThreadRow | null>(null);
 const messages = ref<InstanceAiMessageRow[]>([]);
 const checkpoints = ref<InstanceAiCheckpointRow[]>([]);
+const actions = ref<InstanceAiActionRow[]>([]);
+const toolName = ref('archive_workflow');
+const toolArgs = ref('{ "id": "" }');
+const pendingActions = computed(() => actions.value.filter((a) => a.status === 'pending'));
 const newTitle = ref('');
 const chatInput = ref('');
 const model = ref('');
@@ -30,9 +34,56 @@ function applyDetail(d: { thread: InstanceAiThreadRow; messages: InstanceAiMessa
   stateDraft.value = JSON.stringify(d.thread.state, null, 2);
 }
 
+async function loadActions() {
+  if (!selected.value) return;
+  actions.value = await api.instanceAi.actions(selected.value.id).catch(() => []);
+}
+
 async function select(t: InstanceAiThreadRow) {
   const d = await api.instanceAi.get(t.id).catch(() => null);
   if (d) applyDetail(d);
+  await loadActions();
+}
+
+async function proposeTool() {
+  if (!selected.value) return;
+  let args: Record<string, unknown>;
+  try {
+    args = JSON.parse(toolArgs.value || '{}');
+  } catch {
+    error.value = 'Args must be valid JSON';
+    return;
+  }
+  busy.value = 'tool';
+  error.value = '';
+  try {
+    await api.instanceAi.propose(selected.value.id, toolName.value.trim(), args);
+    await refresh();
+  } catch (e) {
+    error.value = (e as Error).message;
+  } finally {
+    busy.value = '';
+  }
+}
+
+async function approveAction(a: InstanceAiActionRow) {
+  busy.value = 'act';
+  error.value = '';
+  try {
+    await api.instanceAi.approve(a.id);
+    await refresh();
+  } catch (e) {
+    error.value = (e as Error).message;
+  } finally {
+    busy.value = '';
+  }
+}
+
+async function rejectAction(a: InstanceAiActionRow) {
+  busy.value = 'act';
+  await api.instanceAi.reject(a.id).catch(() => undefined);
+  await refresh();
+  busy.value = '';
 }
 
 async function createThread() {
@@ -49,7 +100,10 @@ async function createThread() {
 }
 
 async function refresh() {
-  if (selected.value) await select(selected.value);
+  if (!selected.value) return;
+  const d = await api.instanceAi.get(selected.value.id).catch(() => null);
+  if (d) applyDetail(d);
+  await loadActions();
 }
 
 async function sendChat() {
@@ -177,6 +231,28 @@ async function remove(t: InstanceAiThreadRow) {
           <button class="link" data-test="iai-restore" :disabled="busy === 'restore'" @click="restore(cp)">Restore</button>
         </li>
       </ul>
+
+      <!-- HITL 待确认（#45 M3）：危险动作先挂 pending,人确认后才执行 -->
+      <h3 class="iai-side-title">Actions <span class="dim" style="font-weight: 400">· HITL gate</span></h3>
+      <div class="iai-cp-new">
+        <input v-model="toolName" data-test="iai-tool-name" placeholder="tool" style="flex: 0 0 130px" />
+        <input v-model="toolArgs" data-test="iai-tool-args" placeholder='{"id":"…"}' class="mono-in" />
+      </div>
+      <button class="btn" data-test="iai-tool-run" :disabled="busy === 'tool'" @click="proposeTool">Propose action</button>
+      <p v-if="!pendingActions.length" class="dim">No actions awaiting approval.</p>
+      <ul v-else class="iai-cps" data-test="iai-actions">
+        <li v-for="a in pendingActions" :key="a.id" class="iai-action">
+          <div class="iai-action-head">
+            <b>{{ a.tool }}</b>
+            <span class="iai-badge danger">needs approval</span>
+          </div>
+          <div class="dim iai-action-reason">{{ a.reason }}</div>
+          <div class="iai-action-btns">
+            <button class="btn primary" data-test="iai-approve" :disabled="busy === 'act'" @click="approveAction(a)">Approve &amp; run</button>
+            <button class="btn" data-test="iai-reject" :disabled="busy === 'act'" @click="rejectAction(a)">Reject</button>
+          </div>
+        </li>
+      </ul>
     </section>
     <section v-else class="iai-main empty"><p class="dim">Select or create a thread.</p></section>
    </div>
@@ -221,4 +297,10 @@ async function remove(t: InstanceAiThreadRow) {
 .iai-cps { list-style: none; margin: 0; padding: 0; }
 .iai-cp { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border-color, #23232a); font-size: 13px; }
 .iai-cp-main { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.iai-cp-new .mono-in { flex: 1; min-width: 0; font-family: var(--font-family--monospace, monospace); font-size: 12px; }
+.iai-badge.danger { background: rgba(232, 89, 89, 0.16); color: #e85959; }
+.iai-action { padding: 9px 0; border-bottom: 1px solid var(--border-color, #23232a); display: flex; flex-direction: column; gap: 5px; }
+.iai-action-head { display: flex; gap: 8px; align-items: center; }
+.iai-action-reason { font-size: 12px; }
+.iai-action-btns { display: flex; gap: 6px; }
 </style>

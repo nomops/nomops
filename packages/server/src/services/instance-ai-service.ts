@@ -1,7 +1,8 @@
-import type { InstanceAiCheckpoint, InstanceAiMessage, InstanceAiThread, Repositories } from '@nomops/db';
+import type { InstanceAiCheckpoint, InstanceAiMessage, InstanceAiPendingAction, InstanceAiThread, Repositories } from '@nomops/db';
 import type { JsonObject } from '@nomops/workflow';
 import { OperationalError } from '@nomops/workflow';
 import type { AssistantService, ChatMessage } from './assistant-service.js';
+import { buildDefaultToolExecutor, classifyRisk, type ToolExecutor } from './instance-ai-tools.js';
 
 /**
  * 有检查点的 AI 线程底座（backlog #45 M2，docs/13 组 B）：实例助手的可回滚线程。
@@ -17,11 +18,22 @@ export interface ThreadDetail {
   checkpoints: InstanceAiCheckpoint[];
 }
 
+/** propose 结果：安全动作直接执行,危险动作挂 pending 等确认。 */
+export type ProposeResult =
+  | { status: 'executed'; result: JsonObject }
+  | { status: 'pending'; action: InstanceAiPendingAction };
+
 export class InstanceAiService {
+  private readonly toolExecutor: ToolExecutor;
+
   constructor(
     private readonly repos: Repositories,
     private readonly assistant: AssistantService,
-  ) {}
+    /** 工具执行器（#45 M3；缺省内置,可注入 MCP/假实现）。 */
+    toolExecutor?: ToolExecutor,
+  ) {
+    this.toolExecutor = toolExecutor ?? buildDefaultToolExecutor(repos);
+  }
 
   async createThread(userId: string, input: { kind?: string; title?: string }): Promise<InstanceAiThread> {
     const kind = input.kind === 'builder' ? 'builder' : 'ops';
@@ -105,5 +117,56 @@ export class InstanceAiService {
     const result = await this.assistant.chat(projectId, history, credentialId, undefined, model);
     const assistantMsg = await this.append(id, userId, 'assistant', { text: result.reply });
     return { reply: result.reply, message: assistantMsg };
+  }
+
+  /* ── HITL 待确认（#45 M3）：危险动作先挂 pending,人确认后才执行 ── */
+
+  /**
+   * 提议一个动作：安全(只读)直接执行并记 tool 消息;危险则挂 pending 等确认（不执行）。
+   * 助手工具调用应走此入口——把「外发/不可逆先确认」的安全边界内建进助手。
+   */
+  async proposeAction(threadId: string, userId: string, projectId: string, tool: string, args: JsonObject): Promise<ProposeResult> {
+    await this.requireThread(threadId, userId);
+    const verdict = classifyRisk(tool);
+    if (verdict.risk === 'safe') {
+      const result = await this.toolExecutor(tool, args, { threadId, userId, projectId });
+      await this.append(threadId, userId, 'tool', { tool, args, result, risk: 'safe' });
+      return { status: 'executed', result };
+    }
+    const action = await this.repos.instanceAi.addPendingAction({ threadId, tool, args, reason: verdict.reason });
+    await this.append(threadId, userId, 'tool', { tool, args, status: 'pending', reason: verdict.reason, pendingActionId: action.id });
+    return { status: 'pending', action };
+  }
+
+  async listActions(threadId: string, userId: string): Promise<InstanceAiPendingAction[]> {
+    await this.requireThread(threadId, userId);
+    return this.repos.instanceAi.listPendingActions(threadId);
+  }
+
+  /** 归属校验：动作 → 线程 → userId 必须匹配;返回 {action, thread}。 */
+  private async requireAction(actionId: string, userId: string): Promise<InstanceAiPendingAction> {
+    const action = await this.repos.instanceAi.findPendingAction(actionId);
+    if (!action) throw new OperationalError('Action not found', { status: 404 });
+    await this.requireThread(action.threadId, userId); // 归属经线程校验（铁律 2）
+    return action;
+  }
+
+  /** 批准：执行工具 → 记结果 + tool 消息。只有 pending 可批准。 */
+  async approveAction(actionId: string, userId: string, projectId: string): Promise<InstanceAiPendingAction> {
+    const action = await this.requireAction(actionId, userId);
+    if (action.status !== 'pending') throw new OperationalError(`Action already ${action.status}`, { status: 409 });
+    const result = await this.toolExecutor(action.tool, action.args, { threadId: action.threadId, userId, projectId });
+    await this.repos.instanceAi.decidePendingAction(actionId, { status: 'approved', result, decidedBy: userId });
+    await this.append(action.threadId, userId, 'tool', { tool: action.tool, args: action.args, result, status: 'approved' });
+    return (await this.repos.instanceAi.findPendingAction(actionId))!;
+  }
+
+  /** 拒绝：不执行,只记状态 + tool 消息。 */
+  async rejectAction(actionId: string, userId: string): Promise<InstanceAiPendingAction> {
+    const action = await this.requireAction(actionId, userId);
+    if (action.status !== 'pending') throw new OperationalError(`Action already ${action.status}`, { status: 409 });
+    await this.repos.instanceAi.decidePendingAction(actionId, { status: 'rejected', result: null, decidedBy: userId });
+    await this.append(action.threadId, userId, 'tool', { tool: action.tool, args: action.args, status: 'rejected' });
+    return (await this.repos.instanceAi.findPendingAction(actionId))!;
   }
 }

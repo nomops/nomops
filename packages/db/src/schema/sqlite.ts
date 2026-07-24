@@ -364,6 +364,32 @@ export const instanceAiCheckpoints = sqliteTable(
   (t) => [index('instance_ai_checkpoints_thread_idx').on(t.threadId)],
 );
 
+/**
+ * HITL 待确认动作（backlog #45 M3，docs/13 组 C）：助手的危险/不可逆/外发动作先挂 pending,
+ * 人在 UI 确认后才执行——沿用平台「外发前确认」安全边界。安全(只读)动作不落此表,直接执行。
+ */
+export const instanceAiPendingActions = sqliteTable(
+  'instance_ai_pending_actions',
+  {
+    id: uuidPk('id'),
+    threadId: text('thread_id')
+      .notNull()
+      .references(() => instanceAiThreads.id),
+    tool: text('tool').notNull(),
+    args: text('args', { mode: 'json' }).$type<JsonObject>().notNull().$defaultFn(() => ({})),
+    risk: text('risk').notNull().default('dangerous'), // 落表的都是 dangerous
+    reason: text('reason').notNull().default(''), // 为何需要确认
+    status: text('status').notNull().default('pending'), // pending|approved|rejected
+    result: text('result', { mode: 'json' }).$type<JsonObject>(), // 批准执行后的结果
+    decidedBy: text('decided_by'), // 确认/拒绝者 userId
+    decidedAt: integer('decided_at', { mode: 'timestamp' }),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('instance_ai_pending_actions_thread_idx').on(t.threadId)],
+);
+
 /** 实例升级史（backlog #43）：每次启动检测版本变化即记一条。 */
 export const instanceVersionHistory = sqliteTable('instance_version_history', {
   id: uuidPk('id'),
@@ -1268,4 +1294,5 @@ export const sqliteSchema = {
   instanceAiThreads,
   instanceAiMessages,
   instanceAiCheckpoints,
+  instanceAiPendingActions,
 };

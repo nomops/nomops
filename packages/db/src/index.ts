@@ -119,4 +119,5 @@ export type {
   InstanceAiThread,
   InstanceAiMessage,
   InstanceAiCheckpoint,
+  InstanceAiPendingAction,
 } from './types.js';

@@ -130,6 +130,16 @@ export interface InstanceAiThreadDetail {
   messages: InstanceAiMessageRow[];
   checkpoints: InstanceAiCheckpointRow[];
 }
+export interface InstanceAiActionRow {
+  id: string;
+  tool: string;
+  args: Record<string, unknown>;
+  risk: string;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+  result: Record<string, unknown> | null;
+  createdAt: string;
+}
 
 /** AI 建流会话（#45 M1）。 */
 export interface BuilderSessionRow {
@@ -748,6 +758,12 @@ export const api = {
     restore: (id: string, checkpointId: string) => http<InstanceAiThreadDetail>('POST', `/api/instance-ai/threads/${id}/restore`, { checkpointId }),
     chat: (id: string, message: string, model?: string) =>
       http<{ reply: string; message: InstanceAiMessageRow }>('POST', `/api/instance-ai/threads/${id}/chat`, { message, ...(model ? { model } : {}) }),
+    actions: (id: string) => http<InstanceAiActionRow[]>('GET', `/api/instance-ai/threads/${id}/actions`),
+    propose: (id: string, tool: string, args: Record<string, unknown>) =>
+      http<{ status: 'executed'; result: Record<string, unknown> } | { status: 'pending'; action: InstanceAiActionRow }>(
+        'POST', `/api/instance-ai/threads/${id}/actions`, { tool, args }),
+    approve: (actionId: string) => http<InstanceAiActionRow>('POST', `/api/instance-ai/actions/${actionId}/approve`),
+    reject: (actionId: string) => http<InstanceAiActionRow>('POST', `/api/instance-ai/actions/${actionId}/reject`),
   },
 
   workflowsMeta: () => http<WorkflowMetaRow[]>('GET', '/api/workflows-meta'),
