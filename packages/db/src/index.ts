@@ -50,6 +50,7 @@ export {
   RoleMappingRepository,
   PlatformRepository,
   AgentRepository,
+  WorkflowBuilderRepository,
 } from './repositories.js';
 export type {
   Repositories,
@@ -112,4 +113,6 @@ export type {
   AgentTaskDefinition,
   AgentFile,
   AgentChannel,
+  WorkflowBuilderSession,
+  AiBuilderTemporaryWorkflow,
 } from './types.js';

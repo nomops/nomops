@@ -253,6 +253,13 @@ async function openAbout() {
       <span class="lbl">{{ t('Agents') }}</span>
     </RouterLink>
 
+    <!-- AI 建流会话（#45 M1） -->
+    <RouterLink v-if="chatEnabled" class="nav-item" :class="{ active: route.name === 'builder' }" :title="t('AI Builder')" data-test="nav-builder" :to="{ name: 'builder' }">
+      <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5z" /></svg>
+      <span class="lbl">{{ t('AI Builder') }}</span>
+      <span v-if="!collapsed" class="badge-preview">{{ t('Preview') }}</span>
+    </RouterLink>
+
     <!-- D004 对标基线:无独立 "Personal" 项(个人空间即 Overview 默认上下文) -->
 
     <!-- 团队项目 -->

@@ -42,6 +42,7 @@ import type { SchedulerOptions } from './services/scheduler-service.js';
 import { InsightsService } from './services/insights-service.js';
 import { AgentRunService } from './services/agent-run-service.js';
 import { AgentChannelService } from './services/agent-channel-service.js';
+import { WorkflowBuilderService } from './services/workflow-builder-service.js';
 import {
   ConcurrencyGate,
   concurrencyLimitFromEnv,
@@ -426,6 +427,8 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   const billing = new BillingService(repos, audit, alipay);
   // AI 助手：opts.callClaude 供测试注入假实现；生产用默认真实 HTTP
   const assistant = new AssistantService(repos, credentialService, nodeLoader, opts.callClaude);
+  // #45 M1：AI 建流会话（多轮迭代临时草稿 → Apply 物化为正式 workflow）
+  const workflowBuilder = new WorkflowBuilderService(repos, assistant, workflows);
   // 实例级 MCP：把勾选的工作流暴露为 MCP tools（Preview）
   const mcp = new McpService(repos, executions, workflows);
   const sharing = new SharingService(repos, workflows, credentialService);
@@ -469,6 +472,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     insights,
     agentRuns,
     agentChannels,
+    workflowBuilder,
     waitTracker,
     executionPruner,
     mcp,

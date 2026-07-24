@@ -1797,6 +1797,69 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
+  /* ── AI 建流会话（backlog #45 M1）：多轮迭代临时草稿 → 预览 → 回退 → Apply 落正式流 ── */
+  router.get(
+    '/builder/sessions',
+    h(async (req, res) => {
+      res.json(await services.workflowBuilder.listSessions(auth(req).projectId));
+    }),
+  );
+  router.post(
+    '/builder/sessions',
+    h(async (req, res) => {
+      const { goal } = req.body as { goal?: string };
+      if (!goal?.trim()) throw new OperationalError('goal is required', { status: 400 });
+      res.status(201).json(await services.workflowBuilder.createSession(auth(req).userId, auth(req).projectId, goal));
+    }),
+  );
+  router.get(
+    '/builder/sessions/:id',
+    h(async (req, res) => {
+      res.json(await services.workflowBuilder.getSession(param(req, 'id'), auth(req).projectId));
+    }),
+  );
+  router.post(
+    '/builder/sessions/:id/chat',
+    h(async (req, res) => {
+      if ((await services.repos.settings.get('chat.enabled')) === 'false') {
+        throw new OperationalError('Chat is disabled on this instance', { status: 403 });
+      }
+      const { message, credentialId, model } = req.body as { message?: string; credentialId?: string; model?: string };
+      if (!message?.trim()) throw new OperationalError('message is required', { status: 400 });
+      const safeModel = typeof model === 'string' && /^[a-zA-Z0-9][\w.-]{1,63}$/.test(model) ? model : undefined;
+      res.json(await services.workflowBuilder.chat(param(req, 'id'), auth(req).projectId, message, credentialId, safeModel));
+    }),
+  );
+  router.get(
+    '/builder/sessions/:id/revisions/:revisionId',
+    h(async (req, res) => {
+      const rev = await services.workflowBuilder.getRevision(param(req, 'id'), auth(req).projectId, param(req, 'revisionId'));
+      res.json(rev); // 含 nodes/connections,供 ReadOnlyCanvas 预览
+    }),
+  );
+  router.post(
+    '/builder/sessions/:id/rollback',
+    h(async (req, res) => {
+      const { revisionId } = req.body as { revisionId?: string };
+      if (!revisionId) throw new OperationalError('revisionId is required', { status: 400 });
+      res.json(await services.workflowBuilder.rollback(param(req, 'id'), auth(req).projectId, revisionId));
+    }),
+  );
+  router.post(
+    '/builder/sessions/:id/apply',
+    h(async (req, res) => {
+      const { revisionId } = req.body as { revisionId?: string };
+      res.status(201).json(await services.workflowBuilder.apply(param(req, 'id'), auth(req).projectId, auth(req).userId, revisionId));
+    }),
+  );
+  router.delete(
+    '/builder/sessions/:id',
+    h(async (req, res) => {
+      await services.workflowBuilder.discard(param(req, 'id'), auth(req).projectId);
+      res.status(204).end();
+    }),
+  );
+
   /* ── Chat 会话/个人 Agent 持久化（backlog #14,用户维度;原 localStorage 落库） ── */
   router.get(
     '/chat/sessions',

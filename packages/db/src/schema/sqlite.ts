@@ -255,6 +255,53 @@ export const agentHistory = sqliteTable(
   (t) => [index('agent_history_agent_idx').on(t.agentId)],
 );
 
+/**
+ * AI 建流会话（backlog #45 M1，docs/13 组 A）：用户用自然语言多轮迭代出一个工作流。
+ * messages 存对话历史（服务端权威,不信客户端回传全量）;每产出一版草稿建一条临时流 revision。
+ * 临时流不进 workflows 表（防列表污染+误激活）,Apply 时才物化为正式 workflow。
+ */
+export const workflowBuilderSessions = sqliteTable(
+  'workflow_builder_sessions',
+  {
+    id: uuidPk('id'),
+    userId: text('user_id').notNull(),
+    projectId: text('project_id').notNull(),
+    title: text('title').notNull().default('New builder session'),
+    goal: text('goal').notNull().default(''),
+    status: text('status').notNull().default('active'), // active|applied|discarded
+    messages: text('messages', { mode: 'json' }).$type<JsonObject[]>().notNull().$defaultFn(() => []),
+    currentRevisionId: text('current_revision_id'), // 当前预览/回退到的草稿版本
+    appliedWorkflowId: text('applied_workflow_id'), // Apply 后物化的正式 workflow
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('workflow_builder_sessions_project_idx').on(t.projectId)],
+);
+
+/** AI 建流会话 · 临时草稿（backlog #45 M1）：每轮产出一版,revision 递增 → 可回退到任一轮。 */
+export const aiBuilderTemporaryWorkflows = sqliteTable(
+  'ai_builder_temporary_workflows',
+  {
+    id: uuidPk('id'),
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => workflowBuilderSessions.id),
+    revision: integer('revision').notNull(),
+    name: text('name').notNull(),
+    nodes: text('nodes', { mode: 'json' }).$type<INode[]>().notNull(),
+    connections: text('connections', { mode: 'json' }).$type<IConnections>().notNull(),
+    summary: text('summary').notNull().default(''),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index('ai_builder_temporary_workflows_session_idx').on(t.sessionId)],
+);
+
 /** 实例升级史（backlog #43）：每次启动检测版本变化即记一条。 */
 export const instanceVersionHistory = sqliteTable('instance_version_history', {
   id: uuidPk('id'),
@@ -1154,4 +1201,6 @@ export const sqliteSchema = {
   agentTaskDefinitions,
   agentFiles,
   agentChannels,
+  workflowBuilderSessions,
+  aiBuilderTemporaryWorkflows,
 };

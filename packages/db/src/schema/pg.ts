@@ -219,6 +219,43 @@ export const agentHistory = pgTable(
   (t) => [index('agent_history_agent_idx').on(t.agentId)],
 );
 
+/** AI 建流会话（backlog #45 M1）：多轮迭代出工作流,临时流不进 workflows,Apply 时物化。 */
+export const workflowBuilderSessions = pgTable(
+  'workflow_builder_sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').notNull(),
+    projectId: uuid('project_id').notNull(),
+    title: text('title').notNull().default('New builder session'),
+    goal: text('goal').notNull().default(''),
+    status: text('status').notNull().default('active'),
+    messages: jsonb('messages').$type<JsonObject[]>().notNull().default([]),
+    currentRevisionId: uuid('current_revision_id'),
+    appliedWorkflowId: uuid('applied_workflow_id'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [index('workflow_builder_sessions_project_idx').on(t.projectId)],
+);
+
+/** AI 建流会话 · 临时草稿（backlog #45 M1）：revision 递增 → 可回退到任一轮。 */
+export const aiBuilderTemporaryWorkflows = pgTable(
+  'ai_builder_temporary_workflows',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => workflowBuilderSessions.id),
+    revision: integer('revision').notNull(),
+    name: text('name').notNull(),
+    nodes: jsonb('nodes').$type<INode[]>().notNull(),
+    connections: jsonb('connections').$type<IConnections>().notNull(),
+    summary: text('summary').notNull().default(''),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('ai_builder_temporary_workflows_session_idx').on(t.sessionId)],
+);
+
 /** 实例升级史（backlog #43）。 */
 export const instanceVersionHistory = pgTable('instance_version_history', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -1019,4 +1056,6 @@ export const pgSchema = {
   agentTaskDefinitions,
   agentFiles,
   agentChannels,
+  workflowBuilderSessions,
+  aiBuilderTemporaryWorkflows,
 };

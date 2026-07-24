@@ -58,6 +58,8 @@ export type MemoryObservation = InferSelectModel<typeof sqliteSchema.memoryObser
 export type AgentTaskDefinition = InferSelectModel<typeof sqliteSchema.agentTaskDefinitions>;
 export type AgentFile = InferSelectModel<typeof sqliteSchema.agentFiles>;
 export type AgentChannel = InferSelectModel<typeof sqliteSchema.agentChannels>;
+export type WorkflowBuilderSession = InferSelectModel<typeof sqliteSchema.workflowBuilderSessions>;
+export type AiBuilderTemporaryWorkflow = InferSelectModel<typeof sqliteSchema.aiBuilderTemporaryWorkflows>;
 
 /* ── 创建入参（区别于自动生成的 id/时间戳字段） ── */
 

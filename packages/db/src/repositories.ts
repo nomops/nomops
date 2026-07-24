@@ -1,5 +1,5 @@
 import { and, desc, eq, gte, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';
-import type { JsonObject } from '@nomops/workflow';
+import type { IConnections, INode, JsonObject } from '@nomops/workflow';
 import type { DatabaseHandle, NomopsSchema } from './client.js';
 import type {
   ApiKey,
@@ -58,6 +58,8 @@ import type {
   AgentTaskDefinition,
   AgentFile,
   AgentChannel,
+  WorkflowBuilderSession,
+  AiBuilderTemporaryWorkflow,
 } from './types.js';
 
 /**
@@ -3211,6 +3213,93 @@ export class AgentRepository extends BaseRepository {
   }
 }
 
+/**
+ * AI 建流会话仓储（backlog #45 M1）：会话 + 临时草稿 revision 链。归属按 projectId（铁律 2）。
+ * 临时流不进 workflows 表——Apply 时业务层调 WorkflowService.create 物化。
+ */
+export class WorkflowBuilderRepository extends BaseRepository {
+  async createSession(input: { userId: string; projectId: string; title: string; goal: string }): Promise<WorkflowBuilderSession> {
+    const [row] = await this.db
+      .insert(this.schema.workflowBuilderSessions)
+      .values({ userId: input.userId, projectId: input.projectId, title: input.title, goal: input.goal, messages: [] })
+      .returning();
+    return row as WorkflowBuilderSession;
+  }
+
+  async listSessions(projectId: string): Promise<WorkflowBuilderSession[]> {
+    return (await this.db
+      .select()
+      .from(this.schema.workflowBuilderSessions)
+      .where(eq(this.schema.workflowBuilderSessions.projectId, projectId))
+      .orderBy(desc(this.schema.workflowBuilderSessions.updatedAt))) as WorkflowBuilderSession[];
+  }
+
+  /** 归属校验版（铁律 2）：会话必须属于该 project。 */
+  async findSession(id: string, projectId: string): Promise<WorkflowBuilderSession | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.workflowBuilderSessions)
+      .where(and(eq(this.schema.workflowBuilderSessions.id, id), eq(this.schema.workflowBuilderSessions.projectId, projectId)))
+      .limit(1);
+    return (rows[0] as WorkflowBuilderSession | undefined) ?? null;
+  }
+
+  async updateSession(
+    id: string,
+    patch: Partial<{
+      title: string;
+      status: string;
+      messages: JsonObject[];
+      currentRevisionId: string | null;
+      appliedWorkflowId: string | null;
+    }>,
+  ): Promise<void> {
+    await this.db
+      .update(this.schema.workflowBuilderSessions)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(this.schema.workflowBuilderSessions.id, id));
+  }
+
+  async addRevision(input: {
+    sessionId: string;
+    revision: number;
+    name: string;
+    nodes: INode[];
+    connections: IConnections;
+    summary: string;
+  }): Promise<AiBuilderTemporaryWorkflow> {
+    const [row] = await this.db
+      .insert(this.schema.aiBuilderTemporaryWorkflows)
+      .values({
+        sessionId: input.sessionId,
+        revision: input.revision,
+        name: input.name,
+        nodes: input.nodes,
+        connections: input.connections,
+        summary: input.summary,
+      })
+      .returning();
+    return row as AiBuilderTemporaryWorkflow;
+  }
+
+  async listRevisions(sessionId: string): Promise<AiBuilderTemporaryWorkflow[]> {
+    return (await this.db
+      .select()
+      .from(this.schema.aiBuilderTemporaryWorkflows)
+      .where(eq(this.schema.aiBuilderTemporaryWorkflows.sessionId, sessionId))
+      .orderBy(this.schema.aiBuilderTemporaryWorkflows.revision)) as AiBuilderTemporaryWorkflow[];
+  }
+
+  async findRevision(id: string, sessionId: string): Promise<AiBuilderTemporaryWorkflow | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.aiBuilderTemporaryWorkflows)
+      .where(and(eq(this.schema.aiBuilderTemporaryWorkflows.id, id), eq(this.schema.aiBuilderTemporaryWorkflows.sessionId, sessionId)))
+      .limit(1);
+    return (rows[0] as AiBuilderTemporaryWorkflow | undefined) ?? null;
+  }
+}
+
 export interface Repositories {
   users: UserRepository;
   apiKeys: ApiKeyRepository;
@@ -3244,6 +3333,7 @@ export interface Repositories {
   roleMappings: RoleMappingRepository;
   platform: PlatformRepository;
   agents: AgentRepository;
+  workflowBuilder: WorkflowBuilderRepository;
 }
 
 /** 用一个 DatabaseHandle 组装全部仓储。server 层在启动时调用一次。 */
@@ -3282,5 +3372,6 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
     roleMappings: new RoleMappingRepository(db, schema),
     platform: new PlatformRepository(db, schema),
     agents: new AgentRepository(db, schema),
+    workflowBuilder: new WorkflowBuilderRepository(db, schema),
   };
 }

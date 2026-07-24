@@ -288,6 +288,13 @@
       "when": 1784876622994,
       "tag": "0040_wet_bishop",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1784877862280,
+      "tag": "0041_zippy_norman_osborn",
+      "breakpoints": true
     }
   ]
 }

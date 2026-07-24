@@ -27,6 +27,7 @@ import type { SttService } from './services/stt-service.js';
 import type { InsightsService } from './services/insights-service.js';
 import type { AgentRunService } from './services/agent-run-service.js';
 import type { AgentChannelService } from './services/agent-channel-service.js';
+import type { WorkflowBuilderService } from './services/workflow-builder-service.js';
 import type { WaitTracker } from './services/wait-tracker.js';
 import type { ExecutionPruner } from './services/execution-pruner.js';
 import type { ApiKeyService } from './services/api-key-service.js';
@@ -75,6 +76,7 @@ export interface AppServices {
   insights: InsightsService;
   agentRuns: AgentRunService;
   agentChannels: AgentChannelService;
+  workflowBuilder: WorkflowBuilderService;
   mailer: IMailer;
   waitTracker: WaitTracker;
   executionPruner: ExecutionPruner;

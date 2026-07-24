@@ -101,6 +101,28 @@ export interface AgentRow {
   updatedAt: string;
 }
 
+/** AI 建流会话（#45 M1）。 */
+export interface BuilderSessionRow {
+  id: string;
+  title: string;
+  goal: string;
+  status: 'active' | 'applied' | 'discarded';
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  currentRevisionId: string | null;
+  appliedWorkflowId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** AI 建流草稿版本（#45 M1；预览按 id 取 nodes/connections）。 */
+export interface BuilderRevisionRow {
+  id: string;
+  revision: number;
+  name: string;
+  summary: string;
+  createdAt: string;
+}
+
 /** Agent 文件（#44 M5；binaryId 为内部存储引用,不出 API）。 */
 export interface AgentFileRow {
   id: string;
@@ -667,6 +689,22 @@ export const api = {
     updateTask: (id: string, taskId: string, body: Partial<{ name: string; message: string; schedule: Record<string, unknown>; timezone: string; active: boolean }>) =>
       http<AgentTaskRow>('PATCH', `/api/agents/${id}/tasks/${taskId}`, body),
     removeTask: (id: string, taskId: string) => http<void>('DELETE', `/api/agents/${id}/tasks/${taskId}`),
+  },
+
+  // AI 建流会话（#45 M1）
+  builder: {
+    list: () => http<BuilderSessionRow[]>('GET', '/api/builder/sessions'),
+    create: (goal: string) => http<BuilderSessionRow>('POST', '/api/builder/sessions', { goal }),
+    get: (id: string) => http<{ session: BuilderSessionRow; revisions: BuilderRevisionRow[] }>('GET', `/api/builder/sessions/${id}`),
+    chat: (id: string, message: string, model?: string) =>
+      http<{ reply: string; revision: BuilderRevisionRow | null }>('POST', `/api/builder/sessions/${id}/chat`, { message, ...(model ? { model } : {}) }),
+    revision: (id: string, revisionId: string) =>
+      http<{ id: string; revision: number; name: string; nodes: INode[]; connections: IConnections }>('GET', `/api/builder/sessions/${id}/revisions/${revisionId}`),
+    rollback: (id: string, revisionId: string) =>
+      http<{ session: BuilderSessionRow; revisions: BuilderRevisionRow[] }>('POST', `/api/builder/sessions/${id}/rollback`, { revisionId }),
+    apply: (id: string, revisionId?: string) =>
+      http<{ workflowId: string; name: string }>('POST', `/api/builder/sessions/${id}/apply`, revisionId ? { revisionId } : {}),
+    discard: (id: string) => http<void>('DELETE', `/api/builder/sessions/${id}`),
   },
 
   workflowsMeta: () => http<WorkflowMetaRow[]>('GET', '/api/workflows-meta'),
