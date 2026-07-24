@@ -47,6 +47,7 @@ export {
   SchedulerRepository,
   InsightsRepository,
   PublishPipelineRepository,
+  RoleMappingRepository,
 } from './repositories.js';
 export type {
   Repositories,
@@ -54,6 +55,7 @@ export type {
   CreateWorkflowVersionInput,
   ExecutionAnnotationView,
   ScheduledJobInput,
+  RoleMappingRuleView,
 } from './repositories.js';
 
 export type {
@@ -97,4 +99,5 @@ export type {
   InsightsPeriodRow,
   PublishHistoryRow,
   TriggerStatusRow,
+  RoleMappingRule,
 } from './types.js';

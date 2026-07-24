@@ -24,6 +24,13 @@ function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
+/** #42：claims[matchKey] 是否含 matchValue（值可为标量或数组,如 groups/roles 声明）。 */
+function claimMatches(claims: Record<string, unknown> | undefined, key: string, value: string): boolean {
+  const v = claims?.[key];
+  if (Array.isArray(v)) return v.map(String).includes(value);
+  return v != null && String(v) === value;
+}
+
 /** 邀请接受链接（前端 /signup?invite= 着陆页）。无 SMTP 时由 admin 复制转交。 */
 function inviteLink(baseUrl: string, token: string): string {
   return `${baseUrl.replace(/\/$/, '')}/signup?invite=${encodeURIComponent(token)}`;
@@ -236,13 +243,52 @@ export class AuthService {
     firstName?: string | null;
     lastName?: string | null;
     provider?: { type: string; id: string };
+    /** #42 角色映射输入：LDAP group（memberOf）或 SSO 声明。 */
+    groups?: string[];
+    claims?: Record<string, unknown>;
   }): Promise<{ result: IAuthResult; provisioned: boolean }> {
     const { user, provisioned } = await this.provisionSsoUser(profile);
     if (user.disabled) {
       throw new OperationalError('This account has been disabled', { status: 403 });
     }
+    // #42：按 SSO 声明/LDAP group 自动授予项目成员资格
+    await this.applyRoleMappings(user.id, {
+      sourceType:
+        profile.provider?.type === 'ldap'
+          ? 'ldap-group'
+          : profile.provider?.type === 'saml'
+            ? 'saml-attr'
+            : 'oidc-claim',
+      groups: profile.groups,
+      claims: profile.claims,
+    }).catch((e: Error) => console.error(`[nomops] 角色映射应用失败 ${user.id}:`, e.message));
     const projectId = await this.ensurePersonalProject(user);
     return { result: this.issueToken(user, projectId), provisioned };
+  }
+
+  /**
+   * #42：按角色映射规则给用户授予项目成员资格。规则按 ordering 降序;同项目多规则命中
+   * 取最高优先级。只加/改角色,不移除既有成员（避免误删手动添加的成员）。
+   */
+  async applyRoleMappings(
+    userId: string,
+    ctx: { sourceType: string; groups?: string[]; claims?: Record<string, unknown> },
+  ): Promise<void> {
+    const rules = await this.repos.roleMappings.list(); // 已按 ordering 降序
+    const assigned = new Set<string>(); // 已定角色的项目（高优先先到先定）
+    for (const rule of rules) {
+      if (rule.sourceType !== ctx.sourceType) continue;
+      const matched =
+        ctx.sourceType === 'ldap-group'
+          ? (ctx.groups ?? []).includes(rule.matchValue)
+          : claimMatches(ctx.claims, rule.matchKey, rule.matchValue);
+      if (!matched) continue;
+      for (const projectId of rule.projectIds) {
+        if (assigned.has(projectId)) continue;
+        assigned.add(projectId);
+        await this.repos.projects.setMemberRole(projectId, userId, rule.projectRole);
+      }
+    }
   }
 
   /**

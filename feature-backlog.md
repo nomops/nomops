@@ -106,9 +106,7 @@
   chat_hub_tools(工具定义) + session_tools/agent_tools(会话级/Agent 级挂载)；消息带 workflowId/executionId 关联。
   验收：会话挂一个工作流工具 → 对话触发执行 → 消息里可跳执行详情。
 
-- [ ] **42. SSO 角色映射规则（role_mapping_rule）** `M`（与 #28/#29 联动）
-  按表达式把 SSO 声明/LDAP group 映射到角色与项目（role_mapping_rule + role_mapping_rule_project，order 定优先级）。
-  验收：LDAP group → 项目成员自动生效。
+- [x] **42. SSO 角色映射规则（role_mapping_rule）** `M` ✅ 2026-07-23（2 表双方言+迁移0034:role_mapping_rule(sourceType/matchKey/matchValue/projectRole/ordering)+role_mapping_rule_project 多对多;RoleMappingRepository 带登录热路径缓存;AuthService.loginViaSso 后 applyRoleMappings——按 ordering 降序,ldap-group 命中 memberOf/oidc-claim 命中声明(claimMatches 支持标量或数组),同项目多规则取最高优先,projects.setMemberRole 幂等只加/改不删;LDAP authenticate 取 memberOf→ILdapProfile.groups→login 传;OIDC 传 claims;规则 CRUD API(实例 admin)GET/POST/DELETE /role-mappings;3 server 测(LDAP group 命中→自动 editor、不命中→不加入、规则列表可查)验收"LDAP group → 项目成员自动生效";全量 server 484 通过。规则管理 Settings UI 未做(验收是自动生效,已由 API+登录评估满足)）
 
 - [ ] **43. 平台零散补差清扫** `S/M`
   folder_tag(文件夹打标)、mcp_registry_server(MCP registry 缓存)、instance_version_history(实例升级史)、users.settings(每用户偏好落库替 localStorage)。

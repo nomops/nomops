@@ -475,6 +475,31 @@ export const testCaseRuns = pgTable(
   (t) => [index('test_case_runs_test_run_id_idx').on(t.testRunId)],
 );
 
+/** SSO 角色映射规则（backlog #42）。 */
+export const roleMappingRule = pgTable('role_mapping_rule', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sourceType: text('source_type').notNull(),
+  matchKey: text('match_key').notNull().default(''),
+  matchValue: text('match_value').notNull(),
+  projectRole: text('project_role').notNull(),
+  ordering: integer('ordering').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+/** 规则 → 项目 多对多（backlog #42）。 */
+export const roleMappingRuleProject = pgTable(
+  'role_mapping_rule_project',
+  {
+    ruleId: uuid('rule_id')
+      .notNull()
+      .references(() => roleMappingRule.id),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id),
+  },
+  (t) => [primaryKey({ columns: [t.ruleId, t.projectId] })],
+);
+
 /** 发布/回滚事件史（backlog #40）。 */
 export const workflowPublishHistory = pgTable(
   'workflow_publish_history',
@@ -763,4 +788,6 @@ export const pgSchema = {
   workflowPublishHistory,
   publicationTriggerStatus,
   credentialDependency,
+  roleMappingRule,
+  roleMappingRuleProject,
 };

@@ -146,6 +146,7 @@ export class OidcService {
       firstName: typeof claims?.['given_name'] === 'string' ? claims['given_name'] : null,
       lastName: typeof claims?.['family_name'] === 'string' ? claims['family_name'] : null,
       ...(sub ? { provider: { type: 'oidc', id: sub } } : {}),
+      ...(claims ? { claims: claims as Record<string, unknown> } : {}), // #42：声明 → 角色映射
     });
   }
 

@@ -50,6 +50,8 @@ export interface ILdapProfile {
   lastName: string | null;
   /** 稳定目录 id（#36：按此绑定归属,email 变更不错认）。 */
   ldapId?: string | null;
+  /** 所属组（#42：memberOf,喂角色映射规则）。 */
+  groups?: string[];
 }
 
 /** 目录用户条目（同步用）。 */
@@ -98,6 +100,7 @@ export class LdaptsAuthenticator implements ILdapAuthenticator {
           config.firstNameAttribute,
           config.lastNameAttribute,
           config.ldapIdAttribute, // #36：稳定 id 用于身份绑定
+          'memberOf', // #42：所属组用于角色映射
         ],
       });
       const entry = searchEntries[0];
@@ -120,11 +123,14 @@ export class LdaptsAuthenticator implements ILdapAuthenticator {
       };
       const email = attr(config.emailAttribute);
       if (!email) return null;
+      const rawGroups = entry['memberOf'];
+      const groups = Array.isArray(rawGroups) ? rawGroups.map(String) : rawGroups != null ? [String(rawGroups)] : [];
       return {
         email,
         firstName: attr(config.firstNameAttribute),
         lastName: attr(config.lastNameAttribute),
         ldapId: attr(config.ldapIdAttribute),
+        groups,
       };
     } finally {
       await client.unbind().catch(() => undefined);
@@ -375,6 +381,7 @@ export class LdapService {
       firstName: profile.firstName,
       lastName: profile.lastName,
       ...(profile.ldapId ? { provider: { type: 'ldap', id: profile.ldapId } } : {}),
+      ...(profile.groups ? { groups: profile.groups } : {}), // #42：group → 角色映射
     });
   }
 }

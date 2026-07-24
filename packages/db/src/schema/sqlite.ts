@@ -539,6 +539,33 @@ export const testCaseRuns = sqliteTable(
   (t) => [index('test_case_runs_test_run_id_idx').on(t.testRunId)],
 );
 
+/** SSO 角色映射规则（backlog #42）：把 SSO 声明/LDAP group 映射到项目角色,ordering 定优先级。 */
+export const roleMappingRule = sqliteTable('role_mapping_rule', {
+  id: uuidPk('id'),
+  sourceType: text('source_type').notNull(), // 'ldap-group' | 'oidc-claim' | 'saml-attr'
+  matchKey: text('match_key').notNull().default(''), // claim/attr 名（ldap-group 用 memberOf 属性,可留空）
+  matchValue: text('match_value').notNull(), // 期望匹配的 group DN / 声明值
+  projectRole: text('project_role').notNull(), // project:viewer|editor|owner
+  ordering: integer('ordering').notNull().default(0), // 优先级：大者优先（同项目多规则命中取最高）
+  createdAt: integer('created_at', { mode: 'timestamp' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+/** 规则 → 项目 多对多（backlog #42）：一条规则可授权多个项目的成员资格。 */
+export const roleMappingRuleProject = sqliteTable(
+  'role_mapping_rule_project',
+  {
+    ruleId: text('rule_id')
+      .notNull()
+      .references(() => roleMappingRule.id),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+  },
+  (t) => [primaryKey({ columns: [t.ruleId, t.projectId] })],
+);
+
 /** 发布/回滚事件史（backlog #40）：每次 publish/rollback 一条,可回看。 */
 export const workflowPublishHistory = sqliteTable(
   'workflow_publish_history',
@@ -855,4 +882,6 @@ export const sqliteSchema = {
   workflowPublishHistory,
   publicationTriggerStatus,
   credentialDependency,
+  roleMappingRule,
+  roleMappingRuleProject,
 };

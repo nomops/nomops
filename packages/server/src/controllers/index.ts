@@ -47,6 +47,7 @@ import {
   sttConfigSchema,
   transcribeBodySchema,
   executionAnnotationSchema,
+  roleMappingSchema,
   updateMeSchema,
   changePasswordSchema,
   ssoConfigSchema,
@@ -1169,6 +1170,34 @@ export function createApiRouter(services: AppServices): Router {
     '/projects',
     h(async (req, res) => {
       res.json(await services.repos.projects.findAllByUserWithRole(auth(req).userId));
+    }),
+  );
+
+  /* ── SSO 角色映射规则（backlog #42，实例 admin）：SSO 声明/LDAP group → 项目角色 ── */
+  router.get(
+    '/role-mappings',
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      res.json(await services.repos.roleMappings.list());
+    }),
+  );
+  router.post(
+    '/role-mappings',
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      const body = parseBody(roleMappingSchema, req);
+      const { projectIds, ...rule } = body;
+      recordAudit(services, req, 'role-mapping.create', { type: 'setting', id: 'role-mapping' });
+      res.status(201).json(await services.repos.roleMappings.create(rule, projectIds));
+    }),
+  );
+  router.delete(
+    '/role-mappings/:id',
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      await services.repos.roleMappings.delete(param(req, 'id'));
+      recordAudit(services, req, 'role-mapping.delete', { type: 'setting', id: param(req, 'id') });
+      res.status(204).end();
     }),
   );
 

@@ -146,6 +146,16 @@ export const chatAttachmentSchema = z.object({
   data: z.string().min(1).max(14_000_000), // base64（~10MB 原文，配合 express.json 15mb 限）
 });
 
+/** SSO 角色映射规则（backlog #42，实例 admin）。 */
+export const roleMappingSchema = z.object({
+  sourceType: z.enum(['ldap-group', 'oidc-claim', 'saml-attr']),
+  matchKey: z.string().max(200).optional(),
+  matchValue: z.string().min(1).max(500),
+  projectRole: z.enum(['project:viewer', 'project:editor', 'project:owner']),
+  ordering: z.number().int().optional(),
+  projectIds: z.array(z.string().min(1)).min(1).max(50),
+});
+
 /** 执行标注（backlog #35）：vote 👍👎 / note / tags(标签名,不存在则建)。 */
 export const executionAnnotationSchema = z.object({
   vote: z.enum(['up', 'down']).nullable().optional(),

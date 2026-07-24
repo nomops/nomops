@@ -45,6 +45,7 @@ import type {
   InsightsPeriodRow,
   PublishHistoryRow,
   TriggerStatusRow,
+  RoleMappingRule,
 } from './types.js';
 
 /**
@@ -263,6 +264,13 @@ export class ProjectRepository extends BaseRepository {
   /** 把用户加入 project（project_relations）。 */
   async addMember(projectId: string, userId: string, role: string): Promise<void> {
     await this.db.insert(this.schema.projectRelations).values({ projectId, userId, role });
+  }
+
+  /** 幂等设成员角色（#42 角色映射每次登录调用）：已是成员则改角色,否则加入。 */
+  async setMemberRole(projectId: string, userId: string, role: string): Promise<void> {
+    const existing = await this.findMemberRole(projectId, userId);
+    if (existing === null) await this.addMember(projectId, userId, role);
+    else if (existing !== role) await this.updateMemberRole(projectId, userId, role);
   }
 
   /** 某类型的全部 project（SCIM Groups 列 team 项目用）。 */
@@ -2647,6 +2655,68 @@ export class PublishPipelineRepository extends BaseRepository {
   }
 }
 
+export interface RoleMappingRuleView extends RoleMappingRule {
+  projectIds: string[];
+}
+
+/**
+ * SSO 角色映射规则（backlog #42）：把 SSO 声明/LDAP group 映射到项目角色。
+ * 登录热路径读全部规则——内存缓存,写时失效。
+ */
+export class RoleMappingRepository extends BaseRepository {
+  private cache: RoleMappingRuleView[] | null = null;
+  private invalidate(): void {
+    this.cache = null;
+  }
+
+  async list(): Promise<RoleMappingRuleView[]> {
+    if (this.cache) return this.cache;
+    const rules = (await this.db
+      .select()
+      .from(this.schema.roleMappingRule)
+      .orderBy(desc(this.schema.roleMappingRule.ordering))) as RoleMappingRule[];
+    const maps = (await this.db.select().from(this.schema.roleMappingRuleProject)) as Array<{ ruleId: string; projectId: string }>;
+    const byRule = new Map<string, string[]>();
+    for (const m of maps) {
+      const arr = byRule.get(m.ruleId) ?? [];
+      arr.push(m.projectId);
+      byRule.set(m.ruleId, arr);
+    }
+    this.cache = rules.map((r) => ({ ...r, projectIds: byRule.get(r.id) ?? [] }));
+    return this.cache;
+  }
+
+  async create(
+    input: { sourceType: string; matchKey?: string; matchValue: string; projectRole: string; ordering?: number },
+    projectIds: string[],
+  ): Promise<RoleMappingRuleView> {
+    const [rule] = await this.db
+      .insert(this.schema.roleMappingRule)
+      .values({
+        sourceType: input.sourceType,
+        matchKey: input.matchKey ?? '',
+        matchValue: input.matchValue,
+        projectRole: input.projectRole,
+        ordering: input.ordering ?? 0,
+      })
+      .returning();
+    const r = rule as RoleMappingRule;
+    if (projectIds.length > 0) {
+      await this.db
+        .insert(this.schema.roleMappingRuleProject)
+        .values([...new Set(projectIds)].map((projectId) => ({ ruleId: r.id, projectId })));
+    }
+    this.invalidate();
+    return { ...r, projectIds: [...new Set(projectIds)] };
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.db.delete(this.schema.roleMappingRuleProject).where(eq(this.schema.roleMappingRuleProject.ruleId, id));
+    await this.db.delete(this.schema.roleMappingRule).where(eq(this.schema.roleMappingRule.id, id));
+    this.invalidate();
+  }
+}
+
 export interface Repositories {
   users: UserRepository;
   apiKeys: ApiKeyRepository;
@@ -2677,6 +2747,7 @@ export interface Repositories {
   scheduler: SchedulerRepository;
   insights: InsightsRepository;
   publishPipeline: PublishPipelineRepository;
+  roleMappings: RoleMappingRepository;
 }
 
 /** 用一个 DatabaseHandle 组装全部仓储。server 层在启动时调用一次。 */
@@ -2712,5 +2783,6 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
     scheduler: new SchedulerRepository(db, schema),
     insights: new InsightsRepository(db, schema),
     publishPipeline: new PublishPipelineRepository(db, schema),
+    roleMappings: new RoleMappingRepository(db, schema),
   };
 }

@@ -45,6 +45,7 @@ export type InsightsRawEvent = InferSelectModel<typeof sqliteSchema.insightsRaw>
 export type InsightsPeriodRow = InferSelectModel<typeof sqliteSchema.insightsByPeriod>;
 export type PublishHistoryRow = InferSelectModel<typeof sqliteSchema.workflowPublishHistory>;
 export type TriggerStatusRow = InferSelectModel<typeof sqliteSchema.publicationTriggerStatus>;
+export type RoleMappingRule = InferSelectModel<typeof sqliteSchema.roleMappingRule>;
 
 /* ── 创建入参（区别于自动生成的 id/时间戳字段） ── */
 
