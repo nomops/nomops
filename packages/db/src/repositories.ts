@@ -1538,6 +1538,23 @@ export class AuditLogRepository extends BaseRepository {
       .limit(limit);
     return rows as AuditLog[];
   }
+
+  /** 按资源过滤审计（#46 M3：动态凭证管理台的审计面板）。 */
+  async findByResource(projectId: string, resourceType: string, resourceId: string, limit = 50): Promise<AuditLog[]> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.auditLogs)
+      .where(
+        and(
+          eq(this.schema.auditLogs.projectId, projectId),
+          eq(this.schema.auditLogs.resourceType, resourceType),
+          eq(this.schema.auditLogs.resourceId, resourceId),
+        ),
+      )
+      .orderBy(desc(this.schema.auditLogs.timestamp))
+      .limit(Math.min(limit, 200));
+    return rows as AuditLog[];
+  }
 }
 
 export class WebhookRepository extends BaseRepository {

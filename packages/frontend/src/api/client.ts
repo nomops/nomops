@@ -700,6 +700,11 @@ export const api = {
       http<void>('PUT', `/api/dynamic-credentials/resolvers/${id}/user-entry`, { userId, data }),
     removeUserEntry: (id: string, userId: string) =>
       http<void>('DELETE', `/api/dynamic-credentials/resolvers/${id}/user-entry?userId=${encodeURIComponent(userId)}`),
+    /* #46 M3：批量导入 + 审计流 */
+    importEntries: (id: string, entries: Record<string, Record<string, unknown>>) =>
+      http<{ imported: number; subjects: string[] }>('POST', `/api/dynamic-credentials/resolvers/${id}/import`, { entries }),
+    audit: (id: string) =>
+      http<Array<{ id: string; timestamp: string; action: string; details: Record<string, unknown> | null }>>('GET', `/api/dynamic-credentials/resolvers/${id}/audit`),
   },
 
   /** 凭证 OAuth2「Connect my account」：拿提供方授权跳转 URL，前端开弹窗完成授权。 */

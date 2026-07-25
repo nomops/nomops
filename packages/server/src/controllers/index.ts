@@ -20,6 +20,7 @@ import { verifyHandoff } from '../auth/handoff.js';
 import { requireFeature } from '../ee/license/license-service.js';
 import { isProjectRole, tierForScopes, PROJECT_SCOPES } from '../auth/rbac.js';
 import { CHAT_PROVIDERS } from '../services/assistant-service.js';
+import { AUDIT_RESOURCE } from '../ee/services/dynamic-credential-service.js';
 import { getTemplate, templateSummaries } from '../services/template-registry.js';
 import {
   acceptInviteSchema,
@@ -1011,7 +1012,9 @@ export function createApiRouter(services: AppServices): Router {
     h(async (req, res) => {
       const { name, kind, config } = req.body as { name?: string; kind?: string; config?: Record<string, unknown> };
       if (!name?.trim()) throw new OperationalError('name is required', { status: 400 });
-      res.status(201).json(await services.dynamicCredentials.createResolver(auth(req).projectId, { name, kind, config: (config ?? {}) as JsonObject }));
+      const created = await services.dynamicCredentials.createResolver(auth(req).projectId, { name, kind, config: (config ?? {}) as JsonObject });
+      recordAudit(services, req, 'dyncred.resolver-create', { type: AUDIT_RESOURCE, id: created.id }, { name: created.name, kind: created.kind });
+      res.status(201).json(created);
     }),
   );
   router.delete(
@@ -1020,6 +1023,7 @@ export function createApiRouter(services: AppServices): Router {
     dynFeature,
     h(async (req, res) => {
       await services.dynamicCredentials.deleteResolver(param(req, 'id'), auth(req).projectId);
+      recordAudit(services, req, 'dyncred.resolver-delete', { type: AUDIT_RESOURCE, id: param(req, 'id') });
       res.status(204).end();
     }),
   );
@@ -1039,6 +1043,8 @@ export function createApiRouter(services: AppServices): Router {
       const { subject, data } = req.body as { subject?: string; data?: Record<string, unknown> };
       if (!subject?.trim() || !data || typeof data !== 'object') throw new OperationalError('subject and data are required', { status: 400 });
       await services.dynamicCredentials.setEntry(param(req, 'id'), auth(req).projectId, subject, data as JsonObject);
+      // 审计只记元数据(谁/何时/哪个 subject)——绝无值（铁律 3）
+      recordAudit(services, req, 'dyncred.entry-set', { type: AUDIT_RESOURCE, id: param(req, 'id') }, { subject: subject.trim() });
       res.status(204).end();
     }),
   );
@@ -1050,7 +1056,28 @@ export function createApiRouter(services: AppServices): Router {
       const subject = typeof req.query['subject'] === 'string' ? req.query['subject'] : '';
       if (!subject) throw new OperationalError('subject query param is required', { status: 400 });
       await services.dynamicCredentials.deleteEntry(param(req, 'id'), auth(req).projectId, subject);
+      recordAudit(services, req, 'dyncred.entry-delete', { type: AUDIT_RESOURCE, id: param(req, 'id') }, { subject });
       res.status(204).end();
+    }),
+  );
+  // 批量导入 subject 值 + 审计流（#46 M3）
+  router.post(
+    '/dynamic-credentials/resolvers/:id/import',
+    editor,
+    dynFeature,
+    h(async (req, res) => {
+      const { entries } = req.body as { entries?: Record<string, Record<string, unknown>> };
+      if (!entries || typeof entries !== 'object') throw new OperationalError('entries object is required', { status: 400 });
+      const result = await services.dynamicCredentials.importEntries(param(req, 'id'), auth(req).projectId, entries as Record<string, JsonObject>);
+      recordAudit(services, req, 'dyncred.entry-import', { type: AUDIT_RESOURCE, id: param(req, 'id') }, { count: result.imported, subjects: result.subjects });
+      res.status(201).json(result);
+    }),
+  );
+  router.get(
+    '/dynamic-credentials/resolvers/:id/audit',
+    dynFeature,
+    h(async (req, res) => {
+      res.json(await services.dynamicCredentials.listAudit(param(req, 'id'), auth(req).projectId));
     }),
   );
   // 按平台 user 的凭证值（user_entry，#46 M2）：subject 无值时回退。值只进不出（铁律 3）
@@ -1069,6 +1096,7 @@ export function createApiRouter(services: AppServices): Router {
       const { userId, data } = req.body as { userId?: string; data?: Record<string, unknown> };
       if (!userId?.trim() || !data || typeof data !== 'object') throw new OperationalError('userId and data are required', { status: 400 });
       await services.dynamicCredentials.setUserEntry(param(req, 'id'), auth(req).projectId, userId, data as JsonObject);
+      recordAudit(services, req, 'dyncred.user-entry-set', { type: AUDIT_RESOURCE, id: param(req, 'id') }, { userId: userId.trim() });
       res.status(204).end();
     }),
   );
@@ -1080,6 +1108,7 @@ export function createApiRouter(services: AppServices): Router {
       const userId = typeof req.query['userId'] === 'string' ? req.query['userId'] : '';
       if (!userId) throw new OperationalError('userId query param is required', { status: 400 });
       await services.dynamicCredentials.deleteUserEntry(param(req, 'id'), auth(req).projectId, userId);
+      recordAudit(services, req, 'dyncred.user-entry-delete', { type: AUDIT_RESOURCE, id: param(req, 'id') }, { userId });
       res.status(204).end();
     }),
   );

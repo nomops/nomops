@@ -1,7 +1,10 @@
-import type { DynamicCredentialResolver, Repositories } from '@nomops/db';
+import type { AuditLog, DynamicCredentialResolver, Repositories } from '@nomops/db';
 import type { Credentials } from '@nomops/core';
 import type { JsonObject } from '@nomops/workflow';
 import { OperationalError } from '@nomops/workflow';
+
+/** 审计 resourceType（#46 M3）：所有动态凭证变更以此 + resolverId 归档,管理台按此过滤。 */
+export const AUDIT_RESOURCE = 'dynamic-credential';
 
 /**
  * 动态凭证（backlog #46 M1，docs/14）：把一个逻辑凭证在运行时按 **subject**（租户/终端用户）
@@ -169,5 +172,30 @@ export class DynamicCredentialService {
     const r = await this.repos.dynamicCredentials.findResolver(resolverId, projectId);
     if (!r) throw new OperationalError('Resolver not found', { status: 404 });
     await this.repos.dynamicCredentials.deleteUserEntry(resolverId, userId);
+  }
+
+  /* ── 管理台完善（#46 M3）：批量导入 + 审计读 ── */
+  /** 批量导入 subject 值：{ subject: {字段…} }。每条加密 upsert。返回导入条数。 */
+  async importEntries(resolverId: string, projectId: string, entries: Record<string, JsonObject>): Promise<{ imported: number; subjects: string[] }> {
+    const r = await this.repos.dynamicCredentials.findResolver(resolverId, projectId);
+    if (!r) throw new OperationalError('Resolver not found', { status: 404 });
+    const subjects = Object.keys(entries).map((s) => s.trim()).filter(Boolean);
+    if (!subjects.length) throw new OperationalError('No entries to import', { status: 400 });
+    for (const subject of subjects) {
+      const value = entries[subject];
+      if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw new OperationalError(`Value for subject "${subject}" must be an object`, { status: 400 });
+      }
+      const encrypted = await this.credentials.encrypt(value, { projectId });
+      await this.repos.dynamicCredentials.upsertEntry({ resolverId, subject, data: encrypted });
+    }
+    return { imported: subjects.length, subjects };
+  }
+
+  /** 某解析器的审计流（谁/何时改了哪个 subject——绝无值，铁律 3）。 */
+  async listAudit(resolverId: string, projectId: string): Promise<AuditLog[]> {
+    const r = await this.repos.dynamicCredentials.findResolver(resolverId, projectId);
+    if (!r) throw new OperationalError('Resolver not found', { status: 404 });
+    return this.repos.auditLogs.findByResource(projectId, AUDIT_RESOURCE, resolverId);
   }
 }

@@ -289,6 +289,9 @@ const dynNewUrl = ref('');
 const dynUsers = ref<Awaited<ReturnType<typeof api.dynamicCredentials.users>>>([]);
 const dynNewUserId = ref('');
 const dynNewUserValue = ref('{ "accessToken": "" }');
+/* #46 M3：批量导入 + 审计流 */
+const dynImportText = ref('');
+const dynAudit = ref<Awaited<ReturnType<typeof api.dynamicCredentials.audit>>>([]);
 async function loadDynResolvers() {
   dynError.value = '';
   try {
@@ -313,10 +316,38 @@ async function attachDynResolver() {
   }
 }
 async function loadDynSubjects() {
-  if (!dynSelectedResolver.value) { dynSubjects.value = []; dynUsers.value = []; return; }
+  if (!dynSelectedResolver.value) { dynSubjects.value = []; dynUsers.value = []; dynAudit.value = []; return; }
   dynSubjects.value = await api.dynamicCredentials.subjects(dynSelectedResolver.value).catch(() => []);
   dynUsers.value = await api.dynamicCredentials.users(dynSelectedResolver.value).catch(() => []);
+  dynAudit.value = await api.dynamicCredentials.audit(dynSelectedResolver.value).catch(() => []);
 }
+/** 点 subject 行「轮换」= 预填表单覆盖其值（upsert）。 */
+function rotateDynSubject(subject: string) {
+  dynNewSubject.value = subject;
+  dynNewValue.value = '{ "accessToken": "" }';
+}
+async function importDynEntries() {
+  if (!dynSelectedResolver.value || !dynImportText.value.trim()) return;
+  let entries: Record<string, Record<string, unknown>>;
+  try { entries = JSON.parse(dynImportText.value); } catch { dynError.value = 'Import must be valid JSON: { "subject": { …fields } }'; return; }
+  dynBusy.value = 'import';
+  dynError.value = '';
+  try {
+    const r = await api.dynamicCredentials.importEntries(dynSelectedResolver.value, entries);
+    dynImportText.value = '';
+    dynError.value = '';
+    await loadDynSubjects();
+    // 轻量提示：借 dynError 位显示成功? 用单独 notice。
+    dynImportNotice.value = `Imported ${r.imported} subject value(s).`;
+  } catch (e) {
+    dynError.value = (e as Error).message;
+  } finally {
+    dynBusy.value = '';
+  }
+}
+const dynImportNotice = ref('');
+const dynAuditLabel = (action: string): string =>
+  ({ 'dyncred.resolver-create': 'created resolver', 'dyncred.resolver-delete': 'deleted resolver', 'dyncred.entry-set': 'set subject value', 'dyncred.entry-delete': 'deleted subject value', 'dyncred.entry-import': 'imported subject values', 'dyncred.user-entry-set': 'set user value', 'dyncred.user-entry-delete': 'deleted user value', 'credential.resolver-set': 'attached to credential' }[action] ?? action);
 async function addDynUserEntry() {
   if (!dynSelectedResolver.value || !dynNewUserId.value.trim()) return;
   let data: Record<string, unknown>;
@@ -3078,6 +3109,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                   <li v-for="s in dynSubjects" :key="s.id" class="dyn-row">
                     <span class="dyn-name">{{ s.subject }}</span>
                     <span class="dim" style="font-size: 11.5px">{{ fmtDate(s.updatedAt) }}</span>
+                    <button class="link" data-test="dyncreds-rotate" title="Rotate value" @click="rotateDynSubject(s.subject)">Rotate</button>
                     <button class="link" data-test="dyncreds-del-subject" @click="removeDynEntry(s.subject)">✕</button>
                   </li>
                 </ul>
@@ -3102,6 +3134,28 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                 <input v-model="dynNewUserId" data-test="dyncreds-userid" placeholder="platform user id" style="width: 100%; margin: 4px 0 6px" />
                 <textarea v-model="dynNewUserValue" data-test="dyncreds-uservalue" rows="2" spellcheck="false" style="width: 100%; font-family: var(--font-family--monospace, monospace); font-size: 12.5px"></textarea>
                 <button class="btn" data-test="dyncreds-add-user" style="margin-top: 6px" :disabled="dynBusy === 'userentry' || !dynNewUserId.trim()" @click="addDynUserEntry">Save user value</button>
+              </div>
+
+              <!-- 批量导入（#46 M3）：{ "subject": { …fields } } -->
+              <div class="set-field">
+                <label>Bulk import <span class="dim" style="font-weight: 400">· { "subject": { …fields } }</span></label>
+                <textarea v-model="dynImportText" data-test="dyncreds-import" rows="3" spellcheck="false" placeholder='{ "tenant-a": { "accessToken": "…" }, "tenant-b": { "accessToken": "…" } }' style="width: 100%; font-family: var(--font-family--monospace, monospace); font-size: 12.5px"></textarea>
+                <div style="display: flex; align-items: center; gap: 10px; margin-top: 6px">
+                  <button class="btn" data-test="dyncreds-import-btn" :disabled="dynBusy === 'import' || !dynImportText.trim()" @click="importDynEntries">Import</button>
+                  <span v-if="dynImportNotice" class="dim" style="font-size: 12px; color: #4cc38a">{{ dynImportNotice }}</span>
+                </div>
+              </div>
+
+              <!-- 审计流（#46 M3）：谁/何时/哪个 subject——绝无值 -->
+              <div class="set-field">
+                <label>Audit <span class="dim" style="font-weight: 400">· who changed what, when · never values</span></label>
+                <p v-if="!dynAudit.length" class="dim" style="font-size: 12px; margin: 4px 0">No changes recorded yet.</p>
+                <ul v-else class="dyn-list" data-test="dyncreds-audit">
+                  <li v-for="a in dynAudit" :key="a.id" class="dyn-row" style="font-size: 12px">
+                    <span class="dyn-name">{{ dynAuditLabel(a.action) }}<template v-if="a.details && a.details.subject"> · {{ a.details.subject }}</template><template v-else-if="a.details && a.details.userId"> · user {{ String(a.details.userId).slice(0, 8) }}</template></span>
+                    <span class="dim">{{ fmtDate(a.timestamp) }}</span>
+                  </li>
+                </ul>
               </div>
             </div>
           </div>
