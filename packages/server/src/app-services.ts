@@ -3,6 +3,7 @@ import type { Repositories } from '@nomops/db';
 import type { AuthService } from './auth/auth-service.js';
 import type { CredentialService } from './services/credential-service.js';
 import type { DynamicCredentialService } from './ee/services/dynamic-credential-service.js';
+import type { InstanceTrustService } from './ee/services/instance-trust-service.js';
 import type { ExecutionService } from './services/execution-service.js';
 import type { WorkflowService } from './services/workflow-service.js';
 import type { PushHub } from './ws/push-hub.js';
@@ -54,6 +55,7 @@ export interface AppServices {
   sharing: SharingService;
   credentials: CredentialService;
   dynamicCredentials: DynamicCredentialService;
+  instanceTrust: InstanceTrustService;
   executions: ExecutionService;
   pushHub: PushHub;
   activeWorkflows: ActiveWorkflowManager;

@@ -9,6 +9,7 @@ import {
   createAuthRouter,
   createInternalRouter,
   createWebhookRouter,
+  createInstanceTrustRouter,
 } from './controllers/index.js';
 import { createSsoRouter } from './ee/sso/router.js';
 import { createMetricsRouter } from './services/metrics.js';
@@ -41,6 +42,7 @@ export function createApp(services?: AppServices): Express {
     app.use(createInternalRouter(services)); // /internal/*（控制平面指标，共享密钥鉴权；自托管无密钥即 404）
     app.use(createMetricsRouter(services)); // /metrics（Prometheus 文本；NOMOPS_METRICS=false 关闭）
     app.use(createMcpRouter(services)); // /mcp-server/http（实例级 MCP，access token 鉴权；未启用 404）
+    app.use(createInstanceTrustRouter(services)); // /instance-trust/*（公开：JWKS + 令牌交换,#47）
     const apiAuth = createAuthMiddleware(services.auth, services.repos, services.apiKeys);
     const apiRouter = createApiRouter(services);
     app.use('/api', apiAuth, apiRouter);

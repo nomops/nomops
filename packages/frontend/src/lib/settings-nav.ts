@@ -11,6 +11,7 @@ export type SettingsSection =
   | 'api'
   | 'secrets'
   | 'dynamiccreds'
+  | 'instancetrust'
   | 'sourcecontrol'
   | 'sso'
   | 'security'
@@ -30,6 +31,7 @@ export const SETTINGS_SECTIONS: Array<{ key: SettingsSection; label: string; bad
   { key: 'api', label: 'nomops API' },
   { key: 'secrets', label: 'External Secrets' },
   { key: 'dynamiccreds', label: 'Dynamic Credentials', badge: 'New' },
+  { key: 'instancetrust', label: 'Instance Trust', badge: 'New' },
   { key: 'sourcecontrol', label: 'Environments' },
   { key: 'sso', label: 'SSO' },
   { key: 'security', label: 'Security & policies' },
@@ -51,6 +53,7 @@ export const SETTINGS_ICONS: Record<SettingsSection, string> = {
   api: '<circle cx="7" cy="12" r="3.2"/><path d="M10.2 12H21M17 12v3.5M20.5 12v2.5"/>',
   secrets: '<rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
   dynamiccreds: '<circle cx="8" cy="8" r="3"/><path d="M10.5 10.5L20 20M20 16v4h-4"/><path d="M5 14c-1.5 1-2 2.5-2 4h6"/>',
+  instancetrust: '<path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9.5 12l1.8 1.8L15 10"/>',
   sourcecontrol: '<circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7M8.4 6.5c6 0 7.6 1.5 7.6 4.5M18 10.5c0 3.5-3 5-8 5"/>',
   sso: '<circle cx="8" cy="12" r="4"/><path d="M12 12h9M18 12v3.5M21.5 12v2.5"/>',
   security: '<path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6l7-3z"/>',

@@ -80,6 +80,7 @@ export const ALL_TEST_FEATURES = [
   'logStreaming',
   'externalSecrets',
   'dynamicCredentials',
+  'instanceTrust',
   'ldap',
   'sourceControl',
   'sharing',

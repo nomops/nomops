@@ -30,6 +30,7 @@ export const LICENSE_FEATURES = [
   'logStreaming',
   'externalSecrets',
   'dynamicCredentials',
+  'instanceTrust',
   'ldap',
   'sourceControl',
   'sharing',

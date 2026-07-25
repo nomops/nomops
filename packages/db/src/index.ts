@@ -50,6 +50,7 @@ export {
   PublishPipelineRepository,
   RoleMappingRepository,
   PlatformRepository,
+  InstanceTrustRepository,
   AgentRepository,
   WorkflowBuilderRepository,
   InstanceAiRepository,
@@ -128,4 +129,8 @@ export type {
   InstanceAiMemory,
   InstanceAiMcpConnection,
   McpRegistryServerRow,
+  DeploymentKey,
+  TrustedKey,
+  TrustedKeySource,
+  TokenExchangeJti,
 } from './types.js';

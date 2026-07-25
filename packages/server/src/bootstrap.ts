@@ -16,6 +16,7 @@ import { builtinNodeManifest } from '@nomops/nodes';
 import { AuthService } from './auth/auth-service.js';
 import { CredentialService } from './services/credential-service.js';
 import { DynamicCredentialService } from './ee/services/dynamic-credential-service.js';
+import { InstanceTrustService } from './ee/services/instance-trust-service.js';
 import { ExecutionService } from './services/execution-service.js';
 import { WorkflowService } from './services/workflow-service.js';
 import { ApiKeyService } from './services/api-key-service.js';
@@ -139,6 +140,8 @@ export interface BootstrapOptions {
   mcpClient?: import('./services/instance-ai-mcp.js').McpClient;
   /** 动态凭证 http 解析器的 fetch（#46 M2；测试注入假实现,不打真实网络）。 */
   dynamicCredentialFetch?: typeof fetch;
+  /** JWKS 源拉取的 fetch（#47；测试注入假实现,不打真实网络）。 */
+  instanceTrustFetch?: typeof fetch;
   /** 邮件投递（测试注入记录桩;生产按 NOMOPS_SMTP_* 环境变量,未配置为 NullMailer）。 */
   mailer?: IMailer;
   /** 社区节点安装器（缺省 npm 真实实现；测试注入假实现映射到本地 fixture）。 */
@@ -284,6 +287,8 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
         process.env['NOMOPS_BINARY_DATA_DIR'] ?? join('.nomops', 'binary-data'),
       );
   const baseUrl = process.env['NOMOPS_BASE_URL'] ?? 'http://localhost:5678';
+  // #47：实例信任密钥链——部署密钥签名 + 信任对端公钥 + 令牌交换（Cloud/企业联邦）
+  const instanceTrust = new InstanceTrustService(repos, credentials, baseUrl, opts.instanceTrustFetch);
   const otel = new OtelService(repos); // OpenTelemetry 追踪导出（#27）
   const executions = new ExecutionService(
     repos,
@@ -458,6 +463,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     mailer,
     credentials: credentialService,
     dynamicCredentials,
+    instanceTrust,
     executions,
     pushHub,
     activeWorkflows,

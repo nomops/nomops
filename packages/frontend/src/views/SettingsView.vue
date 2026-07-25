@@ -22,6 +22,7 @@ type Section =
   | 'api'
   | 'secrets'
   | 'dynamiccreds'
+  | 'instancetrust'
   | 'sourcecontrol'
   | 'sso'
   | 'security'
@@ -292,6 +293,67 @@ const dynNewUserValue = ref('{ "accessToken": "" }');
 /* #46 M3：批量导入 + 审计流 */
 const dynImportText = ref('');
 const dynAudit = ref<Awaited<ReturnType<typeof api.dynamicCredentials.audit>>>([]);
+
+/* 实例信任密钥链（#47，企业）：部署密钥 + 信任对端公钥 + JWKS 源 */
+const trustStatus = ref<Awaited<ReturnType<typeof api.instanceTrust.status>> | null>(null);
+const trustError = ref('');
+const trustBusy = ref('');
+const trustNewSourceName = ref('');
+const trustNewSourceUrl = ref('');
+const trustNewKid = ref('');
+const trustNewIssuer = ref('');
+const trustNewDer = ref('');
+async function loadTrust() {
+  trustError.value = '';
+  try {
+    trustStatus.value = await api.instanceTrust.status();
+  } catch (e) {
+    trustError.value = (e as Error).message; // 社区版 403 / 非 admin
+  }
+}
+async function rotateTrust() {
+  if (!window.confirm('Rotate deployment key? Old key stays valid for verifying already-issued tokens.')) return;
+  trustBusy.value = 'rotate';
+  try { await api.instanceTrust.rotate(); await loadTrust(); } finally { trustBusy.value = ''; }
+}
+async function addTrustSource() {
+  if (!trustNewSourceUrl.value.trim()) return;
+  trustBusy.value = 'source';
+  trustError.value = '';
+  try {
+    await api.instanceTrust.addSource(trustNewSourceName.value.trim(), trustNewSourceUrl.value.trim());
+    trustNewSourceName.value = ''; trustNewSourceUrl.value = '';
+    await loadTrust();
+  } catch (e) { trustError.value = (e as Error).message; } finally { trustBusy.value = ''; }
+}
+async function refreshTrustSource(id: string) {
+  trustBusy.value = 'refresh';
+  trustError.value = '';
+  try { await api.instanceTrust.refreshSource(id); await loadTrust(); }
+  catch (e) { trustError.value = (e as Error).message; } finally { trustBusy.value = ''; }
+}
+async function removeTrustSource(id: string) {
+  if (!window.confirm('Remove source and its imported trusted keys?')) return;
+  await api.instanceTrust.removeSource(id).catch(() => undefined);
+  await loadTrust();
+}
+async function addTrustKey() {
+  if (!trustNewKid.value.trim() || !trustNewDer.value.trim()) return;
+  trustBusy.value = 'key';
+  trustError.value = '';
+  try {
+    await api.instanceTrust.addTrustedKey({ kid: trustNewKid.value.trim(), publicKeyDer: trustNewDer.value.trim(), issuer: trustNewIssuer.value.trim() });
+    trustNewKid.value = ''; trustNewIssuer.value = ''; trustNewDer.value = '';
+    await loadTrust();
+  } catch (e) { trustError.value = (e as Error).message; } finally { trustBusy.value = ''; }
+}
+async function removeTrustKey(kid: string) {
+  await api.instanceTrust.removeTrustedKey(kid).catch(() => undefined);
+  await loadTrust();
+}
+async function copyJwksUrl() {
+  if (trustStatus.value) await navigator.clipboard.writeText(trustStatus.value.jwksUrl).catch(() => undefined);
+}
 async function loadDynResolvers() {
   dynError.value = '';
   try {
@@ -1260,6 +1322,8 @@ async function loadSection() {
     }
   } else if (section.value === 'dynamiccreds') {
     await loadDynResolvers();
+  } else if (section.value === 'instancetrust') {
+    await loadTrust();
   } else if (section.value === 'api') {
     createdToken.value = ''; // 切到该页清掉上次明文
     await loadApiKeys();
@@ -3160,6 +3224,76 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
             </div>
           </div>
         </template>
+      </section>
+
+      <!-- 实例信任密钥链（backlog #47）：实例联邦——部署密钥签名 + 信任对端公钥 + 令牌交换 -->
+      <section v-else-if="section === 'instancetrust'" data-test="settings-instancetrust">
+        <h1 class="page-title">Instance Trust</h1>
+        <p class="sub">
+          Federation between instances: this instance signs tokens with its <b>deployment key</b>; peers trust it via its
+          published JWKS. Present a peer's signed token to exchange it for a local one — verified against your trusted keys,
+          with replay protection.
+        </p>
+        <div v-if="!licensed('instanceTrust')" class="locked-card" data-test="trust-locked">
+          <h2>Available on the Enterprise plan</h2>
+          <p>Establish cross-instance trust with signed tokens and key exchange.</p>
+          <a class="btn primary" :href="LINKS.pricing" target="_blank" rel="noopener">See plans</a>
+        </div>
+        <template v-else-if="trustStatus">
+          <p v-if="trustError" class="error-text" data-test="trust-error">{{ trustError }}</p>
+          <div class="set-cards">
+            <!-- 本实例部署密钥 + JWKS -->
+            <div class="set-card">
+              <div class="set-field">
+                <label>This instance</label>
+                <p style="font-size: 13px; margin: 4px 0">Active key id: <code>{{ trustStatus.activeKid ?? '—' }}</code></p>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
+                  <input :value="trustStatus.jwksUrl" readonly data-test="trust-jwks-url" style="flex: 1; min-width: 220px; font-family: var(--font-family--monospace, monospace); font-size: 12px" />
+                  <button class="btn" data-test="trust-copy-jwks" @click="copyJwksUrl">Copy JWKS URL</button>
+                  <button class="btn" data-test="trust-rotate" :disabled="trustBusy === 'rotate'" @click="rotateTrust">Rotate key</button>
+                </div>
+                <p class="dim" style="font-size: 12px; margin-top: 6px">Share the JWKS URL with peer instances so they can trust tokens you sign.</p>
+              </div>
+            </div>
+
+            <!-- JWKS 源 + 信任密钥 -->
+            <div class="set-card">
+              <div class="set-field">
+                <label>Trusted key sources <span class="dim" style="font-weight: 400">· JWKS URLs auto-refreshed into trusted keys</span></label>
+                <ul v-if="trustStatus.sources.length" class="dyn-list" data-test="trust-sources">
+                  <li v-for="s in trustStatus.sources" :key="s.id" class="dyn-row">
+                    <span class="dyn-name">{{ s.name }}</span>
+                    <button class="link" data-test="trust-refresh-source" :disabled="trustBusy === 'refresh'" @click="refreshTrustSource(s.id)">Refresh</button>
+                    <button class="link" data-test="trust-del-source" @click="removeTrustSource(s.id)">✕</button>
+                  </li>
+                </ul>
+                <div style="display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap">
+                  <input v-model="trustNewSourceName" data-test="trust-source-name" placeholder="name" style="flex: 0 0 110px" />
+                  <input v-model="trustNewSourceUrl" data-test="trust-source-url" placeholder="peer JWKS URL" style="flex: 1; min-width: 180px" />
+                  <button class="btn primary" data-test="trust-add-source" :disabled="trustBusy === 'source' || !trustNewSourceUrl.trim()" @click="addTrustSource">Add source</button>
+                </div>
+              </div>
+              <div class="set-field">
+                <label>Trusted keys</label>
+                <p v-if="!trustStatus.trustedKeys.length" class="dim" style="font-size: 12px; margin: 4px 0">No trusted keys yet.</p>
+                <ul v-else class="dyn-list" data-test="trust-keys">
+                  <li v-for="k in trustStatus.trustedKeys" :key="k.id" class="dyn-row">
+                    <span class="dyn-name"><code>{{ k.kid }}</code> <span class="dim">{{ k.issuer || (k.sourceId ? 'from source' : 'manual') }}</span></span>
+                    <button class="link" data-test="trust-del-key" @click="removeTrustKey(k.kid)">✕</button>
+                  </li>
+                </ul>
+                <details style="margin-top: 6px">
+                  <summary class="dim" style="font-size: 12px; cursor: pointer">Add a trusted key manually (kid + base64 DER)</summary>
+                  <input v-model="trustNewKid" data-test="trust-key-kid" placeholder="kid" style="width: 100%; margin: 6px 0" />
+                  <input v-model="trustNewIssuer" data-test="trust-key-issuer" placeholder="issuer (optional)" style="width: 100%; margin-bottom: 6px" />
+                  <textarea v-model="trustNewDer" data-test="trust-key-der" rows="2" spellcheck="false" placeholder="base64 DER SPKI public key" style="width: 100%; font-family: var(--font-family--monospace, monospace); font-size: 12px"></textarea>
+                  <button class="btn" data-test="trust-add-key" style="margin-top: 6px" :disabled="trustBusy === 'key' || !trustNewKid.trim() || !trustNewDer.trim()" @click="addTrustKey">Add trusted key</button>
+                </details>
+              </div>
+            </div>
+          </div>
+        </template>
+        <p v-else-if="trustError" class="error-text" data-test="trust-error">{{ trustError }}</p>
       </section>
 
       <!-- Environments（Git 源码同步，对标基线 Environments） -->

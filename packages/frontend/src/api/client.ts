@@ -167,6 +167,14 @@ export interface InstanceAiMcpRow {
   createdAt: string;
 }
 
+/** 实例信任密钥链（#47）。 */
+export interface InstanceTrustStatus {
+  activeKid: string | null;
+  jwksUrl: string;
+  trustedKeys: Array<{ id: string; kid: string; issuer: string; sourceId: string | null; createdAt: string }>;
+  sources: Array<{ id: string; name: string; jwksUrl: string; lastFetchedAt: string | null }>;
+}
+
 /** AI 建流会话（#45 M1）。 */
 export interface BuilderSessionRow {
   id: string;
@@ -705,6 +713,19 @@ export const api = {
       http<{ imported: number; subjects: string[] }>('POST', `/api/dynamic-credentials/resolvers/${id}/import`, { entries }),
     audit: (id: string) =>
       http<Array<{ id: string; timestamp: string; action: string; details: Record<string, unknown> | null }>>('GET', `/api/dynamic-credentials/resolvers/${id}/audit`),
+  },
+
+  /** 实例信任密钥链（#47）：部署密钥 + 信任对端公钥 + JWKS 源。 */
+  instanceTrust: {
+    status: () => http<InstanceTrustStatus>('GET', '/api/instance-trust'),
+    rotate: () => http<{ activeKid: string }>('POST', '/api/instance-trust/rotate'),
+    addTrustedKey: (body: { kid: string; publicKeyDer: string; issuer?: string }) =>
+      http<{ id: string; kid: string; issuer: string }>('POST', '/api/instance-trust/trusted-keys', body),
+    removeTrustedKey: (kid: string) => http<void>('DELETE', `/api/instance-trust/trusted-keys/${encodeURIComponent(kid)}`),
+    addSource: (name: string, jwksUrl: string) =>
+      http<{ id: string; name: string; jwksUrl: string }>('POST', '/api/instance-trust/sources', { name, jwksUrl }),
+    refreshSource: (id: string) => http<{ imported: number }>('POST', `/api/instance-trust/sources/${id}/refresh`),
+    removeSource: (id: string) => http<void>('DELETE', `/api/instance-trust/sources/${id}`),
   },
 
   /** 凭证 OAuth2「Connect my account」：拿提供方授权跳转 URL，前端开弹窗完成授权。 */

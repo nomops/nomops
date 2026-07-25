@@ -1113,6 +1113,87 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
+  /* ── 实例信任密钥链（backlog #47，instance admin + license）：联邦信任管理台 ── */
+  const trustFeature = requireFeature(services.license, 'instanceTrust');
+  router.get(
+    '/instance-trust',
+    trustFeature,
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      res.json(await services.instanceTrust.status());
+    }),
+  );
+  router.post(
+    '/instance-trust/rotate',
+    trustFeature,
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      const k = await services.instanceTrust.rotateDeploymentKey();
+      recordAudit(services, req, 'instance-trust.rotate', { type: 'instance-trust', id: k.kid });
+      res.json({ activeKid: k.kid });
+    }),
+  );
+  router.post(
+    '/instance-trust/trusted-keys',
+    trustFeature,
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      const { jwk, kid, issuer, publicKeyDer } = req.body as { jwk?: never; kid?: string; issuer?: string; publicKeyDer?: string };
+      const view = await services.instanceTrust.addTrustedKey({ jwk, kid, issuer, publicKeyDer });
+      recordAudit(services, req, 'instance-trust.trust-key-add', { type: 'instance-trust', id: view.kid });
+      res.status(201).json(view);
+    }),
+  );
+  router.delete(
+    '/instance-trust/trusted-keys/:kid',
+    trustFeature,
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      await services.instanceTrust.removeTrustedKey(param(req, 'kid'));
+      res.status(204).end();
+    }),
+  );
+  router.post(
+    '/instance-trust/sources',
+    trustFeature,
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      const { name, jwksUrl } = req.body as { name?: string; jwksUrl?: string };
+      if (!jwksUrl?.trim()) throw new OperationalError('jwksUrl is required', { status: 400 });
+      const src = await services.instanceTrust.addSource(name ?? '', jwksUrl);
+      recordAudit(services, req, 'instance-trust.source-add', { type: 'instance-trust', id: src.id });
+      res.status(201).json({ id: src.id, name: src.name, jwksUrl: src.jwksUrl });
+    }),
+  );
+  router.post(
+    '/instance-trust/sources/:id/refresh',
+    trustFeature,
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      res.json(await services.instanceTrust.refreshSource(param(req, 'id')));
+    }),
+  );
+  router.delete(
+    '/instance-trust/sources/:id',
+    trustFeature,
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      await services.instanceTrust.removeSource(param(req, 'id'));
+      res.status(204).end();
+    }),
+  );
+  // 签发本实例令牌（供本实例向对端呈递交换；admin）
+  router.post(
+    '/instance-trust/sign',
+    trustFeature,
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      const { sub, aud, ttlSec } = req.body as { sub?: string; aud?: string; ttlSec?: number };
+      if (!sub?.trim()) throw new OperationalError('sub is required', { status: 400 });
+      res.json({ token: await services.instanceTrust.signToken({ sub, aud, ttlSec }) });
+    }),
+  );
+
   // 发起凭证 OAuth2 授权：返回提供方跳转 URL（前端开弹窗）
   router.get(
     '/oauth2/auth',
@@ -2878,6 +2959,32 @@ export function createWebhookRouter(services: AppServices): Router {
         ip: req.ip ?? null,
       });
       res.json({ resumed: true, executionId, status: summary.status });
+    }),
+  );
+  return router;
+}
+
+/**
+ * 实例信任密钥链公开入口（backlog #47）：对端无 nomops 会话——JWKS 供拉公钥,
+ * token/exchange 靠呈递的签名令牌自证。两者 license 门（federation 是企业特性）。
+ */
+export function createInstanceTrustRouter(services: AppServices): Router {
+  const router = Router();
+  const feat = requireFeature(services.license, 'instanceTrust');
+  router.get(
+    '/instance-trust/jwks',
+    feat,
+    h(async (_req, res) => {
+      res.json(await services.instanceTrust.publicJwks());
+    }),
+  );
+  router.post(
+    '/instance-trust/token/exchange',
+    feat,
+    h(async (req, res) => {
+      const { token } = req.body as { token?: string };
+      if (!token) throw new OperationalError('token is required', { status: 400 });
+      res.json(await services.instanceTrust.exchangeToken(token));
     }),
   );
   return router;

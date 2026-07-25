@@ -468,6 +468,50 @@ export const instanceVersionHistory = sqliteTable('instance_version_history', {
     .$defaultFn(() => new Date()),
 });
 
+/**
+ * 实例信任密钥链（backlog #47）：实例联邦的信任底座。
+ * deployment_keys=本实例 Ed25519 签名密钥(私钥密文);trusted_keys=信任的对端公钥(按 kid);
+ * trusted_key_sources=JWKS 源(自动拉信任公钥);token_exchange_jti=换令牌防重放。
+ */
+export const deploymentKeys = sqliteTable('deployment_keys', {
+  id: uuidPk('id'),
+  kid: text('kid').notNull(), // 公钥指纹,对端按此匹配
+  publicKey: text('public_key').notNull(), // base64 DER SPKI
+  privateKey: text('private_key').notNull(), // 密文（Cipher 加密）
+  active: integer('active', { mode: 'boolean' }).notNull().default(true), // 轮换后旧钥留验证窗口
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+  rotatedAt: integer('rotated_at', { mode: 'timestamp' }),
+});
+
+export const trustedKeys = sqliteTable(
+  'trusted_keys',
+  {
+    id: uuidPk('id'),
+    kid: text('kid').notNull(),
+    issuer: text('issuer').notNull().default(''), // 对端实例标识（信息用）
+    publicKey: text('public_key').notNull(), // base64 DER SPKI
+    sourceId: text('source_id'), // 来自哪个 JWKS 源（手动加则空）
+    active: integer('active', { mode: 'boolean' }).notNull().default(true),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+  },
+  (t) => [uniqueIndex('trusted_keys_kid_idx').on(t.kid)],
+);
+
+export const trustedKeySources = sqliteTable('trusted_key_sources', {
+  id: uuidPk('id'),
+  name: text('name').notNull(),
+  jwksUrl: text('jwks_url').notNull(),
+  active: integer('active', { mode: 'boolean' }).notNull().default(true),
+  lastFetchedAt: integer('last_fetched_at', { mode: 'timestamp' }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+});
+
+export const tokenExchangeJti = sqliteTable('token_exchange_jti', {
+  jti: text('jti').primaryKey(),
+  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+  seenAt: integer('seen_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+});
+
 /** MCP registry 缓存（backlog #43）：缓存外部 registry 的 server 目录,减少远程往返。 */
 export const mcpRegistryServer = sqliteTable('mcp_registry_server', {
   id: uuidPk('id'),
@@ -1411,6 +1455,10 @@ export const sqliteSchema = {
   roleMappingRule,
   roleMappingRuleProject,
   instanceVersionHistory,
+  deploymentKeys,
+  trustedKeys,
+  trustedKeySources,
+  tokenExchangeJti,
   mcpRegistryServer,
   folderTagMapping,
   agents,

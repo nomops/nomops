@@ -51,6 +51,9 @@ import type {
   RoleMappingRule,
   InstanceVersionRow,
   McpRegistryServerRow,
+  DeploymentKey,
+  TrustedKey,
+  TrustedKeySource,
   Agent,
   AgentVersion,
   AgentThread,
@@ -2945,6 +2948,127 @@ export class PlatformRepository extends BaseRepository {
 }
 
 /**
+ * 实例信任密钥链仓储（backlog #47）：部署密钥 + 信任密钥 + JWKS 源 + 换令牌防重放 jti。
+ * 全实例级（无 projectId）——这是实例身份/联邦,不是项目资源。
+ */
+export class InstanceTrustRepository extends BaseRepository {
+  /* ── 部署密钥（本实例签名） ── */
+  async activeDeploymentKey(): Promise<DeploymentKey | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.deploymentKeys)
+      .where(eq(this.schema.deploymentKeys.active, true))
+      .limit(1);
+    return (rows[0] as DeploymentKey | undefined) ?? null;
+  }
+
+  async findDeploymentKeyByKid(kid: string): Promise<DeploymentKey | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.deploymentKeys)
+      .where(eq(this.schema.deploymentKeys.kid, kid))
+      .limit(1);
+    return (rows[0] as DeploymentKey | undefined) ?? null;
+  }
+
+  async listDeploymentKeys(): Promise<DeploymentKey[]> {
+    return (await this.db
+      .select()
+      .from(this.schema.deploymentKeys)
+      .orderBy(desc(this.schema.deploymentKeys.createdAt))) as DeploymentKey[];
+  }
+
+  async addDeploymentKey(input: { kid: string; publicKey: string; privateKey: string }): Promise<DeploymentKey> {
+    const [row] = await this.db
+      .insert(this.schema.deploymentKeys)
+      .values({ kid: input.kid, publicKey: input.publicKey, privateKey: input.privateKey, active: true })
+      .returning();
+    return row as DeploymentKey;
+  }
+
+  /** 轮换：旧钥全部标非活跃（留验证窗口,不删）。 */
+  async deactivateAllDeploymentKeys(): Promise<void> {
+    await this.db.update(this.schema.deploymentKeys).set({ active: false, rotatedAt: new Date() }).where(eq(this.schema.deploymentKeys.active, true));
+  }
+
+  /* ── 信任密钥（对端公钥） ── */
+  async upsertTrustedKey(input: { kid: string; issuer: string; publicKey: string; sourceId: string | null }): Promise<void> {
+    await this.db
+      .insert(this.schema.trustedKeys)
+      .values({ kid: input.kid, issuer: input.issuer, publicKey: input.publicKey, sourceId: input.sourceId, active: true })
+      .onConflictDoUpdate({
+        target: this.schema.trustedKeys.kid,
+        set: { issuer: input.issuer, publicKey: input.publicKey, sourceId: input.sourceId, active: true },
+      });
+  }
+
+  async findTrustedKey(kid: string): Promise<TrustedKey | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.trustedKeys)
+      .where(and(eq(this.schema.trustedKeys.kid, kid), eq(this.schema.trustedKeys.active, true)))
+      .limit(1);
+    return (rows[0] as TrustedKey | undefined) ?? null;
+  }
+
+  async listTrustedKeys(): Promise<TrustedKey[]> {
+    return (await this.db
+      .select()
+      .from(this.schema.trustedKeys)
+      .orderBy(desc(this.schema.trustedKeys.createdAt))) as TrustedKey[];
+  }
+
+  async deleteTrustedKey(kid: string): Promise<void> {
+    await this.db.delete(this.schema.trustedKeys).where(eq(this.schema.trustedKeys.kid, kid));
+  }
+
+  /* ── JWKS 源 ── */
+  async addSource(input: { name: string; jwksUrl: string }): Promise<TrustedKeySource> {
+    const [row] = await this.db
+      .insert(this.schema.trustedKeySources)
+      .values({ name: input.name, jwksUrl: input.jwksUrl, active: true })
+      .returning();
+    return row as TrustedKeySource;
+  }
+
+  async listSources(): Promise<TrustedKeySource[]> {
+    return (await this.db
+      .select()
+      .from(this.schema.trustedKeySources)
+      .orderBy(desc(this.schema.trustedKeySources.createdAt))) as TrustedKeySource[];
+  }
+
+  async findSource(id: string): Promise<TrustedKeySource | null> {
+    const rows = await this.db.select().from(this.schema.trustedKeySources).where(eq(this.schema.trustedKeySources.id, id)).limit(1);
+    return (rows[0] as TrustedKeySource | undefined) ?? null;
+  }
+
+  async markSourceFetched(id: string): Promise<void> {
+    await this.db.update(this.schema.trustedKeySources).set({ lastFetchedAt: new Date() }).where(eq(this.schema.trustedKeySources.id, id));
+  }
+
+  async deleteSource(id: string): Promise<void> {
+    await this.db.delete(this.schema.trustedKeys).where(eq(this.schema.trustedKeys.sourceId, id));
+    await this.db.delete(this.schema.trustedKeySources).where(eq(this.schema.trustedKeySources.id, id));
+  }
+
+  /* ── 换令牌防重放（jti 记一次即拒复用,过期可清） ── */
+  /** 返回 true = 首次见（已记录）；false = 已见过（重放）。 */
+  async recordJtiIfNew(jti: string, expiresAt: Date): Promise<boolean> {
+    const rows = await this.db
+      .insert(this.schema.tokenExchangeJti)
+      .values({ jti, expiresAt })
+      .onConflictDoNothing()
+      .returning({ jti: this.schema.tokenExchangeJti.jti });
+    return rows.length > 0;
+  }
+
+  async pruneExpiredJti(now: Date): Promise<void> {
+    await this.db.delete(this.schema.tokenExchangeJti).where(lt(this.schema.tokenExchangeJti.expiresAt, now));
+  }
+}
+
+/**
  * Agents 平台仓储（backlog #44 M1）：项目级 agent 定义 + 版本史（发布/回滚）。
  * 归属直过滤 projectId（同 DataTableRepository）；版本模式仿 workflow_versions。
  */
@@ -3727,6 +3851,7 @@ export interface Repositories {
   publishPipeline: PublishPipelineRepository;
   roleMappings: RoleMappingRepository;
   platform: PlatformRepository;
+  instanceTrust: InstanceTrustRepository;
   agents: AgentRepository;
   workflowBuilder: WorkflowBuilderRepository;
   instanceAi: InstanceAiRepository;
@@ -3768,6 +3893,7 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
     publishPipeline: new PublishPipelineRepository(db, schema),
     roleMappings: new RoleMappingRepository(db, schema),
     platform: new PlatformRepository(db, schema),
+    instanceTrust: new InstanceTrustRepository(db, schema),
     agents: new AgentRepository(db, schema),
     workflowBuilder: new WorkflowBuilderRepository(db, schema),
     instanceAi: new InstanceAiRepository(db, schema),

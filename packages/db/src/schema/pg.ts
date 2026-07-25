@@ -384,6 +384,46 @@ export const instanceVersionHistory = pgTable('instance_version_history', {
   recordedAt: timestamp('recorded_at').notNull().defaultNow(),
 });
 
+/** 实例信任密钥链（backlog #47）：实例联邦信任底座。 */
+export const deploymentKeys = pgTable('deployment_keys', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  kid: text('kid').notNull(),
+  publicKey: text('public_key').notNull(),
+  privateKey: text('private_key').notNull(),
+  active: boolean('active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  rotatedAt: timestamp('rotated_at'),
+});
+
+export const trustedKeys = pgTable(
+  'trusted_keys',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    kid: text('kid').notNull(),
+    issuer: text('issuer').notNull().default(''),
+    publicKey: text('public_key').notNull(),
+    sourceId: uuid('source_id'),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('trusted_keys_kid_idx').on(t.kid)],
+);
+
+export const trustedKeySources = pgTable('trusted_key_sources', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  jwksUrl: text('jwks_url').notNull(),
+  active: boolean('active').notNull().default(true),
+  lastFetchedAt: timestamp('last_fetched_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const tokenExchangeJti = pgTable('token_exchange_jti', {
+  jti: text('jti').primaryKey(),
+  expiresAt: timestamp('expires_at').notNull(),
+  seenAt: timestamp('seen_at').notNull().defaultNow(),
+});
+
 /** MCP registry 缓存（backlog #43）。 */
 export const mcpRegistryServer = pgTable('mcp_registry_server', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -1217,6 +1257,10 @@ export const pgSchema = {
   roleMappingRule,
   roleMappingRuleProject,
   instanceVersionHistory,
+  deploymentKeys,
+  trustedKeys,
+  trustedKeySources,
+  tokenExchangeJti,
   mcpRegistryServer,
   folderTagMapping,
   agents,

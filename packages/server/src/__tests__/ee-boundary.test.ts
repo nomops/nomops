@@ -83,6 +83,7 @@ describe('LICENSE_EE 与真实目录', () => {
       logStreaming: 'services/log-streaming-service.ts',
       externalSecrets: 'services/secrets-service.ts',
       dynamicCredentials: 'services/dynamic-credential-service.ts',
+      instanceTrust: 'services/instance-trust-service.ts', // #47：联邦信任门控逻辑在 ee（令牌原语是 services/ 的通用 Ed25519 plumbing）
       ldap: 'ldap/ldap-service.ts',
       sourceControl: 'services/git-service.ts',
       sharing: 'services/sharing-service.ts',
