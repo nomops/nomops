@@ -37,6 +37,15 @@ export interface IRunSummary {
 /** 'error' = 错误处理流的运行（由失败执行派生；不再级联触发自身的 errorWorkflow）。 */
 export type TriggerMode = 'webhook' | 'trigger' | 'error' | 'mcp' | 'retry' | 'chat';
 
+/**
+ * 运行上下文（#46 M2）：动态凭证按此解析实际值。subject=运行代表的租户/终端用户身份；
+ * userId=触发运行的平台用户（user_entry 回退）。非动态凭证忽略。
+ */
+export interface IRunContext {
+  subject?: string;
+  userId?: string;
+}
+
 /** 子工作流最大嵌套深度（防递归；docs/09 产品深化）。 */
 const MAX_SUBWORKFLOW_DEPTH = 5;
 
@@ -107,7 +116,7 @@ export class ExecutionService {
   async runManually(
     workflowId: string,
     projectId: string,
-    options: { destinationNode?: string; usePreviousData?: boolean; startNode?: string } = {},
+    options: { destinationNode?: string; usePreviousData?: boolean; startNode?: string; runContext?: IRunContext } = {},
   ): Promise<IRunSummary> {
     const row = await this.workflowService.getById(workflowId, projectId);
     const workflow = this.toWorkflow(row, { applyPinData: true }); // 手动调试应用钉住数据
@@ -139,7 +148,7 @@ export class ExecutionService {
           ? engine.processRunExecutionData(workflow, partialState)
           : engine.run(workflow, startNode ?? undefined, options.destinationNode),
       (row.staticData as JsonObject | null) ?? {},
-      { resumeToken: this.newResumeToken() },
+      { resumeToken: this.newResumeToken(), ...(options.runContext ? { runContext: options.runContext } : {}) },
     );
     await this.applySavePolicy(execution.id, row.settings as IWorkflowSettings | null, 'manual', run.status);
     return this.toSummary(execution.id, run);
@@ -619,6 +628,7 @@ export class ExecutionService {
     seedItems: INodeExecutionData[],
     depth: number,
     production: boolean,
+    runContext?: IRunContext,
   ): Promise<INodeExecutionData[]> {
     if (depth >= MAX_SUBWORKFLOW_DEPTH) {
       throw new OperationalError(`Sub-workflow nesting exceeds ${MAX_SUBWORKFLOW_DEPTH} levels (possible recursion)`, {
@@ -629,7 +639,7 @@ export class ExecutionService {
     if (production) row = await this.workflowService.productionRow(row); // 生产父执行 → 子流也跑已发布版
     const workflow = this.toWorkflow(row);
     const engine = new WorkflowExecute(this.nodeLoader, {
-      additionalData: await this.buildAdditionalData(projectId, depth + 1, production),
+      additionalData: await this.buildAdditionalData(projectId, depth + 1, production, runContext), // #46 M2：子流继承运行上下文
     });
     // 有 Execute Workflow Trigger 节点则以它为被调方起点,否则引擎自选
     const startNode = [...workflow.nodes.values()].find(
@@ -648,7 +658,7 @@ export class ExecutionService {
   }
 
   /** 引擎注入包（凭证 + 变量 + 子工作流回调），父/子执行共用。 */
-  private async buildAdditionalData(projectId: string, depth = 0, production = false) {
+  private async buildAdditionalData(projectId: string, depth = 0, production = false, runContext?: IRunContext) {
     // 项目维度变量 → 表达式里 $vars.KEY（执行前一次性物化）
     const variables: Record<string, string> = {};
     for (const v of await this.repos.variables.findAllByProject(projectId)) variables[v.key] = v.value;
@@ -659,10 +669,11 @@ export class ExecutionService {
         if (!ref) {
           throw new OperationalError(`Node ${node.name} has no credential configured for "${type}"`, { node: node.name });
         }
-        return this.credentialService.getDecryptedData(ref.id, projectId);
+        // #46 M2：动态凭证按运行上下文的 subject(+userId 回退)解析;非 resolvable 忽略
+        return this.credentialService.getDecryptedData(ref.id, projectId, runContext?.subject, runContext?.userId);
       },
       executeSubWorkflow: (workflowId: string, items: INodeExecutionData[]) =>
-        this.runSubWorkflow(workflowId, projectId, items, depth, production),
+        this.runSubWorkflow(workflowId, projectId, items, depth, production, runContext),
       ...(this.binaryStore ? { binaryStore: this.binaryStore } : {}),
       ...(this.httpRequestImpl ? { httpRequest: this.httpRequestImpl } : {}), // 测试注入假 provider（#44 M2）
     };
@@ -713,7 +724,7 @@ export class ExecutionService {
     mode: string,
     runFn: (engine: WorkflowExecute) => Promise<IRun>,
     staticData?: JsonObject,
-    extras?: { onWebhookResponse?: (response: JsonObject) => void; resumeToken?: string },
+    extras?: { onWebhookResponse?: (response: JsonObject) => void; resumeToken?: string; runContext?: IRunContext },
   ): Promise<IRun> {
     const staticDataBefore = staticData ? JSON.stringify(staticData) : null;
     const push = (event: Parameters<PushHub['broadcast']>[0]) => this.pushHub.broadcast(event);
@@ -726,7 +737,7 @@ export class ExecutionService {
 
     const engine = new WorkflowExecute(this.nodeLoader, {
       additionalData: {
-        ...(await this.buildAdditionalData(projectId, 0, mode !== 'manual')),
+        ...(await this.buildAdditionalData(projectId, 0, mode !== 'manual', extras?.runContext)),
         ...(extras?.onWebhookResponse ? { setWebhookResponse: extras.onWebhookResponse } : {}),
         // $execution.id / $execution.resumeUrl（审批流把恢复 URL 发出去,backlog #15）
         execution: {

@@ -637,7 +637,12 @@ export function createApiRouter(services: AppServices): Router {
     editor,
     h(async (req, res) => {
       const body = parseBody(runBodySchema, req);
-      const summary = await services.executions.runManually(param(req, 'id'), auth(req).projectId, body);
+      // #46 M2：动态凭证运行上下文 = 本次 subject + 触发者 userId(user_entry 回退)
+      const { subject, ...runOpts } = body;
+      const summary = await services.executions.runManually(param(req, 'id'), auth(req).projectId, {
+        ...runOpts,
+        runContext: { ...(subject ? { subject } : {}), userId: auth(req).userId },
+      });
       recordAudit(services, req, 'workflow.run', { type: 'workflow', id: param(req, 'id') }, { mode: 'manual', executionId: summary.executionId });
       res.json(summary);
     }),
@@ -1045,6 +1050,36 @@ export function createApiRouter(services: AppServices): Router {
       const subject = typeof req.query['subject'] === 'string' ? req.query['subject'] : '';
       if (!subject) throw new OperationalError('subject query param is required', { status: 400 });
       await services.dynamicCredentials.deleteEntry(param(req, 'id'), auth(req).projectId, subject);
+      res.status(204).end();
+    }),
+  );
+  // 按平台 user 的凭证值（user_entry，#46 M2）：subject 无值时回退。值只进不出（铁律 3）
+  router.get(
+    '/dynamic-credentials/resolvers/:id/users',
+    dynFeature,
+    h(async (req, res) => {
+      res.json(await services.dynamicCredentials.listUserEntries(param(req, 'id'), auth(req).projectId));
+    }),
+  );
+  router.put(
+    '/dynamic-credentials/resolvers/:id/user-entry',
+    editor,
+    dynFeature,
+    h(async (req, res) => {
+      const { userId, data } = req.body as { userId?: string; data?: Record<string, unknown> };
+      if (!userId?.trim() || !data || typeof data !== 'object') throw new OperationalError('userId and data are required', { status: 400 });
+      await services.dynamicCredentials.setUserEntry(param(req, 'id'), auth(req).projectId, userId, data as JsonObject);
+      res.status(204).end();
+    }),
+  );
+  router.delete(
+    '/dynamic-credentials/resolvers/:id/user-entry',
+    editor,
+    dynFeature,
+    h(async (req, res) => {
+      const userId = typeof req.query['userId'] === 'string' ? req.query['userId'] : '';
+      if (!userId) throw new OperationalError('userId query param is required', { status: 400 });
+      await services.dynamicCredentials.deleteUserEntry(param(req, 'id'), auth(req).projectId, userId);
       res.status(204).end();
     }),
   );

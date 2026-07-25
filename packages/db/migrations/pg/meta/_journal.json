@@ -330,6 +330,13 @@
       "when": 1784906349032,
       "tag": "0046_open_magma",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1784955066108,
+      "tag": "0047_supreme_magneto",
+      "breakpoints": true
     }
   ]
 }

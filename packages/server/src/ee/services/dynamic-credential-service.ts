@@ -10,24 +10,64 @@ import { OperationalError } from '@nomops/workflow';
  * ★铁律 3：解析出的值即用即弃——不落库、不出 API、不进日志；entry.data 存密文。
  */
 
-/** 解析器后端：给定解析器 + subject → 实际凭证值。可插拔（M1 只有 table，M2 加 http）。 */
-export interface ICredentialResolver {
-  resolve(resolver: DynamicCredentialResolver, subject: string | undefined, ctx: { projectId: string }): Promise<JsonObject>;
+/** 解析上下文：projectId 决定密钥/归属；userId 供 user_entry 回退（#46 M2）。 */
+export interface ResolveContext {
+  projectId: string;
+  userId?: string;
 }
 
-/** table 后端：值存 dynamic_credential_entries，按 subject 查 → 解密。 */
+/** 解析器后端：给定解析器 + subject → 实际凭证值。可插拔（table / http）。 */
+export interface ICredentialResolver {
+  resolve(resolver: DynamicCredentialResolver, subject: string | undefined, ctx: ResolveContext): Promise<JsonObject>;
+}
+
+/**
+ * table 后端：先按 subject 查 dynamic_credential_entries；无 subject 值时回退按 userId 查
+ * user_entries（#46 M2）→ 解密。都没有则 fail-fast（不静默取错值,docs/14 决策 3）。
+ */
 class TableResolver implements ICredentialResolver {
   constructor(
     private readonly repos: Repositories,
     private readonly credentials: Credentials,
   ) {}
 
-  async resolve(resolver: DynamicCredentialResolver, subject: string | undefined, ctx: { projectId: string }): Promise<JsonObject> {
-    // 缺 subject 不静默取错值（docs/14 决策 3）
+  async resolve(resolver: DynamicCredentialResolver, subject: string | undefined, ctx: ResolveContext): Promise<JsonObject> {
+    if (subject) {
+      const entry = await this.repos.dynamicCredentials.findEntry(resolver.id, subject);
+      if (entry) return this.credentials.decrypt(entry.data, { projectId: ctx.projectId });
+    }
+    // 回退：按平台 userId 取 user_entry（#46 M2）
+    if (ctx.userId) {
+      const ue = await this.repos.dynamicCredentials.findUserEntry(resolver.id, ctx.userId);
+      if (ue) return this.credentials.decrypt(ue.data, { projectId: ctx.projectId });
+    }
+    if (!subject && !ctx.userId) throw new OperationalError('Dynamic credential requires a subject or user to resolve', { status: 400 });
+    throw new OperationalError(`No dynamic credential value for subject "${subject ?? '(user)'}"`, { status: 404 });
+  }
+}
+
+/**
+ * http 后端（#46 M2，embed/白标）：运行时 POST subject 到宿主端点 → 返回实际凭证值。
+ * config.url 必填;config.token → Bearer。fetch 可注入（测试不打网络）。★铁律 3：值不落库/日志。
+ */
+class HttpResolver implements ICredentialResolver {
+  constructor(private readonly fetchImpl: typeof fetch) {}
+
+  async resolve(resolver: DynamicCredentialResolver, subject: string | undefined, ctx: ResolveContext): Promise<JsonObject> {
+    const cfg = resolver.config as JsonObject;
+    const url = String(cfg['url'] ?? '');
+    if (!/^https?:\/\//.test(url)) throw new OperationalError('http resolver missing a valid url', { status: 400 });
     if (!subject) throw new OperationalError('Dynamic credential requires a subject to resolve', { status: 400 });
-    const entry = await this.repos.dynamicCredentials.findEntry(resolver.id, subject);
-    if (!entry) throw new OperationalError(`No dynamic credential value for subject "${subject}"`, { status: 404 });
-    return this.credentials.decrypt(entry.data, { projectId: ctx.projectId });
+    const token = String(cfg['token'] ?? '');
+    const res = await this.fetchImpl(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ subject, projectId: ctx.projectId }),
+    });
+    if (!res.ok) throw new OperationalError(`Credential resolver endpoint → HTTP ${res.status}`, { status: 502 });
+    const value = (await res.json()) as JsonObject;
+    if (!value || typeof value !== 'object') throw new OperationalError('Resolver endpoint returned no credential value', { status: 502 });
+    return value;
   }
 }
 
@@ -45,19 +85,23 @@ export class DynamicCredentialService {
   constructor(
     private readonly repos: Repositories,
     private readonly credentials: Credentials,
-    /** 额外解析器后端（M2 注入 http；测试可注入假实现）。 */
-    extraBackends: Record<string, ICredentialResolver> = {},
+    /** #46 M2：http 后端的 fetch（缺省真实 fetch；测试注入假实现）+ 额外后端覆盖。 */
+    opts: { fetchImpl?: typeof fetch; extraBackends?: Record<string, ICredentialResolver> } = {},
   ) {
-    this.backends = { table: new TableResolver(repos, credentials), ...extraBackends };
+    this.backends = {
+      table: new TableResolver(repos, credentials),
+      http: new HttpResolver(opts.fetchImpl ?? fetch),
+      ...(opts.extraBackends ?? {}),
+    };
   }
 
-  /** 运行时解析：按 resolverId + subject 取实际值。CredentialService 在凭证 resolvable 时调用。 */
-  async resolve(resolverId: string, projectId: string, subject: string | undefined): Promise<JsonObject> {
+  /** 运行时解析：按 resolverId + subject(+userId 回退) 取实际值。凭证 resolvable 时 CredentialService 调用。 */
+  async resolve(resolverId: string, projectId: string, subject: string | undefined, userId?: string): Promise<JsonObject> {
     const resolver = await this.repos.dynamicCredentials.findResolver(resolverId, projectId);
     if (!resolver) throw new OperationalError('Dynamic credential resolver not found', { status: 404 });
     const backend = this.backends[resolver.kind];
     if (!backend) throw new OperationalError(`Unsupported resolver kind: ${resolver.kind}`, { status: 400 });
-    return backend.resolve(resolver, subject, { projectId });
+    return backend.resolve(resolver, subject, { projectId, userId });
   }
 
   /* ── 解析器 CRUD ── */
@@ -103,5 +147,27 @@ export class DynamicCredentialService {
     const r = await this.repos.dynamicCredentials.findResolver(resolverId, projectId);
     if (!r) throw new OperationalError('Resolver not found', { status: 404 });
     await this.repos.dynamicCredentials.deleteEntry(resolverId, subject);
+  }
+
+  /* ── 按平台 user 的凭证值（user_entry，#46 M2） ── */
+  async setUserEntry(resolverId: string, projectId: string, userId: string, value: JsonObject): Promise<void> {
+    const r = await this.repos.dynamicCredentials.findResolver(resolverId, projectId);
+    if (!r) throw new OperationalError('Resolver not found', { status: 404 });
+    if (!userId.trim()) throw new OperationalError('userId is required', { status: 400 });
+    const encrypted = await this.credentials.encrypt(value, { projectId });
+    await this.repos.dynamicCredentials.upsertUserEntry({ resolverId, userId: userId.trim(), data: encrypted });
+  }
+
+  /** 列 userId（不含值密文——铁律 3）。 */
+  async listUserEntries(resolverId: string, projectId: string): Promise<Array<{ id: string; userId: string; updatedAt: Date }>> {
+    const r = await this.repos.dynamicCredentials.findResolver(resolverId, projectId);
+    if (!r) throw new OperationalError('Resolver not found', { status: 404 });
+    return this.repos.dynamicCredentials.listUserEntryUsers(resolverId);
+  }
+
+  async deleteUserEntry(resolverId: string, projectId: string, userId: string): Promise<void> {
+    const r = await this.repos.dynamicCredentials.findResolver(resolverId, projectId);
+    if (!r) throw new OperationalError('Resolver not found', { status: 404 });
+    await this.repos.dynamicCredentials.deleteUserEntry(resolverId, userId);
   }
 }

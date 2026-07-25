@@ -716,6 +716,26 @@ export const dynamicCredentialEntries = sqliteTable(
   (t) => [uniqueIndex('dynamic_credential_entries_resolver_subject_idx').on(t.resolverId, t.subject)],
 );
 
+/** 按平台 user 的凭证值（backlog #46 M2）：subject 无值时回退按 userId 取。data 密文。 */
+export const dynamicCredentialUserEntries = sqliteTable(
+  'dynamic_credential_user_entries',
+  {
+    id: uuidPk('id'),
+    resolverId: text('resolver_id')
+      .notNull()
+      .references(() => dynamicCredentialResolvers.id),
+    userId: text('user_id').notNull(),
+    data: text('data').notNull(), // 加密后的密文，绝不明文
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [uniqueIndex('dynamic_credential_user_entries_resolver_user_idx').on(t.resolverId, t.userId)],
+);
+
 export const sharedCredentials = sqliteTable(
   'shared_credentials',
   {
@@ -1351,6 +1371,7 @@ export const sqliteSchema = {
   sharedCredentials,
   dynamicCredentialResolvers,
   dynamicCredentialEntries,
+  dynamicCredentialUserEntries,
   variables,
   dataTables,
   dataTableRows,

@@ -203,6 +203,8 @@ export const runBodySchema = z.object({
   startNode: z.string().optional(),
   /** true = 部分执行：复用最近一次执行的干净上游数据，只重跑脏子图（需配合 destinationNode）。 */
   usePreviousData: z.boolean().optional(),
+  /** #46 M2：以某 subject(租户/终端用户) 身份运行——动态凭证按此解析实际值。 */
+  subject: z.string().max(256).optional(),
 });
 
 export const activateBodySchema = z.object({

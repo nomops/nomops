@@ -12,6 +12,7 @@ export type Workflow = InferSelectModel<typeof sqliteSchema.workflows>;
 export type Credential = InferSelectModel<typeof sqliteSchema.credentials>;
 export type DynamicCredentialResolver = InferSelectModel<typeof sqliteSchema.dynamicCredentialResolvers>;
 export type DynamicCredentialEntry = InferSelectModel<typeof sqliteSchema.dynamicCredentialEntries>;
+export type DynamicCredentialUserEntry = InferSelectModel<typeof sqliteSchema.dynamicCredentialUserEntries>;
 export type Variable = InferSelectModel<typeof sqliteSchema.variables>;
 export type DataTable = InferSelectModel<typeof sqliteSchema.dataTables>;
 export type DataTableRow = InferSelectModel<typeof sqliteSchema.dataTableRows>;

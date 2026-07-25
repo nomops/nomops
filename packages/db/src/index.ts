@@ -81,6 +81,7 @@ export type {
   Credential,
   DynamicCredentialResolver,
   DynamicCredentialEntry,
+  DynamicCredentialUserEntry,
   Execution,
   ExecutionData,
   ExecutionDataSnapshot,

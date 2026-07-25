@@ -599,6 +599,22 @@ export const dynamicCredentialEntries = pgTable(
   (t) => [uniqueIndex('dynamic_credential_entries_resolver_subject_idx').on(t.resolverId, t.subject)],
 );
 
+/** 按平台 user 的凭证值（backlog #46 M2）。data 密文。 */
+export const dynamicCredentialUserEntries = pgTable(
+  'dynamic_credential_user_entries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    resolverId: uuid('resolver_id')
+      .notNull()
+      .references(() => dynamicCredentialResolvers.id),
+    userId: uuid('user_id').notNull(),
+    data: text('data').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('dynamic_credential_user_entries_resolver_user_idx').on(t.resolverId, t.userId)],
+);
+
 export const sharedCredentials = pgTable(
   'shared_credentials',
   {
@@ -1161,6 +1177,7 @@ export const pgSchema = {
   sharedCredentials,
   dynamicCredentialResolvers,
   dynamicCredentialEntries,
+  dynamicCredentialUserEntries,
   variables,
   dataTables,
   dataTableRows,

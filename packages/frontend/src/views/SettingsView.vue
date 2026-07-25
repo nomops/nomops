@@ -283,6 +283,12 @@ const dynNewValue = ref('{ "accessToken": "" }');
 const dynBusy = ref('');
 const dynCredsList = ref<Array<{ id: string; name: string; type: string }>>([]);
 const dynAttachCred = ref('');
+/* #46 M2：解析器类型(table/http) + http 端点 + 按 user 的值 */
+const dynNewKind = ref<'table' | 'http'>('table');
+const dynNewUrl = ref('');
+const dynUsers = ref<Awaited<ReturnType<typeof api.dynamicCredentials.users>>>([]);
+const dynNewUserId = ref('');
+const dynNewUserValue = ref('{ "accessToken": "" }');
 async function loadDynResolvers() {
   dynError.value = '';
   try {
@@ -307,16 +313,41 @@ async function attachDynResolver() {
   }
 }
 async function loadDynSubjects() {
-  if (!dynSelectedResolver.value) { dynSubjects.value = []; return; }
+  if (!dynSelectedResolver.value) { dynSubjects.value = []; dynUsers.value = []; return; }
   dynSubjects.value = await api.dynamicCredentials.subjects(dynSelectedResolver.value).catch(() => []);
+  dynUsers.value = await api.dynamicCredentials.users(dynSelectedResolver.value).catch(() => []);
+}
+async function addDynUserEntry() {
+  if (!dynSelectedResolver.value || !dynNewUserId.value.trim()) return;
+  let data: Record<string, unknown>;
+  try { data = JSON.parse(dynNewUserValue.value); } catch { dynError.value = 'Value must be valid JSON'; return; }
+  dynBusy.value = 'userentry';
+  dynError.value = '';
+  try {
+    await api.dynamicCredentials.setUserEntry(dynSelectedResolver.value, dynNewUserId.value.trim(), data);
+    dynNewUserId.value = '';
+    dynNewUserValue.value = '{ "accessToken": "" }';
+    await loadDynSubjects();
+  } catch (e) {
+    dynError.value = (e as Error).message;
+  } finally {
+    dynBusy.value = '';
+  }
+}
+async function removeDynUserEntry(uid: string) {
+  if (!dynSelectedResolver.value) return;
+  await api.dynamicCredentials.removeUserEntry(dynSelectedResolver.value, uid).catch(() => undefined);
+  await loadDynSubjects();
 }
 async function createDynResolver() {
   if (!dynNewResolverName.value.trim()) return;
   dynBusy.value = 'resolver';
   dynError.value = '';
   try {
-    const r = await api.dynamicCredentials.createResolver({ name: dynNewResolverName.value.trim(), kind: 'table' });
+    const config = dynNewKind.value === 'http' ? { url: dynNewUrl.value.trim() } : {};
+    const r = await api.dynamicCredentials.createResolver({ name: dynNewResolverName.value.trim(), kind: dynNewKind.value, config });
     dynNewResolverName.value = '';
+    dynNewUrl.value = '';
     await loadDynResolvers();
     dynSelectedResolver.value = r.id;
     await loadDynSubjects();
@@ -3017,9 +3048,14 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                   </li>
                 </ul>
               </div>
-              <div class="set-field" style="display: flex; gap: 8px; align-items: flex-end">
-                <input v-model="dynNewResolverName" data-test="dyncreds-new-name" placeholder="Resolver name" style="flex: 1" @keyup.enter="createDynResolver" />
-                <button class="btn primary" data-test="dyncreds-create" :disabled="dynBusy === 'resolver' || !dynNewResolverName.trim()" @click="createDynResolver">Add resolver</button>
+              <div class="set-field" style="display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap">
+                <input v-model="dynNewResolverName" data-test="dyncreds-new-name" placeholder="Resolver name" style="flex: 1; min-width: 140px" @keyup.enter="createDynResolver" />
+                <select v-model="dynNewKind" data-test="dyncreds-new-kind" style="width: 92px">
+                  <option value="table">table</option>
+                  <option value="http">http</option>
+                </select>
+                <input v-if="dynNewKind === 'http'" v-model="dynNewUrl" data-test="dyncreds-new-url" placeholder="resolver endpoint URL" style="flex: 1; min-width: 180px" />
+                <button class="btn primary" data-test="dyncreds-create" :disabled="dynBusy === 'resolver' || !dynNewResolverName.trim() || (dynNewKind === 'http' && !dynNewUrl.trim())" @click="createDynResolver">Add resolver</button>
               </div>
               <div v-if="dynSelectedResolver" class="set-field" style="display: flex; gap: 8px; align-items: flex-end">
                 <div style="flex: 1">
@@ -3051,6 +3087,21 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                 <input v-model="dynNewSubject" data-test="dyncreds-subject" placeholder="subject (tenant / user id)" style="width: 100%; margin-bottom: 6px" />
                 <textarea v-model="dynNewValue" data-test="dyncreds-value" rows="3" spellcheck="false" style="width: 100%; font-family: var(--font-family--monospace, monospace); font-size: 12.5px"></textarea>
                 <button class="btn primary" data-test="dyncreds-add-entry" style="margin-top: 6px" :disabled="dynBusy === 'entry' || !dynNewSubject.trim()" @click="addDynEntry">Save value</button>
+              </div>
+
+              <!-- 按平台 user 的值（#46 M2）：subject 无值时回退 -->
+              <div class="set-field">
+                <label>User values <span class="dim" style="font-weight: 400">· fallback when no subject value</span></label>
+                <ul v-if="dynUsers.length" class="dyn-list" data-test="dyncreds-users">
+                  <li v-for="u in dynUsers" :key="u.id" class="dyn-row">
+                    <span class="dyn-name">{{ u.userId }}</span>
+                    <span class="dim" style="font-size: 11.5px">{{ fmtDate(u.updatedAt) }}</span>
+                    <button class="link" data-test="dyncreds-del-user" @click="removeDynUserEntry(u.userId)">✕</button>
+                  </li>
+                </ul>
+                <input v-model="dynNewUserId" data-test="dyncreds-userid" placeholder="platform user id" style="width: 100%; margin: 4px 0 6px" />
+                <textarea v-model="dynNewUserValue" data-test="dyncreds-uservalue" rows="2" spellcheck="false" style="width: 100%; font-family: var(--font-family--monospace, monospace); font-size: 12.5px"></textarea>
+                <button class="btn" data-test="dyncreds-add-user" style="margin-top: 6px" :disabled="dynBusy === 'userentry' || !dynNewUserId.trim()" @click="addDynUserEntry">Save user value</button>
               </div>
             </div>
           </div>

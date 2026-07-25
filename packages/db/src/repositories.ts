@@ -21,6 +21,7 @@ import type {
   Credential,
   DynamicCredentialResolver,
   DynamicCredentialEntry,
+  DynamicCredentialUserEntry,
   Execution,
   ExecutionDataSnapshot,
   Folder,
@@ -1068,6 +1069,7 @@ export class DynamicCredentialRepository extends BaseRepository {
 
   async deleteResolver(id: string): Promise<void> {
     await this.db.delete(this.schema.dynamicCredentialEntries).where(eq(this.schema.dynamicCredentialEntries.resolverId, id));
+    await this.db.delete(this.schema.dynamicCredentialUserEntries).where(eq(this.schema.dynamicCredentialUserEntries.resolverId, id));
     await this.db.delete(this.schema.dynamicCredentialResolvers).where(eq(this.schema.dynamicCredentialResolvers.id, id));
   }
 
@@ -1109,6 +1111,44 @@ export class DynamicCredentialRepository extends BaseRepository {
     await this.db
       .delete(this.schema.dynamicCredentialEntries)
       .where(and(eq(this.schema.dynamicCredentialEntries.resolverId, resolverId), eq(this.schema.dynamicCredentialEntries.subject, subject)));
+  }
+
+  /* ── 按平台 user 的凭证值（user_entry，#46 M2）：subject 无值时回退 ── */
+  async upsertUserEntry(input: { resolverId: string; userId: string; data: string }): Promise<void> {
+    await this.db
+      .insert(this.schema.dynamicCredentialUserEntries)
+      .values({ resolverId: input.resolverId, userId: input.userId, data: input.data })
+      .onConflictDoUpdate({
+        target: [this.schema.dynamicCredentialUserEntries.resolverId, this.schema.dynamicCredentialUserEntries.userId],
+        set: { data: input.data, updatedAt: new Date() },
+      });
+  }
+
+  async findUserEntry(resolverId: string, userId: string): Promise<DynamicCredentialUserEntry | null> {
+    const rows = await this.db
+      .select()
+      .from(this.schema.dynamicCredentialUserEntries)
+      .where(and(eq(this.schema.dynamicCredentialUserEntries.resolverId, resolverId), eq(this.schema.dynamicCredentialUserEntries.userId, userId)))
+      .limit(1);
+    return (rows[0] as DynamicCredentialUserEntry | undefined) ?? null;
+  }
+
+  /** 列 userId（不含 data 密文——铁律 3）。 */
+  async listUserEntryUsers(resolverId: string): Promise<Array<{ id: string; userId: string; updatedAt: Date }>> {
+    return (await this.db
+      .select({
+        id: this.schema.dynamicCredentialUserEntries.id,
+        userId: this.schema.dynamicCredentialUserEntries.userId,
+        updatedAt: this.schema.dynamicCredentialUserEntries.updatedAt,
+      })
+      .from(this.schema.dynamicCredentialUserEntries)
+      .where(eq(this.schema.dynamicCredentialUserEntries.resolverId, resolverId))) as Array<{ id: string; userId: string; updatedAt: Date }>;
+  }
+
+  async deleteUserEntry(resolverId: string, userId: string): Promise<void> {
+    await this.db
+      .delete(this.schema.dynamicCredentialUserEntries)
+      .where(and(eq(this.schema.dynamicCredentialUserEntries.resolverId, resolverId), eq(this.schema.dynamicCredentialUserEntries.userId, userId)));
   }
 }
 

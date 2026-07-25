@@ -137,6 +137,8 @@ export interface BootstrapOptions {
   telegramFetch?: typeof fetch;
   /** MCP 客户端（#45 M5；测试注入假实现,不打真实网络）。 */
   mcpClient?: import('./services/instance-ai-mcp.js').McpClient;
+  /** 动态凭证 http 解析器的 fetch（#46 M2；测试注入假实现,不打真实网络）。 */
+  dynamicCredentialFetch?: typeof fetch;
   /** 邮件投递（测试注入记录桩;生产按 NOMOPS_SMTP_* 环境变量,未配置为 NullMailer）。 */
   mailer?: IMailer;
   /** 社区节点安装器（缺省 npm 真实实现；测试注入假实现映射到本地 fixture）。 */
@@ -266,7 +268,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   if (secretsSelection.start) await secretsSelection.start(); // Vault 预热快照
   const secrets = new SecretsService(secretsSelection.provider, license);
   // #46：动态凭证——resolvable 凭证运行时按 subject 解析实际值（解析在 getDecryptedData 切入）
-  const dynamicCredentials = new DynamicCredentialService(repos, credentials);
+  const dynamicCredentials = new DynamicCredentialService(repos, credentials, { ...(opts.dynamicCredentialFetch ? { fetchImpl: opts.dynamicCredentialFetch } : {}) });
   const credentialService = new CredentialService(repos, credentials, secrets, opts.credentialTester, dynamicCredentials);
   // 用量:社区无条件计数;企业版在其上加限额检查(ee 实现包住社区实现)
   const usageCounter = new CountingUsageGate(repos);

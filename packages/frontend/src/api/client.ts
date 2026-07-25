@@ -694,6 +694,12 @@ export const api = {
       http<void>('PUT', `/api/dynamic-credentials/resolvers/${id}/entry`, { subject, data }),
     removeEntry: (id: string, subject: string) =>
       http<void>('DELETE', `/api/dynamic-credentials/resolvers/${id}/entry?subject=${encodeURIComponent(subject)}`),
+    /* #46 M2：按平台 user 的凭证值（subject 无值时回退） */
+    users: (id: string) => http<Array<{ id: string; userId: string; updatedAt: string }>>('GET', `/api/dynamic-credentials/resolvers/${id}/users`),
+    setUserEntry: (id: string, userId: string, data: Record<string, unknown>) =>
+      http<void>('PUT', `/api/dynamic-credentials/resolvers/${id}/user-entry`, { userId, data }),
+    removeUserEntry: (id: string, userId: string) =>
+      http<void>('DELETE', `/api/dynamic-credentials/resolvers/${id}/user-entry?userId=${encodeURIComponent(userId)}`),
   },
 
   /** 凭证 OAuth2「Connect my account」：拿提供方授权跳转 URL，前端开弹窗完成授权。 */
