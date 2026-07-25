@@ -500,7 +500,12 @@ export const trustedKeys = sqliteTable(
 export const trustedKeySources = sqliteTable('trusted_key_sources', {
   id: uuidPk('id'),
   name: text('name').notNull(),
-  jwksUrl: text('jwks_url').notNull(),
+  jwksUrl: text('jwks_url').notNull().default(''), // jwks 型的 URL（static 型留空,值在 config）
+  // #47 M2 对齐 n8n：多态源 + 校验策略 + 健康态
+  type: text('type').notNull().default('jwks'), // jwks|static
+  config: text('config', { mode: 'json' }).$type<JsonObject>().notNull().$defaultFn(() => ({})), // {issuer?,expectedAudience?,allowedRoles?} + jwks:{url} / static:{kid,key,algorithms?}
+  status: text('status').notNull().default('pending'), // pending|healthy|error
+  lastError: text('last_error'),
   active: integer('active', { mode: 'boolean' }).notNull().default(true),
   lastFetchedAt: integer('last_fetched_at', { mode: 'timestamp' }),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),

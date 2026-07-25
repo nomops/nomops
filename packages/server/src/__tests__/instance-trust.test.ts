@@ -96,7 +96,7 @@ describe('两实例联邦 + 令牌交换（#47）', () => {
     const fakeFetch = (async () => new Response(JSON.stringify(aJwks), { status: 200 })) as typeof fetch;
     const c = await bootstrap({ dbConfig: { type: 'sqlite' }, ...licensedBoot(), instanceTrustFetch: fakeFetch });
     try {
-      const src = await c.services.instanceTrust.addSource('instance-A', 'https://a.example/instance-trust/jwks');
+      const src = await c.services.instanceTrust.addSource({ type: 'jwks', name: 'instance-A', config: { url: 'https://a.example/instance-trust/jwks' } });
       const refreshed = await c.services.instanceTrust.refreshSource(src.id);
       expect(refreshed.imported).toBeGreaterThanOrEqual(1);
       // 拉来的密钥能验 A 的令牌
@@ -118,6 +118,107 @@ describe('两实例联邦 + 令牌交换（#47）', () => {
     // 旧令牌的 kid 仍能在 JWKS 找到（对端可验）
     const dec = decodeInstanceToken(before);
     expect(jwks.keys.some((k) => k.kid === dec!.header.kid)).toBe(true);
+  });
+});
+
+describe('M2 对齐：多态源 + 校验策略 + 身份透传（#47）', () => {
+  // 起一对「签发方 s / 验证方 v」;把 s 的公钥作为 static 源加进 v,可选带校验策略 config。
+  async function pair(config: Record<string, unknown> = {}) {
+    const s = await bootstrap({ dbConfig: { type: 'sqlite' }, ...licensedBoot() });
+    const v = await bootstrap({ dbConfig: { type: 'sqlite' }, ...licensedBoot() });
+    const sKey = (await s.services.instanceTrust.publicJwks()).keys[0]!;
+    const src = await v.services.instanceTrust.addSource({
+      type: 'static',
+      name: 'signer-static',
+      config: { kid: sKey.kid, x: sKey.x, ...config },
+    });
+    return { s, v, src, done: async () => { await s.shutdown(); await v.shutdown(); } };
+  }
+
+  it('static 源：内联公钥立即物化 → 能验签交换,源状态 healthy', async () => {
+    const { s, v, src, done } = await pair();
+    try {
+      expect(src.type).toBe('static');
+      expect(src.status).toBe('healthy');
+      const tok = await s.services.instanceTrust.signToken({ sub: 'via-static' });
+      const r = await v.services.instanceTrust.exchangeToken(tok);
+      expect(r.subject).toBe('via-static');
+      // status() 里源为 static/healthy
+      const st = await v.services.instanceTrust.status();
+      expect(st.sources.find((x) => x.id === src.id)).toMatchObject({ type: 'static', status: 'healthy', lastError: null });
+      // 信任密钥带源名
+      expect(st.trustedKeys[0]!.sourceName).toBe('signer-static');
+    } finally {
+      await done();
+    }
+  });
+
+  it('aud 不匹配源策略 → 403', async () => {
+    const { s, v, done } = await pair({ expectedAudience: 'billing-svc' });
+    try {
+      const tok = await s.services.instanceTrust.signToken({ sub: 'u', aud: 'other-svc' });
+      await expect(v.services.instanceTrust.exchangeToken(tok)).rejects.toMatchObject({ context: { status: 403 } });
+      // 匹配的 aud 放行
+      const good = await s.services.instanceTrust.signToken({ sub: 'u', aud: 'billing-svc' });
+      expect((await v.services.instanceTrust.exchangeToken(good)).subject).toBe('u');
+    } finally {
+      await done();
+    }
+  });
+
+  it('role 不在 allowedRoles → 403', async () => {
+    const { s, v, done } = await pair({ allowedRoles: ['admin', 'operator'] });
+    try {
+      const tok = await s.services.instanceTrust.signToken({ sub: 'u', role: 'guest' });
+      await expect(v.services.instanceTrust.exchangeToken(tok)).rejects.toMatchObject({ context: { status: 403 } });
+      const good = await s.services.instanceTrust.signToken({ sub: 'u', role: 'operator' });
+      expect((await v.services.instanceTrust.exchangeToken(good)).subject).toBe('u');
+    } finally {
+      await done();
+    }
+  });
+
+  it('iss 不匹配源策略 → 403', async () => {
+    const { s, v, done } = await pair({ issuer: 'https://trusted.example' });
+    try {
+      // 令牌 iss 是签发方 kid,不等于策略要求的 issuer
+      const tok = await s.services.instanceTrust.signToken({ sub: 'u' });
+      await expect(v.services.instanceTrust.exchangeToken(tok)).rejects.toMatchObject({ context: { status: 403 } });
+    } finally {
+      await done();
+    }
+  });
+
+  it('身份 claims（email/given_name/role）随交换透传', async () => {
+    const { s, v, done } = await pair();
+    try {
+      const tok = await s.services.instanceTrust.signToken({ sub: 'u', email: 'a@x.io', given_name: 'Ada', role: 'admin' });
+      const r = await v.services.instanceTrust.exchangeToken(tok);
+      expect(r.claims).toMatchObject({ email: 'a@x.io', given_name: 'Ada', role: 'admin' });
+      // 换发的令牌本身也带这些 claim（供宿主 provision）
+      const vKey = await v.services.repos.instanceTrust.activeDeploymentKey();
+      const ver = verifyInstanceToken(r.token, vKey!.publicKey);
+      expect(ver.ok).toBe(true);
+      if (ver.ok) expect(ver.payload['email']).toBe('a@x.io');
+    } finally {
+      await done();
+    }
+  });
+
+  it('jwks 源拉取失败 → 状态 error + lastError,不抛垮建源', async () => {
+    const boom = (async () => new Response('nope', { status: 500 })) as typeof fetch;
+    const c = await bootstrap({ dbConfig: { type: 'sqlite' }, ...licensedBoot(), instanceTrustFetch: boom });
+    try {
+      const src = await c.services.instanceTrust.addSource({ type: 'jwks', name: 'flaky', config: { url: 'https://flaky.example/jwks' } });
+      const st = await c.services.instanceTrust.status();
+      const row = st.sources.find((x) => x.id === src.id)!;
+      expect(row.status).toBe('error');
+      expect(row.lastError).toContain('500'); // 上游 HTTP 状态记进 lastError
+      // 显式 refresh 仍会抛（让管理端看到失败）
+      await expect(c.services.instanceTrust.refreshSource(src.id)).rejects.toMatchObject({ context: { status: 502 } });
+    } finally {
+      await c.shutdown();
+    }
   });
 });
 

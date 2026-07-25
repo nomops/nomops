@@ -298,8 +298,14 @@ const dynAudit = ref<Awaited<ReturnType<typeof api.dynamicCredentials.audit>>>([
 const trustStatus = ref<Awaited<ReturnType<typeof api.instanceTrust.status>> | null>(null);
 const trustError = ref('');
 const trustBusy = ref('');
+const trustNewSourceType = ref<'jwks' | 'static'>('jwks');
 const trustNewSourceName = ref('');
 const trustNewSourceUrl = ref('');
+const trustSourceIssuer = ref('');
+const trustSourceAudience = ref('');
+const trustSourceRoles = ref('');
+const trustStaticKid = ref('');
+const trustStaticDer = ref('');
 const trustNewKid = ref('');
 const trustNewIssuer = ref('');
 const trustNewDer = ref('');
@@ -317,12 +323,23 @@ async function rotateTrust() {
   try { await api.instanceTrust.rotate(); await loadTrust(); } finally { trustBusy.value = ''; }
 }
 async function addTrustSource() {
-  if (!trustNewSourceUrl.value.trim()) return;
+  const isStatic = trustNewSourceType.value === 'static';
+  if (isStatic ? (!trustStaticKid.value.trim() || !trustStaticDer.value.trim()) : !trustNewSourceUrl.value.trim()) return;
   trustBusy.value = 'source';
   trustError.value = '';
+  // 可选校验策略：iss / aud / role（留空即不校验）
+  const config: Record<string, unknown> = {};
+  if (trustSourceIssuer.value.trim()) config.issuer = trustSourceIssuer.value.trim();
+  if (trustSourceAudience.value.trim()) config.expectedAudience = trustSourceAudience.value.trim();
+  const roles = trustSourceRoles.value.split(',').map((r) => r.trim()).filter(Boolean);
+  if (roles.length) config.allowedRoles = roles;
+  if (isStatic) { config.kid = trustStaticKid.value.trim(); config.key = trustStaticDer.value.trim(); }
+  else config.url = trustNewSourceUrl.value.trim();
   try {
-    await api.instanceTrust.addSource(trustNewSourceName.value.trim(), trustNewSourceUrl.value.trim());
+    await api.instanceTrust.addSource({ type: trustNewSourceType.value, name: trustNewSourceName.value.trim(), config });
     trustNewSourceName.value = ''; trustNewSourceUrl.value = '';
+    trustSourceIssuer.value = ''; trustSourceAudience.value = ''; trustSourceRoles.value = '';
+    trustStaticKid.value = ''; trustStaticDer.value = '';
     await loadTrust();
   } catch (e) { trustError.value = (e as Error).message; } finally { trustBusy.value = ''; }
 }
@@ -3259,26 +3276,42 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
             <!-- JWKS 源 + 信任密钥 -->
             <div class="set-card">
               <div class="set-field">
-                <label>Trusted key sources <span class="dim" style="font-weight: 400">· JWKS URLs auto-refreshed into trusted keys</span></label>
+                <label>Trusted key sources <span class="dim" style="font-weight: 400">· JWKS (auto-refreshed) or static inline keys</span></label>
                 <ul v-if="trustStatus.sources.length" class="dyn-list" data-test="trust-sources">
                   <li v-for="s in trustStatus.sources" :key="s.id" class="dyn-row">
-                    <span class="dyn-name">{{ s.name }}</span>
-                    <button class="link" data-test="trust-refresh-source" :disabled="trustBusy === 'refresh'" @click="refreshTrustSource(s.id)">Refresh</button>
+                    <span class="dyn-name">
+                      {{ s.name }}
+                      <span class="trust-badge" :class="`t-${s.type}`" data-test="trust-source-type">{{ s.type }}</span>
+                      <span class="trust-badge" :class="`s-${s.status}`" data-test="trust-source-status" :title="s.lastError || ''">{{ s.status }}</span>
+                    </span>
+                    <button v-if="s.type === 'jwks'" class="link" data-test="trust-refresh-source" :disabled="trustBusy === 'refresh'" @click="refreshTrustSource(s.id)">Refresh</button>
                     <button class="link" data-test="trust-del-source" @click="removeTrustSource(s.id)">✕</button>
                   </li>
                 </ul>
-                <div style="display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap">
+                <div style="display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; align-items: center">
+                  <select v-model="trustNewSourceType" data-test="trust-source-type-sel" style="flex: 0 0 88px">
+                    <option value="jwks">JWKS</option>
+                    <option value="static">Static</option>
+                  </select>
                   <input v-model="trustNewSourceName" data-test="trust-source-name" placeholder="name" style="flex: 0 0 110px" />
-                  <input v-model="trustNewSourceUrl" data-test="trust-source-url" placeholder="peer JWKS URL" style="flex: 1; min-width: 180px" />
-                  <button class="btn primary" data-test="trust-add-source" :disabled="trustBusy === 'source' || !trustNewSourceUrl.trim()" @click="addTrustSource">Add source</button>
+                  <input v-if="trustNewSourceType === 'jwks'" v-model="trustNewSourceUrl" data-test="trust-source-url" placeholder="peer JWKS URL" style="flex: 1; min-width: 160px" />
+                  <input v-else v-model="trustStaticKid" data-test="trust-source-static-kid" placeholder="kid" style="flex: 1; min-width: 120px" />
+                  <button class="btn primary" data-test="trust-add-source" :disabled="trustBusy === 'source'" @click="addTrustSource">Add source</button>
                 </div>
+                <textarea v-if="trustNewSourceType === 'static'" v-model="trustStaticDer" data-test="trust-source-static-der" rows="2" spellcheck="false" placeholder="base64 DER SPKI public key" style="width: 100%; margin-top: 6px; font-family: var(--font-family--monospace, monospace); font-size: 12px"></textarea>
+                <details style="margin-top: 6px">
+                  <summary class="dim" style="font-size: 12px; cursor: pointer">Validation policy (optional) — reject exchanged tokens that don't match</summary>
+                  <input v-model="trustSourceIssuer" data-test="trust-source-issuer" placeholder="expected iss claim" style="width: 100%; margin: 6px 0" />
+                  <input v-model="trustSourceAudience" data-test="trust-source-aud" placeholder="expected aud claim" style="width: 100%; margin-bottom: 6px" />
+                  <input v-model="trustSourceRoles" data-test="trust-source-roles" placeholder="allowed roles (comma-separated)" style="width: 100%" />
+                </details>
               </div>
               <div class="set-field">
                 <label>Trusted keys</label>
                 <p v-if="!trustStatus.trustedKeys.length" class="dim" style="font-size: 12px; margin: 4px 0">No trusted keys yet.</p>
                 <ul v-else class="dyn-list" data-test="trust-keys">
                   <li v-for="k in trustStatus.trustedKeys" :key="k.id" class="dyn-row">
-                    <span class="dyn-name"><code>{{ k.kid }}</code> <span class="dim">{{ k.issuer || (k.sourceId ? 'from source' : 'manual') }}</span></span>
+                    <span class="dyn-name"><code>{{ k.kid }}</code> <span class="dim">{{ k.sourceName || k.issuer || 'manual' }}</span></span>
                     <button class="link" data-test="trust-del-key" @click="removeTrustKey(k.kid)">✕</button>
                   </li>
                 </ul>
@@ -4458,6 +4491,14 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 .dyn-row.sel { border-color: var(--accent, #ff6900); background: var(--bg-input); }
 .dyn-name { flex: 1; font-weight: 500; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dyn-badge { font-size: 10.5px; padding: 2px 6px; border-radius: 10px; background: var(--bg-input); color: var(--text-dim); }
+
+/* 信任源徽标（#47 M2）：类型 + 健康态 */
+.trust-badge { font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 9px; margin-left: 6px; text-transform: uppercase; letter-spacing: 0.02em; vertical-align: middle; }
+.trust-badge.t-jwks { background: rgba(59, 130, 246, 0.14); color: #2563eb; }
+.trust-badge.t-static { background: rgba(139, 92, 246, 0.14); color: #7c3aed; }
+.trust-badge.s-healthy { background: rgba(34, 197, 94, 0.16); color: #16a34a; }
+.trust-badge.s-pending { background: rgba(234, 179, 8, 0.16); color: #ca8a04; }
+.trust-badge.s-error { background: rgba(239, 68, 68, 0.16); color: #dc2626; cursor: help; }
 
 /* Roles Enterprise 锁卡(对标基线 Community):三权限卡图形 + Upgrade to Enterprise */
 .ent-lock {

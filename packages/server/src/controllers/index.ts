@@ -1158,11 +1158,12 @@ export function createApiRouter(services: AppServices): Router {
     trustFeature,
     h(async (req, res) => {
       await assertInstanceAdmin(req);
-      const { name, jwksUrl } = req.body as { name?: string; jwksUrl?: string };
-      if (!jwksUrl?.trim()) throw new OperationalError('jwksUrl is required', { status: 400 });
-      const src = await services.instanceTrust.addSource(name ?? '', jwksUrl);
-      recordAudit(services, req, 'instance-trust.source-add', { type: 'instance-trust', id: src.id });
-      res.status(201).json({ id: src.id, name: src.name, jwksUrl: src.jwksUrl });
+      const body = req.body as { type?: string; name?: string; config?: Record<string, unknown>; jwksUrl?: string };
+      // 兼容旧 {name, jwksUrl} 形态 → jwks 源
+      const config = (body.config ?? (body.jwksUrl ? { url: body.jwksUrl } : {})) as JsonObject;
+      const src = await services.instanceTrust.addSource({ type: body.type, name: body.name ?? '', config });
+      recordAudit(services, req, 'instance-trust.source-add', { type: 'instance-trust', id: src.id }, { sourceType: src.type });
+      res.status(201).json({ id: src.id, name: src.name, type: src.type, status: src.status });
     }),
   );
   router.post(

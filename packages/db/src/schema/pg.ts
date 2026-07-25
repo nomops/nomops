@@ -412,7 +412,11 @@ export const trustedKeys = pgTable(
 export const trustedKeySources = pgTable('trusted_key_sources', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
-  jwksUrl: text('jwks_url').notNull(),
+  jwksUrl: text('jwks_url').notNull().default(''),
+  type: text('type').notNull().default('jwks'),
+  config: jsonb('config').$type<JsonObject>().notNull().default({}),
+  status: text('status').notNull().default('pending'),
+  lastError: text('last_error'),
   active: boolean('active').notNull().default(true),
   lastFetchedAt: timestamp('last_fetched_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),

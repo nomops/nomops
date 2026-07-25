@@ -171,8 +171,8 @@ export interface InstanceAiMcpRow {
 export interface InstanceTrustStatus {
   activeKid: string | null;
   jwksUrl: string;
-  trustedKeys: Array<{ id: string; kid: string; issuer: string; sourceId: string | null; createdAt: string }>;
-  sources: Array<{ id: string; name: string; jwksUrl: string; lastFetchedAt: string | null }>;
+  trustedKeys: Array<{ id: string; kid: string; issuer: string; sourceId: string | null; sourceName: string | null; createdAt: string }>;
+  sources: Array<{ id: string; name: string; type: string; status: string; lastError: string | null; lastFetchedAt: string | null }>;
 }
 
 /** AI 建流会话（#45 M1）。 */
@@ -722,8 +722,8 @@ export const api = {
     addTrustedKey: (body: { kid: string; publicKeyDer: string; issuer?: string }) =>
       http<{ id: string; kid: string; issuer: string }>('POST', '/api/instance-trust/trusted-keys', body),
     removeTrustedKey: (kid: string) => http<void>('DELETE', `/api/instance-trust/trusted-keys/${encodeURIComponent(kid)}`),
-    addSource: (name: string, jwksUrl: string) =>
-      http<{ id: string; name: string; jwksUrl: string }>('POST', '/api/instance-trust/sources', { name, jwksUrl }),
+    addSource: (body: { type: 'jwks' | 'static'; name: string; config: Record<string, unknown> }) =>
+      http<{ id: string; name: string; type: string; status: string }>('POST', '/api/instance-trust/sources', body),
     refreshSource: (id: string) => http<{ imported: number }>('POST', `/api/instance-trust/sources/${id}/refresh`),
     removeSource: (id: string) => http<void>('DELETE', `/api/instance-trust/sources/${id}`),
   },

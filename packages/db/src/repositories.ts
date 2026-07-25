@@ -3023,12 +3023,17 @@ export class InstanceTrustRepository extends BaseRepository {
   }
 
   /* ── JWKS 源 ── */
-  async addSource(input: { name: string; jwksUrl: string }): Promise<TrustedKeySource> {
+  async addSource(input: { name: string; type: string; jwksUrl: string; config: JsonObject }): Promise<TrustedKeySource> {
     const [row] = await this.db
       .insert(this.schema.trustedKeySources)
-      .values({ name: input.name, jwksUrl: input.jwksUrl, active: true })
+      .values({ name: input.name, type: input.type, jwksUrl: input.jwksUrl, config: input.config, status: 'pending', active: true })
       .returning();
     return row as TrustedKeySource;
+  }
+
+  /** 更新源健康态（#47 M2）：refresh 成功 healthy / 失败 error+lastError。 */
+  async setSourceStatus(id: string, status: string, lastError: string | null): Promise<void> {
+    await this.db.update(this.schema.trustedKeySources).set({ status, lastError }).where(eq(this.schema.trustedKeySources.id, id));
   }
 
   async listSources(): Promise<TrustedKeySource[]> {
