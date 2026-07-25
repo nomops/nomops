@@ -1,6 +1,6 @@
 # nomops 功能开发待办清单（feature-backlog）
 
-> 来源：2026-07-21 全项目缺口盘点（引擎/服务端/节点/前端四路代码审计 + diff-ledger + ui-audit gap-list 交叉）；2026-07-22 增补 P8-P10（自托管 n8n 库 110 表逐一对照，#34-47）；2026-07-22 增补 P11（n8n 2.30.4 节点面板全目录 `/types/nodes.json` 对照，Core Node 缺口 34 个 → #48-54，详见 `docs/node-catalog-gap.md`）。
+> 来源：2026-07-21 全项目缺口盘点（引擎/服务端/节点/前端四路代码审计 + diff-ledger + ui-audit gap-list 交叉）；2026-07-22 增补 P8-P10（自托管 n8n 库 110 表逐一对照，#34-47）；2026-07-22 增补 P11（n8n 2.30.4 节点面板全目录 `/types/nodes.json` 对照，Core Node 缺口 34 个 → #48-54，详见 `docs/node-catalog-gap.md`）；2026-07-25 增补 P12-P15（14 域并行对标审查 n8n 2.31.0 `038d2ca286`，抓踩坑/缺能力/抢跑三类 → #55-76，详见 `benchmark-gap.md`）。
 > 用法：按编号发布指令逐项开发；完成后在本文件勾选并记 commit。
 > 工作量：S=半天内 · M=1-2 天 · L=3 天+ · XL=独立立项。
 
@@ -155,6 +155,130 @@
 - [ ] **54. 自引用/低价值节点（评估后按需，默认不做）** `S~M`
   n8n / n8n Trigger（调 n8n 自身 API / 监听实例事件——nomops 等价物应改造为「nomops 自 API 节点」+ 实例事件触发，价值取决于是否需要工作流操作平台自身）、Data table（n8n 的内置数据表功能，需整套 dataTable 后端，属独立特性非单节点）、AI Transform（自然语言生成转换代码，依赖 AI 建流能力 #45）、Track Time Saved（n8n 云运营指标，自托管无意义）。
   → 逐项在开发前单独裁决；Data table 若做应并入独立特性立项，AI Transform 挂靠 #45，Track Time Saved 直接不做。
+
+## P12 · 安全加固（来源：2026-07-25 benchmark-gap 对标审查 n8n 2.31.0，详见 `benchmark-gap.md`）
+
+> 全局清单 🔴 必补里的安全踩坑集中在此，最高优先。多为「偏离了基线验证过的隔离/校验做法」的高危项；单租户自托管风险较低、多租户 Cloud 高危。
+
+- [ ] **55. 表达式引擎真隔离 + 超时** `L`（🔴 R1）
+  踩坑·高危(多租户 Cloud)：`packages/workflow/src/expression/sandbox.ts:58` 用 `new Function` + 正则黑名单，被 `[]['con'+'structor']['con'+'structor']('return this')()` 击穿，PoC 读到真实 `process.env`；无超时，`{{ while(true){} }}` 挂死 worker。数据经 scope 绑定非拼接，逃逸需恶意工作流作者。
+  → 弃 `new Function` + 正则，改 isolated-vm 或复用 Code 节点已验证的子进程 runner（`packages/nodes/src/nodes/Code/Code.node.ts:34`）+ 求值超时/内存限制；补拼接/计算属性/死循环逃逸测试。
+  验收：`[]['con'+'structor']…` PoC 被拦；`{{ while(true){} }}` 超时不挂 worker。
+
+- [ ] **56. HTTP 出站 SSRF 防护（连接期真实 IP 校验）** `M`（🔴 R2）
+  踩坑·高危：`packages/core/src/execution-engine/node-execution-context.ts:170` `defaultHttpRequest` = `new URL()`→`fetch()`，无 IP 校验、默认跟随重定向；`HttpRequest.node.ts` 直传用户 URL → 可打 `169.254.169.254` 云 metadata / `127.0.0.1` / RFC1918。
+  → 自定义 `lookup` 做连接期解析 IP 校验（拦 RFC1918/loopback/`169.254`/IPv6 ULA），每次重定向重校，按「URL 是否用户可控」opt-in，固定内部目标豁免。
+  验收：节点请求 `http://169.254.169.254` 被拒；重定向到内网被拒；固定内部服务调用不受影响。
+
+- [ ] **57. 社区节点安装加固（供应链）** `M`（🔴 R3）
+  踩坑·高危：`packages/server/src/services/community-node-service.ts:49` `npm install` **无 `--ignore-scripts`** → 恶意/抢注包 pre/postinstall 安装期即宿主 RCE；且 `:130` 动态 import 进程内注册。
+  → 安装加 `--ignore-scripts`；补包名/版本/checksum 预检 + 静态扫描（禁 `eval`/`Function`/`child_process`、import 白名单）+ 未验证包开关；长期把社区节点执行移出主进程。
+  验收：含 postinstall 的恶意包安装不执行脚本；静态扫描命中禁用 API 拒绝安装。
+
+- [ ] **58. 加密密钥外置 + 信封轮换** `M`（🔴 R4）
+  踩坑·高危：`packages/server/src/bootstrap.ts:84` 密钥存 DB settings 表（无 env 覆盖），`packages/core/src/encryption/cipher.ts:7` 单 DEK 无 keyId → 密钥与密文同库，DB dump 同泄；换密钥即全量密文不可解。基线明言「第一天就按信封设计」。
+  → 加 `NOMOPS_ENCRYPTION_KEY` env/文件来源（与库内不一致时报错，把密钥挪出库）；密文加 `keyId:` 前缀 + DEK 信封包裹，打开轮换路径。
+  验收：密钥不在 DB；轮换后旧密文仍可解、新密文用新钥。
+
+- [ ] **59. 恢复 URL GET 预览防误触** `S/M`（🔴 R5，#15 安全加固）
+  踩坑·高危：`packages/server/src/controllers/index.ts:2933` `router.all('/webhook-waiting/...')` 对 GET/HEAD 立即 `executions.resume()`，无 isbot/UA 过滤。#15 场景就是把 `$execution.resumeUrl` 发进邮件/IM，链接预览/SafeLinks 扫描器一次 GET 即「批准」挂起流并耗尽一次性令牌 → 真人再点得 404。
+  → webhook-waiting 只对 POST 执行副作用；GET 返回仅渲染「确认恢复」按钮的空 200 页（不触发 resume）；HEAD/已知 bot UA 直接空 200 短路。（与 #71 的 Webhook 深化可合并交付）
+  验收：预览 bot GET 不触发 resume、不耗令牌；人点确认按钮 POST 才恢复。
+
+- [ ] **67. 账户/会话安全四项** `M`（🟠 A7）
+  中危集合：①`auth-service.ts:194` 改密/重置口令不吊销存量会话（被盗 JWT 存活至 7d TTL，§1 头号对标点）；②全仓无登录/MFA 限流（口令与 6 位 TOTP 可无限猜）；③`mfa-service.ts:104` `mfaSecret` 明文入库（DB 泄露即可复算有效码）；④`rbac.ts:49` `tierForScopes` 把自定义角色 scope 集塌缩成 viewer/editor/owner 三档 → 勾单 scope 越权到同档全部动作。
+  → tokenVersion 吊销会话（改密/重置递增）；登录/MFA IP+账号双层限流；MFA secret 加密落库；自定义角色改逐 scope 校验。
+  验收：改密后旧 token 401；暴破被限流；DB 里 mfa_secret 密文；勾单 scope 不越权到同档其他动作。
+
+## P13 · 节点平台地基（解锁 P11 与集成规模化，来源同上）
+
+> 🔴R6 是整个 P11 节点扩张的前置地基（3 个域独立点名）；本节多为「加节点/集成能规模化」的公共能力，应在大批量手写节点前落地。
+
+- [ ] **60. 动态节点参数层（loadOptions / resourceLocator / fixedCollection）** `L`（🔴 R6，**P11 前置**）
+  缺能力·阻断核心场景：`grep loadOptions/resourceLocator` 在 server/nodes/workflow 全空；基线是社区**免费**能力，是「体验分水岭」。#48-54 及未来 355 app 集成全依赖「参数联动查远端资源」（选 Sheet 里的表、选 Slack channel），没有这层新节点只能填 ID 字符串。
+  → 补 `dynamic-node-parameters` 端点（以用户凭证代查远端选项）+ 节点 `loadOptions`/`loadOptionsMethod`/`loadOptionsDependsOn`/`resourceLocator` 契约 + `fixedCollection` 控件；引擎侧声明式（符铁律5）。
+  验收：一个节点下拉能按已选凭证动态拉真实资源列表；resourceLocator 三模式可用。
+
+- [ ] **61. 节点面板/控件元数据驱动（清前端特判）** `M`（🟠 A1，**#48 前置**，铁律5）
+  踩坑：`packages/frontend/src/components/canvas/NodePanel.vue:43-46` 按类型名硬编码分类，致 #5 已交付的 Switch/Filter/SplitOut/Aggregate/Loop 落不进抽屉仅搜索可达；`ParamInput.vue:243,498` 把 filter/assignment 按参数名伪装进 collection —— 均违「加节点=写 description，前端零特判」。
+  → 节点描述加 `categories/subcategories`（或 `panelCategory`），面板分类与 filter/assignment 控件改元数据/type 分发；顺带补真 `filter`/`assignmentCollection` 类型。
+  验收：新增节点仅写 description 即自动上架正确分类抽屉；filter/assignment 不再按名特判。
+
+- [ ] **62. 声明式 routing DSL 增强（分页 + 收发变换）** `M/L`（🟠 A2）
+  缺能力：`packages/workflow/src/interfaces.ts:159 IHttpRequestDeclaration` 仅 method/url/qs/body/headers；`routing-executor.ts` 无分页/postReceive/preSend/二进制 → SaaS 节点凡翻页/响应转换都退回写 `execute()`，拿不到声明式的规模化红利。
+  → DSL 扩 `pagination` 描述符 + `postReceive`/`preSend` 变换钩子 + 二进制下载。
+  验收：一个声明式节点能翻页聚合、能变换响应体、能下载二进制。
+
+- [ ] **63. 凭证注入 DSL 完善** `M`（🟠 A3）
+  缺能力/踩坑：`routing-executor.ts:97` 仅 header/query/path 桶；`integrations.ts:20` credentialInjection 绑**节点**非**凭证类型**（每节点各写一遍）；无函数式 authenticate；前端 `credential-types.ts:108` 声明的 PKCE/clientCredentials/digest/oauth1 后端不兑现（悬空能力，误导用户建不工作的凭证）。
+  → 注入模板上移到凭证类型（一次声明处处复用）+ 补 body/basic 桶 + 可选函数式 authenticate；未实现选项要么实现要么从 UI 摘除。
+  验收：digest 或 clientCredentials 凭证可真实工作，或 UI 不再暴露不可用选项；同类凭证注入声明只写一处。
+
+- [ ] **75. usableAsTool 自动派生工厂** `M`（🟢 G1，低垂高杠杆）
+  抢跑机会：ai_tool 端口 + `$fromAI`（#19）原语已就位（`AiAgent.node.ts:45`、`from-ai.ts`），但无自动派生机制，仅 `HttpTool` 手写单点。基线靠 `usableAsTool` 把 260 个存量节点免费变 Agent 工具——竞品最难复制的护城河。
+  → `INodeTypeDescription` 加 `usableAsTool?: boolean`，loader/manifest 层 `convertNodeToAiTool` 克隆节点描述为输出 ai_tool 的 `*Tool` 变体（复用现有 supplyData 通道）。
+  验收：置位的存量节点（8 集成 + HttpRequest）在 AiAgent Tool 端口可挂载并被调用。
+
+## P14 · 引擎/运行时健壮性（来源同上）
+
+- [ ] **64. OAuth2 多实例 + 刷新并发锁** `M`（🟠 A4）
+  踩坑：`packages/server/src/services/oauth2-service.ts:29,75` 进程内 pending Map（queue/多实例下 auth 与 callback 落不同进程→连接失败）；`:130` 刷新无 dedup/锁（多 worker 同刷一 token，轮换型 provider 双刷竞态互相作废 refresh_token）。nomops 已有 BullMQ queue = 真实生产隐患。
+  → pending state 落 Redis/DB（TTL 读即销毁）+ 刷新进程内合并 + Redis/DB 租约锁。
+  验收：queue 模式下 Connect 与刷新不因进程亲和性失败、不双刷作废。
+
+- [ ] **65. AbortSignal 贯通取消/超时** `M`（🟠 A5）
+  踩坑：全域无 AbortController，`packages/core/src/execution-engine/workflow-execute.ts:438` 注释自陈「被抛下的 promise 仍在后台跑」——取消/超时只让引擎不再等，节点内在飞 HTTP 仍跑完，侵蚀实际并发余量。
+  → AbortSignal 经 `additionalData.httpRequest` 贯通到 `defaultHttpRequest` 的 fetch，cancel()/超时即 abort 网络 I/O。
+  验收：取消卡在慢 HTTP 的执行时底层请求被中断。
+
+- [ ] **69. Agent 循环引擎化（V2→V3）** `XL`（🟠 A9，战略）
+  踩坑·战略：`packages/nodes/src/nodes/AiAgent/AiAgent.node.ts:86-98` 是节点内 `while` 内联循环、`tool.invoke()` 直调，工具非真节点入引擎；且画布 agent 与 `instance-ai-service.ts:146` 两套循环割裂。停在基线 V2，工具调用不白嫖引擎重试/取消/HITL/观测；画布 agent 永远拿不到 HITL。基线全篇最核心情报「跳过 V2 直接 V3」。
+  → 工具调用打包成引擎请求、由 workflow-execute 主循环调度工具节点、Agent 以 resume 恢复，画布/助手统一一套引擎化循环。
+  验收：画布 AiAgent 工具调用可被取消/挂 HITL/在执行详情逐调用观测。
+
+- [ ] **72. 发布 outbox + waitTill 索引 + WaitTracker 门控** `M`（🟠 A12，承接 #40）
+  踩坑：无 `workflow_publication_outbox`（#40 明注 deferred）→ 多实例发布/激活事件最终一致无兜底；`packages/db/src/schema/pg.ts:734` executions 仅 `(workflow_id,created_at)` 索引，`wait-tracker.ts` 每 10s `findDueWaiting` 全表顺扫；WaitTracker 未 leader 门控（`bootstrap.ts:340` 对所有 main start），与 resume `409` 状态守卫间有 TOCTOU 双唤醒窗口。
+  → 补 outbox 表 + 收尾投递 worker；加 `(status,wait_till)` 部分索引；WaitTracker 加 leader 门控或 DB compare-and-set。
+  验收：多实例发布不丢激活；大执行表唤醒不全表顺扫；同一 waiting 不被双恢复。
+
+- [ ] **73. License 吊销 + 配额原子化** `M`（🟠 A13）
+  缺能力/踩坑：`packages/server/src/ee/license/license-service.ts:108` `activeCert()` 只查时间窗，`payload.id` 标注「吊销用」却无消费 → 退款/泄露只能等过期或轮换公钥（废所有证书）；`quota-service.ts:78` 执行配额 check-increment 有竞态，queue 多 worker 稳定超发。
+  → cert-id 黑名单经 `/internal` 桥从控制平面下发、`activeCert()` 增查；执行配额原子自增（`ON CONFLICT … RETURNING` 后比对上限 / Redis 原子计数）。
+  验收：吊销的证书立即失效；queue 多 worker 不超发配额。
+
+## P15 · 前端/表达式/激活体验（来源同上）
+
+- [ ] **66. 执行可视化正确性（串台 + 重连 + 频道）** `M`（🟠 A6）
+  踩坑：`packages/frontend/src/stores/execution.ts:44` handleEvent 不按 executionId 过滤（并发执行/多用户高亮串台）；`packages/server/src/ws/push-hub.ts:27` 广播全连接无 workflow 频道；`execution.ts:38` WS 断线不重连（静默丢实时进度）。三者叠加使执行可视化在任意并发/断网下失真。
+  → handleEvent 首行按 executionId 过滤（executionStarted 除外）；push-hub 按 workflowId 分频道；WS 加指数退避重连 + 心跳。
+  验收：并发执行/多用户/断网下画布高亮不串台、断线自恢复。
+
+- [ ] **68. displayOptions 版本门控 + 操作符** `M`（🟠 A8）
+  缺能力：`packages/frontend/src/lib/display-options.ts:8-32` 仅 `includes()` 等值，无 `_cnd`（gte/lte/between/regex/exists）；`NdvModal.vue:180` 版本只被动注记不门控 → 无版本化参数面，节点演进即破坏存量工作流；且受控值为表达式时会被误隐藏。
+  → `IDisplayOptions` 值支持 `{_cnd:{…}}` + `isPropertyVisible` 加 `@version` 门控 + 「受控值为表达式默认显示」分支。越早加改造面越小。
+  验收：节点升版本参数按 typeVersion 正确显隐，存量工作流不破；表达式态字段不被误隐。
+
+- [ ] **70. Luxon + 扩展方法 + 同构预览** `L`（🟠 A10/ 🟢 G2）
+  缺能力：`grep luxon/DateTime/toDateTime` 零命中，`$now` 是字符串，0/108 扩展方法 → `{{ $now.plus({days:1}) }}`/`.isEmail()`/`arr.first()` 全报错，DX 与基线断层；前端 `ExpressionInput.vue` 未 import 引擎，无「预览即真值」（引擎在 workflow 包、天然可跑浏览器=抢跑窗口现成）。
+  → 接 Luxon（$now/$today 改 DateTime）+ 首批高频扩展方法（AST 改写把 `x.method()` 路由到 `extend()`）+ `.doc` 元数据；把 `resolveParameterValue` 接进 NDV 做实时预览、补全按运行数据解析真实字段/方法、高亮加 pending 三态。
+  验收：`$now.plus({days:1})`/`.isEmail()` 可用；NDV 表达式实时出真值预览。
+
+- [ ] **71. Webhook 节点安全深化** `M`（🟠 A11，含 #59 恢复 URL 加固）
+  缺能力：`packages/nodes/src/nodes/Webhook` 仅 path+method → 生产 webhook 仅靠路径保密即可被任意触发；响应模式 2/6（缺 lastNode/streaming）；无动态 `:param` 路径段。
+  → 补 Webhook 鉴权四档（none/basic/header/jwt）+ `ignoreBots` + responseMode=lastNode；`/webhook-waiting` 只对 POST 执行副作用（#59 合并）；动态 `:param` 与 streaming 可延后。
+  验收：无鉴权 webhook 可加 header/basic 保护；预览 bot GET 不触发 resume；末节点答生效。
+
+- [ ] **74. 删除桥接 + 模板凭证向导 + 空态 starter** `M`（🟠 A14）
+  缺能力：`packages/frontend/src/stores/editor.ts:223` removeNode 只删+剥连线不桥接（删中间节点断链需手工重连）；`router.ts` 无 `/templates/:id/setup`（模板导入后无「需凭证→向导」分支，`template-registry.ts:19` setupHints 仅静态文字）；`OverviewView.vue:1013` 空态仅「Start from scratch」不露模板。
+  → removeNode 单入单出 main 时自动接上游→下游；新增 `/templates/:id/setup` 凭证向导（按类型/名分组卡 + 无歧义自动填充 + 可跳过）；空态推 `branch-merge-demo` starter 卡（免凭证、导入即可手动跑）。
+  验收：删中间节点自动重连；模板导入需凭证时进向导；空态一键落地可跑 starter。
+
+- [ ] **76. 协同编辑地基（EPIC）** `XL`（🟢 G3）
+  抢跑窗口：无 presence / 无写锁 / 无 CRDT（基线 Yjs 亦「已建未接」）。但 nomops 现状更靠后——`stores/editor.ts` 各 action 直写非 apply 收敛、undo 全量快照非命令式，直接上 CRDT 成本高；且当前 `save()` 末位写覆盖，并发编辑静默互相覆盖。
+  → 分两步：先补保存乐观锁（workflow 加 version 列、save 带版本、后端 409 冲突提示而非覆盖，立即消除并发丢改）；同时把 editor store 重构为「public 方法 → 私有 applyXxx 唯一写入点」，为日后 CRDT/undo 命令化铺路。
+  验收：并发编辑不静默互覆盖（409 提示）；状态写入收敛到单入口。
+
+> **需单独裁决的决策点（非本批开发项，先记账）**：AI/RAG ~101 节点是否立独立 EPIC 编号（多模型 Chat Model 最高优先）；Code 节点 Python 是否排期；多人协作 presence 是否做（已并入 #76 地基）；`activeWorkflows` 是否作为计费维度（现按执行次数）；`appendAttribution` 病毒署名待自有域名上线再评估；helmet/CSP 安全响应头补法（部署层 nginx vs 应用层）。
 
 ---
 
