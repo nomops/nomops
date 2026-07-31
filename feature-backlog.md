@@ -193,10 +193,7 @@
 
 - [x] **60. 动态节点参数层（loadOptions / resourceLocator / fixedCollection）** `L` ✅ 2026-07-31（workflow 声明契约补齐 `loadOptions`/`loadOptionsMethod`/`loadOptionsDependsOn`/`resourceLocator`/`fixedCollection`，server 新增 projectId 归属约束的凭证代查端点且错误统一脱敏，前端 ParamInput 元数据驱动实现动态下拉、三模式资源定位与可增删排序固定集合；新增 4 server + 3 frontend 测，workflow 29/core 101/nodes 65/db 26/frontend 87/server 605、全量 913 测通过；真实 HTTP 回环验证凭证解密→远端资源列表且响应无明文，基线 v2.31.0 同尺寸截图并排比对、生产控制台零报错；commit `a562fe0`）
 
-- [ ] **61. 节点面板/控件元数据驱动（清前端特判）** `M`（🟠 A1，**#48 前置**，铁律5）
-  踩坑：`packages/frontend/src/components/canvas/NodePanel.vue:43-46` 按类型名硬编码分类，致 #5 已交付的 Switch/Filter/SplitOut/Aggregate/Loop 落不进抽屉仅搜索可达；`ParamInput.vue:243,498` 把 filter/assignment 按参数名伪装进 collection —— 均违「加节点=写 description，前端零特判」。
-  → 节点描述加 `categories/subcategories`（或 `panelCategory`），面板分类与 filter/assignment 控件改元数据/type 分发；顺带补真 `filter`/`assignmentCollection` 类型。
-  验收：新增节点仅写 description 即自动上架正确分类抽屉；filter/assignment 不再按名特判。
+- [x] **61. 节点面板/控件元数据驱动（清前端特判）** `M` ✅ 2026-07-31（workflow 节点描述新增 `categories/subcategories/aliases/hidden` 与真 `filter`/`assignmentCollection` 参数类型；NodePanel 移除类型名分类/隐藏特判，按 description 元数据分组、别名搜索并自动上架；ParamInput 仅按参数 type 分发条件构建器与赋值集合，普通 collection 回落 JSON；全量内建节点补齐分类元数据，Sticky Note 声明隐藏；新增 2 NodePanel + 3 ParamInput + 2 节点元数据测试，workflow 29/core 101/nodes 67/db 26/frontend 92/server 605、全量 920 测通过；真实 API 回环确认 Filter/Set/Switch 类型与分类，生产构建 UI 验证分类抽屉、`edit fields` 别名、两类控件，基线 v2.31.0 同视口截图并排比对且 nomops 控制台零报错；commit `68d0f4c`）
 
 - [ ] **62. 声明式 routing DSL 增强（分页 + 收发变换）** `M/L`（🟠 A2）
   缺能力：`packages/workflow/src/interfaces.ts:159 IHttpRequestDeclaration` 仅 method/url/qs/body/headers；`routing-executor.ts` 无分页/postReceive/preSend/二进制 → SaaS 节点凡翻页/响应转换都退回写 `execute()`，拿不到声明式的规模化红利。
