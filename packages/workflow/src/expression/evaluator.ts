@@ -37,14 +37,6 @@ export interface IExpressionContext {
   };
 }
 
-/** $fromAI 声明的参数类型 → JSON schema 类型 + 占位值。 */
-const FROM_AI_TYPES: Record<string, { schema: string; placeholder: unknown }> = {
-  string: { schema: 'string', placeholder: '' },
-  number: { schema: 'number', placeholder: 0 },
-  boolean: { schema: 'boolean', placeholder: false },
-  json: { schema: 'object', placeholder: {} },
-};
-
 const EXPRESSION_MARKER = '=';
 const TEMPLATE_RE = /\{\{([\s\S]+?)\}\}/g;
 
@@ -65,61 +57,32 @@ function nodeOutputItems(runData: IRunData, nodeName: string): INodeExecutionDat
  * .item = 按 pairedItem 血缘定位「当前 item 在该节点里的来源 item」（#21）,
  * 血缘断链/走不到时回退首 item（与 .json 同口径,不让表达式硬崩）。
  */
-function nodeAccessor(ctx: IExpressionContext, name: string): Record<string, unknown> {
+function nodeAccessorData(ctx: IExpressionContext, name: string): Record<string, unknown> {
   const items = nodeOutputItems(ctx.runData, name);
   return {
-    json: items[0]?.json ?? {},
-    first: () => items[0],
-    last: () => items[items.length - 1],
-    all: () => items,
-    itemMatching: (i: number) => items[i],
-    get item(): INodeExecutionData | undefined {
-      const prev = ctx.prevNode?.name;
-      if (!prev) return items[0];
-      if (prev === name) return items[ctx.itemIndex] ?? items[0]; // 直接上游:同序直取
-      return itemInAncestor(ctx.runData, prev, ctx.itemIndex, name) ?? items[0];
-    },
+    items,
+    item: (() => {
+      const previousNode = ctx.prevNode?.name;
+      if (!previousNode) return items[0];
+      if (previousNode === name) return items[ctx.itemIndex] ?? items[0];
+      return itemInAncestor(ctx.runData, previousNode, ctx.itemIndex, name) ?? items[0];
+    })(),
   };
 }
 
-/** 构造表达式作用域（白名单变量，全部为纯数据/纯函数）。 */
+/** 构造表达式作用域（仅纯数据，跨 VM 边界时会再次 JSON 深拷贝）。 */
 function buildScope(ctx: IExpressionContext): Record<string, unknown> {
-  const $node = new Proxy(
-    {},
-    {
-      get: (_t, name: string | symbol) =>
-        typeof name === 'string' ? nodeAccessor(ctx, name) : undefined,
-      has: () => true,
-    },
+  const nodeData = Object.fromEntries(
+    Object.keys(ctx.runData).map((name) => [name, nodeAccessorData(ctx, name)]),
   );
 
   return {
     $json: ctx.json,
     $itemIndex: ctx.itemIndex,
     $items: ctx.items,
-    $node,
-    // $('Name') 形式与 $node["Name"] 等价
-    $: (name: string) => nodeAccessor(ctx, name),
-    // 当前节点输入的一等访问（#20,item = 当前 item 整体,含 json/binary）
-    $input: {
-      all: () => ctx.items,
-      first: () => ctx.items[0],
-      last: () => ctx.items[ctx.items.length - 1],
-      item: ctx.items[ctx.itemIndex],
-      length: ctx.items.length,
-    },
+    __nodeData: nodeData,
     $runIndex: ctx.runIndex ?? 0,
     $prevNode: ctx.prevNode ?? {},
-    // #19 $fromAI(name, description?, type?):AI 工具让模型在调用时填此参数
-    $fromAI: (name: string, description = '', type = 'string') => {
-      const fai = ctx.fromAI;
-      if (fai?.provided && name in fai.provided) return fai.provided[name];
-      if (fai?.collect) {
-        fai.collect(name, description, type);
-        return FROM_AI_TYPES[type]?.placeholder ?? '';
-      }
-      return undefined; // AI 上下文之外:安全降级
-    },
     $now: new Date().toISOString(),
     $workflow: { id: ctx.workflow.id, name: ctx.workflow.name },
     $vars: ctx.vars ?? {},
@@ -127,6 +90,15 @@ function buildScope(ctx: IExpressionContext): Record<string, unknown> {
     $execution: ctx.execution ?? {},
     items: ctx.items,
   };
+}
+
+function evaluate(expression: string, scope: Record<string, unknown>, ctx: IExpressionContext): unknown {
+  return evaluateInSandbox(expression, scope, {
+    fromAi: {
+      provided: ctx.fromAI?.provided,
+      collect: ctx.fromAI?.collect,
+    },
+  });
 }
 
 /** 值是否是表达式（以 '=' 开头的字符串，如 "={{ $json.a }}"）。 */
@@ -158,11 +130,11 @@ export function resolveParameterValue(value: unknown, ctx: IExpressionContext): 
   // 整串恰好是单个 {{ expr }} → 保留原始类型（内部不得再含 }} 分界）
   const single = /^\{\{([\s\S]+)\}\}$/.exec(template.trim());
   if (single && !single[1]!.includes('}}')) {
-    return evaluateInSandbox(single[1]!.trim(), scope);
+    return evaluate(single[1]!.trim(), scope, ctx);
   }
 
   return template.replace(TEMPLATE_RE, (_m, expr: string) => {
-    const result = evaluateInSandbox(expr.trim(), scope);
+    const result = evaluate(expr.trim(), scope, ctx);
     return result === null || result === undefined ? '' : String(result);
   });
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { IExpressionContext } from './evaluator.js';
 import { resolveParameterValue } from './evaluator.js';
-import { ExpressionError } from './sandbox.js';
+import { evaluateInSandbox, ExpressionError } from './sandbox.js';
 
 function ctx(json: Record<string, unknown> = {}, runData: IExpressionContext['runData'] = {}): IExpressionContext {
   return {
@@ -71,6 +71,8 @@ describe('表达式沙箱（验收项：拦截危险访问）', () => {
     '={{ ({}).constructor.constructor("return 1")() }}',
     '={{ eval("1") }}',
     '={{ Function("return 1")() }}',
+    `={{ []['con'+'structor']['con'+'structor']('return this')() }}`,
+    `={{ ({})['con'+'structor']['con'+'structor']('return process')() }}`,
   ];
 
   for (const expr of dangerous) {
@@ -81,6 +83,24 @@ describe('表达式沙箱（验收项：拦截危险访问）', () => {
 
   it('正常算术/字符串操作不受影响', () => {
     expect(resolveParameterValue('={{ [1,2,3].map(x => x * 2).join(",") }}', ctx())).toBe('2,4,6');
+  });
+
+  it('死循环触发硬超时且后续表达式仍可求值', () => {
+    expect(() => evaluateInSandbox('while(true){}', {}, { timeoutMs: 100 })).toThrowError(/超时/);
+    expect(resolveParameterValue('={{ 1 + 1 }}', ctx())).toBe(2);
+  });
+
+  it('内存限制阻断资源耗尽且不影响宿主进程', () => {
+    expect(() => evaluateInSandbox(
+      'new ArrayBuffer(32 * 1024 * 1024)',
+      {},
+      { timeoutMs: 500, memoryLimitBytes: 8 * 1024 * 1024 },
+    )).toThrow(ExpressionError);
+    expect(resolveParameterValue('={{ 6 * 7 }}', ctx())).toBe(42);
+  });
+
+  it('函数结果被拒绝，执行状态不会混入不可序列化值', () => {
+    expect(() => resolveParameterValue('={{ () => 1 }}', ctx())).toThrowError(/不可序列化/);
   });
 });
 

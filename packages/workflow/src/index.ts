@@ -14,6 +14,7 @@ export * from './node-settings.js';
 export { Workflow } from './workflow.js';
 export type { IWorkflowInit, IIncomingConnection } from './workflow.js';
 export { ExpressionError, evaluateInSandbox } from './expression/sandbox.js';
+export type { IExpressionSandboxOptions } from './expression/sandbox.js';
 export { isExpression, resolveParameterValue } from './expression/evaluator.js';
 export type { IExpressionContext } from './expression/evaluator.js';
 export { itemInAncestor, traceLineage } from './expression/paired-item.js';
