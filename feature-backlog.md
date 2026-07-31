@@ -130,10 +130,7 @@
 
 - [x] **50. 文件 IO 六件套：Read/Write File / Extract from File / Convert to File / Compression / FTP / Edit Image** `L` ✅ 2026-07-31（新增六个声明式文件节点：本地读写以 `NOMOPS_FILES_ROOT` 约束相对路径并拒绝穿越/符号链接，CSV/JSON/XLSX/PDF/Text 双向格式处理，ZIP/GZIP 压缩解压含条目数与解压体积上限，FTP/SFTP 上传/下载/列目录且凭证明文不进错误，Sharp 缩放/裁剪/文字水印；新增 15 节点单测 + 1 无 HTTP/DB 真实引擎文件回环测 + 1 binary 级联 GC 测，六种引擎拓扑与 schema parity 保持全绿，workflow 29/core 101/nodes 110/db 26/frontend 92/server 608、全量 966 测通过；`pnpm build` 6/6、`pnpm dev` 前后端启动通过，真实 HTTP 完成 items→JSON→磁盘写读→提取→CSV→ZIP 回环、真实 FTP 上传下载列目录与图片产物下载，生产 UI 验证六节点自动上架及 Convert to File NDV，基线 v2.31.0 同视口截图并排比对且 nomops 干净标签控制台零报错；commit `c6ab6b0`）
 
-- [ ] **51. 远程执行 + 邮件三件套：SSH / Send Email / Email Trigger (IMAP)** `M/L`
-  你现有的 Jira 只读运维 Agent 工作流就卡在 SSH 上跑不起来（见 docs/node-catalog-gap.md 用例）。
-  → SSH（远程执行命令/传文件，凭证类型：密码 + 私钥，私钥解密后绝不落库/出日志——铁律 3）、Send Email（SMTP 发信节点，复用 #18 手搓的 SMTP 客户端，凭证走 smtp）、Email Trigger (IMAP)（轮询收件箱触发，依赖轮询触发地基 PollingTrigger）。
-  验收：SSH 对本机容器执行命令回读 stdout；Send Email 经假 SMTP 服务器验证投递；IMAP 触发经轮询拉取新邮件启动执行。
+- [x] **51. 远程执行 + 邮件三件套：SSH / Send Email / Email Trigger (IMAP)** `M/L` ✅ 2026-07-31（新增三个声明式节点：SSH 支持密码/私钥、SHA256 主机指纹、命令执行与 SFTP 上传下载，Send Email 与服务通知复用同一安全 SMTP 客户端，Email Trigger 以 projectId 归属凭证注入、UID 游标/去重、MIME 解析轮询启动工作流；新增 6 节点协议单测 + 1 server 端到端触发测试，覆盖 SMTP/IMAP 真实协议、SSH 操作、明文/Base64 密钥不进错误/API/DB，workflow 29/core 101/nodes 116/db 26/frontend 92/server 609、全量 973 测通过；`pnpm build` 6/6、`pnpm dev` 前后端启动通过，真实 HTTP 完成本机 SSH 容器 stdout 回读、假 SMTP 投递抓包、假 IMAP 拉信触发执行，生产 UI 验证三节点元数据自动上架，基线同内容视口 1280×633 截图并排比对且两侧控制台零报错；commit `0753423`）
 
 - [ ] **52. 触发器补全五件套：Form Trigger / n8n Form / RSS Read / RSS Feed Trigger / SSE Trigger** `M`
   → Form Trigger（生成公开表单页，提交即触发，字段 schema 驱动）、n8n Form（流程内表单页，HITL 场景，多步表单）、RSS Read（拉取解析 feed 为 items）、RSS Feed Trigger（轮询 feed 新条目触发，依赖 PollingTrigger）、SSE Trigger（订阅 SSE 流触发）。命名遵循仓库铁律去 n8n 字样（Form Trigger / Form）。
