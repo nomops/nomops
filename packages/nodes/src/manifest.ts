@@ -18,6 +18,12 @@ import { cryptoDescription } from './nodes/Crypto/Crypto.description.js';
 import { htmlDescription } from './nodes/Html/Html.description.js';
 import { xmlDescription } from './nodes/Xml/Xml.description.js';
 import { markdownDescription } from './nodes/Markdown/Markdown.description.js';
+import { readWriteFileDescription } from './nodes/ReadWriteFile/ReadWriteFile.description.js';
+import { extractFromFileDescription } from './nodes/ExtractFromFile/ExtractFromFile.description.js';
+import { convertToFileDescription } from './nodes/ConvertToFile/ConvertToFile.description.js';
+import { compressionDescription } from './nodes/Compression/Compression.description.js';
+import { ftpDescription } from './nodes/Ftp/Ftp.description.js';
+import { editImageDescription } from './nodes/EditImage/EditImage.description.js';
 import { loopDescription } from './nodes/Loop/Loop.description.js';
 import { mergeDescription } from './nodes/Merge/Merge.description.js';
 import { codeDescription } from './nodes/Code/Code.description.js';
@@ -177,6 +183,36 @@ export const builtinNodeManifest: ILoadableNodeType[] = [
     type: `nomops.${markdownDescription.name}`,
     description: markdownDescription,
     load: () => import('./nodes/Markdown/Markdown.node.js').then((m) => m.Markdown),
+  },
+  {
+    type: `nomops.${readWriteFileDescription.name}`,
+    description: readWriteFileDescription,
+    load: () => import('./nodes/ReadWriteFile/ReadWriteFile.node.js').then((m) => m.ReadWriteFile),
+  },
+  {
+    type: `nomops.${extractFromFileDescription.name}`,
+    description: extractFromFileDescription,
+    load: () => import('./nodes/ExtractFromFile/ExtractFromFile.node.js').then((m) => m.ExtractFromFile),
+  },
+  {
+    type: `nomops.${convertToFileDescription.name}`,
+    description: convertToFileDescription,
+    load: () => import('./nodes/ConvertToFile/ConvertToFile.node.js').then((m) => m.ConvertToFile),
+  },
+  {
+    type: `nomops.${compressionDescription.name}`,
+    description: compressionDescription,
+    load: () => import('./nodes/Compression/Compression.node.js').then((m) => m.Compression),
+  },
+  {
+    type: `nomops.${ftpDescription.name}`,
+    description: ftpDescription,
+    load: () => import('./nodes/Ftp/Ftp.node.js').then((m) => m.Ftp),
+  },
+  {
+    type: `nomops.${editImageDescription.name}`,
+    description: editImageDescription,
+    load: () => import('./nodes/EditImage/EditImage.node.js').then((m) => m.EditImage),
   },
   {
     type: `nomops.${loopDescription.name}`,

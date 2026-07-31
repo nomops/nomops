@@ -1,5 +1,8 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { NodeLoader, WorkflowExecute } from '@nomops/core';
+import { InMemoryBinaryStore, NodeLoader, WorkflowExecute } from '@nomops/core';
 import { builtinNodeManifest } from '@nomops/nodes';
 import type { INode } from '@nomops/workflow';
 import { Workflow } from '@nomops/workflow';
@@ -132,5 +135,41 @@ describe('引擎 × 真实内置节点 集成', () => {
     const run = await new WorkflowExecute(new NodeLoader(builtinNodeManifest)).run(wf);
     const roundTripped = JSON.parse(JSON.stringify(run.data));
     expect(roundTripped).toEqual(run.data);
+  });
+
+  it('items → JSON 文件 → 磁盘写读 → items 二进制全回环', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'nomops-file-engine-'));
+    process.env['NOMOPS_FILES_ROOT'] = root;
+    try {
+      const wf = new Workflow({
+        name: 'integration-file-roundtrip',
+        nodes: [
+          node('Start', 'nomops.manualTrigger'),
+          node('Seed', 'nomops.code', { code: 'return [{ json: { id: 1, name: "一" } }, { json: { id: 2, name: "二" } }];' }),
+          node('Convert', 'nomops.convertToFile', { operation: 'json', fileName: 'items.json', binaryPropertyName: 'data' }),
+          node('Write', 'nomops.readWriteFile', { operation: 'write', filePath: 'roundtrip/items.json', binaryPropertyName: 'data' }),
+          node('Read', 'nomops.readWriteFile', { operation: 'read', filePath: 'roundtrip/items.json', binaryPropertyName: 'data' }),
+          node('Extract', 'nomops.extractFromFile', { operation: 'json', binaryPropertyName: 'data' }),
+        ],
+        connections: {
+          Start: { main: [[to('Seed')]] },
+          Seed: { main: [[to('Convert')]] },
+          Convert: { main: [[to('Write')]] },
+          Write: { main: [[to('Read')]] },
+          Read: { main: [[to('Extract')]] },
+        },
+      });
+      const store = new InMemoryBinaryStore();
+      const run = await new WorkflowExecute(new NodeLoader(builtinNodeManifest), { additionalData: { binaryStore: store } }).run(wf);
+      expect(run.status).toBe('success');
+      expect(run.data.resultData.runData['Extract']![0]!.data!['main']![0]!.map((item) => item.json)).toEqual([
+        { id: 1, name: '一' },
+        { id: 2, name: '二' },
+      ]);
+      expect(() => JSON.stringify(run.data)).not.toThrow();
+    } finally {
+      delete process.env['NOMOPS_FILES_ROOT'];
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

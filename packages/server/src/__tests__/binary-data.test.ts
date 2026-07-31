@@ -65,6 +65,27 @@ describe('二进制数据', () => {
 });
 
 describe('binary 生命周期（#22 GC）', () => {
+  it('文件节点产出的 binary 引用随执行删除回收', async () => {
+    const created = await request(app).post('/api/workflows').set(authed()).send({
+      name: 'file-gc-flow',
+      nodes: [
+        { id: 'a', name: 'Start', type: 'nomops.manualTrigger', typeVersion: 1, position: [0, 0], parameters: {} },
+        { id: 'b', name: 'Convert', type: 'nomops.convertToFile', typeVersion: 1, position: [200, 0], parameters: { operation: 'json', fileName: 'items.json', binaryPropertyName: 'data' } },
+      ],
+      connections: { Start: { main: [[{ node: 'Convert', type: 'main', index: 0 }]] } },
+    }).expect(201);
+    const run = await request(app).post(`/api/workflows/${created.body.id}/run`).set(authed()).send({}).expect(200);
+    const detail = await request(app).get(`/api/executions/${run.body.executionId}`).set(authed()).expect(200);
+    const ref = detail.body.data.resultData.runData['Convert'][0].data.main[0][0].binary.data;
+    expect(ref.id).toBeTruthy();
+    const store = boot.services.executions.getBinaryStore()!;
+    expect(Buffer.from(await store.get(ref.id)).toString()).toContain('{}');
+
+    const projectId = (await request(app).get('/api/me').set(authed()).expect(200)).body.projectId as string;
+    await boot.services.executions.delete(run.body.executionId as string, projectId);
+    await expect(store.get(ref.id as string)).rejects.toMatchObject({ context: { status: 404 } });
+  });
+
   it('删执行记录级联删其 binary;孤儿清理移除无引用 blob', async () => {
     const store = boot.services.executions.getBinaryStore()!;
     const me = await request(app).get('/api/me').set(authed()).expect(200);

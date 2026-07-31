@@ -4,8 +4,11 @@ packages:
 allowBuilds:
   argon2: true
   better-sqlite3: true
+  cpu-features: false
   esbuild: true
   msgpackr-extract: false
+  sharp: true
+  ssh2: true
   vue-demi: true
 
 # 标准 pnpm 的构建放行清单（Docker 构建等无 hook 环境使用）。
@@ -13,4 +16,6 @@ onlyBuiltDependencies:
   - esbuild
   - better-sqlite3
   - argon2
+  - sharp
+  - ssh2
   - vue-demi

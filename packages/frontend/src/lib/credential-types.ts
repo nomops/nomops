@@ -34,6 +34,33 @@ export interface CredentialTypeMeta {
 
 export const CREDENTIAL_TYPES: CredentialTypeMeta[] = [
   {
+    type: 'ftp',
+    displayName: 'FTP',
+    icon: '📁',
+    description: 'Connect to an FTP or FTPS server',
+    fields: [
+      { name: 'host', label: 'Host', type: 'text', required: true },
+      { name: 'port', label: 'Port', type: 'text', default: '21', required: true },
+      { name: 'username', label: 'Username', type: 'text' },
+      { name: 'password', label: 'Password', type: 'password' },
+      { name: 'secure', label: 'Use TLS', type: 'toggle', default: false },
+    ],
+  },
+  {
+    type: 'sftp',
+    displayName: 'SFTP',
+    icon: '🔐',
+    description: 'Connect to an SFTP server with a password or private key',
+    fields: [
+      { name: 'host', label: 'Host', type: 'text', required: true },
+      { name: 'port', label: 'Port', type: 'text', default: '22', required: true },
+      { name: 'username', label: 'Username', type: 'text', required: true },
+      { name: 'password', label: 'Password', type: 'password' },
+      { name: 'privateKey', label: 'Private Key', type: 'password' },
+      { name: 'passphrase', label: 'Passphrase', type: 'password' },
+    ],
+  },
+  {
     type: 'httpHeaderAuth',
     displayName: 'HTTP Header Auth',
     icon: '🔑',

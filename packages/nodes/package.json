@@ -18,15 +18,22 @@
   },
   "dependencies": {
     "@nomops/workflow": "workspace:*",
+    "basic-ftp": "^6.0.2",
     "cheerio": "^1.2.0",
     "cron-parser": "^5.0.0",
+    "exceljs": "^4.4.0",
     "fast-xml-parser": "^5.10.1",
+    "fflate": "^0.8.3",
     "luxon": "^3.7.2",
     "marked": "^18.0.7",
+    "pdfjs-dist": "^6.2.108",
+    "sharp": "^0.35.3",
+    "ssh2-sftp-client": "^12.1.1",
     "turndown": "^7.2.4"
   },
   "devDependencies": {
     "@types/luxon": "^3.7.2",
+    "@types/ssh2-sftp-client": "^9.0.6",
     "@types/turndown": "^5.0.6"
   }
 }
