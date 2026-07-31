@@ -128,10 +128,7 @@
 
 - [x] **49. 日期/加密/文本格式五件套：Date & Time / Crypto / HTML / XML / Markdown** `M/L` ✅ 2026-07-31（新增五个声明式数据变换节点：Date & Time 支持 ISO/自定义/Unix 解析、格式化、加减与 IANA 时区，Crypto 支持 SHA/HMAC/Base64/UUID 及 scrypt+AES-256-GCM 对称加解密，HTML 支持 CSS 选择器提取与转义安全的文本转 HTML，XML 支持 JSON 双向转换并拒绝 DTD/实体声明，Markdown 支持 md↔html；输出路径统一拒绝原型污染段，新增 12 节点单测覆盖闰日/DST、Unicode 编码、错误密钥和 XML 实体边界，workflow 29/core 101/nodes 95/db 26/frontend 92/server 606、全量 949 测通过；`pnpm build` 6/6、`pnpm dev` 前后端启动通过，真实 HTTP 串联五节点执行成功，生产 UI 验证数据变换分类自动上架、`timezone` 别名搜索与 Date & Time NDV，基线 v2.31.0 同视口截图并排比对且干净标签控制台零报错；commit `c3a6c69`）
 
-- [ ] **50. 文件 IO 六件套：Read/Write File / Extract from File / Convert to File / Compression / FTP / Edit Image** `L`
-  依赖 #22 已建的 binary 数据生命周期（IBinaryDataStore）。
-  → Read/Write Files from Disk（本地读写，路径白名单/沙箱约束）、Extract from File（csv/json/xlsx/pdf/text 解析出 items）、Convert to File（items→csv/json/xlsx/二进制）、Compression（zip/gzip 压缩解压）、FTP（上传/下载/列目录，凭证类型 ftp/sftp）、Edit Image（缩放/裁剪/水印，需图像库，最重可末位排期）。
-  验收：二进制往返（写→读、items→file→extract 回环）经端到端测；binary 引用被 #22 的级联 GC 正确回收。
+- [x] **50. 文件 IO 六件套：Read/Write File / Extract from File / Convert to File / Compression / FTP / Edit Image** `L` ✅ 2026-07-31（新增六个声明式文件节点：本地读写以 `NOMOPS_FILES_ROOT` 约束相对路径并拒绝穿越/符号链接，CSV/JSON/XLSX/PDF/Text 双向格式处理，ZIP/GZIP 压缩解压含条目数与解压体积上限，FTP/SFTP 上传/下载/列目录且凭证明文不进错误，Sharp 缩放/裁剪/文字水印；新增 15 节点单测 + 1 无 HTTP/DB 真实引擎文件回环测 + 1 binary 级联 GC 测，六种引擎拓扑与 schema parity 保持全绿，workflow 29/core 101/nodes 110/db 26/frontend 92/server 608、全量 966 测通过；`pnpm build` 6/6、`pnpm dev` 前后端启动通过，真实 HTTP 完成 items→JSON→磁盘写读→提取→CSV→ZIP 回环、真实 FTP 上传下载列目录与图片产物下载，生产 UI 验证六节点自动上架及 Convert to File NDV，基线 v2.31.0 同视口截图并排比对且 nomops 干净标签控制台零报错；commit `c6ab6b0`）
 
 - [ ] **51. 远程执行 + 邮件三件套：SSH / Send Email / Email Trigger (IMAP)** `M/L`
   你现有的 Jira 只读运维 Agent 工作流就卡在 SSH 上跑不起来（见 docs/node-catalog-gap.md 用例）。
