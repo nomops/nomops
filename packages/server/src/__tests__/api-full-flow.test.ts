@@ -238,6 +238,8 @@ describe('node-types', () => {
       'chatTrigger',
       'code',
       'compareDatasets',
+      'crypto',
+      'dateTime',
       'errorTrigger',
       'evaluation',
       'evaluationTrigger',
@@ -247,12 +249,14 @@ describe('node-types', () => {
       'github',
       'googleSheets',
       'hackerNews',
+      'html',
       'httpRequest',
       'httpTool',
       'if',
       'limit',
       'loop',
       'manualTrigger',
+      'markdown',
       'merge',
       'noOp',
       'notion',
@@ -275,6 +279,7 @@ describe('node-types', () => {
       'wait',
       'webhook',
       'windowMemory',
+      'xml',
     ]);
   });
 });

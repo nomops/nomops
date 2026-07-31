@@ -13,6 +13,11 @@ import { removeDuplicatesDescription } from './nodes/RemoveDuplicates/RemoveDupl
 import { renameKeysDescription } from './nodes/RenameKeys/RenameKeys.description.js';
 import { summarizeDescription } from './nodes/Summarize/Summarize.description.js';
 import { compareDatasetsDescription } from './nodes/CompareDatasets/CompareDatasets.description.js';
+import { dateTimeDescription } from './nodes/DateTime/DateTime.description.js';
+import { cryptoDescription } from './nodes/Crypto/Crypto.description.js';
+import { htmlDescription } from './nodes/Html/Html.description.js';
+import { xmlDescription } from './nodes/Xml/Xml.description.js';
+import { markdownDescription } from './nodes/Markdown/Markdown.description.js';
 import { loopDescription } from './nodes/Loop/Loop.description.js';
 import { mergeDescription } from './nodes/Merge/Merge.description.js';
 import { codeDescription } from './nodes/Code/Code.description.js';
@@ -147,6 +152,31 @@ export const builtinNodeManifest: ILoadableNodeType[] = [
     type: `nomops.${compareDatasetsDescription.name}`,
     description: compareDatasetsDescription,
     load: () => import('./nodes/CompareDatasets/CompareDatasets.node.js').then((m) => m.CompareDatasets),
+  },
+  {
+    type: `nomops.${dateTimeDescription.name}`,
+    description: dateTimeDescription,
+    load: () => import('./nodes/DateTime/DateTime.node.js').then((m) => m.DateTime),
+  },
+  {
+    type: `nomops.${cryptoDescription.name}`,
+    description: cryptoDescription,
+    load: () => import('./nodes/Crypto/Crypto.node.js').then((m) => m.Crypto),
+  },
+  {
+    type: `nomops.${htmlDescription.name}`,
+    description: htmlDescription,
+    load: () => import('./nodes/Html/Html.node.js').then((m) => m.Html),
+  },
+  {
+    type: `nomops.${xmlDescription.name}`,
+    description: xmlDescription,
+    load: () => import('./nodes/Xml/Xml.node.js').then((m) => m.Xml),
+  },
+  {
+    type: `nomops.${markdownDescription.name}`,
+    description: markdownDescription,
+    load: () => import('./nodes/Markdown/Markdown.node.js').then((m) => m.Markdown),
   },
   {
     type: `nomops.${loopDescription.name}`,

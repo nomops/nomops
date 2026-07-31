@@ -1,0 +1,60 @@
+import type { INodeTypeDescription } from '@nomops/workflow';
+
+export const xmlDescription: INodeTypeDescription = {
+  displayName: 'XML',
+  name: 'xml',
+  group: ['transform'],
+  categories: ['dataTransformation'],
+  aliases: ['parse xml', 'build xml', 'json xml'],
+  version: 1,
+  description: 'Convert data between XML and JSON',
+  defaults: { name: 'XML' },
+  inputs: ['main'],
+  outputs: ['main'],
+  properties: [
+    {
+      displayName: 'Mode',
+      name: 'mode',
+      type: 'options',
+      default: 'xmlToJson',
+      noDataExpression: true,
+      options: [
+        { name: 'XML to JSON', value: 'xmlToJson' },
+        { name: 'JSON to XML', value: 'jsonToXml' },
+      ],
+    },
+    {
+      displayName: 'Source Field',
+      name: 'sourceField',
+      type: 'string',
+      default: 'data',
+      required: true,
+      description: 'Field containing the XML string or JSON value',
+    },
+    {
+      displayName: 'Root Element',
+      name: 'rootName',
+      type: 'string',
+      default: 'root',
+      required: true,
+      displayOptions: { show: { mode: ['jsonToXml'] } },
+      description: 'Root element used for generated XML',
+    },
+    {
+      displayName: 'Format Output',
+      name: 'format',
+      type: 'boolean',
+      default: true,
+      displayOptions: { show: { mode: ['jsonToXml'] } },
+      description: 'Pretty-print generated XML',
+    },
+    {
+      displayName: 'Output Field',
+      name: 'outputField',
+      type: 'string',
+      default: 'data',
+      required: true,
+      description: 'Field that receives the converted value',
+    },
+  ],
+};

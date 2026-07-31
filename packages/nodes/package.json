@@ -18,6 +18,15 @@
   },
   "dependencies": {
     "@nomops/workflow": "workspace:*",
-    "cron-parser": "^5.0.0"
+    "cheerio": "^1.2.0",
+    "cron-parser": "^5.0.0",
+    "fast-xml-parser": "^5.10.1",
+    "luxon": "^3.7.2",
+    "marked": "^18.0.7",
+    "turndown": "^7.2.4"
+  },
+  "devDependencies": {
+    "@types/luxon": "^3.7.2",
+    "@types/turndown": "^5.0.6"
   }
 }

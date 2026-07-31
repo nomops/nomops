@@ -1,0 +1,91 @@
+import type { INodeTypeDescription } from '@nomops/workflow';
+
+export const htmlDescription: INodeTypeDescription = {
+  displayName: 'HTML',
+  name: 'html',
+  group: ['transform'],
+  categories: ['dataTransformation'],
+  aliases: ['css selector', 'extract html', 'text to html'],
+  version: 1,
+  description: 'Extract HTML content with CSS selectors or convert text to HTML',
+  defaults: { name: 'HTML' },
+  inputs: ['main'],
+  outputs: ['main'],
+  properties: [
+    {
+      displayName: 'Operation',
+      name: 'operation',
+      type: 'options',
+      default: 'extract',
+      noDataExpression: true,
+      options: [
+        { name: 'Extract with CSS Selectors', value: 'extract' },
+        { name: 'Text to HTML', value: 'textToHtml' },
+      ],
+    },
+    {
+      displayName: 'Source Field',
+      name: 'sourceField',
+      type: 'string',
+      default: 'data',
+      required: true,
+      description: 'Field containing the source HTML or text',
+    },
+    {
+      displayName: 'Extraction Values',
+      name: 'extractionValues',
+      type: 'fixedCollection',
+      default: { values: [] },
+      required: true,
+      placeholder: 'Add Extraction Value',
+      displayOptions: { show: { operation: ['extract'] } },
+      typeOptions: { multipleValues: true, sortable: true, fixedCollection: { itemTitle: 'Extraction', layout: 'vertical' } },
+      options: [
+        {
+          name: 'values',
+          value: 'values',
+          values: [
+            { displayName: 'Output Field', name: 'outputField', type: 'string', default: '', required: true },
+            { displayName: 'CSS Selector', name: 'cssSelector', type: 'string', default: '', required: true, placeholder: '.price' },
+            {
+              displayName: 'Return Value',
+              name: 'returnValue',
+              type: 'options',
+              default: 'text',
+              options: [
+                { name: 'Text', value: 'text' },
+                { name: 'Inner HTML', value: 'html' },
+                { name: 'Attribute', value: 'attribute' },
+              ],
+            },
+            {
+              displayName: 'Attribute',
+              name: 'attribute',
+              type: 'string',
+              default: '',
+              displayOptions: { show: { returnValue: ['attribute'] } },
+            },
+            { displayName: 'Return Array', name: 'returnArray', type: 'boolean', default: false },
+          ],
+        },
+      ],
+    },
+    {
+      displayName: 'Clean Up Text',
+      name: 'cleanUpText',
+      type: 'boolean',
+      default: true,
+      displayOptions: { show: { operation: ['extract'] } },
+      description: 'Trim and collapse whitespace in extracted text',
+    },
+    {
+      displayName: 'Output Field',
+      name: 'outputField',
+      type: 'string',
+      default: 'html',
+      required: true,
+      displayOptions: { show: { operation: ['textToHtml'] } },
+      description: 'Field that receives generated HTML',
+    },
+  ],
+};

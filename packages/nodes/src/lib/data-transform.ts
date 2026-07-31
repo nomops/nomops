@@ -25,6 +25,9 @@ export function cloneJsonObject(value: JsonObject): JsonObject {
 export function setPath(target: JsonObject, path: string, value: unknown): void {
   const segments = path.split('.').map((segment) => segment.trim()).filter(Boolean);
   if (segments.length === 0) return;
+  if (segments.some((segment) => segment === '__proto__' || segment === 'prototype' || segment === 'constructor')) {
+    throw new OperationalError('Output path contains a forbidden segment', {});
+  }
 
   let current = target;
   for (const segment of segments.slice(0, -1)) {

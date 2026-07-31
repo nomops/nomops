@@ -20,6 +20,8 @@ describe('内置节点通过加载器可用', () => {
       'chatTrigger',
       'code',
       'compareDatasets',
+      'crypto',
+      'dateTime',
       'errorTrigger',
       'evaluation',
       'evaluationTrigger',
@@ -29,12 +31,14 @@ describe('内置节点通过加载器可用', () => {
       'github',
       'googleSheets',
       'hackerNews',
+      'html',
       'httpRequest',
       'httpTool',
       'if',
       'limit',
       'loop',
       'manualTrigger',
+      'markdown',
       'merge',
       'noOp',
       'notion',
@@ -57,6 +61,7 @@ describe('内置节点通过加载器可用', () => {
       'wait',
       'webhook',
       'windowMemory',
+      'xml',
     ]);
   });
 
