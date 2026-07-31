@@ -124,10 +124,7 @@
 
 > n8n 面板 Core Nodes 共 53 个，nomops 已覆盖 19（#5/#6 批次 + 基础节点），缺 34。这 34 个是任何工作流都可能用到的平台骨架，逐个对照见 `docs/node-catalog-gap.md`。按批次粒度拆为 #48-54，优先级由高到低。app 集成（355）与 AI/RAG（101）不在此节，走独立框架/排期。
 
-- [ ] **48. 数据变换六件套：Sort / Limit / Remove Duplicates / Rename Keys / Summarize / Compare Datasets** `M/L`
-  纯内存转换，引擎侧实现，零外部依赖——对标已完成的 #5 五件套，ROI 最高。
-  → Sort（多字段排序/自定义比较）、Limit（截断 N 条）、Remove Duplicates（按字段去重，跨执行去重可后置）、Rename Keys（键改名/正则）、Summarize（分组聚合 sum/avg/count/concat）、Compare Datasets（双输入 diff：同/异/仅左/仅右四路输出，参照 Merge 的多输入契约）。
-  验收：六节点各自单测；Compare Datasets 四路输出拓扑经引擎全链路测。
+- [x] **48. 数据变换六件套：Sort / Limit / Remove Duplicates / Rename Keys / Summarize / Compare Datasets** `M/L` ✅ 2026-07-31（新增六个声明式纯内存节点：Sort 多字段/自定义序、Limit 首尾截断、Remove Duplicates 全字段/指定字段/排除字段且可保留首末、Rename Keys 深路径+受限正则、Summarize 分组 sum/avg/count/concat、Compare Datasets 双输入同/异/仅左/仅右四路；共享稳定序列化与字段路径工具，跨执行去重按条目约定后置；新增 16 节点单测 + 1 无 HTTP/DB 真实引擎四路拓扑测，六种引擎拓扑保持全绿，workflow 29/core 101/nodes 83/db 26/frontend 92/server 606、全量 937 测通过；真实 HTTP 回环验证六节点元数据与 Compare 四路执行输出，`pnpm dev` 启动通过，生产 UI 验证数据变换分类自动上架、`diff datasets` 别名搜索、fixedCollection 参数控件，基线 v2.31.0 同视口截图并排比对且最终控制台零报错；commit `bdd5733`）
 
 - [ ] **49. 日期/加密/文本格式五件套：Date & Time / Crypto / HTML / XML / Markdown** `M/L`
   带轻量 helper 库的转换节点。
