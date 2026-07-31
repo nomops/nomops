@@ -75,6 +75,53 @@ describe('引擎 × 真实内置节点 集成', () => {
     ]);
   });
 
+  it('Compare Datasets 等待双输入并把结果分发到四个输出', async () => {
+    const wf = new Workflow({
+      name: 'integration-compare-datasets',
+      nodes: [
+        node('Start', 'nomops.manualTrigger'),
+        node('Input A', 'nomops.noOp'),
+        node('Input B', 'nomops.noOp'),
+        node('Compare', 'nomops.compareDatasets', {
+          matchFields: { values: [{ fieldA: 'id', fieldB: 'id' }] },
+        }),
+        node('Only A', 'nomops.noOp'),
+        node('Same', 'nomops.noOp'),
+        node('Different', 'nomops.noOp'),
+        node('Only B', 'nomops.noOp'),
+      ],
+      connections: {
+        Start: { main: [[to('Input A'), to('Input B')]] },
+        'Input A': { main: [[to('Compare', 0)]] },
+        'Input B': { main: [[to('Compare', 1)]] },
+        Compare: { main: [[to('Only A')], [to('Same')], [to('Different')], [to('Only B')]] },
+      },
+      pinData: {
+        'Input A': [
+          { json: { id: 1, value: 'same' } },
+          { json: { id: 2, value: 'before' } },
+          { json: { id: 3, value: 'left' } },
+        ],
+        'Input B': [
+          { json: { id: 1, value: 'same' } },
+          { json: { id: 2, value: 'after' } },
+          { json: { id: 4, value: 'right' } },
+        ],
+      },
+    });
+
+    const run = await new WorkflowExecute(new NodeLoader(builtinNodeManifest)).run(wf);
+    expect(run.status).toBe('success');
+    const runData = run.data.resultData.runData;
+    expect(runData['Compare']).toHaveLength(1);
+    expect(runData['Only A']![0]!.data!['main']![0]!.map((item) => item.json)).toEqual([{ id: 3, value: 'left' }]);
+    expect(runData['Same']![0]!.data!['main']![0]!.map((item) => item.json)).toEqual([{ id: 1, value: 'same' }]);
+    expect(runData['Different']![0]!.data!['main']![0]!.map((item) => item.json)).toEqual([
+      { inputA: { id: 2, value: 'before' }, inputB: { id: 2, value: 'after' } },
+    ]);
+    expect(runData['Only B']![0]!.data!['main']![0]!.map((item) => item.json)).toEqual([{ id: 4, value: 'right' }]);
+  });
+
   it('执行状态整体 JSON 序列化安全（铁律4）', async () => {
     const wf = new Workflow({
       name: 'integration-serializable',

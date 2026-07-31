@@ -7,6 +7,12 @@ import { switchDescription } from './nodes/Switch/Switch.description.js';
 import { filterDescription } from './nodes/Filter/Filter.description.js';
 import { splitOutDescription } from './nodes/SplitOut/SplitOut.description.js';
 import { aggregateDescription } from './nodes/Aggregate/Aggregate.description.js';
+import { sortDescription } from './nodes/Sort/Sort.description.js';
+import { limitDescription } from './nodes/Limit/Limit.description.js';
+import { removeDuplicatesDescription } from './nodes/RemoveDuplicates/RemoveDuplicates.description.js';
+import { renameKeysDescription } from './nodes/RenameKeys/RenameKeys.description.js';
+import { summarizeDescription } from './nodes/Summarize/Summarize.description.js';
+import { compareDatasetsDescription } from './nodes/CompareDatasets/CompareDatasets.description.js';
 import { loopDescription } from './nodes/Loop/Loop.description.js';
 import { mergeDescription } from './nodes/Merge/Merge.description.js';
 import { codeDescription } from './nodes/Code/Code.description.js';
@@ -111,6 +117,36 @@ export const builtinNodeManifest: ILoadableNodeType[] = [
     type: `nomops.${aggregateDescription.name}`,
     description: aggregateDescription,
     load: () => import('./nodes/Aggregate/Aggregate.node.js').then((m) => m.Aggregate),
+  },
+  {
+    type: `nomops.${sortDescription.name}`,
+    description: sortDescription,
+    load: () => import('./nodes/Sort/Sort.node.js').then((m) => m.Sort),
+  },
+  {
+    type: `nomops.${limitDescription.name}`,
+    description: limitDescription,
+    load: () => import('./nodes/Limit/Limit.node.js').then((m) => m.Limit),
+  },
+  {
+    type: `nomops.${removeDuplicatesDescription.name}`,
+    description: removeDuplicatesDescription,
+    load: () => import('./nodes/RemoveDuplicates/RemoveDuplicates.node.js').then((m) => m.RemoveDuplicates),
+  },
+  {
+    type: `nomops.${renameKeysDescription.name}`,
+    description: renameKeysDescription,
+    load: () => import('./nodes/RenameKeys/RenameKeys.node.js').then((m) => m.RenameKeys),
+  },
+  {
+    type: `nomops.${summarizeDescription.name}`,
+    description: summarizeDescription,
+    load: () => import('./nodes/Summarize/Summarize.node.js').then((m) => m.Summarize),
+  },
+  {
+    type: `nomops.${compareDatasetsDescription.name}`,
+    description: compareDatasetsDescription,
+    load: () => import('./nodes/CompareDatasets/CompareDatasets.node.js').then((m) => m.CompareDatasets),
   },
   {
     type: `nomops.${loopDescription.name}`,
