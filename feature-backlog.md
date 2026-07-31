@@ -160,10 +160,7 @@
 
 > 全局清单 🔴 必补里的安全踩坑集中在此，最高优先。多为「偏离了基线验证过的隔离/校验做法」的高危项；单租户自托管风险较低、多租户 Cloud 高危。
 
-- [ ] **55. 表达式引擎真隔离 + 超时** `L`（🔴 R1）
-  踩坑·高危(多租户 Cloud)：`packages/workflow/src/expression/sandbox.ts:58` 用 `new Function` + 正则黑名单，被 `[]['con'+'structor']['con'+'structor']('return this')()` 击穿，PoC 读到真实 `process.env`；无超时，`{{ while(true){} }}` 挂死 worker。数据经 scope 绑定非拼接，逃逸需恶意工作流作者。
-  → 弃 `new Function` + 正则，改 isolated-vm 或复用 Code 节点已验证的子进程 runner（`packages/nodes/src/nodes/Code/Code.node.ts:34`）+ 求值超时/内存限制；补拼接/计算属性/死循环逃逸测试。
-  验收：`[]['con'+'structor']…` PoC 被拦；`{{ while(true){} }}` 超时不挂 worker。
+- [x] **55. 表达式引擎真隔离 + 超时** `L`（🔴 R1）✅ 2026-07-31（以 QuickJS/WASM 独立堆与全局域替换 `new Function` + 正则黑名单；作用域只经 JSON 深拷贝跨界，`$node`/`$input`/`$fromAI` 在隔离域内重建，不暴露宿主对象或函数；默认 5s/64MB/512KB 硬超时、内存与栈限制，Function 家族构造链及危险全局封锁，函数等不可序列化结果拒绝进入执行状态；新增 5 项拼接构造器/计算属性/死循环/内存耗尽/不可序列化回归，workflow 29 测、全量 906 测通过；构建产物活体验证正常求值 42、PoC 5ms 被拦、死循环 100ms 熔断且后续仍返回 42，`pnpm dev` + `/healthz` 通过；commit `37708ea`）
 
 - [ ] **56. HTTP 出站 SSRF 防护（连接期真实 IP 校验）** `M`（🔴 R2）
   踩坑·高危：`packages/core/src/execution-engine/node-execution-context.ts:170` `defaultHttpRequest` = `new URL()`→`fetch()`，无 IP 校验、默认跟随重定向；`HttpRequest.node.ts` 直传用户 URL → 可打 `169.254.169.254` 云 metadata / `127.0.0.1` / RFC1918。
