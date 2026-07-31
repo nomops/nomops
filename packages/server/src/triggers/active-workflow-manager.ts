@@ -1,6 +1,6 @@
 import type { Repositories, Workflow as WorkflowRow } from '@nomops/db';
 import type { INodeLoader } from '@nomops/core';
-import { defaultHttpRequest } from '@nomops/core';
+import { defaultHttpRequest, defaultOpenEventStream } from '@nomops/core';
 import type {
   INode,
   INodeExecutionData,
@@ -262,6 +262,7 @@ export class ActiveWorkflowManager {
         }
         return data as JsonObject;
       },
+      helpers: { openEventStream: defaultOpenEventStream },
     };
   }
 

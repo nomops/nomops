@@ -1,5 +1,7 @@
 import type {
   IBinaryData,
+  IEventStreamMessage,
+  IEventStreamOptions,
   IExecuteContext,
   IHttpRequestOptions,
   INode,
@@ -196,6 +198,78 @@ export async function defaultHttpRequest(options: IHttpRequestOptions): Promise<
     });
   }
   return body;
+}
+
+/**
+ * 打开 SSE 流并逐事件回调。返回关闭函数，供触发器停用/关机时中断连接。
+ * 这里只实现协议，不持有工作流或服务状态；出站策略由 server 后续可注入替换。
+ */
+export async function defaultOpenEventStream(
+  options: IEventStreamOptions,
+  onMessage: (message: IEventStreamMessage) => void,
+): Promise<() => Promise<void>> {
+  const controller = new AbortController();
+  const response = await fetch(options.url, {
+    headers: { accept: 'text/event-stream', ...options.headers },
+    signal: controller.signal,
+  });
+  if (!response.ok || !response.body) {
+    controller.abort();
+    throw new OperationalError(`SSE HTTP ${response.status} ${response.statusText}`, {
+      url: options.url,
+      status: response.status,
+    });
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let closed = false;
+
+  const consume = async (): Promise<void> => {
+    try {
+      while (!closed) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
+        let boundary = buffer.indexOf('\n\n');
+        while (boundary >= 0) {
+          const block = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+          const data: string[] = [];
+          let event: string | undefined;
+          let id: string | undefined;
+          let retry: number | undefined;
+          for (const line of block.split('\n')) {
+            if (!line || line.startsWith(':')) continue;
+            const separator = line.indexOf(':');
+            const field = separator < 0 ? line : line.slice(0, separator);
+            const valueText = separator < 0 ? '' : line.slice(separator + 1).replace(/^ /, '');
+            if (field === 'data') data.push(valueText);
+            else if (field === 'event') event = valueText;
+            else if (field === 'id') id = valueText;
+            else if (field === 'retry' && /^\d+$/.test(valueText)) retry = Number(valueText);
+          }
+          if (data.length > 0) onMessage({ data: data.join('\n'), ...(event ? { event } : {}), ...(id ? { id } : {}), ...(retry !== undefined ? { retry } : {}) });
+          boundary = buffer.indexOf('\n\n');
+        }
+      }
+    } catch (error) {
+      if (!closed && !(error instanceof DOMException && error.name === 'AbortError')) throw error;
+    } finally {
+      reader.releaseLock();
+    }
+  };
+  void consume().catch((error: Error) => {
+    if (!closed) console.error('[nomops] SSE stream failed:', error.message);
+  });
+
+  return async () => {
+    if (closed) return;
+    closed = true;
+    controller.abort();
+    await reader.cancel().catch(() => undefined);
+  };
 }
 
 /**

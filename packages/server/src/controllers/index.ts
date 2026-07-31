@@ -1,7 +1,15 @@
 import { timingSafeEqual } from 'node:crypto';
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import type { ZodTypeAny, z } from 'zod';
-import type { JsonObject } from '@nomops/workflow';
+import type {
+  INode,
+  INodeExecutionData,
+  IRunExecutionData,
+  IWebhookContext,
+  IWebhookRequest,
+  IWebhookResponseData,
+  JsonObject,
+} from '@nomops/workflow';
 import { OperationalError } from '@nomops/workflow';
 import type { AppServices } from '../app-services.js';
 import {
@@ -2895,6 +2903,48 @@ export function createApiRouter(services: AppServices): Router {
  */
 export function createWebhookRouter(services: AppServices): Router {
   const router = Router();
+  const requestOf = (req: Request, path: string): IWebhookRequest => ({
+    method: req.method.toUpperCase(),
+    path,
+    headers: Object.fromEntries(
+      Object.entries(req.headers).filter((entry): entry is [string, string | string[]] => entry[1] !== undefined),
+    ),
+    query: Object.fromEntries(
+      Object.entries(req.query).map(([key, value]) => [
+        key,
+        Array.isArray(value) ? value.map(String) : String(value ?? ''),
+      ]),
+    ),
+    body: req.body ?? {},
+  });
+  const sendResponse = (res: Response, response: IWebhookResponseData): void => {
+    res.status(response.statusCode ?? 200);
+    for (const [name, value] of Object.entries(response.headers ?? {})) res.setHeader(name, value);
+    if (response.body === null || response.body === undefined) {
+      res.end();
+      return;
+    }
+    if (response.contentType) res.type(response.contentType);
+    if (typeof response.body === 'string' || response.contentType?.startsWith('text/')) {
+      res.send(String(response.body));
+      return;
+    }
+    res.json(response.body);
+  };
+  const webhookContext = (
+    mode: IWebhookContext['mode'],
+    node: INode,
+    req: Request,
+    path: string,
+    context: JsonObject,
+  ): IWebhookContext => ({
+    mode,
+    getNodeParameter(name: string, fallback?: unknown): unknown {
+      return name in node.parameters ? node.parameters[name] : fallback;
+    },
+    getContext: () => context,
+    getRequest: () => requestOf(req, path),
+  });
   // Agent 外部渠道入口（backlog #44 M5,先于通配路由注册）：路径带随机 secret,校验在服务层。
   router.post(
     '/webhook/agent-channel/:channelId/:secret',
@@ -2919,7 +2969,7 @@ export function createWebhookRouter(services: AppServices): Router {
         res.status(404).json({ error: `No active webhook: ${req.method} /webhook/${path}` });
         return;
       }
-      const seed = [
+      let seed: INodeExecutionData[] = [
         {
           json: {
             body: (req.body ?? {}) as Record<string, unknown>,
@@ -2930,6 +2980,24 @@ export function createWebhookRouter(services: AppServices): Router {
           },
         },
       ];
+      let nodeResponse: IWebhookResponseData | undefined;
+      const projectId = await services.repos.workflows.getOwnerProjectId(entity.workflowId);
+      if (!projectId) throw new OperationalError('Workflow has no owning project', { workflowId: entity.workflowId });
+      const row = await services.workflows.productionRow(
+        await services.workflows.getById(entity.workflowId, projectId),
+      );
+      const node = (row.nodes as INode[]).find((candidate) => candidate.name === entity.node);
+      if (!node) throw new OperationalError('Webhook node not found in published workflow', { node: entity.node });
+      const nodeType = await services.nodeLoader.getByNameAndVersion(node.type, node.typeVersion);
+      if (nodeType.webhook) {
+        const result = await nodeType.webhook.call(webhookContext('trigger', node, req, path, {}));
+        nodeResponse = result.response;
+        if (!result.workflowData) {
+          sendResponse(res, nodeResponse ?? { statusCode: 204 });
+          return;
+        }
+        seed = result.workflowData;
+      }
       // RespondToWebhook 节点设置的自定义响应（单进程模式;队列模式入队即返默认摘要）
       let custom: { statusCode?: number; contentType?: string; body?: unknown } | null = null;
       const summary = await services.executions.runTriggered(entity.workflowId, 'webhook', seed, entity.node, {
@@ -2946,12 +3014,13 @@ export function createWebhookRouter(services: AppServices): Router {
         details: { mode: 'webhook', executionId: summary.executionId },
         ip: req.ip ?? null,
       });
-      const c = custom as { statusCode?: number; contentType?: string; body?: unknown } | null;
+      const c = custom as IWebhookResponseData | null;
       if (c) {
-        res.status(c.statusCode ?? 200);
-        if (c.body === null || c.body === undefined) res.end();
-        else if (c.contentType === 'text/plain') res.type('text/plain').send(String(c.body));
-        else res.json(c.body);
+        sendResponse(res, c);
+        return;
+      }
+      if (nodeResponse) {
+        sendResponse(res, nodeResponse);
         return;
       }
       res.json(summary);
@@ -2982,7 +3051,34 @@ export function createWebhookRouter(services: AppServices): Router {
       const b = Buffer.from(token);
       if (a.length !== b.length || !timingSafeEqual(a, b)) return notFound();
 
-      const summary = await services.executions.resume(executionId);
+      let resumeData: INodeExecutionData[] | undefined;
+      let nodeResponse: IWebhookResponseData | undefined;
+      const state = data as IRunExecutionData;
+      const frame = state.executionData?.nodeExecutionStack.at(-1);
+      if (frame) {
+        const workflowData = await services.repos.executions.getWorkflowData(executionId);
+        const node = (workflowData?.['nodes'] as INode[] | undefined)?.find(
+          (candidate) => candidate.name === frame.node.name,
+        );
+        if (node) {
+          const nodeType = await services.nodeLoader.getByNameAndVersion(node.type, node.typeVersion);
+          if (nodeType.webhook) {
+            const context = state.contextData?.[node.name] ?? {};
+            const result = await nodeType.webhook.call(
+              webhookContext('waiting', node, req, `webhook-waiting/${executionId}`, context),
+            );
+            nodeResponse = result.response;
+            if (!result.workflowData) {
+              sendResponse(res, nodeResponse ?? { statusCode: 204 });
+              return;
+            }
+            resumeData = result.workflowData;
+          }
+        }
+      }
+
+      const projectId = await services.repos.workflows.getOwnerProjectId(record.workflowId);
+      const summary = await services.executions.resume(executionId, projectId ?? undefined, resumeData);
       services.audit.log({
         projectId: await services.repos.workflows.getOwnerProjectId(record.workflowId),
         action: 'execution.resume',
@@ -2991,7 +3087,8 @@ export function createWebhookRouter(services: AppServices): Router {
         details: { via: 'webhook-waiting' },
         ip: req.ip ?? null,
       });
-      res.json({ resumed: true, executionId, status: summary.status });
+      if (nodeResponse) sendResponse(res, nodeResponse);
+      else res.json({ resumed: true, executionId, status: summary.status });
     }),
   );
   return router;

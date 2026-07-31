@@ -879,7 +879,11 @@ export class ExecutionService {
    * 唤醒 waiting 执行（resume API / wait-tracker 到点触发共用）。
    * 队列模式入队交 worker 续跑；单进程当场续跑（executeStored 从落库状态恢复）。
    */
-  async resume(executionId: string, projectId?: string): Promise<IRunSummary> {
+  async resume(
+    executionId: string,
+    projectId?: string,
+    resumeData?: INodeExecutionData[],
+  ): Promise<IRunSummary> {
     const record = projectId
       ? await this.repos.executions.findById(executionId, projectId)
       : await this.repos.executions.getRecord(executionId);
@@ -889,6 +893,20 @@ export class ExecutionService {
         executionId,
         status: 409,
       });
+    }
+    if (resumeData) {
+      const state = (await this.repos.executions.getData(executionId)) as unknown as IRunExecutionData | null;
+      const frame = state?.executionData?.nodeExecutionStack.at(-1);
+      if (!state || !frame) {
+        throw new OperationalError('Waiting execution has no resumable node frame', {
+          executionId,
+          status: 409,
+        });
+      }
+      state.contextData ??= {};
+      const context = (state.contextData[frame.node.name] ??= {});
+      context['resumeData'] = resumeData as unknown as JsonObject;
+      await this.repos.executions.updateData(executionId, state as unknown as JsonObject);
     }
     if (this.queue) {
       await this.repos.executions.updateStatus(executionId, 'new');

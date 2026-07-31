@@ -1,0 +1,161 @@
+import { z } from 'zod';
+import type { IWebhookRequest, IWebhookResult, JsonObject } from '@nomops/workflow';
+import { OperationalError } from '@nomops/workflow';
+
+export type FormFieldType = 'text' | 'email' | 'number' | 'date' | 'checkbox' | 'textarea' | 'select';
+
+export interface IFormField {
+  name: string;
+  label: string;
+  type: FormFieldType;
+  required: boolean;
+  placeholder: string;
+  options: string[];
+}
+
+export interface IFormDefinition {
+  title: string;
+  description: string;
+  submitLabel: string;
+  fields: IFormField[];
+}
+
+const formBodySchema = z.record(
+  z.union([z.string(), z.array(z.string()), z.number(), z.boolean(), z.null()]),
+);
+const forbiddenNames = new Set(['__proto__', 'prototype', 'constructor']);
+
+function text(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+export function formDefinitionFrom(raw: unknown, values: {
+  title: unknown;
+  description: unknown;
+  submitLabel: unknown;
+}): IFormDefinition {
+  const rows = ((raw as { values?: unknown[] } | null)?.values ?? []) as Array<Record<string, unknown>>;
+  const seen = new Set<string>();
+  const fields = rows.map((row, index): IFormField => {
+    const name = text(row['name']).trim();
+    if (!/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(name) || forbiddenNames.has(name)) {
+      throw new OperationalError(`Invalid form field name at row ${index + 1}`, { parameter: 'fields' });
+    }
+    if (seen.has(name)) throw new OperationalError(`Duplicate form field name: ${name}`, { parameter: 'fields' });
+    seen.add(name);
+    const typeValue = text(row['type'], 'text');
+    const type: FormFieldType = ['text', 'email', 'number', 'date', 'checkbox', 'textarea', 'select'].includes(typeValue)
+      ? typeValue as FormFieldType
+      : 'text';
+    const options = text(row['options'])
+      .split(',')
+      .map((option) => option.trim())
+      .filter(Boolean);
+    if (type === 'select' && options.length === 0) {
+      throw new OperationalError(`Select field ${name} requires at least one option`, { parameter: 'fields' });
+    }
+    return {
+      name,
+      label: text(row['label'], name),
+      type,
+      required: row['required'] === true,
+      placeholder: text(row['placeholder']),
+      options,
+    };
+  });
+  if (fields.length === 0) throw new OperationalError('Form requires at least one field', { parameter: 'fields' });
+  return {
+    title: text(values.title, 'Form'),
+    description: text(values.description),
+    submitLabel: text(values.submitLabel, 'Submit'),
+    fields,
+  };
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[character]!);
+}
+
+export function renderForm(definition: IFormDefinition): string {
+  const controls = definition.fields.map((field) => {
+    const required = field.required ? ' required' : '';
+    const placeholder = field.placeholder ? ` placeholder="${escapeHtml(field.placeholder)}"` : '';
+    let control: string;
+    if (field.type === 'textarea') {
+      control = `<textarea id="${field.name}" name="${field.name}"${required}${placeholder}></textarea>`;
+    } else if (field.type === 'select') {
+      const options = field.options.map((option) => `<option value="${escapeHtml(option)}">${escapeHtml(option)}</option>`).join('');
+      control = `<select id="${field.name}" name="${field.name}"${required}><option value="">Select…</option>${options}</select>`;
+    } else if (field.type === 'checkbox') {
+      control = `<input id="${field.name}" name="${field.name}" type="checkbox" value="true"${required}>`;
+    } else {
+      control = `<input id="${field.name}" name="${field.name}" type="${field.type}"${required}${placeholder}>`;
+    }
+    return `<label for="${field.name}"><span>${escapeHtml(field.label)}${field.required ? ' *' : ''}</span>${control}</label>`;
+  }).join('');
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(definition.title)}</title><style>body{margin:0;background:#f7f7f9;color:#202124;font:15px system-ui,sans-serif}.card{box-sizing:border-box;max-width:640px;margin:48px auto;padding:32px;background:#fff;border:1px solid #ddd;border-radius:12px;box-shadow:0 8px 30px #0000000d}h1{margin:0 0 8px;font-size:26px}.description{margin:0 0 24px;color:#666;white-space:pre-wrap}label{display:grid;gap:7px;margin:18px 0;font-weight:600}input,textarea,select{box-sizing:border-box;width:100%;padding:11px 12px;border:1px solid #bbb;border-radius:7px;background:#fff;color:#202124;font:inherit}input[type=checkbox]{width:20px;height:20px}textarea{min-height:110px;resize:vertical}button{margin-top:10px;padding:11px 20px;border:0;border-radius:7px;background:#ff6d5a;color:#fff;font:600 15px system-ui;cursor:pointer}@media(max-width:680px){.card{margin:0;min-height:100vh;border:0;border-radius:0;padding:24px}}</style></head><body><main class="card"><h1>${escapeHtml(definition.title)}</h1>${definition.description ? `<p class="description">${escapeHtml(definition.description)}</p>` : ''}<form method="post">${controls}<button type="submit">${escapeHtml(definition.submitLabel)}</button></form></main></body></html>`;
+}
+
+function submittedValue(body: Record<string, string | string[] | number | boolean | null>, field: IFormField): unknown {
+  const raw = body[field.name];
+  if (field.type === 'checkbox') return raw === true || raw === 'true' || raw === 'on';
+  const scalar = Array.isArray(raw) ? raw[0] : raw;
+  const value = scalar === null || scalar === undefined ? '' : String(scalar);
+  if (field.required && value.trim() === '') {
+    throw new OperationalError(`Field is required: ${field.label}`, { field: field.name, status: 400 });
+  }
+  if (field.type === 'email' && value && !z.string().email().safeParse(value).success) {
+    throw new OperationalError(`Invalid email: ${field.label}`, { field: field.name, status: 400 });
+  }
+  if (field.type === 'number') {
+    if (value === '') return null;
+    const number = Number(value);
+    if (!Number.isFinite(number)) throw new OperationalError(`Invalid number: ${field.label}`, { field: field.name, status: 400 });
+    return number;
+  }
+  if (field.type === 'date' && value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new OperationalError(`Invalid date: ${field.label}`, { field: field.name, status: 400 });
+  }
+  if (field.type === 'select' && value && !field.options.includes(value)) {
+    throw new OperationalError(`Invalid option: ${field.label}`, { field: field.name, status: 400 });
+  }
+  return value;
+}
+
+export function handleFormRequest(request: IWebhookRequest, definition: IFormDefinition): IWebhookResult {
+  if (request.method === 'GET' || request.method === 'HEAD') {
+    return {
+      response: {
+        contentType: 'text/html; charset=utf-8',
+        headers: {
+          'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+          'Referrer-Policy': 'no-referrer',
+          'X-Content-Type-Options': 'nosniff',
+        },
+        body: request.method === 'HEAD' ? null : renderForm(definition),
+      },
+    };
+  }
+  if (request.method !== 'POST') {
+    return { response: { statusCode: 405, headers: { Allow: 'GET, HEAD, POST' }, body: 'Method not allowed' } };
+  }
+  const parsed = formBodySchema.safeParse(request.body);
+  if (!parsed.success) throw new OperationalError('Invalid form submission', { status: 400 });
+  const body = parsed.data;
+  const output: JsonObject = {};
+  for (const field of definition.fields) output[field.name] = submittedValue(body, field);
+  return {
+    workflowData: [{ json: output }],
+    response: {
+      contentType: 'text/html; charset=utf-8',
+      headers: {
+        'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
+        'Referrer-Policy': 'no-referrer',
+        'X-Content-Type-Options': 'nosniff',
+      },
+      body: '<!doctype html><meta charset="utf-8"><title>Submitted</title><body style="font:16px system-ui;padding:48px;text-align:center"><h1>Submitted</h1><p>Your response has been received.</p></body>',
+    },
+  };
+}

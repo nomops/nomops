@@ -365,10 +365,58 @@ export interface ITriggerResponse {
   closeFunction?: () => Promise<void>;
 }
 
+export interface IEventStreamMessage {
+  data: string;
+  event?: string;
+  id?: string;
+  retry?: number;
+}
+
+export interface IEventStreamOptions {
+  url: string;
+  headers?: Record<string, string>;
+}
+
 export interface ITriggerContext {
   emit(data: INodeExecutionData[][]): void;
   getNodeParameter(name: string): unknown;
   getWorkflowStaticData(type: string): JsonObject;
+  helpers: {
+    openEventStream(
+      options: IEventStreamOptions,
+      onMessage: (message: IEventStreamMessage) => void,
+    ): Promise<() => Promise<void>>;
+  };
+}
+
+export interface IWebhookRequest {
+  method: string;
+  path: string;
+  headers: Record<string, string | string[]>;
+  query: Record<string, string | string[]>;
+  body: unknown;
+}
+
+export interface IWebhookResponseData {
+  statusCode?: number;
+  contentType?: string;
+  headers?: Record<string, string>;
+  body?: unknown;
+}
+
+export interface IWebhookResult {
+  /** 有数据才启动/恢复工作流；仅返回 response 可用于 GET 页面。 */
+  workflowData?: INodeExecutionData[];
+  response?: IWebhookResponseData;
+}
+
+/** 节点自定义公开 webhook 行为；server 只负责通用分派，不识别节点 type/name。 */
+export interface IWebhookContext {
+  mode: 'trigger' | 'waiting';
+  getNodeParameter(name: string): unknown;
+  getNodeParameter(name: string, fallback: unknown): unknown;
+  getContext(): JsonObject;
+  getRequest(): IWebhookRequest;
 }
 
 /* ────────────────  AI 能力契约（ai_* 连接类型上流动的对象；仅执行期存在，不进执行状态）  ──────────────── */
@@ -467,6 +515,8 @@ export interface INodeType {
   description: INodeTypeDescription;
   execute?(this: IExecuteContext): Promise<INodeExecutionData[][]>;
   trigger?(this: ITriggerContext): Promise<ITriggerResponse>;
+  /** 自定义 webhook 页面/载荷；无此方法时沿用通用 webhook JSON 行为。 */
+  webhook?(this: IWebhookContext): Promise<IWebhookResult>;
   /** 轮询：返回新 items 触发执行；null/空 = 本轮无新数据。 */
   poll?(this: IPollContext): Promise<INodeExecutionData[][] | null>;
   /** 能力供给（ai_* 子节点）：宿主执行时被解析，返回模型/工具/记忆等能力对象。 */

@@ -20,7 +20,12 @@ export {
   incomingSignatureOf,
 } from './execution-engine/partial-execution.js';
 export { executeRoutingNode, hasRoutingDeclarations } from './execution-engine/routing-executor.js';
-export { createExecuteContext, createSupplyContext, defaultHttpRequest } from './execution-engine/node-execution-context.js';
+export {
+  createExecuteContext,
+  createSupplyContext,
+  defaultHttpRequest,
+  defaultOpenEventStream,
+} from './execution-engine/node-execution-context.js';
 export type { INodeTypeResolver, IWorkflowExecuteAdditionalData } from './execution-engine/node-execution-context.js';
 
 export { FileSystemBinaryStore, InMemoryBinaryStore, assertValidBinaryId, collectBinaryIds } from './binary-data/binary-store.js';

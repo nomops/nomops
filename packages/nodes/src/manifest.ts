@@ -48,6 +48,11 @@ import { setMetadataDescription } from './nodes/SetMetadata/SetMetadata.node.js'
 import { httpToolDescription } from './nodes/HttpTool/HttpTool.node.js';
 import { windowMemoryDescription } from './nodes/WindowMemory/WindowMemory.node.js';
 import { stickyNoteDescription } from './nodes/StickyNote/StickyNote.node.js';
+import { formTriggerDescription } from './nodes/FormTrigger/FormTrigger.description.js';
+import { formDescription } from './nodes/Form/Form.description.js';
+import { rssFeedReadDescription } from './nodes/RssFeedRead/RssFeedRead.description.js';
+import { rssFeedReadTriggerDescription } from './nodes/RssFeedReadTrigger/RssFeedReadTrigger.description.js';
+import { sseTriggerDescription } from './nodes/SseTrigger/SseTrigger.description.js';
 import { declarative } from './nodes/integrations/declarative.js';
 import { integrationDescriptions } from './nodes/integrations/integrations.js';
 
@@ -301,6 +306,31 @@ export const builtinNodeManifest: ILoadableNodeType[] = [
     type: `nomops.${stickyNoteDescription.name}`,
     description: stickyNoteDescription,
     load: () => import('./nodes/StickyNote/StickyNote.node.js').then((m) => m.StickyNote),
+  },
+  {
+    type: `nomops.${formTriggerDescription.name}`,
+    description: formTriggerDescription,
+    load: () => import('./nodes/FormTrigger/FormTrigger.node.js').then((m) => m.FormTrigger),
+  },
+  {
+    type: `nomops.${formDescription.name}`,
+    description: formDescription,
+    load: () => import('./nodes/Form/Form.node.js').then((m) => m.Form),
+  },
+  {
+    type: `nomops.${rssFeedReadDescription.name}`,
+    description: rssFeedReadDescription,
+    load: () => import('./nodes/RssFeedRead/RssFeedRead.node.js').then((m) => m.RssFeedRead),
+  },
+  {
+    type: `nomops.${rssFeedReadTriggerDescription.name}`,
+    description: rssFeedReadTriggerDescription,
+    load: () => import('./nodes/RssFeedReadTrigger/RssFeedReadTrigger.node.js').then((m) => m.RssFeedReadTrigger),
+  },
+  {
+    type: `nomops.${sseTriggerDescription.name}`,
+    description: sseTriggerDescription,
+    load: () => import('./nodes/SseTrigger/SseTrigger.node.js').then((m) => m.SseTrigger),
   },
   // 声明式集成节点：纯描述驱动（无 execute），引擎 routing 执行器负责发请求
   ...integrationDescriptions.map(declarative),
