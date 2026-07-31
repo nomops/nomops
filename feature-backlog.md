@@ -132,9 +132,7 @@
 
 - [x] **51. 远程执行 + 邮件三件套：SSH / Send Email / Email Trigger (IMAP)** `M/L` ✅ 2026-07-31（新增三个声明式节点：SSH 支持密码/私钥、SHA256 主机指纹、命令执行与 SFTP 上传下载，Send Email 与服务通知复用同一安全 SMTP 客户端，Email Trigger 以 projectId 归属凭证注入、UID 游标/去重、MIME 解析轮询启动工作流；新增 6 节点协议单测 + 1 server 端到端触发测试，覆盖 SMTP/IMAP 真实协议、SSH 操作、明文/Base64 密钥不进错误/API/DB，workflow 29/core 101/nodes 116/db 26/frontend 92/server 609、全量 973 测通过；`pnpm build` 6/6、`pnpm dev` 前后端启动通过，真实 HTTP 完成本机 SSH 容器 stdout 回读、假 SMTP 投递抓包、假 IMAP 拉信触发执行，生产 UI 验证三节点元数据自动上架，基线同内容视口 1280×633 截图并排比对且两侧控制台零报错；commit `0753423`）
 
-- [ ] **52. 触发器补全五件套：Form Trigger / n8n Form / RSS Read / RSS Feed Trigger / SSE Trigger** `M`
-  → Form Trigger（生成公开表单页，提交即触发，字段 schema 驱动）、n8n Form（流程内表单页，HITL 场景，多步表单）、RSS Read（拉取解析 feed 为 items）、RSS Feed Trigger（轮询 feed 新条目触发，依赖 PollingTrigger）、SSE Trigger（订阅 SSE 流触发）。命名遵循仓库铁律去 n8n 字样（Form Trigger / Form）。
-  验收：Form Trigger 公开页提交→执行启动并带表单数据；RSS 轮询到新条目触发；SSE 收到事件触发。
+- [x] **52. 触发器补全五件套：Form Trigger / Form / RSS Read / RSS Feed Trigger / SSE Trigger** `M` ✅ 2026-07-31（新增通用节点 webhook 与 SSE 流式触发契约，Form Trigger 生成 CSP 安全公开表单并提交触发，Form 复用可序列化 contextData 实现流程内 HITL/多步恢复，RSS Read/Trigger 支持 RSS/Atom 解析与 processed_data 增量去重，SSE Trigger 真实长连接事件触发；新增 4 节点协议单测 + 4 server 端到端测试，workflow 29/core 101/nodes 120/db 26/frontend 92/server 613、全量 981 测通过；`pnpm build` 6/6、真实 curl 完成五节点往返、生产 UI 与基线 v2.31.0 同视口截图比对且 nomops 控制台零报错；commit `705de00`）
 
 - [ ] **53. 流程/工具杂项四件套：Stop and Error / Execution Data / TOTP / Git** `S/M`
   → Stop and Error（主动抛错终止执行，配合 Error Trigger #6）、Execution Data（读/写当前执行的元数据 KV，配合 #35 执行元数据）、TOTP（生成/校验 TOTP 验证码，复用已有 TOTP 实现）、Git（clone/commit/push 等，凭证走 SSH/token，最重可末位）。
