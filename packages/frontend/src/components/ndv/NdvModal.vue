@@ -292,6 +292,9 @@ async function executeStep() {
                 :node-parameters="node.parameters"
                 :node-name="node.name"
                 :ai-tool="isAiTool"
+                :node-type="node.type"
+                :node-type-version="node.typeVersion"
+                :credentials="node.credentials"
                 @change="editor.setParam(node.name, prop.name, $event)"
               />
             </div>

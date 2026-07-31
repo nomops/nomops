@@ -30,6 +30,7 @@ import {
   inviteSchema,
   credentialBodySchema,
   credentialPatchSchema,
+  dynamicNodeParametersSchema,
   dataTableBodySchema,
   dataTableColumnSchema,
   dataTableRenameSchema,
@@ -918,6 +919,37 @@ export function createApiRouter(services: AppServices): Router {
     editor, // viewer 只读：test 会触发解密（docs/06）
     h(async (req, res) => {
       res.json(await services.credentials.test(param(req, 'id'), auth(req).projectId));
+    }),
+  );
+
+  /* NDV 动态参数：以当前项目内凭证代查，响应只含资源 name/value/description。 */
+  router.post(
+    '/dynamic-node-parameters/options',
+    editor,
+    h(async (req, res) => {
+      const body = parseBody(dynamicNodeParametersSchema, req);
+      res.json(
+        await services.dynamicNodeParameters.loadOptions(
+          body as Parameters<typeof services.dynamicNodeParameters.loadOptions>[0],
+          auth(req).projectId,
+          auth(req).userId,
+        ),
+      );
+    }),
+  );
+
+  router.post(
+    '/dynamic-node-parameters/resource-locator-results',
+    editor,
+    h(async (req, res) => {
+      const body = parseBody(dynamicNodeParametersSchema, req);
+      res.json(
+        await services.dynamicNodeParameters.locateResources(
+          body as Parameters<typeof services.dynamicNodeParameters.locateResources>[0],
+          auth(req).projectId,
+          auth(req).userId,
+        ),
+      );
     }),
   );
 

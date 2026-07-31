@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import type { INodeExecutionData, INodeProperties } from '@nomops/workflow';
+import type { INodeExecutionData, INodeProperties, INodePropertyOption, IResourceLocatorValue } from '@nomops/workflow';
 import { resolveParameterValue } from '@nomops/workflow';
 import ExpressionInput from './ExpressionInput.vue';
 import { useEditorStore } from '../../stores/editor.js';
 import { t } from '../../lib/i18n.js';
 import { LINKS } from '../../lib/links.js';
+import { api } from '../../api/client.js';
 
 /**
  * schema 驱动的单参数控件：按 INodeProperties.type 分发。
@@ -24,6 +25,9 @@ const props = defineProps<{
   nodeName?: string;
   /** 所属节点是 AI 工具（输出 ai_tool）→ 参数支持 $fromAI「让模型填」（#19 D096）。 */
   aiTool?: boolean;
+  nodeType?: string;
+  nodeTypeVersion?: number;
+  credentials?: Record<string, { id: string; name: string }>;
 }>();
 const emit = defineEmits<{ change: [value: unknown] }>();
 
@@ -34,6 +38,49 @@ const paramPinned = computed(() =>
 );
 
 const current = computed(() => props.value ?? props.prop.default);
+
+function valueAtPath(value: unknown, path: string): unknown {
+  return path.split('.').reduce<unknown>((part, key) => {
+    if (part === null || typeof part !== 'object' || Array.isArray(part)) return undefined;
+    return (part as Record<string, unknown>)[key];
+  }, value);
+}
+
+const dynamicOptions = ref<INodePropertyOption[] | null>(null);
+const dynamicLoading = ref(false);
+const dynamicError = ref('');
+const effectiveOptions = computed(() => dynamicOptions.value ?? props.prop.options ?? []);
+let dynamicSequence = 0;
+async function loadDynamicOptions() {
+  if (!props.nodeType || (!props.prop.typeOptions?.loadOptionsMethod && !props.prop.typeOptions?.loadOptions)) return;
+  const sequence = ++dynamicSequence;
+  dynamicLoading.value = true;
+  dynamicError.value = '';
+  try {
+    const options = await api.dynamicNodeParameters.options({
+      nodeType: props.nodeType,
+      ...(props.nodeTypeVersion ? { nodeVersion: props.nodeTypeVersion } : {}),
+      propertyName: props.prop.name,
+      currentNodeParameters: props.nodeParameters ?? {},
+      credentials: Object.fromEntries(Object.entries(props.credentials ?? {}).map(([key, value]) => [key, { id: value.id }])),
+    });
+    if (sequence === dynamicSequence) dynamicOptions.value = options;
+  } catch (error) {
+    if (sequence === dynamicSequence) dynamicError.value = (error as Error).message;
+  } finally {
+    if (sequence === dynamicSequence) dynamicLoading.value = false;
+  }
+}
+watch(
+  () => [
+    props.nodeType,
+    props.nodeTypeVersion,
+    ...Object.values(props.credentials ?? {}).map((credential) => credential.id),
+    ...(props.prop.typeOptions?.loadOptionsDependsOn ?? []).map((path) => valueAtPath(props.nodeParameters, path)),
+  ],
+  () => void loadDynamicOptions(),
+  { immediate: true, deep: true },
+);
 
 /* 字面量 "{{ }}"(不能直接写进模板插值,会被 Vue 当嵌套 mustache)。 */
 const CURLY = '{{ }}';
@@ -99,7 +146,7 @@ function resetValue() {
 const optOpen = ref(false);
 const optHover = ref(0);
 const currentOptionName = computed(() => {
-  const found = (props.prop.options ?? []).find((o) => o.value === current.value);
+  const found = effectiveOptions.value.find((o) => o.value === current.value);
   return found?.name ?? String(current.value ?? '');
 });
 function pickOption(value: unknown) {
@@ -109,7 +156,7 @@ function pickOption(value: unknown) {
 function toggleOptOpen() {
   optOpen.value = !optOpen.value;
   if (optOpen.value) {
-    const idx = (props.prop.options ?? []).findIndex((o) => o.value === current.value);
+    const idx = effectiveOptions.value.findIndex((o) => o.value === current.value);
     optHover.value = idx >= 0 ? idx : 0;
   }
 }
@@ -121,7 +168,8 @@ function onOptKeydown(event: KeyboardEvent) {
     }
     return;
   }
-  const count = (props.prop.options ?? []).length;
+  const count = effectiveOptions.value.length;
+  if (count === 0) return;
   if (event.key === 'ArrowDown') {
     event.preventDefault();
     optHover.value = (optHover.value + 1) % count;
@@ -130,7 +178,7 @@ function onOptKeydown(event: KeyboardEvent) {
     optHover.value = (optHover.value - 1 + count) % count;
   } else if (event.key === 'Enter') {
     event.preventDefault();
-    const opt = (props.prop.options ?? [])[optHover.value];
+    const opt = effectiveOptions.value[optHover.value];
     if (opt) pickOption(opt.value);
   } else if (event.key === 'Escape') {
     event.preventDefault();
@@ -203,6 +251,74 @@ function toggleMulti(optValue: unknown) {
   else set.push(optValue);
   emit('change', set);
 }
+
+const fixedValue = computed<Record<string, unknown>>(() =>
+  current.value !== null && typeof current.value === 'object' && !Array.isArray(current.value)
+    ? current.value as Record<string, unknown>
+    : {},
+);
+function fixedRows(group: INodePropertyOption): Record<string, unknown>[] {
+  const raw = fixedValue.value[group.name];
+  if (props.prop.typeOptions?.multipleValues) return Array.isArray(raw) ? raw as Record<string, unknown>[] : [];
+  return [raw !== null && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {}];
+}
+function setFixedRows(group: INodePropertyOption, rows: Record<string, unknown>[]) {
+  emit('change', { ...fixedValue.value, [group.name]: props.prop.typeOptions?.multipleValues ? rows : (rows[0] ?? {}) });
+}
+function addFixedRow(group: INodePropertyOption) {
+  const row = Object.fromEntries((group.values ?? []).map((property) => [property.name, property.default]));
+  setFixedRows(group, [...fixedRows(group), row]);
+}
+function updateFixedRow(group: INodePropertyOption, index: number, name: string, value: unknown) {
+  setFixedRows(group, fixedRows(group).map((row, rowIndex) => rowIndex === index ? { ...row, [name]: value } : row));
+}
+function removeFixedRow(group: INodePropertyOption, index: number) {
+  setFixedRows(group, fixedRows(group).filter((_row, rowIndex) => rowIndex !== index));
+}
+function moveFixedRow(group: INodePropertyOption, index: number, offset: number) {
+  const rows = fixedRows(group).slice();
+  const target = index + offset;
+  if (target < 0 || target >= rows.length) return;
+  [rows[index], rows[target]] = [rows[target]!, rows[index]!];
+  setFixedRows(group, rows);
+}
+
+const locator = computed<IResourceLocatorValue>(() => {
+  const raw = current.value;
+  if (raw !== null && typeof raw === 'object' && !Array.isArray(raw)) {
+    const value = raw as Partial<IResourceLocatorValue>;
+    if (value.mode && typeof value.value === 'string') return value as IResourceLocatorValue;
+  }
+  return { mode: props.prop.modes?.[0]?.name ?? 'id', value: '' };
+});
+const locatorOptions = ref<INodePropertyOption[]>([]);
+const locatorFilter = ref('');
+const locatorLoading = ref(false);
+const locatorError = ref('');
+function setLocator(mode: IResourceLocatorValue['mode'], value = '') {
+  emit('change', { mode, value });
+}
+async function searchLocator() {
+  if (!props.nodeType || locator.value.mode !== 'list') return;
+  locatorLoading.value = true;
+  locatorError.value = '';
+  try {
+    const response = await api.dynamicNodeParameters.resourceLocatorResults({
+      nodeType: props.nodeType,
+      ...(props.nodeTypeVersion ? { nodeVersion: props.nodeTypeVersion } : {}),
+      propertyName: props.prop.name,
+      currentNodeParameters: props.nodeParameters ?? {},
+      credentials: Object.fromEntries(Object.entries(props.credentials ?? {}).map(([key, value]) => [key, { id: value.id }])),
+      ...(locatorFilter.value ? { filter: locatorFilter.value } : {}),
+    });
+    locatorOptions.value = response.results;
+  } catch (error) {
+    locatorError.value = (error as Error).message;
+  } finally {
+    locatorLoading.value = false;
+  }
+}
+watch(() => locator.value.mode, (mode) => { if (mode === 'list') void searchLocator(); }, { immediate: true });
 
 /* json / collection：本地草稿 + 失焦解析 */
 const jsonDraft = ref(JSON.stringify(current.value ?? props.prop.default ?? {}, null, 2));
@@ -442,7 +558,7 @@ function removeField(i: number) {
         </button>
         <div v-if="optOpen" class="opt-dd-pop" role="listbox" data-test="options-pop">
           <button
-            v-for="(opt, i) in prop.options ?? []"
+            v-for="(opt, i) in effectiveOptions"
             :key="String(opt.value)"
             type="button"
             class="opt-dd-item"
@@ -460,12 +576,14 @@ function removeField(i: number) {
             <span v-if="opt.description" class="opt-dd-desc">{{ opt.description }}</span>
           </button>
         </div>
+        <p v-if="dynamicLoading" class="dim dynamic-status" data-test="dynamic-loading">Loading resources…</p>
+        <p v-else-if="dynamicError" class="error-text dynamic-status" data-test="dynamic-error">{{ dynamicError }}</p>
       </div>
 
       <!-- D108 对标基线:multiOptions 多选(勾选芯片),值为数组 -->
       <div v-else-if="prop.type === 'multiOptions'" class="multi-opts" data-test="multi-options">
         <button
-          v-for="opt in prop.options ?? []"
+          v-for="opt in effectiveOptions"
           :key="String(opt.value)"
           type="button"
           class="multi-chip"
@@ -504,6 +622,69 @@ function removeField(i: number) {
           </button>
         </div>
         <button class="add-btn" type="button" data-test="add-field" @click="addField">+ Add Field</button>
+      </div>
+
+      <div v-else-if="prop.type === 'fixedCollection'" class="fixed-collection" data-test="fixed-collection">
+        <section v-for="group in prop.options ?? []" :key="group.name" class="fixed-group" :data-test-fixed-group="group.name">
+          <div v-for="(row, rowIndex) in fixedRows(group)" :key="rowIndex" class="fixed-row">
+            <div v-if="prop.typeOptions?.multipleValues" class="fixed-row-head">
+              <strong>{{ prop.typeOptions.fixedCollection?.itemTitle ?? group.name }} {{ rowIndex + 1 }}</strong>
+              <span class="fixed-row-actions">
+                <button v-if="prop.typeOptions.sortable" type="button" :disabled="rowIndex === 0" @click="moveFixedRow(group, rowIndex, -1)">↑</button>
+                <button v-if="prop.typeOptions.sortable" type="button" :disabled="rowIndex === fixedRows(group).length - 1" @click="moveFixedRow(group, rowIndex, 1)">↓</button>
+                <button type="button" @click="removeFixedRow(group, rowIndex)">×</button>
+              </span>
+            </div>
+            <div class="fixed-values" :class="prop.typeOptions?.fixedCollection?.layout">
+              <ParamInput
+                v-for="child in group.values ?? []"
+                :key="child.name"
+                :prop="child"
+                :value="row[child.name]"
+                :node-parameters="nodeParameters"
+                :node-type="nodeType"
+                :node-type-version="nodeTypeVersion"
+                :credentials="credentials"
+                @change="updateFixedRow(group, rowIndex, child.name, $event)"
+              />
+            </div>
+          </div>
+          <button v-if="prop.typeOptions?.multipleValues" class="add-btn" type="button" :data-test-add-fixed="group.name" @click="addFixedRow(group)">
+            + Add {{ group.name }}
+          </button>
+        </section>
+      </div>
+
+      <div v-else-if="prop.type === 'resourceLocator'" class="resource-locator" data-test="resource-locator">
+        <div class="locator-modes" role="tablist">
+          <button
+            v-for="mode in prop.modes ?? []"
+            :key="mode.name"
+            type="button"
+            :class="{ active: locator.mode === mode.name }"
+            :data-test-locator-mode="mode.name"
+            @click="setLocator(mode.name)"
+          >{{ mode.displayName }}</button>
+        </div>
+        <template v-if="locator.mode === 'list'">
+          <div class="locator-search">
+            <input v-model="locatorFilter" :placeholder="prop.modes?.find((mode) => mode.name === 'list')?.placeholder ?? 'Search resources'" @keydown.enter.prevent="searchLocator" />
+            <button type="button" :disabled="locatorLoading" @click="searchLocator">{{ locatorLoading ? '…' : 'Search' }}</button>
+          </div>
+          <select :value="locator.value" data-test="locator-list" @change="setLocator('list', ($event.target as HTMLSelectElement).value)">
+            <option value="">Select a resource</option>
+            <option v-for="option in locatorOptions" :key="String(option.value)" :value="String(option.value)">{{ option.name }}</option>
+          </select>
+        </template>
+        <input
+          v-else
+          :type="locator.mode === 'url' ? 'url' : 'text'"
+          :value="locator.value"
+          :placeholder="prop.modes?.find((mode) => mode.name === locator.mode)?.placeholder"
+          :data-test="`locator-${locator.mode}`"
+          @input="setLocator(locator.mode, ($event.target as HTMLInputElement).value)"
+        />
+        <p v-if="locatorError" class="error-text dynamic-status">{{ locatorError }}</p>
       </div>
 
       <template v-else-if="prop.type === 'json'">
@@ -573,6 +754,29 @@ function removeField(i: number) {
   border-radius: var(--radius); font-size: var(--font-size--2xs); font-weight: var(--font-weight--medium); cursor: pointer;
 }
 .add-btn:hover { background: var(--button--color--background--secondary--hover); color: var(--button--color--text--secondary--hover-active-focus); }
+.dynamic-status { margin: 5px 0 0; font-size: 11px; }
+.fixed-collection { display: flex; flex-direction: column; gap: 10px; }
+.fixed-group, .fixed-row { display: flex; flex-direction: column; gap: 8px; }
+.fixed-row {
+  padding: 10px; border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--radius); background: var(--color--background--light-1);
+}
+.fixed-row-head { display: flex; align-items: center; justify-content: space-between; font-size: var(--font-size--2xs); }
+.fixed-row-actions { display: flex; gap: 4px; }
+.fixed-row-actions button, .locator-modes button, .locator-search button {
+  min-width: 26px; height: 26px; border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--radius); background: var(--color--background--light-2); color: var(--color--text--shade-1); cursor: pointer;
+}
+.fixed-values.horizontal { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.fixed-values.horizontal :deep(.param) { margin-bottom: 0; }
+.resource-locator { display: flex; flex-direction: column; gap: 8px; }
+.locator-modes { display: flex; gap: 4px; }
+.locator-modes button { padding: 0 10px; }
+.locator-modes button.active { border-color: var(--color--primary); color: var(--color--primary); }
+.locator-search { display: flex; gap: 6px; }
+.locator-search input { flex: 1; min-width: 0; }
+.locator-search button { padding: 0 10px; }
+.resource-locator > input, .resource-locator > select { width: 100%; }
 .param :deep(select) {
   height: 30px; background: var(--color--background--light-2);
   border: var(--border-width) var(--border-style) var(--border-color);

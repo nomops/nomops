@@ -1,7 +1,9 @@
 import type {
   IConnections,
   INode,
+  INodePropertyOption,
   INodeTypeDescription,
+  IResourceLocatorResult,
   IRunExecutionData,
   IWorkflowSettings,
   JsonObject,
@@ -235,6 +237,16 @@ export interface AgentTaskRow {
 
 /** 节点类型信息：描述 + 全名 type（内置 nomops.* 与社区 <pkg>.* 一致）。 */
 export type NodeTypeInfo = INodeTypeDescription & { type: string };
+
+export interface DynamicNodeParametersRequest {
+  nodeType: string;
+  nodeVersion?: number;
+  propertyName: string;
+  currentNodeParameters: Record<string, unknown>;
+  credentials: Record<string, { id: string }>;
+  filter?: string;
+  paginationToken?: string;
+}
 
 /** 已安装社区节点包。 */
 export interface CommunityNode {
@@ -539,6 +551,12 @@ export const api = {
     http<AuthResult>('POST', `/auth/invite/${encodeURIComponent(token)}/accept`, { password, firstName, lastName }),
 
   nodeTypes: () => http<NodeTypeInfo[]>('GET', '/api/node-types'),
+  dynamicNodeParameters: {
+    options: (body: DynamicNodeParametersRequest) =>
+      http<INodePropertyOption[]>('POST', '/api/dynamic-node-parameters/options', body),
+    resourceLocatorResults: (body: DynamicNodeParametersRequest) =>
+      http<IResourceLocatorResult>('POST', '/api/dynamic-node-parameters/resource-locator-results', body),
+  },
 
   communityNodes: {
     list: () => http<CommunityNode[]>('GET', '/api/community-nodes'),

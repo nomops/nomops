@@ -15,6 +15,7 @@ import type { DatabaseConfig, DatabaseHandle, Repositories, SettingsRepository }
 import { builtinNodeManifest } from '@nomops/nodes';
 import { AuthService } from './auth/auth-service.js';
 import { CredentialService } from './services/credential-service.js';
+import { DynamicNodeParametersService } from './services/dynamic-node-parameters-service.js';
 import { DynamicCredentialService } from './ee/services/dynamic-credential-service.js';
 import { InstanceTrustService } from './ee/services/instance-trust-service.js';
 import { ExecutionService } from './services/execution-service.js';
@@ -273,6 +274,11 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   // #46：动态凭证——resolvable 凭证运行时按 subject 解析实际值（解析在 getDecryptedData 切入）
   const dynamicCredentials = new DynamicCredentialService(repos, credentials, { ...(opts.dynamicCredentialFetch ? { fetchImpl: opts.dynamicCredentialFetch } : {}) });
   const credentialService = new CredentialService(repos, credentials, secrets, opts.credentialTester, dynamicCredentials);
+  const dynamicNodeParameters = new DynamicNodeParametersService(
+    nodeLoader,
+    credentialService,
+    opts.httpRequest as ((options: import('@nomops/workflow').IHttpRequestOptions) => Promise<unknown>) | undefined,
+  );
   // 用量:社区无条件计数;企业版在其上加限额检查(ee 实现包住社区实现)
   const usageCounter = new CountingUsageGate(repos);
   const quota = new QuotaService(repos, license, usageCounter);
@@ -462,6 +468,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     sharing,
     mailer,
     credentials: credentialService,
+    dynamicNodeParameters,
     dynamicCredentials,
     instanceTrust,
     executions,

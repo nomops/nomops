@@ -1,11 +1,15 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import type { INodeProperties } from '@nomops/workflow';
 import ParamInput from '../ParamInput.vue';
+import { api } from '../../../api/client.js';
 
 // ParamInput 引 editor store（panel-right → Focus Panel 联动），挂测试 pinia
-beforeEach(() => setActivePinia(createPinia()));
+beforeEach(() => {
+  setActivePinia(createPinia());
+  vi.restoreAllMocks();
+});
 
 const make = (prop: Partial<INodeProperties>, value: unknown = undefined) =>
   mount(ParamInput, {
@@ -139,5 +143,90 @@ describe('ParamInput（schema 驱动控件分发）', () => {
       props: { prop: { displayName: 'X', name: 'x', type: 'string', default: '', noDataExpression: true } as INodeProperties, value: '', aiTool: true },
     });
     expect(w3.find('[data-test="param-from-ai"]').exists()).toBe(false);
+  });
+
+  it('动态 options 按凭证和依赖参数加载并在依赖变化后刷新', async () => {
+    const load = vi.spyOn(api.dynamicNodeParameters, 'options')
+      .mockResolvedValueOnce([{ name: 'Engineering', value: 'C1' }])
+      .mockResolvedValueOnce([{ name: 'Sales', value: 'C2' }]);
+    const w = mount(ParamInput, {
+      props: {
+        prop: {
+          displayName: 'Channel', name: 'channel', type: 'options', default: '',
+          typeOptions: { loadOptionsMethod: 'channels', loadOptionsDependsOn: ['region'] },
+        } as INodeProperties,
+        value: '',
+        nodeType: 'nomops.resourceDemo',
+        nodeTypeVersion: 1,
+        nodeParameters: { region: 'eu' },
+        credentials: { resourceApi: { id: 'cred-1', name: 'Resource API' } },
+      },
+    });
+    await flushPromises();
+    await w.find('[data-test="options-toggle"]').trigger('click');
+    expect(w.text()).toContain('Engineering');
+    expect(load).toHaveBeenCalledWith(expect.objectContaining({
+      nodeType: 'nomops.resourceDemo',
+      currentNodeParameters: { region: 'eu' },
+      credentials: { resourceApi: { id: 'cred-1' } },
+    }));
+
+    await w.setProps({ nodeParameters: { region: 'us' } });
+    await flushPromises();
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it('fixedCollection 按元数据添加、编辑和排序重复行', async () => {
+    const w = make({
+      type: 'fixedCollection',
+      default: { headers: [] },
+      typeOptions: { multipleValues: true, sortable: true, fixedCollection: { itemTitle: 'Header', layout: 'horizontal' } },
+      options: [{
+        name: 'headers', value: 'headers',
+        values: [
+          { displayName: 'Name', name: 'name', type: 'string', default: '' },
+          { displayName: 'Value', name: 'value', type: 'string', default: '' },
+        ],
+      }],
+    }, { headers: [] });
+    await w.find('[data-test-add-fixed="headers"]').trigger('click');
+    expect(w.emitted('change')![0]).toEqual([{ headers: [{ name: '', value: '' }] }]);
+
+    await w.setProps({ value: { headers: [{ name: 'x-api-key', value: '' }] } });
+    const inputs = w.findAll('.fixed-row input');
+    await inputs[1]!.setValue('secret-ref');
+    expect(w.emitted('change')!.at(-1)).toEqual([{ headers: [{ name: 'x-api-key', value: 'secret-ref' }] }]);
+  });
+
+  it('resourceLocator 可切 list、URL、ID 三模式并搜索资源', async () => {
+    vi.spyOn(api.dynamicNodeParameters, 'resourceLocatorResults').mockResolvedValue({
+      results: [{ name: 'Product', value: 'C2' }],
+    });
+    const w = mount(ParamInput, {
+      props: {
+        prop: {
+          displayName: 'Target', name: 'target', type: 'resourceLocator', default: { mode: 'list', value: '' },
+          modes: [
+            { displayName: 'From list', name: 'list', searchListMethod: 'searchChannels' },
+            { displayName: 'By URL', name: 'url' },
+            { displayName: 'By ID', name: 'id' },
+          ],
+        } as INodeProperties,
+        value: { mode: 'list', value: '' },
+        nodeType: 'nomops.resourceDemo',
+        nodeParameters: {},
+        credentials: { resourceApi: { id: 'cred-1', name: 'Resource API' } },
+      },
+    });
+    await flushPromises();
+    expect(w.find('[data-test="locator-list"]').text()).toContain('Product');
+
+    await w.find('[data-test-locator-mode="url"]').trigger('click');
+    expect(w.emitted('change')!.at(-1)).toEqual([{ mode: 'url', value: '' }]);
+    await w.setProps({ value: { mode: 'url', value: '' } });
+    expect(w.find('[data-test="locator-url"]').exists()).toBe(true);
+
+    await w.find('[data-test-locator-mode="id"]').trigger('click');
+    expect(w.emitted('change')!.at(-1)).toEqual([{ mode: 'id', value: '' }]);
   });
 });

@@ -140,6 +140,8 @@ export type NodePropertyType =
   | 'options'
   | 'multiOptions'
   | 'collection'
+  | 'fixedCollection'
+  | 'resourceLocator'
   | 'json'
   | 'dateTime'
   | 'color'
@@ -149,6 +151,20 @@ export type NodePropertyType =
 export interface INodePropertyTypeOptions {
   /** string 字段渲染为多行 textarea 的行数（>1 生效）。 */
   rows?: number;
+  /** 动态下拉：调用节点 methods.loadOptions 中的同名方法。 */
+  loadOptionsMethod?: string;
+  /** 动态下拉依赖的参数路径；任一值变化时前端重新加载。 */
+  loadOptionsDependsOn?: string[];
+  /** 声明式动态下拉，不写节点方法即可发请求并映射结果。 */
+  loadOptions?: ILoadOptionsDeclaration;
+  /** fixedCollection 是否允许同一分组添加多行。 */
+  multipleValues?: boolean;
+  /** fixedCollection 多行是否允许排序。 */
+  sortable?: boolean;
+  fixedCollection?: {
+    itemTitle?: string;
+    layout?: 'horizontal' | 'vertical';
+  };
 }
 
 /**
@@ -170,6 +186,36 @@ export interface INodePropertyOption {
   description?: string;
   /** 声明式节点：选中该 operation 时的请求声明（引擎 routing 执行器消费）。 */
   routing?: IHttpRequestDeclaration;
+  /** fixedCollection 分组内的声明式子参数。 */
+  values?: INodeProperties[];
+}
+
+export interface ILoadOptionsDeclaration {
+  request: IHttpRequestDeclaration;
+  /** 响应数组所在点路径；省略表示响应本身就是数组。 */
+  resultsPath?: string;
+  /** 每项显示名/值/描述的点路径。 */
+  name: string;
+  value: string;
+  description?: string;
+}
+
+export interface IResourceLocatorMode {
+  displayName: string;
+  name: 'list' | 'url' | 'id';
+  placeholder?: string;
+  /** list 模式调用节点 methods.resourceLocator 中的同名方法。 */
+  searchListMethod?: string;
+}
+
+export interface IResourceLocatorValue {
+  mode: IResourceLocatorMode['name'];
+  value: string;
+}
+
+export interface IResourceLocatorResult {
+  results: INodePropertyOption[];
+  paginationToken?: string;
 }
 
 /** 条件显示：仅当其他参数满足条件时才显示本参数。 */
@@ -188,6 +234,8 @@ export interface INodeProperties {
   description?: string;
   placeholder?: string;
   options?: INodePropertyOption[];
+  /** resourceLocator 的 list/url/id 模式。 */
+  modes?: IResourceLocatorMode[];
   displayOptions?: IDisplayOptions;
   noDataExpression?: boolean;
   typeOptions?: INodePropertyTypeOptions;
@@ -401,6 +449,22 @@ export interface INodeType {
   poll?(this: IPollContext): Promise<INodeExecutionData[][] | null>;
   /** 能力供给（ai_* 子节点）：宿主执行时被解析，返回模型/工具/记忆等能力对象。 */
   supplyData?(this: ISupplyDataContext): Promise<unknown>;
+  /** NDV 动态参数方法；仅由 server 的受保护代查端点调用。 */
+  methods?: {
+    loadOptions?: Record<string, (this: ILoadOptionsContext) => Promise<INodePropertyOption[]>>;
+    resourceLocator?: Record<string, (this: IResourceLocatorContext) => Promise<IResourceLocatorResult>>;
+  };
+}
+
+export interface ILoadOptionsContext {
+  getCredentials(type: string): Promise<JsonObject>;
+  getCurrentNodeParameter(name: string): unknown;
+  helpers: { httpRequest(options: IHttpRequestOptions): Promise<unknown> };
+}
+
+export interface IResourceLocatorContext extends ILoadOptionsContext {
+  filter?: string;
+  paginationToken?: string;
 }
 
 export type INodeTypeConstructor = new () => INodeType;

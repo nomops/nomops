@@ -1412,6 +1412,9 @@ async function loadSavePolicy() {
               :prop="entry.prop"
               :value="entry.node.parameters[entry.paramName]"
               :node-parameters="entry.node.parameters"
+              :node-type="entry.node.type"
+              :node-type-version="entry.node.typeVersion"
+              :credentials="entry.node.credentials"
               @change="editor.setParam(entry.nodeName, entry.paramName, $event)"
             />
             <!-- D120 对标基线 nodeView.focusPanel.noExecutionData -->

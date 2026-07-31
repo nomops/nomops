@@ -325,3 +325,14 @@ export const credentialPatchSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   data: z.record(z.unknown()).optional(),
 });
+
+/** NDV 动态参数代查：节点类型/属性均由服务端 description 二次校验。 */
+export const dynamicNodeParametersSchema = z.object({
+  nodeType: z.string().min(1).max(200),
+  nodeVersion: z.number().int().positive().optional(),
+  propertyName: z.string().min(1).max(200),
+  currentNodeParameters: z.record(z.unknown()).default({}),
+  credentials: z.record(z.object({ id: z.string().min(1).max(200) })).default({}),
+  filter: z.string().max(500).optional(),
+  paginationToken: z.string().max(2000).optional(),
+});
