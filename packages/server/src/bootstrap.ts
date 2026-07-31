@@ -339,6 +339,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     nodeLoader,
     executions,
     () => leader.isLeader(),
+    credentialService,
     audit,
   );
   // 等待唤醒器：leader 到点唤醒 waiting 执行（wait/resume）

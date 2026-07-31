@@ -24,6 +24,9 @@ import { convertToFileDescription } from './nodes/ConvertToFile/ConvertToFile.de
 import { compressionDescription } from './nodes/Compression/Compression.description.js';
 import { ftpDescription } from './nodes/Ftp/Ftp.description.js';
 import { editImageDescription } from './nodes/EditImage/EditImage.description.js';
+import { sshDescription } from './nodes/Ssh/Ssh.description.js';
+import { sendEmailDescription } from './nodes/SendEmail/SendEmail.description.js';
+import { emailTriggerDescription } from './nodes/EmailTrigger/EmailTrigger.description.js';
 import { loopDescription } from './nodes/Loop/Loop.description.js';
 import { mergeDescription } from './nodes/Merge/Merge.description.js';
 import { codeDescription } from './nodes/Code/Code.description.js';
@@ -213,6 +216,21 @@ export const builtinNodeManifest: ILoadableNodeType[] = [
     type: `nomops.${editImageDescription.name}`,
     description: editImageDescription,
     load: () => import('./nodes/EditImage/EditImage.node.js').then((m) => m.EditImage),
+  },
+  {
+    type: `nomops.${sshDescription.name}`,
+    description: sshDescription,
+    load: () => import('./nodes/Ssh/Ssh.node.js').then((m) => m.Ssh),
+  },
+  {
+    type: `nomops.${sendEmailDescription.name}`,
+    description: sendEmailDescription,
+    load: () => import('./nodes/SendEmail/SendEmail.node.js').then((m) => m.SendEmail),
+  },
+  {
+    type: `nomops.${emailTriggerDescription.name}`,
+    description: emailTriggerDescription,
+    load: () => import('./nodes/EmailTrigger/EmailTrigger.node.js').then((m) => m.EmailTrigger),
   },
   {
     type: `nomops.${loopDescription.name}`,

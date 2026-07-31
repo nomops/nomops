@@ -11,3 +11,5 @@ export { builtinNodeManifest } from './manifest.js';
 export { setDescription } from './nodes/Set/Set.description.js';
 export { noOpDescription } from './nodes/NoOp/NoOp.description.js';
 export { manualTriggerDescription } from './nodes/ManualTrigger/ManualTrigger.description.js';
+export { sendSmtpMail } from './lib/smtp-client.js';
+export type { ISmtpConnectionOptions, ISmtpMessage, ISmtpSendResult } from './lib/smtp-client.js';

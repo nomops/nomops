@@ -453,6 +453,8 @@ export interface ISupplyDataContext {
  */
 export interface IPollContext {
   getNodeParameter(name: string): unknown;
+  /** 轮询触发器按节点声明取解密凭证；实现由 server 以 projectId 归属边界注入。 */
+  getCredentials(type: string): Promise<JsonObject>;
   getWorkflowStaticData(type: string): JsonObject;
   helpers: {
     httpRequest(options: IHttpRequestOptions): Promise<unknown>;

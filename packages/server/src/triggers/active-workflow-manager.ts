@@ -13,6 +13,7 @@ import { OperationalError } from '@nomops/workflow';
 import { computeNextRun } from '../services/scheduler-service.js';
 import type { ExecutionService } from '../services/execution-service.js';
 import type { AuditService } from '../services/audit-service.js';
+import type { CredentialService } from '../services/credential-service.js';
 
 /** 解析声明式 webhook 值（字面量 或 { parameter } 引用节点参数）。 */
 function resolveWebhookValue(
@@ -49,6 +50,7 @@ export class ActiveWorkflowManager {
     private readonly nodeLoader: INodeLoader,
     private readonly executions: ExecutionService,
     private readonly isLeader: () => boolean,
+    private readonly credentials: CredentialService,
     private readonly audit?: AuditService,
   ) {}
 
@@ -271,12 +273,19 @@ export class ActiveWorkflowManager {
     workflowId: string,
     node: INode,
   ): Promise<{ context: IPollContext; persist: () => Promise<void> }> {
-    const fresh = await this.repos.workflows.findByIdUnscoped(workflowId);
+    const projectId = await this.repos.workflows.getOwnerProjectId(workflowId);
+    if (!projectId) throw new OperationalError('Workflow owner project not found', { workflowId });
+    const fresh = await this.repos.workflows.findById(workflowId, projectId);
     const staticData: JsonObject = (fresh?.staticData as JsonObject | null) ?? {};
     let staticDataTouched = false;
 
     const context: IPollContext = {
       getNodeParameter: (name: string) => node.parameters[name],
+      getCredentials: async (type: string) => {
+        const reference = node.credentials?.[type];
+        if (!reference) throw new OperationalError(`Node ${node.name} has no credential configured for "${type}"`, { node: node.name });
+        return this.credentials.getDecryptedData(reference.id, projectId);
+      },
       getWorkflowStaticData: (type: string) => {
         staticDataTouched = true;
         const key = type === 'global' ? 'global' : `node:${node.name}`;

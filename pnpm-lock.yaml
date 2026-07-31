@@ -163,6 +163,9 @@ importers:
       sharp:
         specifier: ^0.35.3
         version: 0.35.3(@types/node@22.20.1)
+      ssh2:
+        specifier: ^1.17.0
+        version: 1.17.0
       ssh2-sftp-client:
         specifier: ^12.1.1
         version: 12.1.1
@@ -173,6 +176,9 @@ importers:
       '@types/luxon':
         specifier: ^3.7.2
         version: 3.7.2
+      '@types/ssh2':
+        specifier: ^1.15.5
+        version: 1.15.5
       '@types/ssh2-sftp-client':
         specifier: ^9.0.6
         version: 9.0.6
