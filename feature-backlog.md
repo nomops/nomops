@@ -126,10 +126,7 @@
 
 - [x] **48. 数据变换六件套：Sort / Limit / Remove Duplicates / Rename Keys / Summarize / Compare Datasets** `M/L` ✅ 2026-07-31（新增六个声明式纯内存节点：Sort 多字段/自定义序、Limit 首尾截断、Remove Duplicates 全字段/指定字段/排除字段且可保留首末、Rename Keys 深路径+受限正则、Summarize 分组 sum/avg/count/concat、Compare Datasets 双输入同/异/仅左/仅右四路；共享稳定序列化与字段路径工具，跨执行去重按条目约定后置；新增 16 节点单测 + 1 无 HTTP/DB 真实引擎四路拓扑测，六种引擎拓扑保持全绿，workflow 29/core 101/nodes 83/db 26/frontend 92/server 606、全量 937 测通过；真实 HTTP 回环验证六节点元数据与 Compare 四路执行输出，`pnpm dev` 启动通过，生产 UI 验证数据变换分类自动上架、`diff datasets` 别名搜索、fixedCollection 参数控件，基线 v2.31.0 同视口截图并排比对且最终控制台零报错；commit `bdd5733`）
 
-- [ ] **49. 日期/加密/文本格式五件套：Date & Time / Crypto / HTML / XML / Markdown** `M/L`
-  带轻量 helper 库的转换节点。
-  → Date & Time（解析/格式化/加减/时区，选无依赖或极轻日期库）、Crypto（hash/hmac/base64/uuid、对称加解密，复用现有加密工具）、HTML（CSS 选择器提取 + 文本转 HTML）、XML（解析↔构建，与 JSON 互转）、Markdown（md↔html 双向）。
-  验收：五节点单测覆盖典型 in/out；时区与编码边界用例。
+- [x] **49. 日期/加密/文本格式五件套：Date & Time / Crypto / HTML / XML / Markdown** `M/L` ✅ 2026-07-31（新增五个声明式数据变换节点：Date & Time 支持 ISO/自定义/Unix 解析、格式化、加减与 IANA 时区，Crypto 支持 SHA/HMAC/Base64/UUID 及 scrypt+AES-256-GCM 对称加解密，HTML 支持 CSS 选择器提取与转义安全的文本转 HTML，XML 支持 JSON 双向转换并拒绝 DTD/实体声明，Markdown 支持 md↔html；输出路径统一拒绝原型污染段，新增 12 节点单测覆盖闰日/DST、Unicode 编码、错误密钥和 XML 实体边界，workflow 29/core 101/nodes 95/db 26/frontend 92/server 606、全量 949 测通过；`pnpm build` 6/6、`pnpm dev` 前后端启动通过，真实 HTTP 串联五节点执行成功，生产 UI 验证数据变换分类自动上架、`timezone` 别名搜索与 Date & Time NDV，基线 v2.31.0 同视口截图并排比对且干净标签控制台零报错；commit `c3a6c69`）
 
 - [ ] **50. 文件 IO 六件套：Read/Write File / Extract from File / Convert to File / Compression / FTP / Edit Image** `L`
   依赖 #22 已建的 binary 数据生命周期（IBinaryDataStore）。
