@@ -191,10 +191,7 @@
 
 > 🔴R6 是整个 P11 节点扩张的前置地基（3 个域独立点名）；本节多为「加节点/集成能规模化」的公共能力，应在大批量手写节点前落地。
 
-- [ ] **60. 动态节点参数层（loadOptions / resourceLocator / fixedCollection）** `L`（🔴 R6，**P11 前置**）
-  缺能力·阻断核心场景：`grep loadOptions/resourceLocator` 在 server/nodes/workflow 全空；基线是社区**免费**能力，是「体验分水岭」。#48-54 及未来 355 app 集成全依赖「参数联动查远端资源」（选 Sheet 里的表、选 Slack channel），没有这层新节点只能填 ID 字符串。
-  → 补 `dynamic-node-parameters` 端点（以用户凭证代查远端选项）+ 节点 `loadOptions`/`loadOptionsMethod`/`loadOptionsDependsOn`/`resourceLocator` 契约 + `fixedCollection` 控件；引擎侧声明式（符铁律5）。
-  验收：一个节点下拉能按已选凭证动态拉真实资源列表；resourceLocator 三模式可用。
+- [x] **60. 动态节点参数层（loadOptions / resourceLocator / fixedCollection）** `L` ✅ 2026-07-31（workflow 声明契约补齐 `loadOptions`/`loadOptionsMethod`/`loadOptionsDependsOn`/`resourceLocator`/`fixedCollection`，server 新增 projectId 归属约束的凭证代查端点且错误统一脱敏，前端 ParamInput 元数据驱动实现动态下拉、三模式资源定位与可增删排序固定集合；新增 4 server + 3 frontend 测，workflow 29/core 101/nodes 65/db 26/frontend 87/server 605、全量 913 测通过；真实 HTTP 回环验证凭证解密→远端资源列表且响应无明文，基线 v2.31.0 同尺寸截图并排比对、生产控制台零报错；commit `a562fe0`）
 
 - [ ] **61. 节点面板/控件元数据驱动（清前端特判）** `M`（🟠 A1，**#48 前置**，铁律5）
   踩坑：`packages/frontend/src/components/canvas/NodePanel.vue:43-46` 按类型名硬编码分类，致 #5 已交付的 Switch/Filter/SplitOut/Aggregate/Loop 落不进抽屉仅搜索可达；`ParamInput.vue:243,498` 把 filter/assignment 按参数名伪装进 collection —— 均违「加节点=写 description，前端零特判」。
