@@ -4,6 +4,7 @@ export const filterDescription: INodeTypeDescription = {
   displayName: 'Filter',
   name: 'filter',
   group: ['transform'],
+  categories: ['dataTransformation', 'flow'],
   version: 1,
   description: 'Keep only the items matching the conditions; the rest are discarded',
   defaults: { name: 'Filter' },
@@ -13,7 +14,7 @@ export const filterDescription: INodeTypeDescription = {
     {
       displayName: 'Conditions',
       name: 'conditions',
-      type: 'collection',
+      type: 'filter',
       default: [],
       description: 'List of conditions [{ left, op, right }]; left/right support expressions',
     },

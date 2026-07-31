@@ -4,6 +4,7 @@ export const webhookDescription: INodeTypeDescription = {
   displayName: 'Webhook',
   name: 'webhook',
   group: ['trigger'],
+  categories: ['trigger', 'core'],
   version: 1,
   description: 'Trigger the workflow from an inbound HTTP request',
   defaults: { name: 'Webhook' },

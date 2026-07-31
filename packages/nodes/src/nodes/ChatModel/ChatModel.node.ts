@@ -107,6 +107,8 @@ export const chatModelDescription: INodeTypeDescription = {
   displayName: 'Chat Model',
   name: 'chatModel',
   group: ['ai'],
+  categories: ['ai'],
+  subcategories: ['Language Models'],
   version: 1,
   description: 'Chat model (Anthropic / OpenAI-compatible) — attach to an AI Agent via the Model input',
   defaults: { name: 'Chat Model' },

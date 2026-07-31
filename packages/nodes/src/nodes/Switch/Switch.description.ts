@@ -4,6 +4,7 @@ export const switchDescription: INodeTypeDescription = {
   displayName: 'Switch',
   name: 'switch',
   group: ['transform'],
+  categories: ['dataTransformation', 'flow'],
   version: 1,
   description: 'Route items to one of four outputs — rule i sends matching items to output i (first match wins)',
   defaults: { name: 'Switch' },
@@ -14,7 +15,7 @@ export const switchDescription: INodeTypeDescription = {
     {
       displayName: 'Routing Rules',
       name: 'rules',
-      type: 'collection',
+      type: 'filter',
       default: [],
       description:
         'Rule i routes matching items to output i (first match wins, max 4 rules); left/right support expressions',

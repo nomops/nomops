@@ -4,6 +4,8 @@ export const windowMemoryDescription: INodeTypeDescription = {
   displayName: 'Window Memory',
   name: 'windowMemory',
   group: ['ai'],
+  categories: ['ai'],
+  subcategories: ['Memory'],
   version: 1,
   description: 'Keep the last N conversation turns in workflow static data',
   defaults: { name: 'Window Memory' },

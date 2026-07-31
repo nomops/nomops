@@ -4,6 +4,8 @@ export const httpRequestDescription: INodeTypeDescription = {
   displayName: 'HTTP Request',
   name: 'httpRequest',
   group: ['output'],
+  categories: ['core'],
+  aliases: ['request', 'api'],
   version: 1,
   description: 'Make an HTTP request, once per item',
   defaults: { name: 'HTTP Request' },

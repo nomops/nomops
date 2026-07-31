@@ -4,6 +4,7 @@ export const scheduleDescription: INodeTypeDescription = {
   displayName: 'Schedule',
   name: 'schedule',
   group: ['trigger'],
+  categories: ['trigger'],
   version: 1,
   description: 'Trigger the workflow on a schedule (interval or cron; active only when the workflow is active)',
   defaults: { name: 'Schedule' },

@@ -4,6 +4,7 @@ export const loopDescription: INodeTypeDescription = {
   displayName: 'Loop Over Items',
   name: 'loop',
   group: ['transform'],
+  categories: ['flow'],
   version: 1,
   description: 'Process items in batches — wire the loop branch back into this node to iterate',
   defaults: { name: 'Loop Over Items' },

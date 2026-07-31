@@ -14,6 +14,7 @@ export const setMetadataDescription: INodeTypeDescription = {
   displayName: 'Set Metadata',
   name: 'setMetadata',
   group: ['transform'],
+  categories: ['core', 'dataTransformation'],
   version: 1,
   description: 'Attach key/value metadata to this execution (searchable in the execution list)',
   defaults: { name: 'Set Metadata' },
@@ -23,7 +24,7 @@ export const setMetadataDescription: INodeTypeDescription = {
     {
       displayName: 'Metadata',
       name: 'metadata',
-      type: 'collection',
+      type: 'assignmentCollection',
       default: {},
       description: 'Key → value (values may be expressions, e.g. ={{ $json.customerId }})',
     },

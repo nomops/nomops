@@ -4,6 +4,7 @@ export const noOpDescription: INodeTypeDescription = {
   displayName: 'No Operation',
   name: 'noOp',
   group: ['transform'],
+  categories: ['core'],
   version: 1,
   description: 'Pass input through unchanged (placeholder / debugging)',
   defaults: { name: 'No Operation' },

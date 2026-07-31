@@ -9,6 +9,8 @@ export const evaluationTriggerDescription: INodeTypeDescription = {
   displayName: 'Evaluation Trigger',
   name: 'evaluationTrigger',
   group: ['trigger'],
+  categories: ['trigger', 'ai'],
+  subcategories: ['Evaluation'],
   version: 1,
   description: 'Run this workflow once per row of a dataset (data table) to evaluate it',
   defaults: { name: 'When running an evaluation' },

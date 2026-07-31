@@ -4,6 +4,7 @@ export const splitOutDescription: INodeTypeDescription = {
   displayName: 'Split Out',
   name: 'splitOut',
   group: ['transform'],
+  categories: ['dataTransformation'],
   version: 1,
   description: 'Turn a list field inside each item into separate items',
   defaults: { name: 'Split Out' },

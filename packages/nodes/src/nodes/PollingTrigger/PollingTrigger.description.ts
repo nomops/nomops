@@ -4,6 +4,7 @@ export const pollingTriggerDescription: INodeTypeDescription = {
   displayName: 'Polling Trigger',
   name: 'pollingTrigger',
   group: ['trigger'],
+  categories: ['trigger'],
   version: 1,
   description: 'Poll an HTTP endpoint on an interval and fire only for new items',
   defaults: { name: 'Polling Trigger' },

@@ -123,6 +123,31 @@ describe('ParamInput（schema 驱动控件分发）', () => {
     expect(w.find('input').exists()).toBe(false);
   });
 
+  it('filter 只按类型渲染条件构建器，参数名无需叫 conditions', async () => {
+    const w = make({ type: 'filter', name: 'routingRules', default: [] }, []);
+    expect(w.find('[data-test="conditions-editor"]').exists()).toBe(true);
+    expect(w.find('[data-test="fields-editor"]').exists()).toBe(false);
+
+    await w.find('[data-test="add-condition"]').trigger('click');
+    expect(w.emitted('change')![0]).toEqual([[{ left: '', op: 'eq', right: '' }]]);
+  });
+
+  it('assignmentCollection 只按类型渲染赋值编辑器，参数名无需叫 fields', async () => {
+    const w = make({ type: 'assignmentCollection', name: 'metadata', default: {} }, {});
+    expect(w.find('[data-test="fields-editor"]').exists()).toBe(true);
+    expect(w.find('[data-test="conditions-editor"]').exists()).toBe(false);
+
+    await w.find('[data-test="add-field"]').trigger('click');
+    expect(w.findAll('[data-test="field-row"]')).toHaveLength(1);
+  });
+
+  it('普通 collection 使用通用 JSON 编辑器，不再按值形态猜控件', () => {
+    const w = make({ type: 'collection', name: 'arbitrary', default: {} }, {});
+    expect(w.find('textarea').exists()).toBe(true);
+    expect(w.find('[data-test="conditions-editor"]').exists()).toBe(false);
+    expect(w.find('[data-test="fields-editor"]').exists()).toBe(false);
+  });
+
   it('From AI 芯片（#19 D096）:仅 aiTool 且可切表达式的字段显示,点击插入 $fromAI 模板', async () => {
     const w = mount(ParamInput, {
       props: { prop: { displayName: 'Order Id', name: 'orderId', type: 'string', default: '' } as INodeProperties, value: '', aiTool: true },

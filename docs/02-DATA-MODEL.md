@@ -188,6 +188,10 @@ interface INodeTypeDescription {
   displayName: string;          // "HTTP Request"
   name: string;                 // "httpRequest" → 全名 "nomops.httpRequest"
   group: string[];              // ['trigger'|'transform'|'output'...]
+  categories?: NodeCategory[];  // 节点面板分类，可多选；前端不得按 type/name 特判
+  subcategories?: string[];     // 分类内二级标签
+  aliases?: string[];           // 搜索别名
+  hidden?: boolean;             // 隐藏于节点创建面板
   version: number | number[];   // 支持多版本
   description: string;
   defaults: { name: string };   // 拖出时默认名
@@ -204,6 +208,7 @@ interface INodeProperties {
   displayName: string;          // 表单标签
   name: string;                 // 参数 key（存进 node.parameters）
   type: 'string' | 'number' | 'boolean' | 'options' | 'collection'
+      | 'filter' | 'assignmentCollection' | 'fixedCollection' | 'resourceLocator'
       | 'json' | 'dateTime' | 'color' | 'notice';
   default: any;
   required?: boolean;

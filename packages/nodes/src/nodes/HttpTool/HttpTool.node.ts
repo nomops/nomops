@@ -5,6 +5,8 @@ export const httpToolDescription: INodeTypeDescription = {
   displayName: 'HTTP Tool',
   name: 'httpTool',
   group: ['ai'],
+  categories: ['ai'],
+  subcategories: ['Tools'],
   version: 1,
   description: 'Expose an HTTP endpoint as a tool the AI Agent can call',
   defaults: { name: 'HTTP Tool' },

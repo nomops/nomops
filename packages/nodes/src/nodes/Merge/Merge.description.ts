@@ -4,6 +4,7 @@ export const mergeDescription: INodeTypeDescription = {
   displayName: 'Merge',
   name: 'merge',
   group: ['transform'],
+  categories: ['flow', 'dataTransformation'],
   version: 1,
   description: 'Wait for both inputs, then merge them',
   defaults: { name: 'Merge' },

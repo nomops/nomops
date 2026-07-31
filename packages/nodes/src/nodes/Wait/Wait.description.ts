@@ -4,6 +4,7 @@ export const waitDescription: INodeTypeDescription = {
   displayName: 'Wait',
   name: 'wait',
   group: ['transform'],
+  categories: ['humanReview', 'flow'],
   version: 1,
   description: 'Pause the execution, then resume after a delay or an external signal',
   defaults: { name: 'Wait' },

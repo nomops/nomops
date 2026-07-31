@@ -4,6 +4,8 @@ export const aiAgentDescription: INodeTypeDescription = {
   displayName: 'AI Agent',
   name: 'aiAgent',
   group: ['ai'],
+  categories: ['ai'],
+  subcategories: ['Agents'],
   version: 1,
   description:
     'Compose a model, tools and memory into an agent loop; falls back to direct Claude calls when no model is attached',

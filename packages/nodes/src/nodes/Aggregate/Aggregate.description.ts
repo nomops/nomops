@@ -4,6 +4,7 @@ export const aggregateDescription: INodeTypeDescription = {
   displayName: 'Aggregate',
   name: 'aggregate',
   group: ['transform'],
+  categories: ['dataTransformation'],
   version: 1,
   description: 'Combine all incoming items into a single item',
   defaults: { name: 'Aggregate' },

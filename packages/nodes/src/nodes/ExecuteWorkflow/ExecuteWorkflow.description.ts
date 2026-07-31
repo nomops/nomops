@@ -4,6 +4,8 @@ export const executeWorkflowDescription: INodeTypeDescription = {
   displayName: 'Execute Workflow',
   name: 'executeWorkflow',
   group: ['transform'],
+  categories: ['flow', 'core'],
+  aliases: ['sub-workflow', 'call workflow'],
   version: 1,
   description: 'Run another workflow in the same project with the current items and return its final node output',
   defaults: { name: 'Execute Workflow' },

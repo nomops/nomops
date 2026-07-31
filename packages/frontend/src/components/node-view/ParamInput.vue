@@ -337,11 +337,7 @@ function commitJson() {
   }
 }
 
-/* ── collection 富控件 ──
-   nomops 的 IF/Set 都用 type:'collection',但形态不同:
-   - IF conditions = 数组 [{left,op,right}] → 条件行编辑器(对标基线 filter)
-   - Set fields = 键值对象 {k:v} → 名/值行编辑器(对标基线 Set assignments)
-   据 name/值形态分流,替代原来退化的 JSON 文本框。 */
+/* ── filter / assignmentCollection 复合控件：只按声明类型分发。 ── */
 const OPERATORS = [
   { value: 'eq', label: 'is equal to' },
   { value: 'ne', label: 'is not equal to' },
@@ -356,9 +352,6 @@ const OPERATORS = [
 const UNARY_OPS = ['isEmpty', 'isNotEmpty'];
 
 interface Cond { left?: unknown; op: string; right?: unknown }
-const isConditions = computed(
-  () => props.prop.name === 'conditions' || Array.isArray(current.value) || Array.isArray(props.prop.default),
-);
 const conditions = computed<Cond[]>(() => (Array.isArray(current.value) ? (current.value as Cond[]) : []));
 function addCondition() {
   emit('change', [...conditions.value, { left: '', op: 'eq', right: '' }]);
@@ -597,7 +590,7 @@ function removeField(i: number) {
       </div>
 
       <!-- IF 条件组(对标基线 filter):左值 + 操作符下拉 + 右值 + Add condition -->
-      <div v-else-if="prop.type === 'collection' && isConditions" class="cond-editor" data-test="conditions-editor">
+      <div v-else-if="prop.type === 'filter'" class="cond-editor" data-test="conditions-editor">
         <div v-for="(c, i) in conditions" :key="i" class="cond-row" data-test="condition-row">
           <input class="cond-left" :value="String(c.left ?? '')" placeholder="value1" @input="updateCondition(i, 'left', ($event.target as HTMLInputElement).value)" />
           <select class="cond-op" :value="c.op" @change="updateCondition(i, 'op', ($event.target as HTMLSelectElement).value)">
@@ -613,7 +606,7 @@ function removeField(i: number) {
       </div>
 
       <!-- Set 赋值区(对标基线 Set assignments):名/值行 + Add Field -->
-      <div v-else-if="prop.type === 'collection'" class="kv-editor" data-test="fields-editor">
+      <div v-else-if="prop.type === 'assignmentCollection'" class="kv-editor" data-test="fields-editor">
         <div v-for="(r, i) in fieldRows" :key="i" class="kv-row" data-test="field-row">
           <input class="kv-k" :value="r.k" placeholder="Name" @input="updateField(i, { k: ($event.target as HTMLInputElement).value })" />
           <input class="kv-v" :value="String(r.v ?? '')" placeholder="Value" @input="updateField(i, { v: ($event.target as HTMLInputElement).value })" />
@@ -687,7 +680,7 @@ function removeField(i: number) {
         <p v-if="locatorError" class="error-text dynamic-status">{{ locatorError }}</p>
       </div>
 
-      <template v-else-if="prop.type === 'json'">
+      <template v-else-if="prop.type === 'json' || prop.type === 'collection'">
         <textarea v-model="jsonDraft" rows="5" spellcheck="false" @blur="commitJson" />
         <p v-if="jsonError" class="error-text">{{ jsonError }}</p>
       </template>

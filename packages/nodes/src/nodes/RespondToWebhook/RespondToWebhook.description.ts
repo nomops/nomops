@@ -4,6 +4,7 @@ export const respondToWebhookDescription: INodeTypeDescription = {
   displayName: 'Respond to Webhook',
   name: 'respondToWebhook',
   group: ['transform'],
+  categories: ['core'],
   version: 1,
   description: 'Set the HTTP response the Webhook trigger returns to the caller',
   defaults: { name: 'Respond to Webhook' },

@@ -11,6 +11,8 @@ export const evaluationDescription: INodeTypeDescription = {
   displayName: 'Evaluation',
   name: 'evaluation',
   group: ['transform'],
+  categories: ['ai', 'dataTransformation'],
+  subcategories: ['Evaluation'],
   version: 1,
   description: 'Record metrics or outputs for the current evaluation run',
   defaults: { name: 'Evaluation' },
@@ -31,7 +33,7 @@ export const evaluationDescription: INodeTypeDescription = {
     {
       displayName: 'Metrics',
       name: 'metrics',
-      type: 'collection',
+      type: 'assignmentCollection',
       default: {},
       description: 'Metric name → numeric value (values may be expressions)',
       displayOptions: { show: { operation: ['setMetrics'] } },
@@ -39,7 +41,7 @@ export const evaluationDescription: INodeTypeDescription = {
     {
       displayName: 'Outputs',
       name: 'outputs',
-      type: 'collection',
+      type: 'assignmentCollection',
       default: {},
       description: 'Output name → value (values may be expressions)',
       displayOptions: { show: { operation: ['setOutputs'] } },

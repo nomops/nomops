@@ -140,6 +140,8 @@ export type NodePropertyType =
   | 'options'
   | 'multiOptions'
   | 'collection'
+  | 'filter'
+  | 'assignmentCollection'
   | 'fixedCollection'
   | 'resourceLocator'
   | 'json'
@@ -248,6 +250,16 @@ export interface INodeCredentialDescription {
   displayOptions?: IDisplayOptions;
 }
 
+/** 节点创建面板的声明式一级分类；节点可同时出现在多个分类。 */
+export type NodeCategory =
+  | 'ai'
+  | 'app'
+  | 'dataTransformation'
+  | 'flow'
+  | 'core'
+  | 'humanReview'
+  | 'trigger';
+
 /**
  * Webhook 声明（docs/02 `webhooks?: IWebhookDescription[]`）。
  * 值可以是字面量，也可以声明式引用节点参数（{ parameter: 'path' } → node.parameters.path），
@@ -275,6 +287,14 @@ export interface INodeTypeDescription {
   displayName: string;
   name: string; // 短名 'httpRequest'（全名 'nomops.httpRequest'）
   group: string[]; // 'trigger' | 'transform' | 'output' ...
+  /** 节点创建面板分类；面板只读此元数据，不按节点 type/name 特判。 */
+  categories?: NodeCategory[];
+  /** 分类内的可选二级标签（如 Agents / Language Models）。 */
+  subcategories?: string[];
+  /** 搜索别名。 */
+  aliases?: string[];
+  /** 不在节点创建面板展示（仍可由画布等专用入口创建）。 */
+  hidden?: boolean;
   version: number | number[];
   description: string;
   defaults: { name: string };

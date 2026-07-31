@@ -4,6 +4,8 @@ export const chatTriggerDescription: INodeTypeDescription = {
   displayName: 'Chat Trigger',
   name: 'chatTrigger',
   group: ['trigger'],
+  categories: ['trigger', 'ai'],
+  subcategories: ['AI Triggers'],
   version: 1,
   description: 'Start the workflow from a chat message (canvas chat panel or POST /api/workflows/:id/chat)',
   defaults: { name: 'When chat message received' },

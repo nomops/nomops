@@ -4,6 +4,7 @@ export const codeDescription: INodeTypeDescription = {
   displayName: 'Code',
   name: 'code',
   group: ['transform'],
+  categories: ['dataTransformation', 'core'],
   version: 1,
   description: 'Run JavaScript over the items (return a new items array)',
   defaults: { name: 'Code' },

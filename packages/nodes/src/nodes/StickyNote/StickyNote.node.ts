@@ -4,6 +4,7 @@ export const stickyNoteDescription: INodeTypeDescription = {
   displayName: 'Sticky Note',
   name: 'stickyNote',
   group: ['organize'],
+  hidden: true,
   version: 1,
   description: 'Annotate the canvas — sticky notes never execute',
   defaults: { name: 'Sticky Note' },

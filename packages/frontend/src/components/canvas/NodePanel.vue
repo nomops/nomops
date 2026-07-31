@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import type { NodeCategory } from '@nomops/workflow';
 import type { NodeTypeInfo } from '../../api/client.js';
 import { useNodeTypesStore } from '../../stores/node-types.js';
 import { useEditorStore } from '../../stores/editor.js';
@@ -35,32 +36,34 @@ const CURATED_TRIGGERS: Array<{ key: string; title: string; desc: string; addTyp
   { key: 'other', title: 'Other ways...', desc: 'Runs the flow on workflow errors, file changes, etc.' },
 ];
 
-/** 7 张语义分类(D069)。match 决定该类包含哪些 nomops 节点。 */
-const APP_TYPES = ['nomops.slack', 'nomops.github', 'nomops.sendGrid', 'nomops.stripe', 'nomops.notion', 'nomops.hackerNews'];
-const CATEGORIES: Array<{ key: string; title: string; desc: string; match: (d: NodeTypeInfo) => boolean }> = [
-  { key: 'ai', title: 'AI', desc: 'Build autonomous agents, summarize or search documents, etc.', match: (d) => (d.group ?? []).includes('ai') },
-  { key: 'app', title: 'Action in an app', desc: 'Do something in an app or service like Google Sheets, Telegram or Notion', match: (d) => APP_TYPES.includes(d.type) },
-  { key: 'transform', title: 'Data transformation', desc: 'Manipulate, filter or convert data', match: (d) => ['nomops.set', 'nomops.code', 'nomops.noOp'].includes(d.type) },
-  { key: 'flow', title: 'Flow', desc: 'Branch, merge or loop the flow, etc.', match: (d) => ['nomops.if', 'nomops.merge', 'nomops.executeWorkflow'].includes(d.type) },
-  { key: 'core', title: 'Core', desc: 'Run code, make HTTP requests, set webhooks, etc.', match: (d) => d.type === 'nomops.httpRequest' },
-  { key: 'human', title: 'Human review', desc: 'Request approval via services like Slack and Telegram before making tool calls', match: (d) => d.type === 'nomops.wait' },
-  { key: 'trigger', title: 'Add another trigger', desc: 'Triggers start your workflow. Workflows can have multiple triggers.', match: (d) => (d.group ?? []).includes('trigger') },
+/** 7 张语义分类(D069)。成员完全由 description.categories 声明。 */
+const CATEGORIES: Array<{ key: string; category: NodeCategory; title: string; desc: string }> = [
+  { key: 'ai', category: 'ai', title: 'AI', desc: 'Build autonomous agents, summarize or search documents, etc.' },
+  { key: 'app', category: 'app', title: 'Action in an app', desc: 'Do something in an app or service like Google Sheets, Telegram or Notion' },
+  { key: 'transform', category: 'dataTransformation', title: 'Data transformation', desc: 'Manipulate, filter or convert data' },
+  { key: 'flow', category: 'flow', title: 'Flow', desc: 'Branch, merge or loop the flow, etc.' },
+  { key: 'core', category: 'core', title: 'Core', desc: 'Run code, make HTTP requests, set webhooks, etc.' },
+  { key: 'human', category: 'humanReview', title: 'Human review', desc: 'Request approval via services like Slack and Telegram before making tool calls' },
+  { key: 'trigger', category: 'trigger', title: 'Add another trigger', desc: 'Triggers start your workflow. Workflows can have multiple triggers.' },
 ];
 
-const allNodes = computed(() => nodeTypes.descriptions.filter((d) => d.type !== 'nomops.stickyNote'));
+const allNodes = computed(() => nodeTypes.descriptions.filter((description) => !description.hidden));
 
 /** 搜索结果(平铺,跨所有节点)。 */
 const searchResults = computed(() => {
   const q = search.value.trim().toLowerCase();
-  return allNodes.value.filter((d) => d.displayName.toLowerCase().includes(q) || d.name.toLowerCase().includes(q));
+  return allNodes.value.filter((description) =>
+    [description.displayName, description.name, ...(description.aliases ?? [])]
+      .some((value) => value.toLowerCase().includes(q)),
+  );
 });
 
 /** 下钻列表:分类 → match 命中的节点;触发器 "other" → 全部触发器。 */
 const drillNodes = computed<NodeTypeInfo[]>(() => {
   if (!drill.value) return [];
   const cat = CATEGORIES.find((c) => c.key === drill.value);
-  if (cat) return allNodes.value.filter(cat.match);
-  return allNodes.value.filter((d) => (d.group ?? []).includes('trigger')); // 触发器下钻
+  if (cat) return allNodes.value.filter((description) => description.categories?.includes(cat.category));
+  return allNodes.value.filter((description) => description.categories?.includes('trigger')); // 触发器下钻
 });
 const drillTitle = computed(() => CATEGORIES.find((c) => c.key === drill.value)?.title ?? 'Triggers');
 

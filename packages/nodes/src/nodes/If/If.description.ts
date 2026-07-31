@@ -4,6 +4,7 @@ export const ifDescription: INodeTypeDescription = {
   displayName: 'IF',
   name: 'if',
   group: ['transform'],
+  categories: ['flow'],
   version: 1,
   description: 'Route items to the true / false output by condition',
   defaults: { name: 'IF' },
@@ -14,7 +15,7 @@ export const ifDescription: INodeTypeDescription = {
     {
       displayName: 'Conditions',
       name: 'conditions',
-      type: 'collection',
+      type: 'filter',
       default: [],
       description: 'List of conditions [{ left, op, right }]; left/right support expressions',
     },
