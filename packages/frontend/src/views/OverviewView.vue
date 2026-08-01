@@ -1136,7 +1136,9 @@ const fmtRunTime = (row: ExecutionRow): string => {
         <div v-for="f in subfolders" :key="f.id" class="folder-card" :data-test-folder="f.id" @click="enterFolder(f.id)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" class="folder-ico"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" /></svg>
           <span class="folder-name">{{ f.name }}</span>
-          <button class="folder-del" :title="t('Delete folder')" :data-test-folder-del="f.id" @click.stop="deleteFolder(f.id)">×</button>
+          <button class="folder-del" type="button" :title="t('Delete folder')" :aria-label="t('Delete folder')" :data-test-folder-del="f.id" @click.stop="deleteFolder(f.id)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
+          </button>
         </div>
       </div>
 
@@ -1277,7 +1279,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
           <div v-for="row in pagedCredentials" :key="row.id" class="wf-card" :data-test-cred-card="row.id">
             <span class="cred-row-icon"><IconSvg v-bind="credentialIcon(row.type)" :size="22" /></span>
             <div class="wf-main">
-              <a class="wf-name" href="#" @click.prevent="openCredential(row)">{{ row.name }}</a>
+              <button type="button" class="wf-name button-link" @click="openCredential(row)">{{ row.name }}</button>
               <div class="wf-meta">
                 <span>{{ credLabel(row.type) }}</span>
                 <span class="sep">|</span>
@@ -1722,7 +1724,9 @@ const fmtRunTime = (row: ExecutionRow): string => {
           <label v-for="tg in allTags" :key="tg.id" class="tag-check-row">
             <input type="checkbox" :checked="managedTagIds.has(tg.id)" :data-test-tag-check="tg.id" @change="toggleManagedTag(tg.id)" />
             <span class="tag-check-name">{{ tg.name }}</span>
-            <button class="tag-del" :title="t('Delete tag {name} (removes it from all workflows)', { name: tg.name })" :data-test-tag-del="tg.id" @click.prevent="deleteTag(tg.id)">×</button>
+            <button class="tag-del" type="button" :title="t('Delete tag {name} (removes it from all workflows)', { name: tg.name })" :aria-label="t('Delete tag {name} (removes it from all workflows)', { name: tg.name })" :data-test-tag-del="tg.id" @click.prevent="deleteTag(tg.id)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
+            </button>
           </label>
         </div>
         <p v-else class="dim" style="font-size: 13px">{{ t('No tags yet — create one above.') }}</p>
@@ -2008,6 +2012,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
   font-size: 18px; line-height: 1; width: 22px; height: 22px; border-radius: 5px; flex-shrink: 0;
 }
 .folder-del:hover { color: var(--err, #ef5f5f); background: rgba(239, 95, 95, 0.12); }
+.folder-del svg { width: 14px; height: 14px; margin: auto; }
 
 /* Workflow cards — 基线实测：bg light-3、1px border-color、圆角 8(--radius--lg)、
    卡间距 8(--spacing--2xs)、内衬 16(--spacing--sm)、标题 14px/500 白/行高 1.35、meta 12px tint-1 */
@@ -2310,6 +2315,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
 }
 .tag-check-row:hover .tag-del { visibility: visible; }
 .tag-del:hover { color: var(--danger, #e5484d); }
+.tag-del svg { width: 13px; height: 13px; display: block; }
 .dt-source { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; }
 .dt-source-opt {
   display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; cursor: pointer;

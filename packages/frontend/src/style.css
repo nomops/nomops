@@ -100,6 +100,10 @@ input, select, textarea {
   width: 100%;
 }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+.button-link {
+  width: auto; height: auto; padding: 0; border: 0; border-radius: 0;
+  background: none; color: inherit; font: inherit; line-height: inherit; cursor: pointer;
+}
 
 label { display: block; margin: 10px 0 4px; color: var(--text-dim); font-size: 12px; }
 

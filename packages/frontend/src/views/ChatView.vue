@@ -678,7 +678,7 @@ function chatWith(target: ChatTarget) {
           <div v-if="!activeSession?.target" class="model-hint" data-test="model-hint">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" class="i14"><circle cx="12" cy="12" r="9" /><path d="M12 8h.01M12 11v5" /></svg>
             Please
-            <a href="#" data-test="model-hint-link" @click.prevent.stop="modelPickerOpen = true">select a model</a>
+            <button type="button" class="button-link" data-test="model-hint-link" @click.stop="modelPickerOpen = true">select a model</button>
             to start a conversation
           </div>
           <!-- D156 对标基线:输入区 + 底栏(左 +Tools / 右 橙色发送) -->
@@ -846,7 +846,7 @@ function chatWith(target: ChatTarget) {
   border: 1px solid var(--focus--border-color); background: var(--color--purple-alpha-100);
   border-radius: var(--radius--lg) var(--radius--lg) 0 0; padding: 12px 16px; font-size: var(--font-size--sm); color: var(--color--text--shade-1);
 }
-.model-hint a { color: var(--color--purple-300); text-decoration: underline; }
+.model-hint .button-link { color: var(--color--purple-300); text-decoration: underline; }
 .model-hint + .composer { border-top-left-radius: 0; border-top-right-radius: 0; }
 /* 基线实测：composer = bg light-3 / 圆角 8 / 衬 8 / 1px 白环 + 0 1px 3px -1px 投影 */
 .composer {

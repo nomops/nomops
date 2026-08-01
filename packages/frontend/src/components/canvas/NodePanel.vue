@@ -106,7 +106,7 @@ watch(
   <transition name="drawer">
     <aside v-if="editor.nodePickerOpen" class="picker-drawer" data-test="node-picker">
       <div class="picker-head">
-        <button v-if="drill" class="picker-back" data-test="picker-back" @click="drill = null">‹</button>
+        <button v-if="drill" class="picker-back" type="button" aria-label="Back to node categories" data-test="picker-back" @click="drill = null">‹</button>
         <div>
           <div class="picker-title">
             {{ drill ? drillTitle : isTriggerRoot ? 'What triggers this workflow?' : 'What happens next?' }}
@@ -115,7 +115,9 @@ watch(
             {{ drill ? 'Select a node to add' : isTriggerRoot ? 'A trigger is a step that starts your workflow' : 'Add a node to transform data or call a service' }}
           </div>
         </div>
-        <button class="picker-close" data-test="picker-close" @click="close">✕</button>
+        <button class="picker-close" type="button" aria-label="Close node panel" data-test="picker-close" @click="close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
+        </button>
       </div>
 
       <div class="picker-search">
@@ -215,6 +217,7 @@ watch(
 .picker-title { font-size: var(--font-size--lg); font-weight: var(--font-weight--bold); color: var(--color--text--shade-1); }
 .picker-sub { font-size: var(--font-size--2xs); color: var(--color--text); margin-top: 3px; }
 .picker-close { padding: 4px 8px; }
+.picker-close svg { width: 16px; height: 16px; display: block; }
 .picker-search { position: relative; padding: 0 16px 12px; }
 .picker-search .search-icon { position: absolute; left: 28px; top: 12px; width: 15px; height: 15px; color: var(--color--text--tint-1); }
 .picker-search input {

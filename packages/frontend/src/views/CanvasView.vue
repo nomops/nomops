@@ -1100,7 +1100,7 @@ async function loadSavePolicy() {
             <div><span class="dim">Failed production:</span> {{ savePolicy.failed ? 'Saved' : 'Not saved' }}</div>
             <div><span class="dim">Successful production:</span> {{ savePolicy.success ? 'Saved' : 'Not saved' }}</div>
             <div><span class="dim">Manual:</span> {{ savePolicy.manual ? 'Saved' : 'Not saved' }}</div>
-            <a href="#" class="accent-link" @click.prevent="openWfSettings">Change in workflow settings</a>
+            <button type="button" class="accent-link button-link" @click="openWfSettings">Change in workflow settings</button>
           </div>
         </div>
       </aside>
@@ -1176,7 +1176,9 @@ async function loadSavePolicy() {
             ><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M7 14V3H3v11h4Zm0-9h9.2a2 2 0 0 1 1.9 1.4l2.5 8a2 2 0 0 1-1.9 2.6H14l.7 3.1a2.4 2.4 0 0 1-4.5 1.9L7 14Z" /></svg></button>
             <span v-for="tg in annotation.tags" :key="tg.id" class="annot-tag" data-test="annot-tag">
               {{ tg.name }}
-              <button class="annot-tag-x" data-test="annot-tag-remove" @click="removeAnnotationTag(tg.name)">×</button>
+              <button class="annot-tag-x" type="button" :aria-label="`Remove annotation tag ${tg.name}`" data-test="annot-tag-remove" @click="removeAnnotationTag(tg.name)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
+              </button>
             </span>
             <input
               v-model="newTag"
@@ -1444,7 +1446,9 @@ async function loadSavePolicy() {
         <aside v-if="editor.focusPanelOpen" class="focus-panel" data-test="focus-panel">
           <div class="focus-head">
             <span>Focus panel</span>
-            <button class="focus-x" data-test="focus-close" @click="editor.focusPanelOpen = false">×</button>
+            <button class="focus-x" type="button" aria-label="Close focus panel" data-test="focus-close" @click="editor.focusPanelOpen = false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
+            </button>
           </div>
           <div v-if="pinnedEntries.length === 0" class="focus-empty dim" data-test="focus-empty">
             <p><strong>Show a node parameter here, to iterate easily</strong></p>
@@ -1454,7 +1458,9 @@ async function loadSavePolicy() {
           <div v-for="entry in pinnedEntries" :key="`${entry.nodeName}:${entry.paramName}`" class="focus-item">
             <div class="focus-item-head">
               <span class="focus-item-title">{{ entry.nodeName }} · {{ entry.prop.displayName }}</span>
-              <button class="focus-x" title="Unpin" @click="editor.togglePinParam(entry.nodeName, entry.paramName)">×</button>
+              <button class="focus-x" type="button" :aria-label="`Unpin ${entry.paramName}`" title="Unpin" @click="editor.togglePinParam(entry.nodeName, entry.paramName)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
+              </button>
             </div>
             <ParamInput
               :prop="entry.prop"
@@ -1771,6 +1777,7 @@ async function loadSavePolicy() {
 .focus-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 10px; font-weight: 600; font-size: 14px; }
 .focus-x { background: none; border: none; padding: 0 4px; color: var(--text-dim); font-size: 16px; cursor: pointer; }
 .focus-x:hover { color: var(--text); }
+.focus-x svg { width: 15px; height: 15px; display: block; }
 .focus-empty { padding: 18px 20px; font-size: 12.5px; line-height: 1.55; }
 .focus-empty strong { color: var(--text); }
 .focus-item { padding: 10px 16px 4px; border-top: 1px solid var(--border); }
@@ -1977,6 +1984,7 @@ async function loadSavePolicy() {
   background: var(--color--background--light-1); border: 1px solid var(--border-color); border-radius: 12px; font-size: 12px;
 }
 .annot-tag-x { border: none; background: none; color: var(--text-dim); cursor: pointer; font-size: 13px; line-height: 1; padding: 0; }
+.annot-tag-x svg { width: 13px; height: 13px; display: block; }
 .annot-tag-input { width: 80px; height: 28px; padding: 0 8px; border: 1px solid var(--border-color); border-radius: 6px; background: none; color: inherit; font-size: 12px; }
 .annot-note { flex: 1; min-width: 140px; height: 28px; padding: 0 10px; border: 1px solid var(--border-color); border-radius: 6px; background: none; color: inherit; font-size: 13px; }
 

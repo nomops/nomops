@@ -165,7 +165,7 @@ async function submitReset() {
         </button>
       </div>
     </form>
-    <a href="#" class="auth-link" data-test="back-to-login" @click.prevent="setMode('login')">Back to sign in</a>
+    <button type="button" class="auth-link button-link" data-test="back-to-login" @click="setMode('login')">Back to sign in</button>
   </AuthFrame>
 
   <AuthFrame v-else-if="mode === 'setup'" title="Set up owner account" description="Create the first account for this self-hosted instance." width="400px">
@@ -219,14 +219,14 @@ async function submitReset() {
           {{ busy ? 'Signing in…' : ldapMode ? 'Sign in with LDAP' : mfaRequired ? 'Verify' : 'Sign in' }}
         </button>
       </div>
-      <a v-if="!ldapMode && !mfaRequired" href="#" class="auth-link" data-test="forgot-link" @click.prevent="setMode('forgot')">Forgot my password</a>
+      <button v-if="!ldapMode && !mfaRequired" type="button" class="auth-link button-link" data-test="forgot-link" @click="setMode('forgot')">Forgot my password</button>
 
       <template v-if="ssoEnabled || ldapEnabled">
         <div class="auth-divider">or</div>
         <a v-if="ssoEnabled && !ldapMode" class="auth-link provider-link" href="/sso/login" data-test="sso-login">Sign in with SSO</a>
-        <a v-if="ldapEnabled" href="#" class="auth-link provider-link" data-test="ldap-toggle" @click.prevent="ldapMode = !ldapMode; error = ''; focusEmail()">
+        <button v-if="ldapEnabled" type="button" class="auth-link provider-link button-link" data-test="ldap-toggle" @click="ldapMode = !ldapMode; error = ''; focusEmail()">
           {{ ldapMode ? 'Use email and password' : 'Sign in with LDAP' }}
-        </a>
+        </button>
       </template>
     </form>
   </AuthFrame>

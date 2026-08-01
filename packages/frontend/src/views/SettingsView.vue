@@ -1967,15 +1967,15 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
         <div style="max-width: 760px">
           <b style="font-size: 14px">{{ t('Password') }}</b>
           <div v-if="!showPassForm" style="margin-top: 6px">
-            <a href="#" class="accent-link" data-test="change-password" @click.prevent="showPassForm = true">{{ t('Change password') }}</a>
+            <button type="button" class="accent-link button-link" data-test="change-password" @click="showPassForm = true">{{ t('Change password') }}</button>
             <span v-if="passSaved" class="saved-hint" style="margin-left: 10px">{{ t('Password updated ✓') }}</span>
           </div>
           <!-- 基线 changePassword-modal:弹窗形态,字段/提示/按钮逐字对齐 -->
           <div v-if="showPassForm" class="modal-mask" data-test="pass-modal" @click.self="showPassForm = false; passError = ''">
-            <div class="modal-card" style="width: 460px">
+            <div class="modal-card" role="dialog" aria-modal="true" :aria-label="t('Change password')" style="width: 460px">
               <div style="display: flex; align-items: flex-start; justify-content: space-between">
                 <h2 class="modal-title">{{ t('Change password') }}</h2>
-                <button class="modal-x" @click="showPassForm = false; passError = ''">×</button>
+                <button class="modal-x" type="button" :aria-label="t('Close')" @click="showPassForm = false; passError = ''"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
               </div>
               <label>{{ t('Current password') }} <span style="color: var(--err)">*</span></label>
               <input v-model="passCurrent" data-test="pass-current" type="password" autocomplete="current-password" />
@@ -1984,7 +1984,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
               <p class="dim" style="font-size: 12px; margin: 4px 0 0">{{ t('8+ characters, at least 1 number and 1 capital letter') }}</p>
               <label>{{ t('Re-enter new password') }} <span style="color: var(--err)">*</span></label>
               <input v-model="passNew2" data-test="pass-new2" type="password" autocomplete="new-password" @keyup.enter="submitChangePassword" />
-              <p v-if="passError" class="error-text">{{ passError }}</p>
+              <p v-if="passError" class="error-text" role="alert">{{ passError }}</p>
               <div style="display: flex; justify-content: flex-end; margin-top: 14px">
                 <button class="btn primary" data-test="pass-save" @click="submitChangePassword">{{ t('Change password') }}</button>
               </div>
@@ -2151,10 +2151,10 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
 
         <!-- 弹窗：创建/编辑自定义角色 -->
         <div v-if="roleModalOpen" class="modal-mask" data-test="role-modal" @click.self="roleModalOpen = false">
-          <div class="modal-card" style="width: 560px">
+          <div class="modal-card" role="dialog" aria-modal="true" :aria-label="roleEditingId ? 'Edit role' : 'Create role'" style="width: 560px">
             <div style="display: flex; align-items: flex-start; justify-content: space-between">
               <h2 class="modal-title">{{ roleEditingId ? 'Edit role' : 'Create role' }}</h2>
-              <button class="modal-x" @click="roleModalOpen = false">×</button>
+              <button class="modal-x" type="button" aria-label="Close" @click="roleModalOpen = false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
             </div>
             <label class="modal-label">Name <span class="req">*</span></label>
             <input
@@ -2216,10 +2216,10 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
 
         <!-- 弹窗：Invite new users（对标基线） -->
         <div v-if="inviteModalOpen" class="modal-mask" data-test="invite-modal" @click.self="inviteModalOpen = false">
-          <div class="modal-card" style="width: 560px">
+          <div class="modal-card" role="dialog" aria-modal="true" aria-label="Invite new users" style="width: 560px">
             <div style="display: flex; align-items: flex-start; justify-content: space-between">
               <h2 class="modal-title">Invite new users</h2>
-              <button class="modal-x" @click="inviteModalOpen = false">×</button>
+              <button class="modal-x" type="button" aria-label="Close" @click="inviteModalOpen = false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
             </div>
             <template v-if="!inviteLinks.length">
               <label class="modal-label">New User Email Addresses <span class="req">*</span></label>
@@ -3032,10 +3032,10 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
 
         <!-- 弹窗：Create API Key（对标基线） -->
         <div v-if="apiModalOpen" class="modal-mask" data-test="api-modal" @click.self="apiModalOpen = false">
-          <div class="modal-card" style="width: 560px">
+          <div class="modal-card" role="dialog" aria-modal="true" aria-label="Create API key" style="width: 560px">
             <div style="display: flex; align-items: flex-start; justify-content: space-between">
               <h2 class="modal-title">Create API Key</h2>
-              <button class="modal-x" @click="apiModalOpen = false">×</button>
+              <button class="modal-x" type="button" aria-label="Close" @click="apiModalOpen = false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
             </div>
             <template v-if="!createdToken">
               <label class="modal-label">Label</label>
@@ -3124,10 +3124,10 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
 
         <!-- 弹窗：Install community nodes（对标基线：说明卡 + 包名 + 风险确认） -->
         <div v-if="communityModalOpen" class="modal-mask" data-test="community-modal" @click.self="communityModalOpen = false">
-          <div class="modal-card" style="width: 620px">
+          <div class="modal-card" role="dialog" aria-modal="true" aria-label="Install community nodes" style="width: 620px">
             <div style="display: flex; align-items: flex-start; justify-content: space-between">
               <h2 class="modal-title">Install community nodes</h2>
-              <button class="modal-x" @click="communityModalOpen = false">×</button>
+              <button class="modal-x" type="button" aria-label="Close" @click="communityModalOpen = false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
             </div>
             <div class="info-callout" style="display: flex; align-items: center; gap: 14px">
               <span style="flex: 1">Find community nodes to add on the npm public registry. <a class="link" :href="LINKS.docs" target="_blank" rel="noreferrer">More info</a></span>
@@ -3180,7 +3180,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                   <li v-for="r in dynResolvers" :key="r.id" class="dyn-row" :class="{ sel: dynSelectedResolver === r.id }" data-test="dyncreds-resolver" @click="selectDynResolver(r.id)">
                     <span class="dyn-name">{{ r.name }}</span>
                     <span class="dyn-badge">{{ r.kind }}</span>
-                    <button class="link" data-test="dyncreds-del-resolver" @click.stop="removeDynResolver(r.id)">✕</button>
+                    <button class="link icon-delete" type="button" aria-label="Delete resolver" data-test="dyncreds-del-resolver" @click.stop="removeDynResolver(r.id)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
                   </li>
                 </ul>
               </div>
@@ -3215,7 +3215,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                     <span class="dyn-name">{{ s.subject }}</span>
                     <span class="dim" style="font-size: 11.5px">{{ fmtDate(s.updatedAt) }}</span>
                     <button class="link" data-test="dyncreds-rotate" title="Rotate value" @click="rotateDynSubject(s.subject)">Rotate</button>
-                    <button class="link" data-test="dyncreds-del-subject" @click="removeDynEntry(s.subject)">✕</button>
+                    <button class="link icon-delete" type="button" :aria-label="`Delete override for ${s.subject}`" data-test="dyncreds-del-subject" @click="removeDynEntry(s.subject)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
                   </li>
                 </ul>
               </div>
@@ -3233,7 +3233,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                   <li v-for="u in dynUsers" :key="u.id" class="dyn-row">
                     <span class="dyn-name">{{ u.userId }}</span>
                     <span class="dim" style="font-size: 11.5px">{{ fmtDate(u.updatedAt) }}</span>
-                    <button class="link" data-test="dyncreds-del-user" @click="removeDynUserEntry(u.userId)">✕</button>
+                    <button class="link icon-delete" type="button" :aria-label="`Delete user override for ${u.userId}`" data-test="dyncreds-del-user" @click="removeDynUserEntry(u.userId)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
                   </li>
                 </ul>
                 <input v-model="dynNewUserId" data-test="dyncreds-userid" placeholder="platform user id" style="width: 100%; margin: 4px 0 6px" />
@@ -3309,7 +3309,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                       <span class="trust-badge" :class="`s-${s.status}`" data-test="trust-source-status" :title="s.lastError || ''">{{ s.status }}</span>
                     </span>
                     <button v-if="s.type === 'jwks'" class="link" data-test="trust-refresh-source" :disabled="trustBusy === 'refresh'" @click="refreshTrustSource(s.id)">Refresh</button>
-                    <button class="link" data-test="trust-del-source" @click="removeTrustSource(s.id)">✕</button>
+                    <button class="link icon-delete" type="button" aria-label="Delete trust source" data-test="trust-del-source" @click="removeTrustSource(s.id)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
                   </li>
                 </ul>
                 <div style="display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; align-items: center">
@@ -3336,7 +3336,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
                 <ul v-else class="dyn-list" data-test="trust-keys">
                   <li v-for="k in trustStatus.trustedKeys" :key="k.id" class="dyn-row">
                     <span class="dyn-name"><code>{{ k.kid }}</code> <span class="dim">{{ k.sourceName || k.issuer || 'manual' }}</span></span>
-                    <button class="link" data-test="trust-del-key" @click="removeTrustKey(k.kid)">✕</button>
+                    <button class="link icon-delete" type="button" :aria-label="`Delete trust key ${k.kid}`" data-test="trust-del-key" @click="removeTrustKey(k.kid)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
                   </li>
                 </ul>
                 <details style="margin-top: 6px">
@@ -3493,7 +3493,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
 
         <!-- Push 弹窗（对标基线：勾选要推的工作流 + commit message） -->
         <div v-if="scPushModal" class="modal-mask" data-test="sc-push-modal" @click.self="scPushModal = false">
-          <div class="modal-card" style="max-width: 620px">
+          <div class="modal-card" role="dialog" aria-modal="true" aria-label="Push to Git" style="max-width: 620px">
             <h2 class="modal-title">Push to Git</h2>
             <p class="dim" style="font-size: 12.5px; margin: 0 0 12px">Select the workflows to commit and push to <code>{{ scConfig?.branch }}</code>.</p>
             <div v-if="!scStatus?.files.length" class="dim" style="font-size: 13px; padding: 8px 0">No local changes — nothing to push.</div>
@@ -3526,7 +3526,7 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
 
         <!-- Pull 弹窗（对标基线：先预览远端将导入/更新，再确认） -->
         <div v-if="scPullModal" class="modal-mask" data-test="sc-pull-modal" @click.self="scPullModal = false">
-          <div class="modal-card" style="max-width: 620px">
+          <div class="modal-card" role="dialog" aria-modal="true" aria-label="Pull from Git" style="max-width: 620px">
             <h2 class="modal-title">Pull from Git</h2>
             <p class="dim" style="font-size: 12.5px; margin: 0 0 12px">These workflows will be imported from <code>{{ scConfig?.branch }}</code>. Local versions are overwritten.</p>
             <div v-if="scBusy === 'pull-preview'" class="dim" style="font-size: 13px; padding: 8px 0">Loading preview…</div>
@@ -3835,10 +3835,10 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
 
         <!-- Enable workflows 弹窗（对标基线 Enable workflow MCP access） -->
         <div v-if="mcpModalOpen" class="modal-mask" data-test="mcp-modal" @click.self="mcpModalOpen = false">
-          <div class="modal-card" style="width: 640px">
+          <div class="modal-card" role="dialog" aria-modal="true" aria-label="Enable workflow MCP access" style="width: 640px">
             <div style="display: flex; align-items: flex-start; justify-content: space-between">
               <h2 class="modal-title">Enable workflow MCP access</h2>
-              <button class="modal-x" @click="mcpModalOpen = false">×</button>
+              <button class="modal-x" type="button" aria-label="Close" @click="mcpModalOpen = false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
             </div>
             <div class="info-callout">
               Workflows that are <b>published</b> can be enabled for MCP access — calls always run the published version.
@@ -3932,10 +3932,10 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
 
           <!-- Configure Anthropic 弹窗（对标基线 Configure provider） -->
           <div v-if="providerModalOpen" class="modal-mask" data-test="chat-provider-modal" @click.self="providerModalOpen = false">
-            <div class="modal-card" style="width: 620px">
+            <div class="modal-card" role="dialog" aria-modal="true" :aria-label="`Configure ${providerModal?.label ?? 'provider'}`" style="width: 620px">
               <div style="display: flex; align-items: flex-start; justify-content: space-between">
                 <h2 class="modal-title">Configure {{ providerModal?.label }}</h2>
-                <button class="modal-x" @click="providerModalOpen = false">×</button>
+                <button class="modal-x" type="button" aria-label="Close" @click="providerModalOpen = false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
               </div>
 
               <!-- ① Enable {Provider} -->
@@ -4416,6 +4416,7 @@ a.btn:hover { border-color: var(--accent); color: var(--text-hi); }
 .modal-label { display: block; margin: 14px 0 6px; font-size: 14px; font-weight: 600; color: var(--text-hi); }
 .modal-x { background: none; border: none; color: var(--text-dim); font-size: 20px; cursor: pointer; padding: 0 6px; line-height: 1; }
 .modal-x:hover { color: var(--text-hi); }
+.modal-x svg, .icon-delete svg { width: 15px; height: 15px; display: block; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
 
 /* 弹窗顶部提示卡（左竖条，对标基线 callout） */

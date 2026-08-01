@@ -189,7 +189,6 @@ onUnmounted(() => {
 });
 
 const showAbout = ref(false);
-const showBug = ref(false);
 const about = ref<Awaited<ReturnType<typeof api.about>> | null>(null);
 async function openAbout() {
   closeAll();
@@ -397,8 +396,7 @@ async function openAbout() {
     </template>
   </UiDialog>
 
-  <div v-if="showAbout" class="about-overlay" data-test="about-modal" @click.self="showAbout = false">
-    <div class="about-card">
+  <UiDialog :open="showAbout" :title="t('About nomops')" width="380px" test-id="about-modal" @close="showAbout = false">
       <div class="brand-word" style="font-size: 24px">nomops</div>
       <div class="dim" style="font-size: 12px; margin-top: 2px">
         v{{ about?.version ?? '…' }}
@@ -412,17 +410,10 @@ async function openAbout() {
         <div><span class="dim">{{ t('Built-in nodes') }}</span><span>{{ about?.nodeCount ?? '–' }}</span></div>
         <div><span class="dim">{{ t('Docs') }}</span><span>{{ about?.docs ?? 'docs/' }}</span></div>
       </div>
-      <button class="btn primary" style="margin-top: 16px" @click="showAbout = false">{{ t('Close') }}</button>
-    </div>
-  </div>
+      <template #footer><button class="btn primary" @click="showAbout = false">{{ t('Close') }}</button></template>
+  </UiDialog>
 
-  <!-- 报告问题 -->
-  <div v-if="showNews" class="news-mask" data-test="whats-new-modal" @click.self="showNews = false">
-      <div class="news-card">
-        <div class="news-head">
-          <strong>{{ t("What's New") }}</strong>
-          <button class="news-x" @click="showNews = false">✕</button>
-        </div>
+  <UiDialog :open="showNews" :title="t(`What's New`)" width="560px" test-id="whats-new-modal" @close="showNews = false">
         <div class="news-body">
           <div v-for="e in WHATS_NEW" :key="e.id" class="news-entry">
             <div class="news-title">{{ e.title }} <span class="dim news-date">{{ e.date }}</span></div>
@@ -431,25 +422,7 @@ async function openAbout() {
             </ul>
           </div>
         </div>
-      </div>
-    </div>
-
-    <div v-if="showBug" class="about-overlay" data-test="bug-modal" @click.self="showBug = false">
-    <div class="about-card" style="text-align: left; width: 380px">
-      <div style="font-weight: 600; font-size: 16px; text-align: center; margin-bottom: 12px">{{ t('Report a problem') }}</div>
-      <p class="dim" style="font-size: 13px; line-height: 1.7">
-        {{ t('Please include the following so we can reproduce it:') }}<br />
-        {{ t('1. Steps, expected vs actual result') }}<br />
-        {{ t('2. Failing node name and execution ID (see Executions)') }}<br />
-        {{ t('3. Browser console / instance log snippet') }}<br />
-        {{ t('4. Version v{v}', { v: about?.version ?? '…' }) }}
-      </p>
-      <p class="dim" style="font-size: 12px; margin-top: 10px">
-        {{ t('Self-hosted logs: {cmd}; in dev, see the server process output.', { cmd: 'docker logs' }) }}
-      </p>
-      <button class="btn primary" style="width: 100%; margin-top: 14px" @click="showBug = false">{{ t('Got it') }}</button>
-    </div>
-  </div>
+  </UiDialog>
 </template>
 
 <style scoped>
@@ -551,19 +524,10 @@ async function openAbout() {
 .flyout-label { font-size: 11px; color: var(--text-faint); padding: 8px 10px 2px; text-transform: uppercase; }
 .flyout-sep { height: 1px; background: var(--border); margin: 6px 0; }
 
-.about-overlay {
-  position: fixed; inset: 0; z-index: 70; background: rgba(0, 0, 0, 0.55);
-  display: flex; align-items: center; justify-content: center;
-}
-.about-card {
-  background: var(--bg-panel); border: 1px solid var(--border-strong); border-radius: 12px;
-  padding: 28px; text-align: center; width: 340px;
-}
-.about-card .plan-badge { font-size: 11px; padding: 1px 8px; border-radius: 10px; border: 1px solid var(--border); margin-left: 6px; }
-.about-card .plan-badge.enterprise { color: var(--accent); border-color: var(--accent); }
+.plan-badge { font-size: 11px; padding: 1px 8px; border-radius: 10px; border: 1px solid var(--border); margin-left: 6px; }
+.plan-badge.enterprise { color: var(--accent); border-color: var(--accent); }
 .about-meta { text-align: left; font-size: 12.5px; border-top: 1px solid var(--border); padding-top: 12px; margin-top: 4px; }
 .about-meta > div { display: flex; justify-content: space-between; padding: 4px 0; }
-.about-card code { background: var(--bg-input); padding: 1px 5px; border-radius: 3px; }
 .btn { display: inline-flex; align-items: center; justify-content: center; height: 34px; padding: 0 14px; border-radius: var(--radius); border: none; font-size: 14px; font-weight: 500; cursor: pointer; }
 .btn.primary { background: var(--accent); color: #fff; }
 .btn.primary:hover { background: var(--accent-dim); }
@@ -575,16 +539,7 @@ async function openAbout() {
   border-radius: 50%; background: var(--err, #e5484d);
 }
 .news-dot.inline { position: static; margin-left: 8px; display: inline-block; }
-.news-mask { position: fixed; inset: 0; z-index: 110; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; }
-.news-card {
-  width: 560px; max-height: 70vh; display: flex; flex-direction: column;
-  background: var(--color--background--light-1); border: 1px solid var(--border); border-radius: 12px;
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
-}
-.news-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 10px; font-size: 15px; }
-.news-x { background: none; border: none; padding: 2px 6px; color: var(--text-dim); cursor: pointer; }
-.news-x:hover { color: var(--text); }
-.news-body { overflow-y: auto; padding: 4px 20px 18px; }
+.news-body { overflow-y: auto; }
 .news-entry { margin-bottom: 14px; }
 .news-title { font-weight: 600; font-size: 13.5px; margin-bottom: 4px; }
 .news-date { font-weight: 400; font-size: 11.5px; margin-left: 8px; }

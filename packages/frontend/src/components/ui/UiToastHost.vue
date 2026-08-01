@@ -18,7 +18,9 @@ const ui = useUiStore();
           <strong>{{ toast.title }}</strong>
           <span v-if="toast.message">{{ toast.message }}</span>
         </span>
-        <button type="button" class="toast-close" aria-label="Dismiss notification" @click="ui.dismissToast(toast.id)">×</button>
+        <button type="button" class="toast-close" aria-label="Dismiss notification" @click="ui.dismissToast(toast.id)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
+        </button>
       </article>
     </TransitionGroup>
   </div>
@@ -50,6 +52,7 @@ const ui = useUiStore();
 .toast-copy > span { color: var(--color--text--tint-1); font-size: var(--font-size--xs); line-height: var(--line-height--lg); }
 .toast-close { width: 24px; height: 24px; padding: 0; border: none; background: transparent; color: var(--color--text--tint-1); }
 .toast-close:hover { background: var(--background--hover); color: var(--color--text--shade-1); }
+.toast-close svg { width: 14px; height: 14px; display: block; margin: auto; }
 .toast-list-enter-active, .toast-list-leave-active { transition: opacity var(--duration--snappy) ease, transform var(--duration--snappy) ease; }
 .toast-list-enter-from, .toast-list-leave-to { opacity: 0; transform: translateX(12px); }
 @media (max-width: 640px) { .toast-region { left: var(--spacing--sm); right: var(--spacing--sm); width: auto; } }

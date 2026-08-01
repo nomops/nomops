@@ -286,10 +286,12 @@ async function deleteTable() {
             <th v-for="col in userColumns" :key="col.name" class="user-col">
               <span class="col-name">{{ col.name }}</span>
               <span class="col-type">{{ col.type }}</span>
-              <button class="col-del" :title="`Delete column ${col.name}`" @click="removeColumn(col.name)">×</button>
+              <button class="col-del" type="button" :title="`Delete column ${col.name}`" :aria-label="`Delete column ${col.name}`" @click="removeColumn(col.name)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
+              </button>
             </th>
             <th class="add-col-cell">
-              <button class="add-col-plus" title="Add column" @click.stop="showAddColumn = true">+</button>
+              <button class="add-col-plus" type="button" title="Add column" aria-label="Add column" @click.stop="showAddColumn = true">+</button>
             </th>
           </tr>
         </thead>
@@ -308,7 +310,7 @@ async function deleteTable() {
               />
             </td>
             <td class="row-actions-cell">
-              <button class="row-del" :data-test-row-del="row.id" title="Delete row" @click="removeRow(row.id)">
+              <button class="row-del" :data-test-row-del="row.id" title="Delete row" aria-label="Delete row" @click="removeRow(row.id)">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" class="i15"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13" /></svg>
               </button>
             </td>
@@ -416,6 +418,7 @@ async function deleteTable() {
   margin-left: 8px; border: none; background: none; color: var(--text-faint); cursor: pointer; font-size: 15px; line-height: 1;
 }
 .col-del:hover { color: var(--err); }
+.col-del svg { width: 14px; height: 14px; display: block; }
 .add-col-cell { width: 40px; text-align: center; }
 .add-col-plus { width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-panel); color: var(--text-dim); cursor: pointer; }
 .add-col-plus:hover { color: var(--text-hi); border-color: var(--border-strong); }

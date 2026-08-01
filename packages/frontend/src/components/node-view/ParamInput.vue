@@ -623,9 +623,11 @@ function removeField(i: number) {
             <div v-if="prop.typeOptions?.multipleValues" class="fixed-row-head">
               <strong>{{ prop.typeOptions.fixedCollection?.itemTitle ?? group.name }} {{ rowIndex + 1 }}</strong>
               <span class="fixed-row-actions">
-                <button v-if="prop.typeOptions.sortable" type="button" :disabled="rowIndex === 0" @click="moveFixedRow(group, rowIndex, -1)">↑</button>
-                <button v-if="prop.typeOptions.sortable" type="button" :disabled="rowIndex === fixedRows(group).length - 1" @click="moveFixedRow(group, rowIndex, 1)">↓</button>
-                <button type="button" @click="removeFixedRow(group, rowIndex)">×</button>
+                <button v-if="prop.typeOptions.sortable" type="button" :aria-label="`Move ${group.name} item ${rowIndex + 1} up`" :disabled="rowIndex === 0" @click="moveFixedRow(group, rowIndex, -1)">↑</button>
+                <button v-if="prop.typeOptions.sortable" type="button" :aria-label="`Move ${group.name} item ${rowIndex + 1} down`" :disabled="rowIndex === fixedRows(group).length - 1" @click="moveFixedRow(group, rowIndex, 1)">↓</button>
+                <button type="button" :aria-label="`Remove ${group.name} item ${rowIndex + 1}`" @click="removeFixedRow(group, rowIndex)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
+                </button>
               </span>
             </div>
             <div class="fixed-values" :class="prop.typeOptions?.fixedCollection?.layout">
@@ -760,6 +762,7 @@ function removeField(i: number) {
   min-width: 26px; height: 26px; border: var(--border-width) var(--border-style) var(--border-color);
   border-radius: var(--radius); background: var(--color--background--light-2); color: var(--color--text--shade-1); cursor: pointer;
 }
+.fixed-row-actions button svg { width: 14px; height: 14px; display: block; margin: auto; }
 .fixed-values.horizontal { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .fixed-values.horizontal :deep(.param) { margin-bottom: 0; }
 .resource-locator { display: flex; flex-direction: column; gap: 8px; }
