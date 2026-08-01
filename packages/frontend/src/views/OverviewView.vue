@@ -907,10 +907,12 @@ const fmtRunTime = (row: ExecutionRow): string => {
     </div>
 
     <!-- 统计卡只在聚合 Overview 显示；项目视图（Personal）不显示 -->
-    <StatsBar v-if="!inProjectView" />
+    <section v-if="!inProjectView" class="overview-readouts" aria-label="Overview metrics">
+      <StatsBar />
+    </section>
 
     <!-- ── Tabs ── -->
-    <div class="tabs-row" data-test="overview-tabs">
+    <div class="tabs-row overview-tabs" data-test="overview-tabs">
       <button class="tab" :class="{ active: tab === 'workflows' }" data-test="tab-workflows" @click="switchTab('workflows')">{{ t('Workflows') }}</button>
       <button class="tab" :class="{ active: tab === 'credentials' }" data-test="tab-credentials" @click="switchTab('credentials')">{{ t('Credentials') }}</button>
       <button class="tab" :class="{ active: tab === 'executions' }" data-test="tab-executions" @click="switchTab('executions')">{{ t('Executions') }}</button>
@@ -1690,14 +1692,67 @@ const fmtRunTime = (row: ExecutionRow): string => {
 /* 基线实测@1440: 内容列 x248..1392(左右 48 gutter)、标题区高≈101 至 KPI */
 /* D034 live 实测基线内容容器:max-width 1280 + padding 24px 48px 0 + 居中(内容区因此 1184 宽)。
    底部 40px 是 nomops 自有的收尾留白(基线走内层 margin),保留以免下缘贴边。 */
-.ov { max-width: 1280px; margin: 0 auto; padding: 24px 48px 40px; width: 100%; }
+.ov {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: var(--spacing--xl) var(--spacing--3xl) var(--spacing--3xl);
+  width: 100%;
+}
 
 /* Header */
-.ov-head { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 34px; }
+.ov-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing--sm);
+  margin-bottom: var(--spacing--xl);
+}
 /* D029/D030 live 实测基线:H1 20px/600 行高 25px(1.25);副标 14px/400 行高 18.9px(1.35) */
-.ov-title h1 { margin: 0; font-size: 20px; font-weight: 600; line-height: 1.25; letter-spacing: -0.2px; color: var(--text-hi); }
-.ov-sub { margin: 4px 0 0; color: var(--text-dim); font-size: 14px; line-height: 1.35; }
+.ov-title h1 {
+  margin: 0;
+  font-size: var(--font-size--2xl);
+  font-weight: var(--font-weight--bold);
+  line-height: var(--line-height--sm);
+  letter-spacing: var(--letter-spacing--tight);
+  color: var(--color--text--shade-1);
+}
+.ov-sub {
+  margin: var(--spacing--4xs) 0 0;
+  color: var(--color--text--tint-1);
+  font-size: var(--font-size--sm);
+  line-height: var(--line-height--lg);
+}
 .ov-actions { margin-left: auto; display: flex; align-items: stretch; gap: 10px; }
+
+.overview-readouts { margin-bottom: var(--spacing--xl); }
+
+.overview-tabs {
+  width: max-content;
+  max-width: 100%;
+  margin: 0 0 var(--spacing--sm);
+  padding: var(--spacing--4xs);
+  overflow-x: auto;
+  background: var(--color--background--light-3);
+  border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--radius--lg);
+  scrollbar-width: none;
+}
+.overview-tabs::-webkit-scrollbar { display: none; }
+.overview-tabs .tab {
+  min-height: 32px;
+  padding: 0 var(--spacing--xs);
+  border: none;
+  border-radius: var(--radius);
+  color: var(--color--text--tint-1);
+}
+.overview-tabs .tab:hover {
+  background: var(--background--hover);
+  color: var(--color--text--shade-1);
+}
+.overview-tabs .tab.active {
+  background: var(--color--background--light-1);
+  color: var(--color--text--shade-1);
+  border: none;
+}
 
 /* 基线实测：页头按钮 32px/衬 0 12/圆角 4 */
 .btn {
@@ -1723,7 +1778,17 @@ const fmtRunTime = (row: ExecutionRow): string => {
 .split-caret:hover { background: var(--accent-dim); }
 
 /* Filter row */
-.filter-row { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin: 18px 0 12px; }
+.filter-row {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--spacing--2xs);
+  margin: 0 0 var(--spacing--sm);
+  padding: var(--spacing--2xs);
+  background: var(--color--background--light-3);
+  border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--radius--lg);
+}
 .proj-context { display: flex; align-items: center; gap: 8px; margin-right: auto; color: var(--text); font-size: 14px; }
 .proj-context .i15 { color: var(--text-dim); }
 .proj-menu {
@@ -1737,9 +1802,9 @@ const fmtRunTime = (row: ExecutionRow): string => {
   display: flex; align-items: center; gap: var(--spacing--xs); background: var(--color--background--light-2);
   border: none; box-shadow: inset 0 0 0 1px var(--border-color);
   border-radius: var(--radius); height: 32px; padding: 0 var(--spacing--xs);
-  width: 196px; color: var(--color--text--tint-1);
+  width: min(280px, 32vw); color: var(--color--text--tint-1);
 }
-.search:focus-within { box-shadow: inset 0 0 0 1px var(--border-color--strong); }
+.search:focus-within { box-shadow: inset 0 0 0 1px var(--color--primary); }
 .search input {
   border: none; background: none; outline: none; color: var(--color--text--shade-1); font-size: var(--font-size--sm);
   font-family: inherit; width: 100%; padding: 0; box-shadow: none;
@@ -1767,8 +1832,8 @@ const fmtRunTime = (row: ExecutionRow): string => {
 .dropdown { position: relative; }
 .menu {
   position: absolute; z-index: 40; min-width: 190px; background: var(--bg-panel);
-  border: 1px solid var(--border-strong); border-radius: 10px; padding: 6px;
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.5);
+  border: var(--border-width) var(--border-style) var(--border-color); border-radius: var(--radius); padding: var(--spacing--3xs);
+  box-shadow: var(--shadow--md);
 }
 .create-menu, .sort-menu { top: calc(100% + 6px); right: 0; }
 .row-menu-pop { top: calc(100% + 4px); right: 0; }
@@ -1809,9 +1874,10 @@ const fmtRunTime = (row: ExecutionRow): string => {
 .wf-card {
   background: var(--color--background--light-3); border: var(--border-width) var(--border-style) var(--border-color);
   border-radius: var(--radius--lg);
-  display: flex; align-items: center; gap: var(--spacing--sm); padding: var(--spacing--sm);
+  display: flex; align-items: center; gap: var(--spacing--sm); padding: var(--spacing--sm) var(--spacing--md);
+  transition: background var(--duration--snappy) var(--easing--ease-out), border-color var(--duration--snappy) var(--easing--ease-out);
 }
-.wf-card:hover { border-color: var(--border-color--strong); }
+.wf-card:hover { background: var(--color--background--light-1); border-color: var(--border-color--strong); }
 .wf-main { flex: 1; min-width: 0; }
 .wf-name {
   font-size: var(--font-size--sm); font-weight: var(--font-weight--medium);
@@ -1859,10 +1925,17 @@ const fmtRunTime = (row: ExecutionRow): string => {
 }
 
 /* Empty states */
-.empty-state { display: flex; justify-content: center; padding: 48px 24px; }
+.empty-state {
+  display: flex;
+  justify-content: center;
+  padding: var(--spacing--3xl) var(--spacing--xl);
+  background: var(--color--background--light-3);
+  border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--radius--lg);
+}
 .scratch-card {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
-  width: 220px; height: 200px; border: 2px dashed var(--border-strong); border-radius: 14px;
+  width: 220px; height: 168px; border: var(--border-width) dashed var(--border-color--strong); border-radius: var(--radius--lg);
   background: transparent; color: var(--text-dim); font-size: 15px; cursor: pointer;
 }
 .scratch-card:hover { border-color: var(--accent); color: var(--text-hi); }
@@ -2116,5 +2189,28 @@ const fmtRunTime = (row: ExecutionRow): string => {
 .soon-badge {
   display: inline-block; margin-left: 6px; font-size: 10.5px; font-weight: 500; color: var(--text-faint);
   background: var(--bg-hover); border-radius: 5px; padding: 1px 6px; vertical-align: middle;
+}
+
+@media (max-width: 1100px) {
+  .ov { padding: var(--spacing--xl); }
+  .filter-row { flex-wrap: wrap; }
+  .proj-context { width: 100%; }
+  .search { flex: 1; width: auto; min-width: 220px; }
+}
+
+@media (max-width: 720px) {
+  .ov { padding: var(--spacing--sm); }
+  .ov-head { align-items: center; margin-bottom: var(--spacing--lg); }
+  .ov-sub { display: none; }
+  .overview-readouts { margin-bottom: var(--spacing--lg); }
+  .overview-tabs { width: 100%; }
+  .filter-row { align-items: stretch; }
+  .search { order: -1; flex-basis: 100%; min-width: 0; width: 100%; }
+  .sortby { flex: 1; width: auto; }
+  .wf-card { align-items: flex-start; padding: var(--spacing--sm); }
+  .wf-meta { flex-wrap: wrap; row-gap: var(--spacing--4xs); }
+  .wf-card > .chip { display: none; }
+  .pager { justify-content: center; flex-wrap: wrap; }
+  .exec-table { min-width: 760px; }
 }
 </style>

@@ -94,58 +94,64 @@ const cards = computed(() => {
 
 <style scoped>
 .stats-bar {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   list-style: none;
-  margin: 0 0 26px;
+  margin: 0;
   padding: 0;
-  border: var(--border-width) var(--border-style) var(--border-color);
-  border-radius: var(--radius--2xs);
-  overflow: hidden;
-  /* overflow:hidden 会把 flex 子项的 min-height 归零，明确禁止在 .ov 列里被压缩 */
-  flex-shrink: 0;
+  gap: var(--spacing--2xs);
 }
 .stats-bar li {
-  flex: 1;
   display: flex;
   min-width: 0;
 }
-.stats-bar li + li { border-left: var(--border-width) var(--border-style) var(--border-color); }
 .stat-cell {
   flex: 1;
   min-width: 0;
-  height: 99px;
-  padding: var(--spacing--3xs) var(--spacing--lg) 0;
+  min-height: 108px;
+  padding: var(--spacing--sm);
   background: var(--color--background--light-3);
+  border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--radius--lg);
   text-decoration: none;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: var(--spacing--2xs);
+  justify-content: space-between;
+  gap: var(--spacing--sm);
+  transition: background var(--duration--snappy) var(--easing--ease-out), border-color var(--duration--snappy) var(--easing--ease-out);
 }
-.stat-cell:hover { background: var(--color--background--light-1); }
+.stat-cell:hover {
+  background: var(--color--background--light-1);
+  border-color: var(--border-color--strong);
+}
 .stat-label {
-  font-size: var(--font-size--sm);
-  font-weight: var(--font-weight--regular);
-  color: var(--color--text--shade-1);
+  font-size: var(--font-size--2xs);
+  font-weight: var(--font-weight--medium);
+  color: var(--color--text--tint-1);
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--spacing--3xs);
+  line-height: var(--line-height--lg);
 }
 .stat-value {
+  font-family: var(--font-family--monospace);
   font-style: normal;
-  font-size: 24px;
+  font-size: var(--font-size--2xl);
   font-weight: var(--font-weight--bold);
   color: var(--color--text--shade-1);
   line-height: var(--line-height--xs);
+  letter-spacing: var(--letter-spacing--tight);
 }
 .stat-value.dim {
   color: var(--color--text--tint-1);
   font-weight: var(--font-weight--medium);
 }
 .stat-value .unit {
-  font-size: 22px; /* D032 live 实测基线单位:22px/600(值为 24px/600) */
+  font-size: var(--font-size--lg);
   font-weight: var(--font-weight--bold);
-  margin-left: 1px;
+  margin-left: var(--spacing--5xs);
+  color: var(--color--text--tint-1);
 }
 .info-i {
   /* D033 live 实测基线 ⓘ 为 14×14 */
@@ -153,5 +159,14 @@ const cards = computed(() => {
   height: 14px;
   flex-shrink: 0;
   color: var(--color--text--tint-1);
+}
+
+@media (max-width: 1100px) {
+  .stats-bar { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 720px) {
+  .stats-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stat-cell { min-height: 96px; }
 }
 </style>
