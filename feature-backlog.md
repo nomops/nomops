@@ -242,6 +242,8 @@
 
 > 2026-08-01 UI 顺序改造第 8 项（Chat / Agents）：Chat 会话与 Personal agent 删除增加产品内影响确认及成功/失败反馈，系统字符关闭按钮替换为带可访问名称的主题 SVG；尚未接入操作的 Tools 控件明确禁用并解释能力边界。Agents 的 agent、定时任务、文件、渠道删除及 Instance Assistant 的线程、检查点恢复、MCP 断开全部迁入产品内确认，关键写操作补齐 Toast，列表补加载/错误/空态，两套复杂管理页补窄屏重排。新增 5 项视图契约回归，生产构建 6/6、全量 1043 项测试通过。
 
+> 2026-08-01 UI 顺序改造第 9 项（Templates / History / Insights）：模板画廊区分加载、请求失败、服务端无模板与筛选无结果，提供重试/清筛选入口及导入成功反馈；版本历史不再吞掉版本/发布时间线错误，补全整页加载/失败/空态、键盘可选版本行和有效 Upgrade 导航，发布旧版本前明确提示会覆盖当前改动，克隆/下载/恢复均有反馈；Insights 统一加载/失败/空数据状态和重试入口，KPI 与图表适配窄屏。新增 5 项视图契约回归，生产构建 6/6、全量 1048 项测试通过。
+
 - [ ] **66. 执行可视化正确性（串台 + 重连 + 频道）** `M`（🟠 A6）
   踩坑：`packages/frontend/src/stores/execution.ts:44` handleEvent 不按 executionId 过滤（并发执行/多用户高亮串台）；`packages/server/src/ws/push-hub.ts:27` 广播全连接无 workflow 频道；`execution.ts:38` WS 断线不重连（静默丢实时进度）。三者叠加使执行可视化在任意并发/断网下失真。
   → handleEvent 首行按 executionId 过滤（executionStarted 除外）；push-hub 按 workflowId 分频道；WS 加指数退避重连 + 心跳。

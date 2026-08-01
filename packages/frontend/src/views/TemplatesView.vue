@@ -2,20 +2,29 @@
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { api } from '../api/client.js';
+import UiState from '../components/ui/UiState.vue';
+import { useUiStore } from '../stores/ui.js';
 
 /** 实例内模板库（docs/10 B1）：画廊 + 搜索/分类 + 一键导入进画布。 */
 type TemplateSummary = Awaited<ReturnType<typeof api.templates.list>>[number];
 
 const router = useRouter();
+const ui = useUiStore();
 const templates = ref<TemplateSummary[]>([]);
 const search = ref('');
 const category = ref<string | null>(null);
 const importing = ref<string | null>(null);
 const error = ref('');
+const loading = ref(true);
 
-onMounted(async () => {
-  templates.value = await api.templates.list().catch(() => []);
-});
+async function load() {
+  loading.value = true;
+  error.value = '';
+  try { templates.value = await api.templates.list(); }
+  catch (e) { error.value = (e as Error).message; }
+  finally { loading.value = false; }
+}
+onMounted(load);
 
 const categories = computed(() => [...new Set(templates.value.map((t) => t.category))]);
 const filtered = computed(() => {
@@ -32,6 +41,7 @@ async function useTemplate(id: string) {
   importing.value = id;
   try {
     const wf = await api.templates.import(id);
+    ui.notify({ kind: 'success', title: 'Template imported', message: wf.name });
     void router.push(`/workflow/${wf.id}`); // 导入即进画布
   } catch (e) {
     error.value = (e as Error).message;
@@ -81,10 +91,13 @@ async function useTemplate(id: string) {
       </div>
     </div>
 
-    <p v-if="error" class="error-text" data-test="tpl-error">{{ error }}</p>
+    <UiState v-if="loading" kind="loading" title="Loading templates" description="Preparing the built-in workflow gallery." />
+    <UiState v-else-if="error" kind="error" title="Could not load templates" :description="error" data-test="tpl-error">
+      <button type="button" @click="load">Retry</button>
+    </UiState>
 
     <!-- ── Template grid ── -->
-    <div class="tpl-grid" data-test="tpl-grid">
+    <div v-else class="tpl-grid" data-test="tpl-grid">
       <div v-for="t in filtered" :key="t.id" class="tpl-card" :data-test-template="t.id">
         <div class="tpl-card-head">
           <span class="tpl-name">{{ t.name }}</span>
@@ -108,7 +121,9 @@ async function useTemplate(id: string) {
       </div>
     </div>
 
-    <p v-if="filtered.length === 0" class="tpl-empty">No matching templates</p>
+    <UiState v-if="!loading && !error && filtered.length === 0" compact :title="templates.length ? 'No matching templates' : 'No templates available'" :description="templates.length ? 'Try another search term or category.' : 'Built-in templates will appear here when the server provides them.'">
+      <button v-if="templates.length" type="button" @click="search = ''; category = null">Clear filters</button>
+    </UiState>
   </div>
 </template>
 

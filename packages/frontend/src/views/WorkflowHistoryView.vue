@@ -5,6 +5,8 @@ import type { IConnections, INode } from '@nomops/workflow';
 import { api, type WorkflowVersionMeta } from '../api/client.js';
 import { useAuthStore } from '../stores/auth.js';
 import ReadOnlyCanvas from '../components/canvas/ReadOnlyCanvas.vue';
+import UiState from '../components/ui/UiState.vue';
+import { useUiStore } from '../stores/ui.js';
 
 /**
  * 工作流版本历史整页（对标基线 `/workflow/:id/history/:versionId`）。
@@ -14,6 +16,7 @@ import ReadOnlyCanvas from '../components/canvas/ReadOnlyCanvas.vue';
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+const ui = useUiStore();
 
 const workflowId = computed(() => String(route.params['id'] ?? ''));
 
@@ -38,9 +41,15 @@ const busy = ref('');
 
 /* 发布时间线（#40）：按需拉发布/回滚事件史 */
 const publishHistory = ref<Array<{ id: string; versionId: string; action: 'publish' | 'rollback'; createdAt: string }>>([]);
+const timelineLoading = ref(false);
+const timelineError = ref('');
 watch(tab, async (t) => {
   if (t === 'timeline' && publishHistory.value.length === 0 && workflowId.value) {
-    publishHistory.value = await api.workflows.publishHistory(workflowId.value).catch(() => []);
+    timelineLoading.value = true;
+    timelineError.value = '';
+    try { publishHistory.value = await api.workflows.publishHistory(workflowId.value); }
+    catch (e) { timelineError.value = (e as Error).message; }
+    finally { timelineLoading.value = false; }
   }
 });
 
@@ -87,7 +96,7 @@ async function load() {
   try {
     const [wf, vs] = await Promise.all([
       api.workflows.get(workflowId.value),
-      api.workflows.versions(workflowId.value).catch(() => [] as WorkflowVersionMeta[]),
+      api.workflows.versions(workflowId.value),
     ]);
     wfName.value = wf.name;
     current.value = { nodes: wf.nodes, connections: wf.connections };
@@ -114,9 +123,17 @@ function closeHistory() {
 async function publishVersion() {
   actionsOpen.value = false;
   if (!selectedId.value) return; // Current changes 无需发布
+  const confirmed = await ui.requestConfirm({
+    title: 'Publish this version?',
+    message: 'The selected snapshot will replace current workflow changes before opening the editor.',
+    confirmLabel: 'Publish version',
+    tone: 'danger',
+  });
+  if (!confirmed) return;
   busy.value = 'publish';
   try {
     await api.workflows.restore(workflowId.value, selectedId.value);
+    ui.notify({ kind: 'success', title: 'Workflow version restored' });
     void router.push(`/workflow/${workflowId.value}`);
   } catch (e) {
     loadError.value = (e as Error).message;
@@ -134,6 +151,7 @@ async function cloneToNew() {
       nodes: snapshot.value.nodes,
       connections: snapshot.value.connections,
     });
+    ui.notify({ kind: 'success', title: 'Workflow cloned', message: created.name });
     void router.push(`/workflow/${created.id}`);
   } catch (e) {
     loadError.value = (e as Error).message;
@@ -159,6 +177,7 @@ function download() {
   a.download = `${wfName.value || 'workflow'}.json`;
   a.click();
   URL.revokeObjectURL(url);
+  ui.notify({ kind: 'success', title: 'Workflow JSON downloaded' });
 }
 </script>
 
@@ -168,13 +187,17 @@ function download() {
       <button class="wh-back" data-test="wh-back" title="Back to editor" @click="closeHistory">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
       </button>
-      <span class="wh-title">{{ wfName }}</span>
+      <span class="wh-title">{{ wfName || 'Workflow' }}</span>
       <span class="wh-crumb dim">Version history</span>
     </header>
 
     <div class="wh-body">
       <!-- 只读斜纹画布快照 -->
-      <div class="wh-canvas">
+      <UiState v-if="loading" kind="loading" title="Loading version history" description="Fetching the workflow and its saved snapshots." />
+      <UiState v-else-if="loadError && !wfName" kind="error" title="Could not load version history" :description="loadError">
+        <button type="button" @click="load">Retry</button>
+      </UiState>
+      <div v-else class="wh-canvas">
         <ReadOnlyCanvas :nodes="snapshot.nodes" :connections="snapshot.connections" />
         <!-- 画布右上浮动 Actions 下拉 -->
         <div class="wh-actions" data-test="workflow-history-content-actions" @click.stop>
@@ -192,7 +215,7 @@ function download() {
       </div>
 
       <!-- 右侧版本面板 -->
-      <aside class="wh-panel" data-test="workflow-history-panel">
+      <aside v-if="!loading && (wfName || !loadError)" class="wh-panel" data-test="workflow-history-panel">
         <div class="wh-tabs" data-test="workflow-history-tabs">
           <button class="wh-tab" :class="{ active: tab === 'versions' }" data-test="tab-history" @click="tab = 'versions'">Versions</button>
           <button class="wh-tab" :class="{ active: tab === 'timeline' }" @click="tab = 'timeline'">Publish Timeline</button>
@@ -208,7 +231,10 @@ function download() {
                 :class="{ selected: selectedId === null }"
                 data-test-id="workflow-history-list-item"
                 role="button"
+                tabindex="0"
                 @click="selectEntry(currentEntry)"
+                @keydown.enter.prevent="selectEntry(currentEntry)"
+                @keydown.space.prevent="selectEntry(currentEntry)"
               >
                 <span class="wh-timeline"><span class="wh-dot latest" /></span>
                 <div class="wh-item-body">
@@ -226,7 +252,10 @@ function download() {
                 :class="{ selected: selectedId === e.id }"
                 data-test-id="workflow-history-list-item"
                 role="button"
+                tabindex="0"
                 @click="selectEntry(e)"
+                @keydown.enter.prevent="selectEntry(e)"
+                @keydown.space.prevent="selectEntry(e)"
               >
                 <span class="wh-timeline"><span class="wh-dot" /></span>
                 <div class="wh-item-body">
@@ -241,12 +270,14 @@ function download() {
           </div>
           <div class="wh-footnote" data-test="workflow-history-limit">
             <span>Version history is limited to 1 day</span>
-            <a class="wh-upgrade" href="/settings/usage" @click.prevent>Upgrade plan to activate full history</a>
+            <a class="wh-upgrade" href="/settings/usage" @click.prevent="router.push('/settings/usage')">Upgrade plan to activate full history</a>
           </div>
         </template>
 
         <div v-else class="wh-timeline-tab" data-test="publish-timeline">
-          <p v-if="!publishHistory.length" class="dim" style="padding: 12px">No publish events yet.</p>
+          <UiState v-if="timelineLoading" compact kind="loading" title="Loading publish timeline" />
+          <UiState v-else-if="timelineError" compact kind="error" title="Could not load publish timeline" :description="timelineError" />
+          <UiState v-else-if="!publishHistory.length" compact title="No publish events yet" description="Publish or roll back a workflow to create timeline events." />
           <ul v-else class="wh-list">
             <li v-for="h in publishHistory" :key="h.id" class="wh-item" data-test="publish-event">
               <span class="wh-timeline"><span class="wh-dot" :class="{ latest: h.action === 'publish' }" /></span>
@@ -325,4 +356,9 @@ function download() {
 .wh-upgrade:hover { text-decoration: underline; }
 .wh-error { padding: 8px 16px; color: var(--color--danger); font-size: 12px; }
 .wh-timeline-tab { padding: 16px; font-size: var(--font-size--2xs); line-height: 1.5; }
+@media (max-width: 820px) {
+  .wh-body { flex-direction: column; overflow-y: auto; }
+  .wh-canvas { min-height: 420px; flex: none; }
+  .wh-panel { width: 100%; min-height: 320px; border-left: none; border-top: var(--border-width) var(--border-style) var(--border-color); }
+}
 </style>

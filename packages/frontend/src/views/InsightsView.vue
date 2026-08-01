@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api } from '../api/client.js';
+import UiState from '../components/ui/UiState.vue';
 
 /**
  * Insights — 真数据页（backlog #8 拆锁墙）：
@@ -163,16 +164,19 @@ const rangeLabel = computed(() => {
       </div>
     </header>
 
-    <p v-if="loadError" class="err" data-test="insights-error">{{ loadError }}</p>
+    <UiState v-if="loadError && !data" kind="error" title="Could not load insights" :description="loadError" data-test="insights-error">
+      <button type="button" @click="load">Retry</button>
+    </UiState>
 
     <!-- KPI 五卡（与 Overview StatsBar 同口径,路由 metric 高亮） -->
-    <section class="kpis" data-test="insights-kpis">
+    <section v-else class="kpis" data-test="insights-kpis">
       <button
         v-for="c in cards"
         :key="c.key"
         class="kpi"
         :class="{ sel: metric === c.key }"
         :data-test-kpi="c.key"
+        :disabled="loading"
         @click="selectMetric(c.key)"
       >
         <span class="kpi-label">{{ c.label }}</span>
@@ -189,10 +193,11 @@ const rangeLabel = computed(() => {
           <i class="dot err" /> Failed
         </span>
       </div>
-      <p v-if="loading" class="dim state">Loading…</p>
-      <p v-else-if="isEmpty" class="dim state" data-test="insights-empty">
-        No production executions in this period.
-      </p>
+      <UiState v-if="loading" compact kind="loading" title="Loading execution insights" />
+      <UiState v-else-if="loadError" compact kind="error" title="Could not refresh insights" :description="loadError">
+        <button type="button" @click="load">Retry</button>
+      </UiState>
+      <UiState v-else-if="isEmpty" compact title="No production executions in this period" description="Run or activate a workflow, or choose a wider date range." data-test="insights-empty" />
       <svg v-else :viewBox="`0 0 ${CHART_W} ${CHART_H}`" class="chart-svg" preserveAspectRatio="none">
         <g v-for="g in chart.gridYs" :key="g.y">
           <line :x1="PAD.left" :x2="CHART_W - PAD.right" :y1="g.y" :y2="g.y" class="grid" />
@@ -270,4 +275,15 @@ const rangeLabel = computed(() => {
 .axis { fill: var(--color--text--tint-1); font-size: 10px; }
 .bar-ok { fill: var(--color--success); opacity: 0.85; }
 .bar-err { fill: var(--color--danger); opacity: 0.9; }
+@media (max-width: 900px) {
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpi { border-bottom: var(--border-width) var(--border-style) var(--border-color); }
+  .head { align-items: flex-start; flex-direction: column; }
+}
+@media (max-width: 560px) {
+  .page-wrap { padding: 16px; }
+  .kpis { grid-template-columns: 1fr; }
+  .range-btn { max-width: calc(100vw - 32px); height: auto; min-height: 32px; text-align: left; }
+  .chart-head { align-items: flex-start; gap: 8px; flex-direction: column; }
+}
 </style>
