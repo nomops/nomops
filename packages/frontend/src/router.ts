@@ -17,7 +17,6 @@ export const router = createRouter({
     // Shared with you(对标基线 /shared/workflows | /shared/credentials)
     { path: '/shared/workflows', name: 'shared', component: () => import('./views/SharedView.vue') },
     { path: '/shared/credentials', name: 'sharedCredentials', component: () => import('./views/SharedView.vue') },
-    { path: '/assistant', redirect: '/chat' },
     { path: '/workflow/:id', name: 'canvas', component: () => import('./views/CanvasView.vue') },
     // 版本历史整页(对标基线 /workflow/:id/history/:versionId):只读斜纹画布 + 版本面板
     { path: '/workflow/:id/history/:versionId?', name: 'workflowHistory', component: () => import('./views/WorkflowHistoryView.vue') },
