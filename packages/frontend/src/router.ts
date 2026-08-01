@@ -54,6 +54,7 @@ const OVERVIEW_TAB_TITLE: Record<string, string> = {
   credentials: 'Credentials',
   executions: 'Executions',
   variables: 'Variables',
+  'data-tables': 'Data tables',
   datatables: 'Data tables',
 };
 const ROUTE_TITLE: Record<string, string> = {

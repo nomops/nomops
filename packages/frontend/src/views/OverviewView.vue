@@ -57,6 +57,10 @@ function openCredential(row: CredentialView) {
 function closeCredModal() {
   showCredModal.value = false;
   editingCred.value = null;
+  if (route.query['new'] || route.query['credential']) {
+    const { new: _new, credential: _credential, ...rest } = route.query;
+    void router.replace({ query: rest });
+  }
 }
 async function onCredUpdated() {
   credentials.value = await api.credentials.list().catch(() => credentials.value);
@@ -325,8 +329,17 @@ async function saveWorkflowTags() {
 onMounted(async () => {
   await projects.fetch();
   await reload();
+  openCredentialFromRoute();
   window.addEventListener('click', closeMenus);
 });
+
+function openCredentialFromRoute() {
+  const id = String(route.query['credential'] ?? '');
+  if (!id) return;
+  tab.value = 'credentials';
+  const credential = credentials.value.find((row) => row.id === id);
+  if (credential && editingCred.value?.id !== id) openCredential(credential);
+}
 
 /** 侧栏「New credential」带 ?new=cred 进入 → 切到 Credentials 并自动开弹窗。 */
 watch(
@@ -339,6 +352,8 @@ watch(
   },
   { immediate: true },
 );
+
+watch(() => route.query['credential'], openCredentialFromRoute);
 
 /** 切到 Project settings / Variables tab 时拉数据。 */
 watch(
@@ -399,7 +414,7 @@ function switchTab(next: Tab) {
   tab.value = next;
   page.value = 1;
   // 保留 project 上下文（切 tab 不要丢 ?project=），并清掉一次性的 new 标记
-  const { new: _drop, ...rest } = route.query;
+  const { new: _drop, credential: _credential, ...rest } = route.query;
   void router.replace({ query: { ...rest, tab: next } });
 }
 

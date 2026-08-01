@@ -3,6 +3,7 @@ import { computed, nextTick, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { api, type CredentialView, type DataTableView, type WorkflowRow } from '../../api/client.js';
 import { useUiStore } from '../../stores/ui.js';
+import UiState from '../ui/UiState.vue';
 
 /** 命令面板：全局搜索工作流 + 凭证 + 快捷动作。⌘K / 点搜索打开。 */
 const ui = useUiStore();
@@ -12,29 +13,49 @@ const query = ref('');
 const workflows = ref<WorkflowRow[]>([]);
 const credentials = ref<CredentialView[]>([]);
 const dataTables = ref<DataTableView[]>([]);
-const loaded = ref(false);
+const loading = ref(false);
+const loadError = ref('');
 const active = ref(0);
 const inputEl = ref<HTMLInputElement>();
+const panelEl = ref<HTMLElement>();
+let previouslyFocused: HTMLElement | null = null;
+
+async function loadResources() {
+  loading.value = true;
+  loadError.value = '';
+  try {
+    const [wf, cred, dt] = await Promise.all([
+      api.workflows.list(),
+      api.credentials.list(),
+      api.dataTables.list(),
+    ]);
+    workflows.value = wf;
+    credentials.value = cred;
+    dataTables.value = dt;
+  } catch (error) {
+    workflows.value = [];
+    credentials.value = [];
+    dataTables.value = [];
+    loadError.value = (error as Error).message;
+  } finally {
+    loading.value = false;
+  }
+}
 
 watch(
   () => ui.paletteOpen,
   async (open) => {
-    if (!open) return;
+    if (!open) {
+      previouslyFocused?.focus();
+      previouslyFocused = null;
+      return;
+    }
+    previouslyFocused = document.activeElement as HTMLElement | null;
     query.value = '';
     active.value = 0;
     await nextTick();
     inputEl.value?.focus();
-    if (!loaded.value) {
-      const [wf, cred, dt] = await Promise.all([
-        api.workflows.list().catch(() => []),
-        api.credentials.list().catch(() => []),
-        api.dataTables.list().catch(() => []),
-      ]);
-      workflows.value = wf;
-      credentials.value = cred;
-      dataTables.value = dt;
-      loaded.value = true;
-    }
+    await loadResources();
   },
 );
 
@@ -94,19 +115,19 @@ const groups = computed<Group[]>(() => {
   ];
 
   const credGroup: Item[] = [
-    ...(match('Create credential in Personal') ? [{ kind: 'action' as const, icon: 'plus' as const, label: 'Create credential in Personal', sub: '', run: () => go('/?tab=credentials') }] : []),
+    ...(match('Create credential in Personal') ? [{ kind: 'action' as const, icon: 'plus' as const, label: 'Create credential in Personal', sub: '', run: () => go('/?tab=credentials&new=cred') }] : []),
     ...credentials.value.filter((c) => match(c.name)).map((c) => ({
       kind: 'credential' as const,
       icon: 'key' as const,
       label: c.name,
       sub: c.type,
-      run: () => go('/?tab=credentials'),
+      run: () => go(`/?tab=credentials&credential=${encodeURIComponent(c.id)}`),
     })),
   ];
 
   // Data tables 组(对标基线命令面板全局态第三组)
   const dataGroup: Item[] = [
-    ...(match('Create data table in Personal') ? [{ kind: 'action' as const, icon: 'plus' as const, label: 'Create data table in Personal', sub: '', run: () => go('/?tab=datatables') }] : []),
+    ...(match('Create data table in Personal') ? [{ kind: 'action' as const, icon: 'plus' as const, label: 'Create data table in Personal', sub: '', run: () => go('/?tab=data-tables') }] : []),
     ...dataTables.value.filter((d) => match(d.name)).map((d) => ({
       kind: 'action' as const,
       icon: 'table' as const,
@@ -132,6 +153,11 @@ watch(results, () => {
   active.value = 0;
 });
 
+watch(active, async () => {
+  await nextTick();
+  panelEl.value?.querySelector(`#command-result-${active.value}`)?.scrollIntoView({ block: 'nearest' });
+});
+
 function go(path: string) {
   ui.closePalette();
   void router.push(path);
@@ -139,29 +165,47 @@ function go(path: string) {
 
 async function createWorkflow() {
   ui.closePalette();
-  const wf = await api.workflows.create({ name: 'My workflow', nodes: [], connections: {} });
-  void router.push(`/workflow/${wf.id}`);
+  try {
+    const wf = await api.workflows.create({ name: 'My workflow', nodes: [], connections: {} });
+    ui.notify({ kind: 'success', title: 'Workflow created', message: wf.name });
+    void router.push(`/workflow/${wf.id}`);
+  } catch (error) {
+    ui.notify({ kind: 'error', title: 'Could not create workflow', message: (error as Error).message });
+  }
 }
 
 function onKey(e: KeyboardEvent) {
   if (e.key === 'ArrowDown') {
     e.preventDefault();
-    active.value = Math.min(active.value + 1, results.value.length - 1);
+    if (results.value.length) active.value = (active.value + 1) % results.value.length;
   } else if (e.key === 'ArrowUp') {
     e.preventDefault();
-    active.value = Math.max(active.value - 1, 0);
+    if (results.value.length) active.value = (active.value - 1 + results.value.length) % results.value.length;
   } else if (e.key === 'Enter') {
     e.preventDefault();
     results.value[active.value]?.run();
   } else if (e.key === 'Escape') {
+    e.preventDefault();
     ui.closePalette();
+  } else if (e.key === 'Tab') {
+    const focusable = Array.from(panelEl.value?.querySelectorAll<HTMLElement>('input, button:not([disabled])') ?? []);
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (!first || !last) return;
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
   }
 }
 </script>
 
 <template>
   <div v-if="ui.paletteOpen" class="palette-overlay" data-test="command-palette" @click.self="ui.closePalette()">
-    <section class="palette" role="dialog" aria-modal="true" aria-labelledby="command-palette-title">
+    <section ref="panelEl" class="palette" role="dialog" aria-modal="true" aria-labelledby="command-palette-title" @keydown="onKey">
       <h2 id="command-palette-title" class="sr-only">Command palette</h2>
       <div class="palette-search">
         <!-- D026:上下文徽标(工作流内打开时显示 "Workflow · 名称") -->
@@ -175,37 +219,43 @@ function onKey(e: KeyboardEvent) {
           aria-autocomplete="list"
           aria-controls="command-palette-results"
           aria-expanded="true"
+          :aria-busy="loading"
           :aria-activedescendant="results[active] ? `command-result-${active}` : undefined"
-          @keydown="onKey"
         />
         <span class="kbd">esc</span>
       </div>
       <div id="command-palette-results" class="palette-list" role="listbox" aria-label="Command results">
-        <template v-for="g in groups" :key="g.label">
-          <div class="palette-group-label">{{ g.label }}</div>
-          <button
-            v-for="item in g.items"
-            :key="item.kind + item.label"
-            class="palette-item"
-            :class="{ active: results.indexOf(item) === active }"
-            :data-test-palette-item="item.label"
-            :id="`command-result-${results.indexOf(item)}`"
-            role="option"
-            :aria-selected="results.indexOf(item) === active"
-            @mouseenter="active = results.indexOf(item)"
-            @click="item.run()"
-          >
-            <span class="pi-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path :d="ICON_PATHS[item.icon]" /></svg>
-            </span>
-            <span class="pi-body">
-              <span class="pi-label">{{ item.label }}</span>
-              <span v-if="item.sub" class="pi-sub">{{ item.sub }}</span>
-            </span>
-            <span v-if="item.shortcut" class="pi-shortcut dim">{{ item.shortcut }}</span>
-          </button>
+        <UiState v-if="loading" compact kind="loading" title="Loading commands" description="Fetching workflows, credentials, and data tables." />
+        <UiState v-else-if="loadError" compact kind="error" title="Could not load commands" :description="loadError">
+          <button type="button" @click="loadResources">Retry</button>
+        </UiState>
+        <template v-else>
+          <template v-for="g in groups" :key="g.label">
+            <div class="palette-group-label">{{ g.label }}</div>
+            <button
+              v-for="item in g.items"
+              :id="`command-result-${results.indexOf(item)}`"
+              :key="item.kind + item.label"
+              class="palette-item"
+              :class="{ active: results.indexOf(item) === active }"
+              :data-test-palette-item="item.label"
+              role="option"
+              :aria-selected="results.indexOf(item) === active"
+              @mouseenter="active = results.indexOf(item)"
+              @click="item.run()"
+            >
+              <span class="pi-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path :d="ICON_PATHS[item.icon]" /></svg>
+              </span>
+              <span class="pi-body">
+                <span class="pi-label">{{ item.label }}</span>
+                <span v-if="item.sub" class="pi-sub">{{ item.sub }}</span>
+              </span>
+              <span v-if="item.shortcut" class="pi-shortcut dim">{{ item.shortcut }}</span>
+            </button>
+          </template>
         </template>
-        <p v-if="results.length === 0" class="dim" style="padding: 20px; text-align: center">No results</p>
+        <UiState v-if="!loading && !loadError && results.length === 0" compact title="No matching commands" description="Try a workflow, credential, or data table name." />
       </div>
     </section>
   </div>
