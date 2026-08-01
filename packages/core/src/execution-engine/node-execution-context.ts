@@ -15,6 +15,9 @@ import type {
 } from '@nomops/workflow';
 import { OperationalError, resolveParameterValue } from '@nomops/workflow';
 import type { IBinaryDataStore } from '../binary-data/binary-store.js';
+import { defaultHttpRequest, safeFetchWithRedirects } from './safe-http-request.js';
+
+export { defaultHttpRequest } from './safe-http-request.js';
 
 /** 子节点解析所需的最小加载器切面（避免与 NodeLoader 具体类耦合）。 */
 export interface INodeTypeResolver {
@@ -169,37 +172,6 @@ export interface IWorkflowExecuteAdditionalData {
   execution?: { id?: string; resumeUrl?: string };
 }
 
-export async function defaultHttpRequest(options: IHttpRequestOptions): Promise<unknown> {
-  const url = new URL(options.url);
-  for (const [k, v] of Object.entries(options.qs ?? {})) {
-    url.searchParams.set(k, String(v));
-  }
-  const hasBody = options.body !== undefined && options.method !== 'GET';
-  const response = await fetch(url, {
-    method: options.method ?? 'GET',
-    headers: {
-      ...(hasBody ? { 'content-type': 'application/json' } : {}),
-      ...options.headers,
-    },
-    body: hasBody ? JSON.stringify(options.body) : undefined,
-  });
-  const text = await response.text();
-  let body: unknown = text;
-  try {
-    body = JSON.parse(text);
-  } catch {
-    // 非 JSON 响应原样返回文本
-  }
-  if (!response.ok) {
-    throw new OperationalError(`HTTP ${response.status} ${response.statusText}`, {
-      url: options.url,
-      status: response.status,
-      body,
-    });
-  }
-  return body;
-}
-
 /**
  * 打开 SSE 流并逐事件回调。返回关闭函数，供触发器停用/关机时中断连接。
  * 这里只实现协议，不持有工作流或服务状态；出站策略由 server 后续可注入替换。
@@ -209,12 +181,17 @@ export async function defaultOpenEventStream(
   onMessage: (message: IEventStreamMessage) => void,
 ): Promise<() => Promise<void>> {
   const controller = new AbortController();
-  const response = await fetch(options.url, {
+  const request = await safeFetchWithRedirects({
+    url: new URL(options.url),
+    method: 'GET',
     headers: { accept: 'text/event-stream', ...options.headers },
+    ...(options.urlTrust ? { urlTrust: options.urlTrust } : {}),
     signal: controller.signal,
   });
+  const { response } = request;
   if (!response.ok || !response.body) {
     controller.abort();
+    await request.close();
     throw new OperationalError(`SSE HTTP ${response.status} ${response.statusText}`, {
       url: options.url,
       status: response.status,
@@ -258,6 +235,7 @@ export async function defaultOpenEventStream(
       if (!closed && !(error instanceof DOMException && error.name === 'AbortError')) throw error;
     } finally {
       reader.releaseLock();
+      await request.close();
     }
   };
   void consume().catch((error: Error) => {
@@ -269,6 +247,7 @@ export async function defaultOpenEventStream(
     closed = true;
     controller.abort();
     await reader.cancel().catch(() => undefined);
+    await request.close();
   };
 }
 

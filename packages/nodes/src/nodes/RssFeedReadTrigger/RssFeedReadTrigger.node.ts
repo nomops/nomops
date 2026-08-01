@@ -11,7 +11,12 @@ export class RssFeedReadTrigger implements INodeType {
 
   async poll(this: IPollContext): Promise<INodeExecutionData[][] | null> {
     const url = String(this.getNodeParameter('url'));
-    const payload = await this.helpers.httpRequest({ url, method: 'GET', headers: { accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml' } });
+    const payload = await this.helpers.httpRequest({
+      url,
+      method: 'GET',
+      headers: { accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml' },
+      urlTrust: 'user-controlled',
+    });
     const entries = parseFeed(payload);
     const keys = entries.map(feedItemKey);
     const fresh = new Set(await this.helpers.filterNewKeys(keys));

@@ -19,6 +19,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1090.0",
     "@aws-sdk/s3-request-presigner": "^3.1090.0",
-    "@nomops/workflow": "workspace:*"
+    "@nomops/workflow": "workspace:*",
+    "undici": "^7.29.0"
   }
 }

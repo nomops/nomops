@@ -5,6 +5,8 @@ import type { Express } from 'express';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
+import { defaultHttpRequest } from '@nomops/core';
+import type { IHttpRequestOptions } from '@nomops/workflow';
 
 /**
  * 轮询触发器 + processed_data 去重：
@@ -17,6 +19,9 @@ let mock: Server;
 let mockUrl: string;
 let payload: Array<{ id: number; label: string }> = [];
 
+const trustedLocalRequest = (options: IHttpRequestOptions) =>
+  defaultHttpRequest({ ...options, urlTrust: 'trusted' });
+
 beforeAll(async () => {
   // 本地 mock API：GET 返回 { data: { items: payload } }
   mock = createServer((_req, res) => {
@@ -27,7 +32,7 @@ beforeAll(async () => {
   const address = mock.address();
   if (typeof address === 'object' && address) mockUrl = `http://127.0.0.1:${address.port}/items`;
 
-  boot = await bootstrap({ type: 'sqlite' });
+  boot = await bootstrap({ dbConfig: { type: 'sqlite' }, httpRequest: trustedLocalRequest });
   await boot.leader.start(); // regular 模式：内存锁，恒为 leader（轮询只在 leader 调度）
   app = createApp(boot.services);
   await request(app).post('/auth/register').send({ email: 'poll@test.dev', password: 'password-123' }).expect(201);

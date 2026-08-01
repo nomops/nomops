@@ -12,6 +12,7 @@ import {
 import type {
   IBinaryData,
   IConnections,
+  IHttpRequestOptions,
   INode,
   INodeExecutionData,
   IRun,
@@ -87,7 +88,7 @@ export class ExecutionService {
       nodes: Array<{ name: string; startedAtMs: number; endedAtMs: number; error?: string }>;
     }) => void,
     /** 引擎 httpRequest 覆盖（#44 M2 测试注入假 provider；生产缺省走 defaultHttpRequest）。 */
-    private readonly httpRequestImpl?: (options: unknown) => Promise<unknown>,
+    private readonly httpRequestImpl?: (options: IHttpRequestOptions) => Promise<unknown>,
   ) {}
 
   /** 本进程在跑的引擎实例（executionId → engine）；stop 经此直达 cancel。 */

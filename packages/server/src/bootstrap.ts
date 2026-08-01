@@ -72,6 +72,7 @@ import type { ILockStore } from './queue/leader.js';
 import { createBullQueue, createRedisLockStore } from './queue/execution-queue.js';
 import type { IExecutionQueue, RedisOptions } from './queue/execution-queue.js';
 import type { AppServices } from './app-services.js';
+import type { IEventStreamMessage, IEventStreamOptions, IHttpRequestOptions } from '@nomops/workflow';
 
 /**
  * ★安装版的 IEncryptionKeyProvider（docs/01「第二个必须早做的抽象」）：
@@ -158,7 +159,12 @@ export interface BootstrapOptions {
   /** DB 调度器配置（#38；测试注入短轮询/固定时钟/instanceId）。 */
   scheduler?: SchedulerOptions;
   /** 引擎 httpRequest 覆盖（#44 M2；测试注入假 AI provider，避免打真实网络）。 */
-  httpRequest?: (options: unknown) => Promise<unknown>;
+  httpRequest?: (options: IHttpRequestOptions) => Promise<unknown>;
+  /** SSE 连接覆盖（测试注入本地协议夹具；生产缺省走 SSRF 防护实现）。 */
+  openEventStream?: (
+    options: IEventStreamOptions,
+    onMessage: (message: IEventStreamMessage) => void,
+  ) => Promise<() => Promise<void>>;
   /** 生产执行并发上限；-1 = 不限。缺省走 NOMOPS_CONCURRENCY_PRODUCTION_LIMIT。 */
   concurrencyLimit?: number;
   /** 等待队列深度上限；缺省 2× 并发上限。超出即 503。 */
@@ -277,7 +283,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   const dynamicNodeParameters = new DynamicNodeParametersService(
     nodeLoader,
     credentialService,
-    opts.httpRequest as ((options: import('@nomops/workflow').IHttpRequestOptions) => Promise<unknown>) | undefined,
+    opts.httpRequest,
   );
   // 用量:社区无条件计数;企业版在其上加限额检查(ee 实现包住社区实现)
   const usageCounter = new CountingUsageGate(repos);
@@ -341,6 +347,8 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     () => leader.isLeader(),
     credentialService,
     audit,
+    opts.httpRequest,
+    opts.openEventStream,
   );
   // 等待唤醒器：leader 到点唤醒 waiting 执行（wait/resume）
   const waitTracker = new WaitTracker(repos, executions, opts.waitTrackerIntervalMs ?? 10_000);

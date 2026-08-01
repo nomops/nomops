@@ -321,6 +321,8 @@ export interface IHttpRequestOptions {
   headers?: Record<string, string>;
   body?: unknown;
   qs?: Record<string, unknown>;
+  /** 用户可控 URL 必须标记，core 会在连接与每次重定向时拒绝私网地址。 */
+  urlTrust?: 'trusted' | 'user-controlled';
 }
 
 export interface INodeExecutionHelpers {
@@ -375,6 +377,8 @@ export interface IEventStreamMessage {
 export interface IEventStreamOptions {
   url: string;
   headers?: Record<string, string>;
+  /** 用户可控 URL 必须标记，core 会在连接时拒绝私网地址。 */
+  urlTrust?: 'trusted' | 'user-controlled';
 }
 
 export interface ITriggerContext {

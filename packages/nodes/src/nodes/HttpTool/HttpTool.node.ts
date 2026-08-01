@@ -117,7 +117,13 @@ export class HttpTool implements INodeType {
           else body = args;
         }
         if (!url) throw new OperationalError('HTTP Tool: URL resolved empty');
-        const response = await httpRequest({ url, method, ...(qs ? { qs } : {}), ...(body ? { body } : {}) });
+        const response = await httpRequest({
+          url,
+          method,
+          ...(qs ? { qs } : {}),
+          ...(body ? { body } : {}),
+          urlTrust: 'user-controlled',
+        });
         return typeof response === 'string' ? response : JSON.stringify(response);
       },
     };

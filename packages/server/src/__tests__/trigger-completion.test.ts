@@ -5,6 +5,8 @@ import type { Express } from 'express';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
+import { defaultHttpRequest, defaultOpenEventStream } from '@nomops/core';
+import type { IEventStreamMessage, IEventStreamOptions, IHttpRequestOptions } from '@nomops/workflow';
 
 let boot: BootstrapResult;
 let app: Express;
@@ -16,6 +18,12 @@ const eventClients = new Set<ServerResponse>();
 
 const auth = () => ({ Authorization: `Bearer ${token}` });
 const wait = (milliseconds = 120) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+const trustedLocalRequest = (options: IHttpRequestOptions) =>
+  defaultHttpRequest({ ...options, urlTrust: 'trusted' });
+const trustedLocalEventStream = (
+  options: IEventStreamOptions,
+  onMessage: (message: IEventStreamMessage) => void,
+) => defaultOpenEventStream({ ...options, urlTrust: 'trusted' }, onMessage);
 
 function feedXml(): string {
   return `<?xml version="1.0"?><rss version="2.0"><channel><title>Live Feed</title>${feedEntries
@@ -57,7 +65,11 @@ beforeAll(async () => {
   });
   await new Promise<void>((resolve) => upstream.listen(0, '127.0.0.1', resolve));
   baseUrl = `http://127.0.0.1:${(upstream.address() as { port: number }).port}`;
-  boot = await bootstrap({ type: 'sqlite' });
+  boot = await bootstrap({
+    dbConfig: { type: 'sqlite' },
+    httpRequest: trustedLocalRequest,
+    openEventStream: trustedLocalEventStream,
+  });
   await boot.leader.start();
   app = createApp(boot.services);
   const registration = await request(app)

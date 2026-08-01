@@ -326,6 +326,7 @@ describe('HTTP Tool / Window Memory 子节点', () => {
     const tool = await new HttpTool().supplyData!.call(ctx);
     const result = await tool.invoke({ input: 'cats' });
     expect(seen[0]!.qs).toEqual({ input: 'cats' });
+    expect(seen[0]!.urlTrust).toBe('user-controlled');
     expect(result).toBe('{"hits":3}');
     expect(tool.spec.name).toBe('search');
   });

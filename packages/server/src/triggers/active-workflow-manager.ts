@@ -4,6 +4,9 @@ import { defaultHttpRequest, defaultOpenEventStream } from '@nomops/core';
 import type {
   INode,
   INodeExecutionData,
+  IEventStreamMessage,
+  IEventStreamOptions,
+  IHttpRequestOptions,
   IPollContext,
   ITriggerContext,
   IWebhookDescription,
@@ -52,6 +55,11 @@ export class ActiveWorkflowManager {
     private readonly isLeader: () => boolean,
     private readonly credentials: CredentialService,
     private readonly audit?: AuditService,
+    private readonly httpRequest: (options: IHttpRequestOptions) => Promise<unknown> = defaultHttpRequest,
+    private readonly openEventStream: (
+      options: IEventStreamOptions,
+      onMessage: (message: IEventStreamMessage) => void,
+    ) => Promise<() => Promise<void>> = defaultOpenEventStream,
   ) {}
 
   /** 启动时恢复全部已激活工作流的触发器。单个失败不阻断其它。 */
@@ -262,7 +270,7 @@ export class ActiveWorkflowManager {
         }
         return data as JsonObject;
       },
-      helpers: { openEventStream: defaultOpenEventStream },
+      helpers: { openEventStream: this.openEventStream },
     };
   }
 
@@ -298,7 +306,7 @@ export class ActiveWorkflowManager {
         return data as JsonObject;
       },
       helpers: {
-        httpRequest: defaultHttpRequest,
+        httpRequest: this.httpRequest,
         filterNewKeys: (keys: string[]) =>
           this.repos.executions.filterNewKeys(workflowId, `node:${node.name}`, keys),
       },

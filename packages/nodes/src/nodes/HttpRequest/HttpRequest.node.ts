@@ -26,6 +26,7 @@ export class HttpRequest implements INodeType {
         method,
         headers,
         body: method === 'GET' ? undefined : body,
+        urlTrust: 'user-controlled',
       });
 
       const json: JsonObject =

@@ -11,6 +11,7 @@ import { FormTrigger } from '../FormTrigger/FormTrigger.node.js';
 import { RssFeedRead } from '../RssFeedRead/RssFeedRead.node.js';
 import { RssFeedReadTrigger } from '../RssFeedReadTrigger/RssFeedReadTrigger.node.js';
 import { SseTrigger } from '../SseTrigger/SseTrigger.node.js';
+import { PollingTrigger } from '../PollingTrigger/PollingTrigger.node.js';
 
 const fields = {
   values: [
@@ -58,27 +59,41 @@ describe('Form Trigger', () => {
 describe('RSS nodes', () => {
   it('RSS Read 将 feed 条目解析成 items', async () => {
     const node = new RssFeedRead();
+    const httpRequest = vi.fn(async () => rss);
     const context = {
       getInputData: () => [{ json: { source: 'test' } }],
       getNodeParameter: () => 'https://example.test/feed',
-      helpers: { httpRequest: vi.fn(async () => rss) },
+      helpers: { httpRequest },
     } as unknown as IExecuteContext;
     const output = await node.execute.call(context);
     expect(output[0]?.map((item) => item.json['guid'])).toEqual(['one', 'two']);
     expect(output[0]?.[0]?.pairedItem).toEqual({ item: 0 });
+    expect(httpRequest).toHaveBeenCalledWith(expect.objectContaining({ urlTrust: 'user-controlled' }));
   });
 
   it('RSS Feed Trigger 只输出 filterNewKeys 判定的新条目', async () => {
     const node = new RssFeedReadTrigger();
+    const httpRequest = vi.fn(async () => rss);
     const context = {
       getNodeParameter: () => 'https://example.test/feed',
       helpers: {
-        httpRequest: vi.fn(async () => rss),
+        httpRequest,
         filterNewKeys: vi.fn(async (keys: string[]) => keys.filter((key) => key === 'two')),
       },
     } as unknown as IPollContext;
     const output = await node.poll.call(context);
     expect(output?.[0]?.map((item) => item.json['guid'])).toEqual(['two']);
+    expect(httpRequest).toHaveBeenCalledWith(expect.objectContaining({ urlTrust: 'user-controlled' }));
+  });
+
+  it('Polling Trigger 把用户 URL 标为严格信任边界', async () => {
+    const httpRequest = vi.fn(async () => [{ id: 'one' }]);
+    const context = {
+      getNodeParameter: (name: string) => ({ url: 'https://example.test/items', itemsPath: '', idField: 'id' })[name],
+      helpers: { httpRequest, filterNewKeys: vi.fn(async (keys: string[]) => keys) },
+    } as unknown as IPollContext;
+    await new PollingTrigger().poll.call(context);
+    expect(httpRequest).toHaveBeenCalledWith(expect.objectContaining({ urlTrust: 'user-controlled' }));
   });
 });
 
@@ -101,6 +116,10 @@ describe('SSE Trigger', () => {
       },
     } as ITriggerContext;
     const response = await node.trigger.call(context);
+    expect(context.helpers.openEventStream).toHaveBeenCalledWith(
+      expect.objectContaining({ urlTrust: 'user-controlled' }),
+      expect.any(Function),
+    );
     listener?.({ data: '{"value":42}', event: 'other' });
     expect(emit).not.toHaveBeenCalled();
     listener?.({ data: '{"value":42}', event: 'update', id: 'evt-1' });

@@ -36,7 +36,7 @@ export class SseTrigger implements INodeType {
     const url = String(this.getNodeParameter('url'));
     const eventName = String(this.getNodeParameter('eventName') ?? '');
     const headers = headersOf(this.getNodeParameter('headers'));
-    const close = await this.helpers.openEventStream({ url, headers }, (message) => {
+    const close = await this.helpers.openEventStream({ url, headers, urlTrust: 'user-controlled' }, (message) => {
       if (eventName && message.event !== eventName) return;
       const json = eventJson(message.data);
       if (message.event) json['_event'] = message.event;

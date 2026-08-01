@@ -144,6 +144,7 @@ describe('HttpRequest 节点', () => {
       ),
     );
     expect(calls).toHaveLength(2);
+    expect(calls[0]).toMatchObject({ urlTrust: 'user-controlled' });
     expect(output[0]![0]!.json).toEqual({ ok: true, url: 'https://api.test/items/1' });
     expect(output[0]![1]!.pairedItem).toEqual({ item: 1 });
   });

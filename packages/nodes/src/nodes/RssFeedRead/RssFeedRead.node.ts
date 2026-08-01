@@ -11,7 +11,12 @@ export class RssFeedRead implements INodeType {
     const count = Math.max(1, input.length);
     for (let index = 0; index < count; index++) {
       const url = String(this.getNodeParameter('url', index));
-      const payload = await this.helpers.httpRequest({ url, method: 'GET', headers: { accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml' } });
+      const payload = await this.helpers.httpRequest({
+        url,
+        method: 'GET',
+        headers: { accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml' },
+        urlTrust: 'user-controlled',
+      });
       output.push(...parseFeed(payload).map((json) => ({ json, pairedItem: input[index] ? { item: index } : undefined })));
     }
     return [output];

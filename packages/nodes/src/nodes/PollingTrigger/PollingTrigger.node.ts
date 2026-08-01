@@ -26,7 +26,7 @@ export class PollingTrigger implements INodeType {
     const itemsPath = String(this.getNodeParameter('itemsPath') ?? '');
     const idField = String(this.getNodeParameter('idField') ?? 'id');
 
-    const response = await this.helpers.httpRequest({ url, method: 'GET' });
+    const response = await this.helpers.httpRequest({ url, method: 'GET', urlTrust: 'user-controlled' });
     const raw = digPath(response, itemsPath);
     if (!Array.isArray(raw)) {
       throw new OperationalError(

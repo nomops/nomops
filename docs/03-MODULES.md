@@ -142,6 +142,8 @@ interface IExecuteContext {
 }
 ```
 
+**出站 URL 信任边界**：节点参数、表达式或 AI 实参能影响目标 URL 时，调用 `httpRequest` / `openEventStream` 必须传 `urlTrust: 'user-controlled'`。`core` 会在真实连接的 DNS `lookup` 与每次重定向时拒绝回环、RFC1918、链路本地、云 metadata、IPv6 ULA 等非公网地址。只有代码内固定的服务目标可保持默认 `trusted`；不得根据用户参数把请求降级为 trusted。
+
 **验收**：
 - 无 HTTP/DB 环境下，单测能跑通线性、分支（IF）、合并（Merge）、循环、错误续跑五种拓扑。
 - 一个执行到一半的 `RunExecutionData` 能 `JSON.stringify` 后反序列化、`processRunExecutionData` 继续跑完，结果与不中断一致。

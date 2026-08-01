@@ -6,6 +6,8 @@ import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
 import { createServer, type Server } from 'node:http';
 import { setupOwner } from './helpers.js';
+import { defaultHttpRequest } from '@nomops/core';
+import type { IHttpRequestOptions } from '@nomops/workflow';
 
 /**
  * 并发闸门在真实 webhook 路径上的端到端行为（B7）。
@@ -29,6 +31,8 @@ let token: string;
  */
 let slowServer: Server;
 let slowUrl: string;
+const trustedLocalRequest = (options: IHttpRequestOptions) =>
+  defaultHttpRequest({ ...options, urlTrust: 'trusted' });
 
 const slowFlow = (path: string) => ({
   name: `slow-${path}`,
@@ -67,6 +71,7 @@ beforeAll(async () => {
   boot = await bootstrap({
     dbConfig: { type: 'sqlite' },
     concurrencyLimit: 2, // 卡到 2，好观测排队
+    httpRequest: trustedLocalRequest,
   });
   app = createApp(boot.services);
   token = (await setupOwner(app, 'owner@conc.dev')).token;
@@ -129,6 +134,7 @@ describe('★队列满时的拒绝路径', () => {
       dbConfig: { type: 'sqlite' },
       concurrencyLimit: 1,
       concurrencyQueueDepth: 0, // 不排队,满即拒
+      httpRequest: trustedLocalRequest,
     });
     try {
       const app2 = createApp(tight.services);
@@ -170,7 +176,7 @@ describe('★队列满时的拒绝路径', () => {
 
 describe('关闭闸门时零回归', () => {
   it('-1 = 不限：不计数、不排队，行为与 B7 之前一致', async () => {
-    const off = await bootstrap({ dbConfig: { type: 'sqlite' }, concurrencyLimit: -1 });
+    const off = await bootstrap({ dbConfig: { type: 'sqlite' }, concurrencyLimit: -1, httpRequest: trustedLocalRequest });
     try {
       const offApp = createApp(off.services);
       const offToken = (await setupOwner(offApp, 'owner@nolimit.dev')).token;
