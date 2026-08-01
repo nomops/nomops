@@ -8,8 +8,10 @@ import { useRouter } from 'vue-router';
 import { api, type BuilderSessionRow, type BuilderRevisionRow } from '../api/client.js';
 import type { IConnections, INode } from '@nomops/workflow';
 import ReadOnlyCanvas from '../components/canvas/ReadOnlyCanvas.vue';
+import { useUiStore } from '../stores/ui.js';
 
 const router = useRouter();
+const ui = useUiStore();
 const sessions = ref<BuilderSessionRow[]>([]);
 const selected = ref<BuilderSessionRow | null>(null);
 const revisions = ref<BuilderRevisionRow[]>([]);
@@ -102,10 +104,14 @@ async function apply() {
 }
 
 async function discard(s: BuilderSessionRow) {
-  if (!window.confirm('Discard this builder session?')) return;
-  await api.builder.discard(s.id).catch(() => undefined);
-  if (selected.value?.id === s.id) selected.value = null;
-  await loadList();
+  const confirmed = await ui.requestConfirm({ title: 'Discard builder session?', message: 'The conversation and all un-applied workflow revisions will be permanently deleted.', confirmLabel: 'Discard', tone: 'danger' });
+  if (!confirmed) return;
+  try {
+    await api.builder.discard(s.id);
+    if (selected.value?.id === s.id) selected.value = null;
+    await loadList();
+    ui.notify({ kind: 'success', title: 'Builder session discarded' });
+  } catch (e) { error.value = (e as Error).message; }
 }
 
 const fmt = (iso: string) => new Date(iso).toLocaleString();

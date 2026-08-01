@@ -17,10 +17,12 @@ import { useExecutionStore } from '../../stores/execution.js';
 import { parseHandle, toFlowEdges, toFlowNodes } from '../../lib/workflow-convert.js';
 import CanvasNode from './CanvasNode.vue';
 import CanvasEdge from './CanvasEdge.vue';
+import { useUiStore } from '../../stores/ui.js';
 
 const editor = useEditorStore();
 const nodeTypesStore = useNodeTypesStore();
 const execution = useExecutionStore();
+const ui = useUiStore();
 const { screenToFlowCoordinate, zoomIn, zoomOut, zoomTo, fitView, addSelectedNodes, removeSelectedNodes, getNodes, viewport } =
   useVueFlow();
 
@@ -186,10 +188,10 @@ async function ctxExecute() {
   await execution.run(editor.id, { destinationNode: name });
 }
 function ctxOpen() { const n = ctxMenu.value?.node; closeCtx(); if (n) editor.openNdv(n); }
-function ctxRename() {
+async function ctxRename() {
   const n = ctxMenu.value?.node; closeCtx();
   if (!n) return;
-  const next = window.prompt('Rename node', n);
+  const next = await ui.requestInput({ title: 'Rename node', label: 'Node name', value: n, submitLabel: 'Rename' });
   if (next) editor.renameNode(n, next);
 }
 function ctxDeactivate() { const n = ctxMenu.value?.node; closeCtx(); if (n) editor.toggleDisabled(n); }

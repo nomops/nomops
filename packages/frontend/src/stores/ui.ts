@@ -28,9 +28,18 @@ export interface ConfirmDialogOptions {
   cancelLabel?: string;
   tone?: 'default' | 'danger';
 }
+export interface InputDialogOptions {
+  title: string;
+  message?: string;
+  label: string;
+  value?: string;
+  placeholder?: string;
+  submitLabel?: string;
+}
 
 let toastId = 0;
 let confirmResolver: ((confirmed: boolean) => void) | null = null;
+let inputResolver: ((value: string | null) => void) | null = null;
 
 /* D002 修正:基线主侧栏用 ResizeWrapper,min 200 / max 500,默认 200(量到的 201 = 200 + 1px 边框) */
 export const SIDEBAR_MIN = 200;
@@ -49,6 +58,7 @@ export const useUiStore = defineStore('ui', {
     paletteContextLabel: null as string | null,
     toasts: [] as UiToast[],
     confirmDialog: null as (ConfirmDialogOptions & { open: true }) | null,
+    inputDialog: null as (InputDialogOptions & { open: true }) | null,
     /** Settings → Chat 开关的共享状态：侧栏 Chat 入口实时显隐（切换即生效，无需刷新）。 */
     chatEnabled: true,
   }),
@@ -120,6 +130,19 @@ export const useUiStore = defineStore('ui', {
       confirmResolver = null;
       this.confirmDialog = null;
       resolve?.(confirmed);
+    },
+    requestInput(options: InputDialogOptions) {
+      if (inputResolver) inputResolver(null);
+      this.inputDialog = { ...options, open: true };
+      return new Promise<string | null>((resolve) => {
+        inputResolver = resolve;
+      });
+    },
+    resolveInput(value: string | null) {
+      const resolve = inputResolver;
+      inputResolver = null;
+      this.inputDialog = null;
+      resolve?.(value);
     },
   },
 });

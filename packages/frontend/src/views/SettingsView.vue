@@ -11,6 +11,7 @@ import LicenseModal from '../components/LicenseModal.vue';
 import { LOCALES, locale, setLocale, t, type Locale } from '../lib/i18n.js';
 import { LINKS } from '../lib/links.js';
 import { savedTheme, setTheme, type ThemePref } from '../lib/theme.js';
+import UiDialog from '../components/ui/UiDialog.vue';
 
 /** Settings：左二级导航（← Settings + 图标项 + 版本号）+ 右内容。结构对标基线 Settings。 */
 type Section =
@@ -318,9 +319,9 @@ async function loadTrust() {
   }
 }
 async function rotateTrust() {
-  if (!window.confirm('Rotate deployment key? Old key stays valid for verifying already-issued tokens.')) return;
+  if (!await ui.requestConfirm({ title: 'Rotate deployment key?', message: 'The old key stays valid for verifying already-issued tokens.', confirmLabel: 'Rotate key', tone: 'danger' })) return;
   trustBusy.value = 'rotate';
-  try { await api.instanceTrust.rotate(); await loadTrust(); } finally { trustBusy.value = ''; }
+  try { await api.instanceTrust.rotate(); await loadTrust(); ui.notify({ kind: 'success', title: 'Deployment key rotated' }); } finally { trustBusy.value = ''; }
 }
 async function addTrustSource() {
   const isStatic = trustNewSourceType.value === 'static';
@@ -350,9 +351,9 @@ async function refreshTrustSource(id: string) {
   catch (e) { trustError.value = (e as Error).message; } finally { trustBusy.value = ''; }
 }
 async function removeTrustSource(id: string) {
-  if (!window.confirm('Remove source and its imported trusted keys?')) return;
-  await api.instanceTrust.removeSource(id).catch(() => undefined);
-  await loadTrust();
+  if (!await ui.requestConfirm({ title: 'Remove trust source?', message: 'The source and all trusted keys imported from it will be removed.', confirmLabel: 'Remove', tone: 'danger' })) return;
+  try { await api.instanceTrust.removeSource(id); await loadTrust(); ui.notify({ kind: 'success', title: 'Trust source removed' }); }
+  catch (e) { trustError.value = (e as Error).message; }
 }
 async function addTrustKey() {
   if (!trustNewKid.value.trim() || !trustNewDer.value.trim()) return;
@@ -468,10 +469,13 @@ async function createDynResolver() {
   }
 }
 async function removeDynResolver(id: string) {
-  if (!window.confirm('Delete this resolver and all its subject values?')) return;
-  await api.dynamicCredentials.removeResolver(id).catch(() => undefined);
-  if (dynSelectedResolver.value === id) dynSelectedResolver.value = '';
-  await loadDynResolvers();
+  if (!await ui.requestConfirm({ title: 'Delete credential resolver?', message: 'The resolver and all of its subject values will be permanently deleted.', confirmLabel: 'Delete', tone: 'danger' })) return;
+  try {
+    await api.dynamicCredentials.removeResolver(id);
+    if (dynSelectedResolver.value === id) dynSelectedResolver.value = '';
+    await loadDynResolvers();
+    ui.notify({ kind: 'success', title: 'Credential resolver deleted' });
+  } catch (e) { dynError.value = (e as Error).message; }
 }
 async function selectDynResolver(id: string) {
   dynSelectedResolver.value = id;
@@ -695,10 +699,11 @@ async function createApiKey() {
   }
 }
 async function revokeApiKey(id: string) {
-  if (!confirm('Revoke this API key? Any script using it will stop working immediately.')) return;
+  if (!await ui.requestConfirm({ title: 'Revoke API key?', message: 'Any script using this key will stop working immediately.', confirmLabel: 'Revoke', tone: 'danger' })) return;
   try {
     await api.apiKeys.revoke(id);
     await loadApiKeys();
+    ui.notify({ kind: 'success', title: 'API key revoked' });
   } catch (e) {
     apiError.value = (e as Error).message;
   }
@@ -751,11 +756,12 @@ async function installCommunityNode() {
   }
 }
 async function uninstallCommunityNode(name: string) {
-  if (!confirm(`Uninstall ${name}? Workflows using its nodes will stop working.`)) return;
+  if (!await ui.requestConfirm({ title: 'Uninstall community node?', message: `Workflows using nodes from “${name}” will stop working.`, confirmLabel: 'Uninstall', tone: 'danger' })) return;
   communityError.value = '';
   try {
     await api.communityNodes.uninstall(name);
     await loadCommunityNodes();
+    ui.notify({ kind: 'success', title: 'Community node uninstalled', message: name });
   } catch (e) {
     communityError.value = (e as Error).message;
   }
@@ -911,11 +917,12 @@ async function saveRole() {
 }
 
 async function deleteRole(role: CustomRole) {
-  if (!confirm(`Delete custom role "${role.name}"? Members holding it fall back to viewer access.`)) return;
+  if (!await ui.requestConfirm({ title: 'Delete custom role?', message: `Members holding “${role.name}” will fall back to viewer access.`, confirmLabel: 'Delete', tone: 'danger' })) return;
   rolesError.value = '';
   try {
     await api.customRoles.remove(role.id);
     await loadCustomRoles();
+    ui.notify({ kind: 'success', title: 'Custom role deleted', message: role.name });
   } catch (e) {
     rolesError.value = (e as Error).message;
   }
@@ -1046,15 +1053,28 @@ async function loadMcp() {
     mcpError.value = (e as Error).message; // 非 admin → 403
   }
 }
-/** D144:MCP 表描述可编辑（prompt 流,同 Rename node 惯例;保存后刷新 status）。 */
-async function editMcpDescription(w: { id: string; name: string; description: string | null }) {
-  const next = window.prompt(`Description for "${w.name}"`, w.description ?? '');
-  if (next === null) return;
+/** D144:MCP 表描述可编辑（产品内弹窗，保存后刷新 status）。 */
+const mcpDescriptionOpen = ref(false);
+const mcpDescriptionTarget = ref<{ id: string; name: string } | null>(null);
+const mcpDescriptionDraft = ref('');
+const mcpDescriptionSaving = ref(false);
+function editMcpDescription(w: { id: string; name: string; description: string | null }) {
+  mcpDescriptionTarget.value = { id: w.id, name: w.name };
+  mcpDescriptionDraft.value = w.description ?? '';
+  mcpDescriptionOpen.value = true;
+}
+async function saveMcpDescription() {
+  if (!mcpDescriptionTarget.value) return;
   mcpError.value = '';
+  mcpDescriptionSaving.value = true;
   try {
-    mcpStatus.value = await api.mcp.setWorkflowDescription(w.id, next);
+    mcpStatus.value = await api.mcp.setWorkflowDescription(mcpDescriptionTarget.value.id, mcpDescriptionDraft.value.trim());
+    mcpDescriptionOpen.value = false;
+    ui.notify({ kind: 'success', title: 'MCP workflow description saved' });
   } catch (e) {
     mcpError.value = (e as Error).message;
+  } finally {
+    mcpDescriptionSaving.value = false;
   }
 }
 
@@ -1458,11 +1478,12 @@ async function inviteNewUser() {
 
 async function removeUser(id: string, email: string, pending: boolean) {
   const verb = pending ? 'Revoke the invitation for' : 'Remove';
-  if (!confirm(`${verb} ${email}?`)) return;
+  if (!await ui.requestConfirm({ title: pending ? 'Revoke invitation?' : 'Remove instance user?', message: `${verb} ${email}? Their access will change immediately.`, confirmLabel: pending ? 'Revoke' : 'Remove', tone: 'danger' })) return;
   usersError.value = '';
   try {
     await api.instanceUsers.remove(id);
     users.value = await api.instanceUsers.list();
+    ui.notify({ kind: 'success', title: pending ? 'Invitation revoked' : 'Instance user removed', message: email });
   } catch (e) {
     usersError.value = (e as Error).message;
   }
@@ -1654,11 +1675,12 @@ function onLicenseActivated(info: LicenseInfo) {
   projects.license = info; // 立即反映解锁的功能
 }
 async function removeLicense() {
-  if (!confirm('Remove the activation key? Enterprise features will be disabled.')) return;
+  if (!await ui.requestConfirm({ title: 'Remove activation key?', message: 'Enterprise features will be disabled for this instance.', confirmLabel: 'Remove key', tone: 'danger' })) return;
   licenseError.value = '';
   licenseBusy.value = true;
   try {
     projects.license = await api.deactivateLicense();
+    ui.notify({ kind: 'success', title: 'Activation key removed' });
   } catch (e) {
     licenseError.value = (e as Error).message;
   } finally {
@@ -1718,10 +1740,11 @@ async function loadScKey() {
   }
 }
 async function scRefreshKey() {
-  if (!confirm('Regenerate the deploy key? The old key stops working — you must replace it in your Git host.')) return;
+  if (!await ui.requestConfirm({ title: 'Regenerate deploy key?', message: 'The old key stops working. Replace it in your Git host before the next sync.', confirmLabel: 'Regenerate', tone: 'danger' })) return;
   scBusy.value = 'key';
   try {
     scPublicKey.value = (await api.sourceControl.refreshKey()).publicKey;
+    ui.notify({ kind: 'success', title: 'Deploy key regenerated' });
   } catch (e) {
     scError.value = (e as Error).message;
   } finally {
@@ -1803,13 +1826,14 @@ async function scConnect() {
   }
 }
 async function scDisconnect() {
-  if (!confirm('Disconnect the source control repository?')) return;
+  if (!await ui.requestConfirm({ title: 'Disconnect source control?', message: 'Repository settings will be removed. Existing workflows are not deleted.', confirmLabel: 'Disconnect', tone: 'danger' })) return;
   scBusy.value = 'disconnect';
   scError.value = '';
   try {
     await api.sourceControl.disconnect();
     scConfig.value = await api.sourceControl.config();
     scStatus.value = null;
+    ui.notify({ kind: 'success', title: 'Source control disconnected' });
   } catch (e) {
     scError.value = (e as Error).message;
   } finally {
@@ -4111,6 +4135,23 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
       </section>
     </div>
     </div>
+
+    <UiDialog
+      :open="mcpDescriptionOpen"
+      :title="`Edit description for ${mcpDescriptionTarget?.name ?? 'workflow'}`"
+      description="This description is shown to MCP clients when they discover available workflows."
+      width="560px"
+      test-id="mcp-description-dialog"
+      @close="mcpDescriptionOpen = false"
+    >
+      <textarea v-model="mcpDescriptionDraft" rows="5" autofocus data-test="mcp-description-input" placeholder="Describe what this workflow does" style="width: 100%; resize: vertical" />
+      <template #footer>
+        <button type="button" :disabled="mcpDescriptionSaving" @click="mcpDescriptionOpen = false">Cancel</button>
+        <button class="btn primary" type="button" :disabled="mcpDescriptionSaving" data-test="mcp-description-save" @click="saveMcpDescription">
+          {{ mcpDescriptionSaving ? 'Saving…' : 'Save' }}
+        </button>
+      </template>
+    </UiDialog>
 
     <LicenseModal :open="licenseModalOpen" @close="licenseModalOpen = false" @activated="onLicenseActivated" />
   </div>

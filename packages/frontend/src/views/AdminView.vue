@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { api } from '../api/client.js';
 import { useProjectsStore } from '../stores/projects.js';
+import UiState from '../components/ui/UiState.vue';
 
 /**
  * Admin Panel（账户/实例管理台）：实例概览 + 用量 + 套餐计费 + 成员。
@@ -17,9 +18,15 @@ const security = ref<Awaited<ReturnType<typeof api.security>> | null>(null);
 const users = ref<Awaited<ReturnType<typeof api.instanceUsers.list>>>([]);
 const usage = ref<{ used: number; limit: number | null; plan: string } | null>(null);
 const usersDenied = ref(false);
+const loading = ref(true);
+const loadError = ref('');
 
-onMounted(async () => {
-  await projects.fetch().catch(() => undefined);
+async function load() {
+  loading.value = true;
+  loadError.value = '';
+  usersDenied.value = false;
+  try { await projects.fetch(); }
+  catch (e) { loadError.value = (e as Error).message; }
   const [aboutR, meR, secR, usersR] = await Promise.allSettled([
     api.about(),
     api.me(),
@@ -31,10 +38,15 @@ onMounted(async () => {
   if (secR.status === 'fulfilled') security.value = secR.value;
   if (usersR.status === 'fulfilled') users.value = usersR.value;
   else usersDenied.value = true;
+  if (aboutR.status === 'rejected' && meR.status === 'rejected') {
+    loadError.value = aboutR.reason instanceof Error ? aboutR.reason.message : 'Could not load instance details';
+  }
 
   const current = projects.current;
   if (current) usage.value = await api.projects.usage(current.id).catch(() => null);
-});
+  loading.value = false;
+}
+onMounted(load);
 
 // 社区版是唯一的「未授权」态;其余套餐名(Business/Enterprise/…)都算已授权
 const rawPlan = computed(() => about.value?.plan ?? projects.license?.plan ?? 'community');
@@ -81,22 +93,27 @@ const enterpriseFeatures = computed(() => projects.license?.features ?? []);
       </button>
     </div>
 
+    <UiState v-if="loading" kind="loading" title="Loading admin panel" description="Fetching instance, plan, usage, and member details." />
+    <UiState v-else-if="loadError && !about && !me" kind="error" title="Could not load admin panel" :description="loadError">
+      <button type="button" @click="load">Retry</button>
+    </UiState>
+
     <!-- 概览卡 -->
-    <div class="summary">
+    <div v-else class="summary">
       <div v-for="c in summaryCards" :key="c.label" class="sum-card">
         <div class="sum-label">{{ c.label }}</div>
         <div class="sum-value" :class="{ accent: c.accent }">{{ c.value }}</div>
       </div>
     </div>
 
-    <div class="admin-grid">
+    <div v-if="!loading && (!loadError || about || me)" class="admin-grid">
       <!-- 实例概览 -->
       <div class="card admin-card">
         <h3 class="card-title">Instance</h3>
         <div class="kv"><span class="k">Name</span><span class="v">{{ about?.name ?? 'nomops' }}</span></div>
         <div class="kv"><span class="k">Version</span><span class="v">v{{ about?.version ?? '…' }}</span></div>
         <div class="kv"><span class="k">Plan</span><span class="v"><span class="plan-badge" :class="{ enterprise: isEnterprise }">{{ planLabel }}</span></span></div>
-        <div class="kv"><span class="k">Status</span><span class="v ok">● Running</span></div>
+        <div class="kv"><span class="k">Status</span><span class="v" :class="{ ok: about }">{{ about ? '● Running' : 'Unknown' }}</span></div>
         <div class="kv"><span class="k">Built-in nodes</span><span class="v">{{ about?.nodeCount ?? '–' }}</span></div>
         <div class="kv"><span class="k">SSO</span><span class="v">{{ security?.sso.enabled ? 'Enabled' : 'Disabled' }}</span></div>
       </div>
@@ -132,7 +149,7 @@ const enterpriseFeatures = computed(() => projects.license?.features ?? []);
     </div>
 
     <!-- 成员 -->
-    <div class="card admin-card" style="margin-top: 16px">
+    <div v-if="!loading && (!loadError || about || me)" class="card admin-card" style="margin-top: 16px">
       <div class="card-title-row">
         <h3 class="card-title" style="margin: 0">Members</h3>
         <span style="flex: 1" />
@@ -143,7 +160,8 @@ const enterpriseFeatures = computed(() => projects.license?.features ?? []);
       <p v-if="usersDenied" class="dim" style="font-size: 13px; margin: 10px 0 0">
         Member management requires an owner or admin role.
       </p>
-      <table v-else class="admin-table" data-test="admin-users">
+      <UiState v-else-if="!users.length" compact title="No members found" description="Invite members from Settings → Users." />
+      <div v-else class="admin-table-wrap"><table class="admin-table" data-test="admin-users">
         <thead>
           <tr><th>Email</th><th>Instance role</th><th>Status</th><th>Joined</th></tr>
         </thead>
@@ -158,7 +176,7 @@ const enterpriseFeatures = computed(() => projects.license?.features ?? []);
             <td class="dim">{{ new Date(u.createdAt).toLocaleDateString() }}</td>
           </tr>
         </tbody>
-      </table>
+      </table></div>
     </div>
   </div>
 </template>
@@ -210,6 +228,7 @@ const enterpriseFeatures = computed(() => projects.license?.features ?? []);
 .feat { background: var(--bg-input); padding: 3px 8px; border-radius: 6px; font-size: 12px; color: var(--text); }
 
 .admin-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+.admin-table-wrap { overflow-x: auto; }
 .admin-table th { text-align: left; font-size: 12px; font-weight: 500; color: var(--text-dim); padding: 8px 10px; border-bottom: 1px solid var(--border); }
 .admin-table td { padding: 10px; font-size: 13px; border-bottom: 1px solid var(--border); }
 .admin-table tr:last-child td { border-bottom: none; }
@@ -219,5 +238,11 @@ const enterpriseFeatures = computed(() => projects.license?.features ?? []);
 @media (max-width: 1000px) {
   .summary { grid-template-columns: repeat(2, 1fr); }
   .admin-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  .page-wrap { padding: 16px; }
+  .summary { grid-template-columns: 1fr; }
+  .admin-head { flex-wrap: wrap; }
+  .admin-head .btn { margin-left: 0; }
 }
 </style>

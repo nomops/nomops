@@ -9,6 +9,7 @@ import SideBar from './components/shell/SideBar.vue';
 import CommandPalette from './components/shell/CommandPalette.vue';
 import UiConfirmHost from './components/ui/UiConfirmHost.vue';
 import UiToastHost from './components/ui/UiToastHost.vue';
+import UiInputHost from './components/ui/UiInputHost.vue';
 
 const auth = useAuthStore();
 const projects = useProjectsStore();
@@ -59,5 +60,6 @@ watch(
   </div>
   <RouterView v-else />
   <UiConfirmHost />
+  <UiInputHost />
   <UiToastHost />
 </template>

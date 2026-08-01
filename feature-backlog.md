@@ -244,6 +244,8 @@
 
 > 2026-08-01 UI 顺序改造第 9 项（Templates / History / Insights）：模板画廊区分加载、请求失败、服务端无模板与筛选无结果，提供重试/清筛选入口及导入成功反馈；版本历史不再吞掉版本/发布时间线错误，补全整页加载/失败/空态、键盘可选版本行和有效 Upgrade 导航，发布旧版本前明确提示会覆盖当前改动，克隆/下载/恢复均有反馈；Insights 统一加载/失败/空数据状态和重试入口，KPI 与图表适配窄屏。新增 5 项视图契约回归，生产构建 6/6、全量 1048 项测试通过。
 
+> 2026-08-01 UI 顺序改造第 10 项（Settings / Admin / Audit）：Settings 中部署密钥、信任源、动态凭证解析器、API Key、社区节点、自定义角色、用户、许可证与源码同步等高影响操作全部迁入产品内确认并补反馈；MCP workflow 描述从浏览器 `prompt()` 迁入 `UiDialog`。新增全局 `requestInput`/`UiInputHost`，统一画布节点工具条与右键菜单的 Rename 流；AI Builder 最后一个原生确认同步迁移，生产前端不再包含浏览器原生 `confirm/prompt/alert`。Admin 与 Audit 补齐加载/致命失败/空态/重试及表格窄屏滚动。新增 6 项视图契约回归，生产构建 6/6、全量 1054 项测试通过；最终浏览器复验时原登录态已失效，提供的账号口令返回 Invalid email or password，未绕过认证伪造数据。
+
 - [ ] **66. 执行可视化正确性（串台 + 重连 + 频道）** `M`（🟠 A6）
   踩坑：`packages/frontend/src/stores/execution.ts:44` handleEvent 不按 executionId 过滤（并发执行/多用户高亮串台）；`packages/server/src/ws/push-hub.ts:27` 广播全连接无 workflow 频道；`execution.ts:38` WS 断线不重连（静默丢实时进度）。三者叠加使执行可视化在任意并发/断网下失真。
   → handleEvent 首行按 executionId 过滤（executionStarted 除外）；push-hub 按 workflowId 分频道；WS 加指数退避重连 + 心跳。

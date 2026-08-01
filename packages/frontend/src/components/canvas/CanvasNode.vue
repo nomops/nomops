@@ -10,6 +10,7 @@ import { useEditorStore } from '../../stores/editor.js';
 import { nodeIcon } from '../../lib/icons.js';
 import { lastRunOf, outputPorts } from '../../lib/run-data.js';
 import IconSvg from '../IconSvg.vue';
+import { useUiStore } from '../../stores/ui.js';
 
 const props = defineProps<{
   data: { node: INode };
@@ -22,6 +23,7 @@ const props = defineProps<{
 
 const nodeTypes = useNodeTypesStore();
 const execution = useExecutionStore();
+const ui = useUiStore();
 
 const desc = computed(() => nodeTypes.byType.get(props.data.node.type));
 const inputs = computed(() => desc.value?.inputs ?? ['main']);
@@ -162,10 +164,10 @@ function onOpen() {
   editor.openNdv(props.data.node.name);
 }
 /* ── backlog #4:悬浮 ⋯ 菜单补 Rename / Pin（能力早已在 store,只缺此入口）── */
-function onRename() {
+async function onRename() {
   closeOverflow();
   const name = props.data.node.name;
-  const next = window.prompt('Rename node', name);
+  const next = await ui.requestInput({ title: 'Rename node', label: 'Node name', value: name, submitLabel: 'Rename' });
   if (next) editor.renameNode(name, next);
 }
 /** 本次运行该节点的输出（Pin 数据源,同 NDV Pin 语义）。 */
