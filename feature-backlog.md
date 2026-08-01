@@ -226,6 +226,8 @@
 
 > 2026-08-01 UI 顺序改造第 0 项（全局基础）：新增统一 `UiDialog`（键盘焦点环、Escape/遮罩策略、移动端底部面板）、异步 `requestConfirm`、四态 Toast Host、`UiState` 空/加载/错误状态；全局挂载反馈 Host，New project 迁入公共 Dialog 并在成功后给出 Toast；补全全局 `:focus-visible` 与窄屏侧栏规则。新增 5 项组件回归，生产构建 6/6、全量 1010 项测试通过；后续页面按此基础逐页迁移，不再新增浏览器原生弹窗。
 
+> 2026-08-01 UI 顺序改造第 1 项（认证页面）：抽取统一 `AuthFrame`，把登录、首装 owner、忘记/重置密码、邀请注册与 SSO 回调收敛为同一自托管认证视觉；补齐表单 label/autocomplete/autofocus、成功/错误可访问状态、强密码一致校验、MFA 初始焦点，并修正无效邀请回退公开注册与 SSO `/api/me` 非 2xx 仍建会话的问题。新增 4 项视图回归，生产构建 6/6、全量 1014 项测试通过；独立端口实测登录/注册/SSO 失败态且控制台零 warning/error。
+
 - [ ] **66. 执行可视化正确性（串台 + 重连 + 频道）** `M`（🟠 A6）
   踩坑：`packages/frontend/src/stores/execution.ts:44` handleEvent 不按 executionId 过滤（并发执行/多用户高亮串台）；`packages/server/src/ws/push-hub.ts:27` 广播全连接无 workflow 频道；`execution.ts:38` WS 断线不重连（静默丢实时进度）。三者叠加使执行可视化在任意并发/断网下失真。
   → handleEvent 首行按 executionId 过滤（executionStarted 除外）；push-hub 按 workflowId 分频道；WS 加指数退避重连 + 心跳。

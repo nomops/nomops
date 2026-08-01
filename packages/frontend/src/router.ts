@@ -41,7 +41,7 @@ export const router = createRouter({
 router.beforeEach((to) => {
   const auth = useAuthStore();
   if (!auth.token && !to.meta['public']) return { name: 'login' };
-  if (auth.token && to.name === 'login') return { name: 'overview' };
+  if (auth.token && (to.name === 'login' || to.name === 'signup')) return { name: 'overview' };
   return true;
 });
 
