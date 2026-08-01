@@ -399,6 +399,11 @@ watch(
 
 /** undo/redo 快捷键（Cmd/Ctrl+Z / Shift+Cmd/Ctrl+Z）；输入框聚焦时不劫持（保留原生文本撤销）。 */
 function onKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && execMenuOpen.value) {
+    event.preventDefault();
+    execMenuOpen.value = false;
+    return;
+  }
   if (event.key === 'Escape' && editor.focusPanelOpen && !document.querySelector('[aria-modal="true"]')) {
     event.preventDefault();
     closeFocusPanel();
@@ -1394,7 +1399,7 @@ async function loadSavePolicy() {
 
         <!-- 空态：「添加第一步」入口 -->
         <button v-if="isEmpty" class="add-first-step" data-test="add-first-step" @click="editor.nodePickerOpen = true">
-          <span class="plus">＋</span>
+          <svg class="first-step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
           <span>Add first step…</span>
         </button>
 
@@ -1408,25 +1413,30 @@ async function loadSavePolicy() {
             :disabled="!editor.id || (execution.running && !execution.currentExecutionId)"
             @click="execution.running ? execution.stop() : saveAndRun()"
           >
-            <span v-if="execution.running">■ Stop execution</span>
-            <span v-else-if="triggerNodes.length > 1">▶ Execute workflow from {{ selectedTrigger }}</span>
-            <span v-else>▶ Execute workflow</span>
+            <span v-if="execution.running" class="execute-label"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1" fill="currentColor" /></svg>Stop execution</span>
+            <span v-else-if="triggerNodes.length > 1" class="execute-label"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m7 4 13 8-13 8z" /></svg>Execute workflow from {{ selectedTrigger }}</span>
+            <span v-else class="execute-label"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m7 4 13 8-13 8z" /></svg>Execute workflow</span>
           </button>
           <button
             v-if="triggerNodes.length > 1"
             class="execute-caret"
             data-test="run-trigger-toggle"
+            aria-label="Choose start trigger"
+            aria-controls="run-trigger-menu"
+            :aria-expanded="execMenuOpen"
             :disabled="execution.running"
             @click="execMenuOpen = !execMenuOpen"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" class="i14"><path d="M18 15l-6-6-6 6" /></svg>
           </button>
-          <div v-if="execMenuOpen" class="execute-menu" data-test="run-trigger-menu">
+          <div v-if="execMenuOpen" id="run-trigger-menu" class="execute-menu" role="menu" aria-label="Start from trigger" data-test="run-trigger-menu">
             <div class="menu-label-sm dim">Start from trigger</div>
             <button
               v-for="name in triggerNodes"
               :key="name"
               class="exec-trigger-option"
+              role="menuitemradio"
+              :aria-checked="name === selectedTrigger"
               :class="{ sel: name === selectedTrigger }"
               :data-test-trigger-option="name"
               @click="selectedTrigger = name; execMenuOpen = false"
@@ -1443,17 +1453,17 @@ async function loadSavePolicy() {
           Open chat
         </button>
 
-        <span v-if="execution.runError" class="run-error-toast" data-test="run-error">{{ execution.runError }}</span>
+        <span v-if="execution.runError" class="run-error-toast" role="alert" data-test="run-error">{{ execution.runError }}</span>
 
         <!-- C9 右侧浮动工具条（对标基线：Open nodes panel / Add sticky note）；节点抽屉打开时让位 -->
-        <div v-show="!editor.nodePickerOpen" class="canvas-side-toolbar" data-test="canvas-side-toolbar">
-          <button title="Open nodes panel" data-test="side-add-node" @click="editor.nodePickerOpen = true">
+        <div v-show="!editor.nodePickerOpen" class="canvas-side-toolbar" role="toolbar" aria-label="Canvas tools" data-test="canvas-side-toolbar">
+          <button title="Open nodes panel" aria-label="Open nodes panel" data-test="side-add-node" @click="editor.nodePickerOpen = true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="i16"><path d="M12 5v14M5 12h14" /></svg>
           </button>
-          <button title="Command bar (⌘K)" data-test="side-command-bar" @click="ui.openPalette()">
+          <button title="Command bar (⌘K)" aria-label="Open command bar" aria-haspopup="dialog" data-test="side-command-bar" @click="ui.openPalette()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="i16"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
           </button>
-          <button title="Add sticky note" data-test="side-add-sticky" @click="addStickyNote">
+          <button title="Add sticky note" aria-label="Add sticky note" data-test="side-add-sticky" @click="addStickyNote">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="i16"><path d="M5 4h14a1 1 0 0 1 1 1v9l-6 6H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" /><path d="M14 20v-5a1 1 0 0 1 1-1h5" /></svg>
           </button>
           <button
@@ -1840,6 +1850,8 @@ async function loadSavePolicy() {
 }
 .execute-split .execute-workflow { position: static; transform: none; }
 .execute-workflow.has-caret { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.execute-label { display: inline-flex; align-items: center; gap: 7px; }
+.execute-label svg { width: 14px; height: 14px; }
 .execute-caret {
   padding: 0 12px; border: none; border-left: 1px solid rgba(255, 255, 255, 0.25);
   background: var(--accent); color: #fff; cursor: pointer;
@@ -2129,7 +2141,7 @@ async function loadSavePolicy() {
   background: transparent; color: var(--text-dim); font-size: 14px;
 }
 .add-first-step:hover { border-color: var(--accent); color: var(--text); }
-.add-first-step .plus { font-size: 34px; }
+.first-step-icon { width: 36px; height: 36px; }
 /* 基线实测：Execute workflow = 36px 高 / 圆角 6 / 衬 0 16 / 14px-500 /
    primary + inset 橙环 + 0 1px 3px -1px 投影（非胶囊、无橙色泛光） */
 .execute-workflow {

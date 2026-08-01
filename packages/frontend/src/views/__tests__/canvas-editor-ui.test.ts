@@ -124,4 +124,36 @@ describe('canvas editor UI', () => {
     expect(canvas).toContain('role="tablist" aria-label="Node run data"');
     expect(canvas).toContain('role="tabpanel"');
   });
+
+  it('uses SVG icons for add, execute, and stop instead of character glyphs', () => {
+    expect(canvas).toContain('class="first-step-icon"');
+    expect(canvas).toContain('class="execute-label"');
+    expect(canvas).not.toContain('<span class="plus">＋</span>');
+    expect(canvas).not.toContain('■ Stop execution');
+    expect(canvas).not.toContain('▶ Execute workflow');
+  });
+
+  it('connects the trigger disclosure to a named menu', () => {
+    expect(canvas).toContain('aria-label="Choose start trigger"');
+    expect(canvas).toContain('aria-controls="run-trigger-menu"');
+    expect(canvas).toContain(':aria-expanded="execMenuOpen"');
+    expect(canvas).toContain('role="menu" aria-label="Start from trigger"');
+  });
+
+  it('models start triggers as a single-choice menu', () => {
+    expect(canvas).toContain('role="menuitemradio"');
+    expect(canvas).toContain(':aria-checked="name === selectedTrigger"');
+  });
+
+  it('closes the start-trigger menu with Escape and announces run failures', () => {
+    expect(canvas).toContain("event.key === 'Escape' && execMenuOpen.value");
+    expect(canvas).toContain('class="run-error-toast" role="alert"');
+  });
+
+  it('names the canvas toolbar and each icon-only action', () => {
+    expect(canvas).toContain('role="toolbar" aria-label="Canvas tools"');
+    expect(canvas).toContain('aria-label="Open nodes panel"');
+    expect(canvas).toContain('aria-label="Open command bar" aria-haspopup="dialog"');
+    expect(canvas).toContain('aria-label="Add sticky note"');
+  });
 });
