@@ -134,9 +134,7 @@
 
 - [x] **52. 触发器补全五件套：Form Trigger / Form / RSS Read / RSS Feed Trigger / SSE Trigger** `M` ✅ 2026-07-31（新增通用节点 webhook 与 SSE 流式触发契约，Form Trigger 生成 CSP 安全公开表单并提交触发，Form 复用可序列化 contextData 实现流程内 HITL/多步恢复，RSS Read/Trigger 支持 RSS/Atom 解析与 processed_data 增量去重，SSE Trigger 真实长连接事件触发；新增 4 节点协议单测 + 4 server 端到端测试，workflow 29/core 101/nodes 120/db 26/frontend 92/server 613、全量 981 测通过；`pnpm build` 6/6、真实 curl 完成五节点往返、生产 UI 与基线 v2.31.0 同视口截图比对且 nomops 控制台零报错；commit `705de00`）
 
-- [ ] **53. 流程/工具杂项四件套：Stop and Error / Execution Data / TOTP / Git** `S/M`
-  → Stop and Error（主动抛错终止执行，配合 Error Trigger #6）、Execution Data（读/写当前执行的元数据 KV，配合 #35 执行元数据）、TOTP（生成/校验 TOTP 验证码，复用已有 TOTP 实现）、Git（clone/commit/push 等，凭证走 SSH/token，最重可末位）。
-  验收：Stop and Error 触发 Error Trigger 流；Execution Data 写入的 KV 在执行详情可见；TOTP 生成码与标准算法对齐。
+- [x] **53. 流程/工具杂项四件套：Stop and Error / Execution Data / TOTP / Git** `S/M` ✅ 2026-08-01（新增四个声明式节点：Stop and Error 主动抛出受控错误并进入 Error Trigger 工作流，Execution Data 读写当前执行可搜索 KV 元数据，TOTP 与 MFA 服务共享 RFC 6238 SHA1/SHA256/SHA512 实现，Git 在 `NOMOPS_GIT_ROOT` 沙箱内支持 clone/status/commit/pull/push、HTTPS token/SSH 密钥临时注入且禁用 hooks/file 协议；新增 7 节点单测 + 1 前端凭证类型测试，并扩展错误流/执行元数据/API 凭证明文不泄漏覆盖，workflow 29/core 101/nodes 127/db 26/frontend 94/server 614、全量 991 测通过；`pnpm build` 6/6、`pnpm dev` 前后端启动通过，真实 HTTP 完成错误流→handler、元数据详情、标准 TOTP 往返，临时 SSH Git 服务完成 clone→commit→push 且裸库内容一致；生产 UI 验证四节点元数据自动上架，与同镜像基线 2.31.5 在 1280×720 同视口并排比对，干净标签控制台零报错；commit `da59d5f`）
 
 - [ ] **54. 自引用/低价值节点（评估后按需，默认不做）** `S~M`
   n8n / n8n Trigger（调 n8n 自身 API / 监听实例事件——nomops 等价物应改造为「nomops 自 API 节点」+ 实例事件触发，价值取决于是否需要工作流操作平台自身）、Data table（n8n 的内置数据表功能，需整套 dataTable 后端，属独立特性非单节点）、AI Transform（自然语言生成转换代码，依赖 AI 建流能力 #45）、Track Time Saved（n8n 云运营指标，自托管无意义）。
