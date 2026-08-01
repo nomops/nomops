@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { NodeCategory } from '@nomops/workflow';
 import type { NodeTypeInfo } from '../../api/client.js';
 import { useNodeTypesStore } from '../../stores/node-types.js';
 import { useEditorStore } from '../../stores/editor.js';
 import { nodeIcon } from '../../lib/icons.js';
 import IconSvg from '../IconSvg.vue';
+import UiState from '../ui/UiState.vue';
 
 /**
  * 节点创建面板(对标基线):
@@ -84,31 +85,70 @@ function close() {
   search.value = '';
   drill.value = null;
 }
+function retryTypes() {
+  void nodeTypes.fetch(true);
+}
+function onListKeydown(event: KeyboardEvent) {
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+  const list = event.currentTarget as HTMLElement;
+  const items = [...list.querySelectorAll<HTMLElement>('.cat-item, .node-item')];
+  if (!items.length) return;
+  const current = items.indexOf(document.activeElement as HTMLElement);
+  const next = event.key === 'Home'
+    ? 0
+    : event.key === 'End'
+      ? items.length - 1
+      : event.key === 'ArrowDown'
+        ? (current + 1 + items.length) % items.length
+        : (current - 1 + items.length) % items.length;
+  event.preventDefault();
+  items[next]?.focus();
+}
+function onSearchKeydown(event: KeyboardEvent) {
+  if (event.key !== 'ArrowDown') return;
+  event.preventDefault();
+  document.querySelector<HTMLElement>('[data-test="node-picker"] .node-item, [data-test="node-picker"] .cat-item')?.focus();
+}
 function onDragStart(event: DragEvent, desc: NodeTypeInfo) {
   event.dataTransfer?.setData('application/nomops-node', desc.type);
   event.dataTransfer!.effectAllowed = 'move';
 }
 
 const searchInput = ref<HTMLInputElement>();
+let previouslyFocused: HTMLElement | null = null;
 watch(
   () => editor.nodePickerOpen,
-  (open) => {
+  async (open) => {
     if (open) {
+      previouslyFocused = document.activeElement as HTMLElement | null;
       drill.value = null;
       search.value = '';
-      setTimeout(() => searchInput.value?.focus(), 50);
+      await nextTick();
+      searchInput.value?.focus();
+    } else {
+      await nextTick();
+      previouslyFocused?.focus();
+      previouslyFocused = null;
     }
   },
 );
+function onWindowKeydown(event: KeyboardEvent) {
+  if (editor.nodePickerOpen && event.key === 'Escape') {
+    event.preventDefault();
+    close();
+  }
+}
+onMounted(() => window.addEventListener('keydown', onWindowKeydown));
+onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
 </script>
 
 <template>
   <transition name="drawer">
-    <aside v-if="editor.nodePickerOpen" class="picker-drawer" data-test="node-picker">
+    <aside v-if="editor.nodePickerOpen" class="picker-drawer" role="complementary" aria-labelledby="node-picker-title" data-test="node-picker">
       <div class="picker-head">
         <button v-if="drill" class="picker-back" type="button" aria-label="Back to node categories" data-test="picker-back" @click="drill = null">‹</button>
         <div>
-          <div class="picker-title">
+          <div id="node-picker-title" class="picker-title">
             {{ drill ? drillTitle : isTriggerRoot ? 'What triggers this workflow?' : 'What happens next?' }}
           </div>
           <div class="picker-sub">
@@ -122,12 +162,17 @@ watch(
 
       <div class="picker-search">
         <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
-        <input ref="searchInput" v-model="search" data-test="node-search" placeholder="Search nodes..." />
+        <input ref="searchInput" v-model="search" data-test="node-search" aria-label="Search nodes" placeholder="Search nodes..." @keydown="onSearchKeydown" />
       </div>
 
-      <div class="picker-list">
+      <div class="picker-list" @keydown="onListKeydown">
+        <UiState v-if="nodeTypes.loading" compact kind="loading" title="Loading nodes" description="Fetching available node types." />
+        <UiState v-else-if="nodeTypes.error" compact kind="error" title="Could not load nodes" :description="nodeTypes.error">
+          <button type="button" @click="retryTypes">Retry</button>
+        </UiState>
+        <UiState v-else-if="!allNodes.length" compact title="No nodes available" description="No visible node types are registered for this instance." />
         <!-- 搜索态:平铺全部匹配节点 -->
-        <template v-if="searching">
+        <template v-else-if="searching">
           <button
             v-for="desc in searchResults"
             :key="desc.name"
@@ -144,7 +189,9 @@ watch(
             </span>
             <span class="node-item-arrow">›</span>
           </button>
-          <p v-if="searchResults.length === 0" class="dim empty">No matching nodes</p>
+          <UiState v-if="searchResults.length === 0" compact title="No matching nodes" description="Try another name, alias, or category.">
+            <button type="button" @click="search = ''">Clear search</button>
+          </UiState>
         </template>
 
         <!-- 下钻态:该分类/触发器下的节点 -->

@@ -264,6 +264,8 @@
 
 > 2026-08-01 UI 顺序改造第 19 项（画布连线交互专项）：连线透明命中区升级为可聚焦、可命名的键盘入口，Enter、Space 与点击/触摸均可稳定打开中点操作；中点操作建模为 Connection actions 工具条，焦点进入时保持可见，插入节点与删除连线图标按钮补齐独立名称，连线获得可见焦点反馈。新增 4 项连线回归，生产构建 6/6、全量 1095 项测试通过。
 
+> 2026-08-01 UI 顺序改造第 20 项（节点选择器专项）：节点类型目录新增独立 loading/error/retry 状态，接口失败不再伪装成空分类或阻断画布本体加载；区分实例未注册节点与搜索无结果，搜索无结果可一键清除。面板与搜索框补语义名称，支持 Escape 关闭、焦点恢复、Arrow/Home/End 循环浏览及搜索框向下进入列表。新增 6 项节点面板与 store 回归，生产构建 6/6、全量 1101 项测试通过。
+
 - [ ] **66. 执行可视化正确性（串台 + 重连 + 频道）** `M`（🟠 A6）
   踩坑：`packages/frontend/src/stores/execution.ts:44` handleEvent 不按 executionId 过滤（并发执行/多用户高亮串台）；`packages/server/src/ws/push-hub.ts:27` 广播全连接无 workflow 频道；`execution.ts:38` WS 断线不重连（静默丢实时进度）。三者叠加使执行可视化在任意并发/断网下失真。
   → handleEvent 首行按 executionId 过滤（executionStarted 除外）；push-hub 按 workflowId 分频道；WS 加指数退避重连 + 心跳。

@@ -5,6 +5,8 @@ export const useNodeTypesStore = defineStore('nodeTypes', {
   state: () => ({
     descriptions: [] as NodeTypeInfo[],
     loaded: false,
+    loading: false,
+    error: '',
   }),
   getters: {
     /** 全名 type（nomops.* 或 <pkg>.*）→ 节点信息。 */
@@ -25,10 +27,18 @@ export const useNodeTypesStore = defineStore('nodeTypes', {
     },
   },
   actions: {
-    async fetch() {
-      if (this.loaded) return;
-      this.descriptions = await api.nodeTypes();
-      this.loaded = true;
+    async fetch(force = false) {
+      if ((this.loaded && !force) || this.loading) return;
+      this.loading = true;
+      this.error = '';
+      try {
+        this.descriptions = await api.nodeTypes();
+        this.loaded = true;
+      } catch (error) {
+        this.error = (error as Error).message;
+      } finally {
+        this.loading = false;
+      }
     },
   },
 });

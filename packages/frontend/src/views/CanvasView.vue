@@ -428,6 +428,7 @@ function onKeydown(event: KeyboardEvent) {
 }
 
 onMounted(async () => {
+  // 节点目录失败由 NodePanel 独立展示并可重试，不应阻断工作流本体加载。
   await Promise.all([nodeTypes.fetch(), projects.fetch().catch(() => undefined)]);
   execution.connectWs();
   execution.reset();
