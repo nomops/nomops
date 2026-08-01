@@ -9,11 +9,15 @@ import {
   type DataTableView,
 } from '../api/client.js';
 import { useProjectsStore } from '../stores/projects.js';
+import { useUiStore } from '../stores/ui.js';
+import UiDialog from '../components/ui/UiDialog.vue';
+import UiState from '../components/ui/UiState.vue';
 
 /** Data table 明细：面包屑 + 工具栏 + 可编辑网格（系统列 id/createdAt/updatedAt + 用户列）。 */
 const route = useRoute();
 const router = useRouter();
 const projects = useProjectsStore();
+const ui = useUiStore();
 
 const id = computed(() => String(route.params['id']));
 
@@ -28,6 +32,8 @@ const headMenu = ref(false);
 const showAddColumn = ref(false);
 const newColName = ref('');
 const newColType = ref<DataTableColumnType>('string');
+const renameOpen = ref(false);
+const renameDraft = ref('');
 
 const COLUMN_TYPES: DataTableColumnType[] = ['string', 'number', 'boolean', 'date'];
 
@@ -80,15 +86,24 @@ async function addColumn() {
     newColName.value = '';
     newColType.value = 'string';
     showAddColumn.value = false;
+    ui.notify({ kind: 'success', title: 'Column added', message: name });
   } catch (e) {
     error.value = (e as Error).message;
   }
 }
 async function removeColumn(name: string) {
+  const confirmed = await ui.requestConfirm({
+    title: 'Delete column?',
+    message: `Column “${name}” and every value stored in it will be permanently deleted.`,
+    confirmLabel: 'Delete',
+    tone: 'danger',
+  });
+  if (!confirmed) return;
   error.value = '';
   try {
     table.value = await api.dataTables.removeColumn(id.value, name);
     await load();
+    ui.notify({ kind: 'success', title: 'Column deleted', message: name });
   } catch (e) {
     error.value = (e as Error).message;
   }
@@ -100,15 +115,24 @@ async function addRow() {
   try {
     const created = await api.dataTables.addRow(id.value, {});
     rows.value.push(created);
+    ui.notify({ kind: 'success', title: 'Row added' });
   } catch (e) {
     error.value = (e as Error).message;
   }
 }
 async function removeRow(rowId: string) {
+  const confirmed = await ui.requestConfirm({
+    title: 'Delete row?',
+    message: `Row ${rowId.slice(0, 8)} will be permanently deleted.`,
+    confirmLabel: 'Delete',
+    tone: 'danger',
+  });
+  if (!confirmed) return;
   error.value = '';
   try {
     await api.dataTables.removeRow(id.value, rowId);
     rows.value = rows.value.filter((r) => r.id !== rowId);
+    ui.notify({ kind: 'success', title: 'Row deleted', message: rowId.slice(0, 8) });
   } catch (e) {
     error.value = (e as Error).message;
   }
@@ -149,23 +173,46 @@ function fmtDate(iso: string): string {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
 }
 
-async function renameTable() {
+function openRename() {
   const t = table.value;
   if (!t) return;
-  const next = window.prompt('Rename data table', t.name);
-  if (!next || next.trim() === t.name) return;
+  renameDraft.value = t.name;
+  renameOpen.value = true;
+}
+
+async function renameTable() {
+  const t = table.value;
+  const next = renameDraft.value.trim();
+  if (!t || !next || next === t.name) {
+    renameOpen.value = false;
+    return;
+  }
   error.value = '';
   try {
-    table.value = await api.dataTables.rename(id.value, next.trim());
+    table.value = await api.dataTables.rename(id.value, next);
+    renameOpen.value = false;
+    ui.notify({ kind: 'success', title: 'Data table renamed', message: next });
   } catch (e) {
     error.value = (e as Error).message;
   }
 }
 
 async function deleteTable() {
-  if (!window.confirm('Delete this data table and all its rows?')) return;
-  await api.dataTables.remove(id.value).catch((e) => (error.value = (e as Error).message));
-  backToList();
+  const confirmed = await ui.requestConfirm({
+    title: 'Delete data table?',
+    message: `“${table.value?.name ?? 'This table'}” and all of its rows will be permanently deleted.`,
+    confirmLabel: 'Delete',
+    tone: 'danger',
+  });
+  if (!confirmed) return;
+  error.value = '';
+  try {
+    await api.dataTables.remove(id.value);
+    ui.notify({ kind: 'success', title: 'Data table deleted', message: table.value?.name });
+    backToList();
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
 }
 </script>
 
@@ -183,16 +230,21 @@ async function deleteTable() {
           <svg viewBox="0 0 24 24" fill="currentColor" class="i18"><circle cx="12" cy="5" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="12" cy="19" r="1.7" /></svg>
         </button>
         <div v-if="headMenu" class="menu">
-          <button class="menu-item" @click="renameTable(); headMenu = false">Rename</button>
+          <button class="menu-item" @click="openRename(); headMenu = false">Rename</button>
           <button class="menu-item danger" @click="deleteTable">Delete</button>
         </div>
       </div>
     </div>
 
-    <p v-if="error" class="error-text" data-test="dtv-error">{{ error }}</p>
+    <UiState v-if="loading" kind="loading" title="Loading data table" description="Fetching columns and rows…" />
+    <UiState v-else-if="error && !table" kind="error" title="Could not load data table" :description="error" data-test="dtv-error">
+      <button class="btn secondary" @click="load">Retry</button>
+    </UiState>
 
-    <!-- 工具栏 -->
-    <div class="dtv-tools">
+    <template v-else>
+      <p v-if="error" class="error-text" role="alert" data-test="dtv-error">{{ error }}</p>
+      <!-- 工具栏 -->
+      <div class="dtv-tools">
       <div class="dtv-search">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="i15"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
         <input v-model="search" placeholder="Search" data-test="dtv-search" />
@@ -221,10 +273,10 @@ async function deleteTable() {
           </div>
         </div>
       </div>
-    </div>
+      </div>
 
-    <!-- 网格 -->
-    <div class="dtv-grid-wrap">
+      <!-- 网格 -->
+      <div class="dtv-grid-wrap">
       <table class="dtv-grid" data-test="dtv-grid">
         <thead>
           <tr>
@@ -261,17 +313,34 @@ async function deleteTable() {
               </button>
             </td>
           </tr>
-          <tr v-if="!loading && filteredRows.length === 0">
-            <td :colspan="userColumns.length + 4" class="dtv-empty">No rows</td>
+          <tr v-if="filteredRows.length === 0">
+            <td :colspan="userColumns.length + 4" class="dtv-empty">
+              <div class="dtv-empty-content">
+                <strong>{{ search ? 'No rows match your search' : 'This table has no rows yet' }}</strong>
+                <span>{{ search ? 'Try a different search term.' : 'Add a row to start storing structured data.' }}</span>
+                <button v-if="search" class="btn secondary" data-test="dtv-clear-search" @click="search = ''">Clear search</button>
+                <button v-else class="btn primary" data-test="dtv-empty-add-row" @click="addRow">Add first row</button>
+              </div>
+            </td>
           </tr>
         </tbody>
       </table>
-    </div>
+      </div>
 
-    <!-- 分页信息 -->
-    <div class="dtv-foot">
-      <span class="dtv-total">Total {{ filteredRows.length }}</span>
-    </div>
+      <!-- 分页信息 -->
+      <div class="dtv-foot">
+        <span class="dtv-total">Total {{ filteredRows.length }}</span>
+      </div>
+    </template>
+
+    <UiDialog :open="renameOpen" title="Rename data table" width="440px" test-id="rename-data-table" @close="renameOpen = false">
+      <label class="rename-label" for="rename-data-table-input">Data table name</label>
+      <input id="rename-data-table-input" v-model="renameDraft" class="rename-input" data-test="rename-data-table-input" autofocus @keyup.enter="renameTable" />
+      <template #footer>
+        <button class="btn secondary" @click="renameOpen = false">Cancel</button>
+        <button class="btn primary" data-test="rename-data-table-save" :disabled="!renameDraft.trim()" @click="renameTable">Rename</button>
+      </template>
+    </UiDialog>
   </div>
 </template>
 
@@ -365,12 +434,29 @@ async function deleteTable() {
 .row-actions-cell { width: 44px; text-align: center; }
 .row-del { border: none; background: none; color: var(--text-faint); cursor: pointer; display: inline-flex; }
 .row-del:hover { color: var(--err); }
-.dtv-empty { text-align: center; color: var(--text-dim); padding: 40px !important; height: auto !important; }
+.dtv-empty { text-align: center; color: var(--text-dim); padding: 0 !important; height: auto !important; }
+.dtv-empty-content { min-height: 220px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: var(--spacing--xl); }
+.dtv-empty-content strong { color: var(--text-hi); font-size: var(--font-size--sm); font-weight: var(--font-weight--medium); }
+.dtv-empty-content span { color: var(--text-dim); font-size: var(--font-size--xs); }
+.dtv-empty-content .btn { margin-top: var(--spacing--2xs); }
 
 .dtv-foot { display: flex; justify-content: flex-end; margin-top: 12px; color: var(--text-dim); font-size: 13px; }
 
 .error-text { color: var(--err); font-size: 13px; margin: 0 0 12px; }
+.rename-label { display: block; margin-bottom: var(--spacing--2xs); color: var(--text-dim); font-size: var(--font-size--xs); }
+.rename-input { width: 100%; height: 36px; padding: 0 var(--spacing--xs); border: 1px solid var(--border); border-radius: var(--radius--2xs); background: var(--bg-input); color: var(--text-hi); font: inherit; }
+.rename-input:focus { outline: none; border-color: var(--accent); }
 .i14 { width: 14px; height: 14px; flex-shrink: 0; }
 .i15 { width: 15px; height: 15px; flex-shrink: 0; }
 .i18 { width: 18px; height: 18px; flex-shrink: 0; }
+
+@media (max-width: 720px) {
+  .dtv { padding: var(--spacing--sm); }
+  .dtv-crumb { flex-wrap: wrap; }
+  .dtv-tools { align-items: stretch; flex-direction: column; }
+  .dtv-search { max-width: none; }
+  .dtv-tools-right { width: 100%; margin-left: 0; }
+  .dtv-tools-right .btn { flex: 1; justify-content: center; }
+  .add-col-menu { position: fixed; left: var(--spacing--sm); right: var(--spacing--sm); top: auto; bottom: var(--spacing--sm); }
+}
 </style>

@@ -42,4 +42,15 @@ describe('Overview 资源 Tab 布局契约', () => {
     expect(source).toContain("title: t(ids.length === 1 ? 'Delete execution?' : 'Delete {n} executions?'");
     expect(source).toContain("title: t(ids.length === 1 ? 'Stop execution?' : 'Stop {n} executions?'");
   });
+
+  it('变量引用可复制，删除变量前说明工作流影响', () => {
+    expect(source).toContain('data-test="var-copy"');
+    expect(source).toContain("title: t('Delete variable?')");
+    expect(source).toContain("title: t('Variable reference copied')");
+  });
+
+  it('未实现的 CSV 导入明确禁用，不提供误导入口', () => {
+    expect(source).toContain('value="csv" disabled');
+    expect(source).toContain("t('Coming soon')");
+  });
 });

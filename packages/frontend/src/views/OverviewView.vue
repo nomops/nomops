@@ -128,20 +128,42 @@ async function saveVariable() {
   if (!e || !e.key.trim()) return;
   varError.value = '';
   try {
-    if (e.id === 'new') await api.variables.create({ key: e.key.trim(), value: e.value });
+    const created = e.id === 'new';
+    if (created) await api.variables.create({ key: e.key.trim(), value: e.value });
     else await api.variables.update(e.id, { key: e.key.trim(), value: e.value });
     editingVar.value = null;
     await loadVariables();
+    ui.notify({ kind: 'success', title: t(created ? 'Variable created' : 'Variable saved'), message: e.key.trim() });
   } catch (err) {
     varError.value = (err as Error).message;
   }
 }
 async function deleteVariable(id: string) {
+  const variable = variables.value.find((item) => item.id === id);
+  const confirmed = await ui.requestConfirm({
+    title: t('Delete variable?'),
+    message: variable
+      ? t('Workflows using $vars.{key} may stop working.', { key: variable.key })
+      : t('Workflows using this variable may stop working.'),
+    confirmLabel: t('Delete'),
+    tone: 'danger',
+  });
+  if (!confirmed) return;
+  varError.value = '';
   await api.variables.remove(id).catch((err) => (varError.value = (err as Error).message));
   await loadVariables();
+  if (!varError.value) ui.notify({ kind: 'success', title: t('Variable deleted'), message: variable?.key });
 }
 /** 表达式引用写法（模板里不能直接写字面 {{ }}，用方法返回）。 */
 const varUsage = (key: string): string => `{{ $vars.${key} }}`;
+async function copyVariableUsage(key: string) {
+  try {
+    await navigator.clipboard.writeText(varUsage(key));
+    ui.notify({ kind: 'success', title: t('Variable reference copied'), message: `$vars.${key}` });
+  } catch {
+    ui.notify({ kind: 'error', title: t('Could not copy variable reference') });
+  }
+}
 
 /* Data tables（项目维度结构化表） */
 const dataTables = ref<DataTableView[]>([]);
@@ -169,6 +191,7 @@ async function createDataTable() {
   try {
     const created = await api.dataTables.create({ name });
     showDataTableModal.value = false;
+    ui.notify({ kind: 'success', title: t('Data table created'), message: created.name });
     void router.push({ name: 'datatable', params: { id: created.id } });
   } catch (err) {
     dtError.value = (err as Error).message;
@@ -1517,7 +1540,9 @@ const fmtRunTime = (row: ExecutionRow): string => {
 
       <!-- 空态：无变量且未在新建行 -->
       <div v-if="variables.length === 0 && !editingVar" class="cred-empty" data-test="variables-empty">
-        <div class="lock">🔑</div>
+        <svg class="empty-resource-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+          <path d="M14.5 5.5a5 5 0 1 0-7.1 7.1L4 16v4h4v-2h2v-2h2l2.5-2.5a5 5 0 0 0 0-8Z" /><circle cx="16" cy="8" r="1" />
+        </svg>
         <h3>{{ t('Set up your first variable') }}</h3>
         <p class="dim">
           {{ t('Variables store data you can reference across your workflows with the') }}
@@ -1559,7 +1584,12 @@ const fmtRunTime = (row: ExecutionRow): string => {
               <template v-else>
                 <td class="var-key">{{ v.key }}</td>
                 <td class="var-val">{{ v.value }}</td>
-                <td><code class="var-usage">{{ varUsage(v.key) }}</code></td>
+                <td>
+                  <button class="var-usage-copy" :title="t('Copy variable reference')" data-test="var-copy" @click="copyVariableUsage(v.key)">
+                    <code class="var-usage">{{ varUsage(v.key) }}</code>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="9" y="9" width="10" height="10" rx="2" /><path d="M5 15V7a2 2 0 0 1 2-2h8" /></svg>
+                  </button>
+                </td>
                 <td class="var-actions">
                   <button data-test="var-edit" @click="editVariable(v)">{{ t('Edit') }}</button>
                   <button class="danger" data-test="var-delete" @click="deleteVariable(v.id)">{{ t('Delete') }}</button>
@@ -1664,7 +1694,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
         />
         <div class="dt-source" data-test="data-table-source">
           <label class="dt-radio"><input v-model="dtSource" type="radio" value="scratch" /> {{ t('From scratch') }}</label>
-          <label class="dt-radio"><input v-model="dtSource" type="radio" value="csv" /> {{ t('Import CSV') }}</label>
+          <label class="dt-radio disabled" title="Coming soon"><input type="radio" value="csv" disabled /> {{ t('Import CSV') }} <span class="soon-badge">{{ t('Coming soon') }}</span></label>
         </div>
         <p v-if="dtError" class="error-text" role="alert">{{ dtError }}</p>
         <template #footer>
@@ -2095,6 +2125,9 @@ const fmtRunTime = (row: ExecutionRow): string => {
 .var-key { color: var(--text-hi); font-weight: 500; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .var-val { color: var(--text); word-break: break-all; }
 .var-usage { background: var(--bg-input); padding: 3px 8px; border-radius: 6px; font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+.var-usage-copy { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: none; background: none; color: var(--text-dim); cursor: pointer; }
+.var-usage-copy svg { width: 14px; height: 14px; opacity: 0; transition: opacity var(--duration--snappy) ease; }
+.var-usage-copy:hover svg, .var-usage-copy:focus-visible svg { opacity: 1; }
 .var-actions { text-align: right; white-space: nowrap; }
 .var-actions button { margin-left: 6px; }
 .var-actions .btn.primary { height: 30px; padding: 0 14px; border-radius: var(--radius); border: none; font-size: 13px; font-weight: 500; cursor: pointer; background: var(--accent); color: #fff; }
@@ -2222,6 +2255,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
 .dt-source { display: flex; gap: 18px; margin-top: 14px; }
 .dt-radio { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); cursor: pointer; }
 .dt-radio input { width: auto; }
+.dt-radio.disabled { color: var(--text-dim); cursor: not-allowed; }
 /* backlog #12 共享弹窗 */
 .pick-list {
   overflow: auto; border: 1px solid var(--border); border-radius: 8px; padding: 6px;
