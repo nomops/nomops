@@ -9,6 +9,7 @@ import { WHATS_NEW, hasUnreadNews, markNewsRead } from '../../lib/whats-new.js';
 import { api } from '../../api/client.js';
 import { t } from '../../lib/i18n.js';
 import { LINKS } from '../../lib/links.js';
+import UiDialog from '../ui/UiDialog.vue';
 
 /**
  * 左侧边栏(对标基线):品牌 + 顶栏工具（新建/搜索/折叠）、Overview / Chat(Preview)、
@@ -154,6 +155,7 @@ async function confirmCreateProject() {
     const project = await projects.createProject(name);
     projects.switchTo(project.id);
     projectModalOpen.value = false;
+    ui.notify({ kind: 'success', title: t('Project created'), message: project.name });
     void router.push({ name: 'overview', query: { project: project.id } }).then(() => router.go(0));
   } catch (e) {
     projectModalError.value = (e as Error).message;
@@ -364,12 +366,15 @@ async function openAbout() {
     </div>
   </aside>
 
-  <div v-if="projectModalOpen" class="project-modal-mask" data-test="project-modal" @click.self="closeProjectModal">
-    <form class="project-modal-card" role="dialog" aria-modal="true" :aria-label="t('New project')" @submit.prevent="confirmCreateProject">
-      <div class="project-modal-head">
-        <h2>{{ t('New project') }}</h2>
-        <button type="button" class="project-modal-x" :title="t('Close')" @click="closeProjectModal">×</button>
-      </div>
+  <UiDialog
+    :open="projectModalOpen"
+    :title="t('New project')"
+    :close-on-overlay="!projectCreating"
+    :close-on-escape="!projectCreating"
+    test-id="project-modal"
+    @close="closeProjectModal"
+  >
+    <form id="new-project-form" class="project-modal-form" data-test="project-create" @submit.prevent="confirmCreateProject">
       <label for="new-project-name">{{ t('Project name') }}</label>
       <input
         id="new-project-name"
@@ -378,16 +383,17 @@ async function openAbout() {
         data-test="project-name-input"
         :disabled="projectCreating"
         autocomplete="off"
+        autofocus
       />
       <p v-if="projectModalError" class="project-modal-error" data-test="project-modal-error">{{ projectModalError }}</p>
-      <div class="project-modal-actions">
-        <button type="button" class="btn secondary" :disabled="projectCreating" @click="closeProjectModal">{{ t('Cancel') }}</button>
-        <button type="submit" class="btn primary" data-test="project-create" :disabled="!projectNameDraft.trim() || projectCreating">
-          {{ projectCreating ? t('Creating…') : t('Create') }}
-        </button>
-      </div>
     </form>
-  </div>
+    <template #footer>
+      <button type="button" :disabled="projectCreating" @click="closeProjectModal">{{ t('Cancel') }}</button>
+      <button type="submit" form="new-project-form" class="primary" :disabled="!projectNameDraft.trim() || projectCreating">
+        {{ projectCreating ? t('Creating…') : t('Create') }}
+      </button>
+    </template>
+  </UiDialog>
 
   <div v-if="showAbout" class="about-overlay" data-test="about-modal" @click.self="showAbout = false">
     <div class="about-card">
@@ -523,38 +529,14 @@ async function openAbout() {
 .flyout-item.qc.disabled { opacity: 0.5; cursor: default; }
 .flyout-item.qc.disabled:hover { background: none; }
 
-.project-modal-mask {
-  position: fixed; inset: 0; z-index: 120;
-  display: flex; align-items: center; justify-content: center; padding: var(--spacing--lg);
-  background: var(--color--black-alpha-600);
-}
-.project-modal-card {
-  width: 440px; max-width: 100%; padding: var(--spacing--lg);
-  background: var(--color--background--light-3);
-  border: var(--border-width) var(--border-style) var(--border-color--strong);
-  border-radius: var(--radius--lg);
-  box-shadow: var(--shadow--dark);
-}
-.project-modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--spacing--sm); }
-.project-modal-head h2 {
-  margin: 0; color: var(--color--text--shade-1);
-  font-size: var(--font-size--lg); font-weight: var(--font-weight--bold);
-}
-.project-modal-x {
-  width: 28px; height: 28px; padding: 0; border: none; background: none;
-  color: var(--color--text--tint-1); font-size: 20px; line-height: 1;
-}
-.project-modal-x:hover { background: var(--background--hover); color: var(--color--text--shade-1); }
-.project-modal-card label { margin: 0 0 var(--spacing--4xs); color: var(--color--text--tint-1); }
-.project-modal-card input {
+.project-modal-form label { margin: 0 0 var(--spacing--4xs); color: var(--color--text--tint-1); }
+.project-modal-form input {
   width: 100%; height: 36px; padding: 0 var(--spacing--xs);
   background: var(--bg-input); color: var(--text);
   border: var(--border-width) var(--border-style) var(--border); border-radius: var(--radius);
 }
-.project-modal-card input:focus { outline: none; border-color: var(--accent); }
+.project-modal-form input:focus { outline: none; border-color: var(--accent); }
 .project-modal-error { margin: var(--spacing--2xs) 0 0; color: var(--color--danger); font-size: var(--font-size--xs); }
-.project-modal-actions { display: flex; justify-content: flex-end; gap: var(--spacing--2xs); margin-top: var(--spacing--lg); }
-.project-modal-actions .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 /* D015 What's new 新闻标题条 */
 .wn-item { display: flex; align-items: center; gap: 8px; }
 .wn-dot { width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; background: var(--err, #e5484d); }

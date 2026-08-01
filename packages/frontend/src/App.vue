@@ -7,6 +7,8 @@ import { useUiStore } from './stores/ui.js';
 import { api } from './api/client.js';
 import SideBar from './components/shell/SideBar.vue';
 import CommandPalette from './components/shell/CommandPalette.vue';
+import UiConfirmHost from './components/ui/UiConfirmHost.vue';
+import UiToastHost from './components/ui/UiToastHost.vue';
 
 const auth = useAuthStore();
 const projects = useProjectsStore();
@@ -56,4 +58,6 @@ watch(
     <CommandPalette />
   </div>
   <RouterView v-else />
+  <UiConfirmHost />
+  <UiToastHost />
 </template>

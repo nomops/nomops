@@ -85,6 +85,10 @@ button.gradient {
 button.gradient:hover { filter: brightness(1.08); }
 button.gradient:disabled { filter: grayscale(0.5) brightness(0.7); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--color--primary);
+  outline-offset: 2px;
+}
 
 input, select, textarea {
   background: var(--bg-input);
@@ -106,6 +110,22 @@ th { color: var(--text-dim); font-weight: 500; }
 /* ── 基线式应用外壳：左侧边栏 + 顶部横幅 ── */
 .app-shell { display: flex; height: 100vh; }
 .app-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+@media (max-width: 760px) {
+  body { --sidebar-w: 42px; }
+  .app-shell > .sidebar { width: 42px !important; padding: var(--spacing--2xs) var(--spacing--3xs); align-items: center; }
+  .app-shell > .sidebar .lbl,
+  .app-shell > .sidebar .brand,
+  .app-shell > .sidebar .badge-preview,
+  .app-shell > .sidebar .nav-section,
+  .app-shell > .sidebar .chev { display: none; }
+  .app-shell > .sidebar .nav-item { justify-content: center; padding: 0; }
+  .page { padding: var(--spacing--sm); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; }
+}
 
 /* 侧栏 — 基线实测：宽 200；logo 行 44px(衬 8px 6px, gap 4)；
    列表容器衬 0 6px 8px；条目 32px 高/衬 4px/圆角 4/gap 4/白字 14px/图标 16px；

@@ -12,6 +12,26 @@ export interface PaletteCommand {
   run: () => void;
 }
 
+export type ToastKind = 'success' | 'error' | 'warning' | 'info';
+
+export interface UiToast {
+  id: number;
+  kind: ToastKind;
+  title: string;
+  message?: string;
+}
+
+export interface ConfirmDialogOptions {
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  tone?: 'default' | 'danger';
+}
+
+let toastId = 0;
+let confirmResolver: ((confirmed: boolean) => void) | null = null;
+
 /* D002 修正:基线主侧栏用 ResizeWrapper,min 200 / max 500,默认 200(量到的 201 = 200 + 1px 边框) */
 export const SIDEBAR_MIN = 200;
 export const SIDEBAR_MAX = 500;
@@ -27,6 +47,8 @@ export const useUiStore = defineStore('ui', {
     paletteContext: [] as PaletteCommand[],
     /** D026:面板上下文徽标（如 "Workflow · 名称"）。 */
     paletteContextLabel: null as string | null,
+    toasts: [] as UiToast[],
+    confirmDialog: null as (ConfirmDialogOptions & { open: true }) | null,
     /** Settings → Chat 开关的共享状态：侧栏 Chat 入口实时显隐（切换即生效，无需刷新）。 */
     chatEnabled: true,
   }),
@@ -76,6 +98,28 @@ export const useUiStore = defineStore('ui', {
     },
     setChatEnabled(enabled: boolean) {
       this.chatEnabled = enabled;
+    },
+    notify(input: Omit<UiToast, 'id'>, duration = 4000) {
+      const id = ++toastId;
+      this.toasts.push({ id, ...input });
+      if (duration > 0) window.setTimeout(() => this.dismissToast(id), duration);
+      return id;
+    },
+    dismissToast(id: number) {
+      this.toasts = this.toasts.filter((toast) => toast.id !== id);
+    },
+    requestConfirm(options: ConfirmDialogOptions) {
+      if (confirmResolver) confirmResolver(false);
+      this.confirmDialog = { ...options, open: true };
+      return new Promise<boolean>((resolve) => {
+        confirmResolver = resolve;
+      });
+    },
+    resolveConfirm(confirmed: boolean) {
+      const resolve = confirmResolver;
+      confirmResolver = null;
+      this.confirmDialog = null;
+      resolve?.(confirmed);
     },
   },
 });

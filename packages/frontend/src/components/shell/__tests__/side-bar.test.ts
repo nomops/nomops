@@ -28,6 +28,7 @@ async function mountSideBar() {
   return {
     router,
     wrapper: mount(SideBar, {
+      attachTo: document.body,
       global: {
         plugins: [router],
         stubs: { RouterLink: { template: '<a><slot /></a>' } },
@@ -57,6 +58,7 @@ describe('SideBar 新建项目', () => {
     expect(promptSpy).not.toHaveBeenCalled();
     expect(wrapper.find('[data-test="project-modal"]').exists()).toBe(true);
     expect((wrapper.find('[data-test="project-name-input"]').element as HTMLInputElement).value).toBe('My project');
+    expect(document.activeElement).toBe(wrapper.find('[data-test="project-name-input"]').element);
     wrapper.unmount();
   });
 
