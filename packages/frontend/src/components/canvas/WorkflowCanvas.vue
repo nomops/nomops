@@ -15,6 +15,7 @@ import { useEditorStore } from '../../stores/editor.js';
 import { useNodeTypesStore } from '../../stores/node-types.js';
 import { useExecutionStore } from '../../stores/execution.js';
 import { parseHandle, toFlowEdges, toFlowNodes } from '../../lib/workflow-convert.js';
+import { lastRunOf, outputPorts } from '../../lib/run-data.js';
 import CanvasNode from './CanvasNode.vue';
 import CanvasEdge from './CanvasEdge.vue';
 import { useUiStore } from '../../stores/ui.js';
@@ -164,6 +165,10 @@ function closeCtx() {
   ctxColorOpen.value = false;
 }
 const ctxNode = computed(() => editor.nodes.find((n) => n.name === ctxMenu.value?.node));
+const ctxDescription = computed(() => ctxNode.value ? nodeTypesStore.byType.get(ctxNode.value.type) : undefined);
+const ctxOutputs = computed(() => ctxDescription.value?.outputs ?? ['main']);
+const ctxIsSubNode = computed(() => !ctxOutputs.value.includes('main') && ctxOutputs.value.length > 0);
+const ctxCanExecute = computed(() => !ctxIsSubNode.value || ctxOutputs.value.some((type) => type === 'ai_tool'));
 /* ── D080 对标基线:便签右键菜单(与普通节点 13 项不同)── */
 const ctxIsSticky = computed(() => ctxNode.value?.type === 'nomops.stickyNote');
 const STICKY_COLORS = ['yellow', 'gold', 'red', 'green', 'blue', 'purple', 'neutral'] as const;
@@ -180,6 +185,13 @@ function ctxStickyColor(color: string) {
   if (n) editor.setParam(n, 'color', color);
 }
 const ctxDisabled = computed(() => Boolean(ctxNode.value?.disabled));
+const ctxIsPinned = computed(() => Boolean(ctxNode.value && editor.isNodeDataPinned(ctxNode.value.name)));
+const ctxRunOutput = computed(() => {
+  if (!ctxNode.value) return [];
+  const runData = execution.lastRunData?.resultData.runData ?? {};
+  return outputPorts(lastRunOf(runData, ctxNode.value.name)).flat();
+});
+const ctxCanTogglePin = computed(() => ctxIsPinned.value || ctxRunOutput.value.length > 0);
 async function ctxExecute() {
   const name = ctxMenu.value?.node;
   closeCtx();
@@ -195,6 +207,15 @@ async function ctxRename() {
   if (next) editor.renameNode(n, next);
 }
 function ctxDeactivate() { const n = ctxMenu.value?.node; closeCtx(); if (n) editor.toggleDisabled(n); }
+function ctxTogglePin() {
+  const name = ctxMenu.value?.node;
+  if (!name || !ctxCanTogglePin.value) return;
+  const pinned = ctxIsPinned.value;
+  const output = ctxRunOutput.value;
+  closeCtx();
+  if (pinned) editor.unpinNodeData(name);
+  else editor.pinNodeData(name, output);
+}
 function ctxDuplicate() { const n = ctxMenu.value?.node; closeCtx(); if (n) editor.duplicateNode(n); }
 async function ctxCopy() {
   const node = ctxNode.value; closeCtx();
@@ -217,6 +238,12 @@ async function copySelection(names?: string[]) {
   if (payload) await navigator.clipboard?.writeText(JSON.stringify(payload, null, 2)).catch(() => undefined);
 }
 function onCanvasKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && (ctxMenu.value || paneCtx.value)) {
+    event.preventDefault();
+    closeCtx();
+    closePaneCtx();
+    return;
+  }
   const meta = event.metaKey || event.ctrlKey;
   if (!meta || event.shiftKey || event.altKey || editor.ndvOpen || isTyping(event.target)) return;
   const key = event.key.toLowerCase();
@@ -324,7 +351,7 @@ function ctxDelete() { const n = ctxMenu.value?.node; closeCtx(); if (n) editor.
     <!-- D068 空白画布右键菜单(对标基线) -->
     <template v-if="paneCtx">
       <div class="ctx-backdrop" @click="closePaneCtx" @contextmenu.prevent="closePaneCtx" />
-      <div class="ctx-menu" data-test="pane-context-menu" :style="{ left: paneCtx.x + 'px', top: paneCtx.y + 'px' }">
+      <div class="ctx-menu" role="menu" aria-label="Canvas actions" data-test="pane-context-menu" :style="{ left: paneCtx.x + 'px', top: paneCtx.y + 'px' }">
         <button class="ctx-item" data-test="pane-add-node" @click="paneAddNode">Add node<span class="ctx-sc">N</span></button>
         <button class="ctx-item" data-test="pane-add-sticky" @click="paneAddSticky">Add sticky note<span class="ctx-sc">⇧S</span></button>
         <button class="ctx-item" data-test="pane-tidy" @click="paneTidy">Tidy up workflow<span class="ctx-sc">⇧⌥T</span></button>
@@ -340,6 +367,8 @@ function ctxDelete() { const n = ctxMenu.value?.node; closeCtx(); if (n) editor.
       <div
         v-if="ctxIsSticky"
         class="ctx-menu"
+        role="menu"
+        aria-label="Sticky note actions"
         data-test="sticky-context-menu"
         :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
       >
@@ -367,13 +396,20 @@ function ctxDelete() { const n = ctxMenu.value?.node; closeCtx(); if (n) editor.
         <button class="ctx-item danger" data-test="sticky-delete" @click="ctxDelete">Delete<span class="ctx-sc">Del</span></button>
       </div>
 
-      <div v-else class="ctx-menu" data-test="node-context-menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }">
+      <div v-else class="ctx-menu" role="menu" aria-label="Node actions" data-test="node-context-menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }">
         <button class="ctx-item" data-test="ctx-open" @click="ctxOpen">Open<span class="ctx-sc">↵</span></button>
-        <button class="ctx-item" data-test="ctx-execute" @click="ctxExecute">Execute step</button>
+        <button v-if="ctxCanExecute" class="ctx-item" data-test="ctx-execute" @click="ctxExecute">Execute step</button>
         <button class="ctx-item" data-test="ctx-rename" @click="ctxRename">Rename<span class="ctx-sc">Space</span></button>
         <button class="ctx-item" disabled>Replace<span class="ctx-sc">R</span></button>
         <button class="ctx-item" data-test="ctx-deactivate" @click="ctxDeactivate">{{ ctxDisabled ? 'Activate' : 'Deactivate' }}<span class="ctx-sc">D</span></button>
-        <button class="ctx-item" disabled>Pin<span class="ctx-sc">P</span></button>
+        <button
+          v-if="!ctxIsSubNode"
+          class="ctx-item"
+          data-test="ctx-pin"
+          :disabled="!ctxCanTogglePin"
+          :title="ctxCanTogglePin ? undefined : 'Execute the node first to pin its output'"
+          @click="ctxTogglePin"
+        >{{ ctxIsPinned ? 'Unpin' : 'Pin' }}<span class="ctx-sc">P</span></button>
         <button class="ctx-item" data-test="ctx-copy" @click="ctxCopy">Copy<span class="ctx-sc">⌘C</span></button>
         <button class="ctx-item" data-test="ctx-duplicate" @click="ctxDuplicate">Duplicate<span class="ctx-sc">⌘D</span></button>
         <div class="ctx-sep" />

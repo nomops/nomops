@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const canvas = readFileSync(resolve(process.cwd(), 'src/views/CanvasView.vue'), 'utf8');
 const ndv = readFileSync(resolve(process.cwd(), 'src/components/ndv/NdvModal.vue'), 'utf8');
+const workflowCanvas = readFileSync(resolve(process.cwd(), 'src/components/canvas/WorkflowCanvas.vue'), 'utf8');
 
 describe('canvas editor UI', () => {
   it('uses accessible product dialogs for workflow metadata and URL imports', () => {
@@ -43,5 +44,30 @@ describe('canvas editor UI', () => {
     expect(ndv).toContain('@media (max-width: 900px)');
     expect(ndv).toContain('.ndv-body { overflow-x: auto; }');
     expect(ndv).toContain('.ndv-col.params { min-width: 360px; }');
+  });
+
+  it('keeps context-menu execution capability aligned with the node toolbar', () => {
+    expect(workflowCanvas).toContain('const ctxCanExecute = computed(');
+    expect(workflowCanvas).toContain('v-if="ctxCanExecute" class="ctx-item" data-test="ctx-execute"');
+    expect(workflowCanvas).toContain("type === 'ai_tool'");
+  });
+
+  it('exposes the existing pin-data capability from the node context menu', () => {
+    expect(workflowCanvas).toContain('data-test="ctx-pin"');
+    expect(workflowCanvas).toContain('@click="ctxTogglePin"');
+    expect(workflowCanvas).toContain("editor.pinNodeData(name, output)");
+    expect(workflowCanvas).toContain("editor.unpinNodeData(name)");
+  });
+
+  it('gives every canvas context menu an accessible name', () => {
+    expect(workflowCanvas).toContain('role="menu" aria-label="Canvas actions"');
+    expect(workflowCanvas).toContain('aria-label="Sticky note actions"');
+    expect(workflowCanvas).toContain('role="menu" aria-label="Node actions"');
+  });
+
+  it('closes either canvas context menu with Escape', () => {
+    expect(workflowCanvas).toContain("event.key === 'Escape' && (ctxMenu.value || paneCtx.value)");
+    expect(workflowCanvas).toContain('closeCtx();');
+    expect(workflowCanvas).toContain('closePaneCtx();');
   });
 });

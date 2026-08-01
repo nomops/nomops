@@ -260,6 +260,8 @@
 
 > 2026-08-01 UI 顺序改造第 17 项（画布节点执行态专项）：修复执行详情使用 `ok` 而节点样式仅识别 `success` 导致成功态丢失的问题，实时运行与只读快照统一状态模型；节点新增 n8n 式运行中、成功、失败角标（含减弱动画设置），disabled 快照复用禁用视觉，工具条与快捷新增图标按钮补齐可访问名称。新增 3 项节点回归，生产构建 6/6、全量 1087 项测试通过。
 
+> 2026-08-01 UI 顺序改造第 18 项（画布上下文菜单专项）：节点右键菜单与悬浮工具条统一 Execute step 能力判断，模型/记忆子节点不再展示无法执行的入口；将已有 Pin data 能力接入右键菜单，支持执行后 Pin 与已 Pin 节点 Unpin，并隐藏能力子节点不适用入口。画布、便签和节点菜单补语义名称，Escape 可统一关闭。新增 4 项画布回归，生产构建 6/6、全量 1091 项测试通过。
+
 - [ ] **66. 执行可视化正确性（串台 + 重连 + 频道）** `M`（🟠 A6）
   踩坑：`packages/frontend/src/stores/execution.ts:44` handleEvent 不按 executionId 过滤（并发执行/多用户高亮串台）；`packages/server/src/ws/push-hub.ts:27` 广播全连接无 workflow 频道；`execution.ts:38` WS 断线不重连（静默丢实时进度）。三者叠加使执行可视化在任意并发/断网下失真。
   → handleEvent 首行按 executionId 过滤（executionStarted 除外）；push-hub 按 workflowId 分频道；WS 加指数退避重连 + 心跳。
