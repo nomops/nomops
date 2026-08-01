@@ -553,6 +553,7 @@ function openChat() {
 function resetChatSession() {
   chatSessionId.value = crypto.randomUUID().slice(0, 8);
   chatMessages.value = [];
+  ui.notify({ kind: 'success', title: 'New chat session started' });
 }
 async function sendChat() {
   const message = chatDraft.value.trim();
@@ -1515,37 +1516,36 @@ async function loadSavePolicy() {
         <!-- 底部条（C10 对标基线：有 Chat Trigger 时 Chat | Logs 双栏，否则 Logs 全宽） -->
         <div class="logs-bar" :class="{ open: logsOpen }" data-test="logs-bar">
           <div class="bottombar-heads">
-            <button v-if="hasChatTrigger" class="logs-head chat-head" data-test="chat-head" @click="logsOpen = !logsOpen">
-              <span>Chat</span>
-              <span class="dim" style="font-size: 11px; margin-left: 10px">Session: {{ chatSessionId }}</span>
-              <button class="chat-reset" title="New session" data-test="chat-reset" @click.stop="resetChatSession">
+            <div v-if="hasChatTrigger" class="logs-head chat-head" data-test="chat-head">
+              <button class="logs-head-toggle" type="button" aria-controls="workflow-bottom-panel" :aria-expanded="logsOpen" @click="logsOpen = !logsOpen">
+                <span>Chat</span>
+                <span class="dim session-label">Session: {{ chatSessionId }}</span>
+              </button>
+              <button class="chat-reset" type="button" title="New session" aria-label="Start new chat session" data-test="chat-reset" @click="resetChatSession">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width: 12px; height: 12px"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /></svg>
               </button>
-            </button>
-            <button class="logs-head" data-test="logs-head" @click="logsOpen = !logsOpen">
-              <span>Logs</span>
-              <span v-if="logRows.length" class="dim" style="font-size: 11px; margin-left: 8px">
-                {{ logRows.length }} nodes
-              </span>
-              <span style="flex: 1" />
-              <!-- D124 对标基线：收起条右侧是 popout 图标 + chevron -->
-              <span class="logs-popout" title="Open logs in a separate view" @click.stop="logsOpen = true">
+            </div>
+            <div class="logs-head" data-test="logs-head">
+              <button class="logs-head-toggle" type="button" aria-controls="workflow-bottom-panel" :aria-expanded="logsOpen" @click="logsOpen = !logsOpen">
+                <span>Logs</span>
+                <span v-if="logRows.length" class="dim log-count">{{ logRows.length }} nodes</span>
+                <span class="head-spacer" />
+                <span class="dim" aria-hidden="true">{{ logsOpen ? '▾' : '▴' }}</span>
+              </button>
+              <button v-if="!logsOpen" class="logs-expand" type="button" title="Expand logs" aria-label="Expand execution logs" @click="logsOpen = true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6" /><path d="M10 14 21 3" /><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" /></svg>
-              </span>
-              <span class="dim">{{ logsOpen ? '▾' : '▴' }}</span>
-            </button>
+              </button>
+            </div>
           </div>
-          <div v-if="logsOpen" class="bottombar-bodies">
+          <div v-if="logsOpen" id="workflow-bottom-panel" class="bottombar-bodies">
             <!-- Chat 面板 -->
-            <div v-if="hasChatTrigger" class="chat-panel" data-test="chat-panel">
+            <section v-if="hasChatTrigger" class="chat-panel" aria-label="Workflow chat" data-test="chat-panel">
               <div class="chat-messages" data-test="chat-messages">
-                <p v-if="chatMessages.length === 0" class="dim chat-empty">
-                  Send a message to run the workflow from its Chat Trigger.
-                </p>
+                <UiState v-if="chatMessages.length === 0" compact title="Test the Chat Trigger" description="Send a message to run this workflow from its Chat Trigger." />
                 <div v-for="(m, i) in chatMessages" :key="i" class="chat-msg" :class="[m.role, { err: m.error }]">
                   {{ m.text }}
                 </div>
-                <p v-if="chatSending" class="dim chat-empty">…</p>
+                <p v-if="chatSending" class="dim chat-empty" role="status">Waiting for response…</p>
               </div>
               <div class="chat-inputrow">
                 <input
@@ -1553,6 +1553,7 @@ async function loadSavePolicy() {
                   v-model="chatDraft"
                   class="chat-input"
                   data-test="chat-input"
+                  aria-label="Chat message"
                   placeholder="Type message, or press 'up' for previous one"
                   :disabled="chatSending"
                   @keydown.enter="sendChat"
@@ -1562,12 +1563,10 @@ async function loadSavePolicy() {
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" /></svg>
                 </button>
               </div>
-            </div>
+            </section>
             <!-- Logs 面板(对标基线:左树 + 右详情) -->
-            <div class="logs-body" :class="{ half: hasChatTrigger }">
-              <p v-if="logRows.length === 0" class="dim" style="font-size: 12px; text-align: center; padding: 14px 0">
-                Nothing to display yet. Execute the workflow to see execution logs.
-              </p>
+            <section class="logs-body" :class="{ half: hasChatTrigger }" aria-label="Execution logs">
+              <UiState v-if="logRows.length === 0" compact title="No execution logs yet" description="Execute the workflow to inspect each node's input, output, and run time." />
               <div v-else class="logs-split" data-test="logs-tree">
                 <!-- 左:执行树(摘要行 + 逐节点行) -->
                 <div class="logs-tree-col">
@@ -1580,6 +1579,7 @@ async function loadSavePolicy() {
                     :key="row.name"
                     class="log-node-row"
                     :class="{ sel: selectedLogNode === row.name, iserr: row.status === 'error' }"
+                    :aria-pressed="selectedLogNode === row.name"
                     :data-test-log-node="row.name"
                     @click="selectedLogNode = row.name"
                   >
@@ -1595,13 +1595,13 @@ async function loadSavePolicy() {
                     <b style="text-transform: capitalize">{{ selectedLogRow.status }}</b>
                     <span class="dim">in {{ selectedLogRow.time }}ms</span>
                     <span class="spacer" style="flex: 1" />
-                    <div class="log-io-tabs">
-                      <button :class="{ on: logDetailTab === 'input' }" data-test="log-tab-input" @click="logDetailTab = 'input'">Input</button>
-                      <button :class="{ on: logDetailTab === 'output' }" data-test="log-tab-output" @click="logDetailTab = 'output'">Output</button>
+                    <div class="log-io-tabs" role="tablist" aria-label="Node run data">
+                      <button role="tab" :aria-selected="logDetailTab === 'input'" :class="{ on: logDetailTab === 'input' }" data-test="log-tab-input" @click="logDetailTab = 'input'">Input</button>
+                      <button role="tab" :aria-selected="logDetailTab === 'output'" :class="{ on: logDetailTab === 'output' }" data-test="log-tab-output" @click="logDetailTab = 'output'">Output</button>
                     </div>
                   </div>
                   <p v-if="selectedLogRow?.error" class="error-text" style="font-size: 11px; padding: 0 12px 6px">{{ selectedLogRow.error }}</p>
-                  <div class="log-detail-data">
+                  <div class="log-detail-data" role="tabpanel">
                     <DataPane
                       :key="selectedLogNode + logDetailTab"
                       :title="logDetailTab === 'input' ? 'Input' : 'Output'"
@@ -1612,7 +1612,7 @@ async function loadSavePolicy() {
                   </div>
                 </div>
               </div>
-            </div>
+            </section>
           </div>
         </div>
       </div>
@@ -1765,8 +1765,13 @@ async function loadSavePolicy() {
 .bottombar-heads { display: flex; align-items: stretch; }
 .bottombar-heads .logs-head { flex: 1; }
 .chat-head { border-right: 1px solid var(--border); max-width: 50%; }
-.chat-reset { background: none; border: none; padding: 2px 6px; margin-left: 8px; color: var(--text-dim); cursor: pointer; display: inline-flex; }
+.chat-reset, .logs-expand { flex: none; background: none; border: none; padding: 2px 10px; color: var(--text-dim); cursor: pointer; display: inline-flex; align-items: center; }
 .chat-reset:hover { color: var(--text); }
+.logs-expand:hover { color: var(--text); }
+.logs-expand svg { width: 13px; height: 13px; }
+.session-label { font-size: 11px; margin-left: 10px; }
+.log-count { font-size: 11px; margin-left: 8px; }
+.head-spacer { flex: 1; }
 .bottombar-bodies { display: flex; align-items: stretch; }
 .chat-panel { flex: 1; max-width: 50%; border-right: 1px solid var(--border); display: flex; flex-direction: column; max-height: 220px; }
 .chat-messages { flex: 1; overflow-y: auto; padding: 8px 14px; display: flex; flex-direction: column; gap: 6px; }
@@ -2155,8 +2160,13 @@ async function loadSavePolicy() {
 }
 .logs-head {
   display: flex; align-items: center; width: 100%; text-align: left;
-  padding: 8px 8px 8px 16px; background: none; border: none; border-radius: 0; height: auto;
+  background: none; border: none; border-radius: 0; height: auto;
   font-size: var(--font-size--2xs); font-weight: var(--font-weight--medium); color: var(--color--text--shade-1);
+}
+.logs-head-toggle {
+  flex: 1; min-width: 0; display: flex; align-items: center; width: 100%; text-align: left;
+  padding: 8px 8px 8px 16px; background: none; border: none; border-radius: 0; height: auto;
+  font: inherit; color: inherit; cursor: pointer;
 }
 .logs-body { max-height: 300px; overflow: hidden; padding: 0; display: flex; flex-direction: column; }
 .log-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -268,6 +268,8 @@
 
 > 2026-08-01 UI 顺序改造第 21 项（Focus panel 专项）：右侧入口补齐 aria-expanded/controls 并关联命名面板，Escape 关闭后恢复入口焦点；Focus panel 与节点选择器改为互斥，杜绝两个右侧抽屉重叠。无钉选参数时使用统一空状态，说明从节点编辑器 Pin parameter 的下一步。新增 4 项画布回归，生产构建 6/6、全量 1105 项测试通过。
 
+> 2026-08-01 UI 顺序改造第 22 项（画布 Chat / Logs 底栏专项）：拆除 Chat disclosure 内嵌 New session 按钮的无效 HTML，两个标题入口以 aria-expanded/controls 关联同一底部面板；将伪称独立视图的 Logs popout 改为诚实的 Expand logs。Chat 与 Logs 成为命名 region，空态统一，等待响应可播报；节点日志选择补 pressed 状态，Input/Output 接入 tablist/tabpanel 语义，新会话提供反馈。新增 5 项画布回归，生产构建 6/6、全量 1110 项测试通过。
+
 - [ ] **66. 执行可视化正确性（串台 + 重连 + 频道）** `M`（🟠 A6）
   踩坑：`packages/frontend/src/stores/execution.ts:44` handleEvent 不按 executionId 过滤（并发执行/多用户高亮串台）；`packages/server/src/ws/push-hub.ts:27` 广播全连接无 workflow 频道；`execution.ts:38` WS 断线不重连（静默丢实时进度）。三者叠加使执行可视化在任意并发/断网下失真。
   → handleEvent 首行按 executionId 过滤（executionStarted 除外）；push-hub 按 workflowId 分频道；WS 加指数退避重连 + 心跳。

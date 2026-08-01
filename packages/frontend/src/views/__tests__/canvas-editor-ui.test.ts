@@ -94,4 +94,34 @@ describe('canvas editor UI', () => {
     expect(canvas).toContain('title="Keep a parameter within reach"');
     expect(canvas).toContain('data-test="focus-empty"');
   });
+
+  it('does not nest the new-session action inside the Chat disclosure button', () => {
+    expect(canvas).toContain('<div v-if="hasChatTrigger" class="logs-head chat-head"');
+    expect(canvas).toContain('aria-label="Start new chat session"');
+    expect(canvas).not.toContain('<button v-if="hasChatTrigger" class="logs-head chat-head"');
+  });
+
+  it('connects both bottom-bar disclosures to the expanded panel', () => {
+    expect(canvas).toContain('aria-controls="workflow-bottom-panel"');
+    expect(canvas).toContain(':aria-expanded="logsOpen"');
+    expect(canvas).toContain('id="workflow-bottom-panel"');
+  });
+
+  it('labels Chat and Logs regions and their empty states', () => {
+    expect(canvas).toContain('aria-label="Workflow chat"');
+    expect(canvas).toContain('aria-label="Execution logs"');
+    expect(canvas).toContain('title="Test the Chat Trigger"');
+    expect(canvas).toContain('title="No execution logs yet"');
+  });
+
+  it('uses honest expansion copy instead of claiming to open another view', () => {
+    expect(canvas).toContain('aria-label="Expand execution logs"');
+    expect(canvas).not.toContain('Open logs in a separate view');
+  });
+
+  it('models node log selection and Input/Output as accessible controls', () => {
+    expect(canvas).toContain(':aria-pressed="selectedLogNode === row.name"');
+    expect(canvas).toContain('role="tablist" aria-label="Node run data"');
+    expect(canvas).toContain('role="tabpanel"');
+  });
 });
