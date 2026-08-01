@@ -146,10 +146,7 @@
 
 - [x] **55. 表达式引擎真隔离 + 超时** `L`（🔴 R1）✅ 2026-07-31（以 QuickJS/WASM 独立堆与全局域替换 `new Function` + 正则黑名单；作用域只经 JSON 深拷贝跨界，`$node`/`$input`/`$fromAI` 在隔离域内重建，不暴露宿主对象或函数；默认 5s/64MB/512KB 硬超时、内存与栈限制，Function 家族构造链及危险全局封锁，函数等不可序列化结果拒绝进入执行状态；新增 5 项拼接构造器/计算属性/死循环/内存耗尽/不可序列化回归，workflow 29 测、全量 906 测通过；构建产物活体验证正常求值 42、PoC 5ms 被拦、死循环 100ms 熔断且后续仍返回 42，`pnpm dev` + `/healthz` 通过；commit `37708ea`）
 
-- [ ] **56. HTTP 出站 SSRF 防护（连接期真实 IP 校验）** `M`（🔴 R2）
-  踩坑·高危：`packages/core/src/execution-engine/node-execution-context.ts:170` `defaultHttpRequest` = `new URL()`→`fetch()`，无 IP 校验、默认跟随重定向；`HttpRequest.node.ts` 直传用户 URL → 可打 `169.254.169.254` 云 metadata / `127.0.0.1` / RFC1918。
-  → 自定义 `lookup` 做连接期解析 IP 校验（拦 RFC1918/loopback/`169.254`/IPv6 ULA），每次重定向重校，按「URL 是否用户可控」opt-in，固定内部目标豁免。
-  验收：节点请求 `http://169.254.169.254` 被拒；重定向到内网被拒；固定内部服务调用不受影响。
+- [x] **56. HTTP 出站 SSRF 防护（连接期真实 IP 校验）** `M`（🔴 R2）✅ 2026-08-01（workflow 新增用户可控/固定目标信任标记；core 基于 Undici 自定义 `lookup` 在预解析与真实连接期双重校验 IP，拦截 RFC1918、回环、`169.254`、IPv6 ULA/映射地址，并对每次重定向重新建连复验、跨源移除认证头，HTTP/SSE 共用安全传输；6 个用户 URL 节点显式启用严格策略，固定内部调用保持兼容；新增 7 项 core 安全回归 + 1 项节点标记测试，全量 999 测、`pnpm build` 6/6 通过；真实 API 往返验证 metadata 与公网重定向内网均被拒、公网请求成功，`pnpm dev` + `/healthz` 通过；commit `b3ac25a`）
 
 - [ ] **57. 社区节点安装加固（供应链）** `M`（🔴 R3）
   踩坑·高危：`packages/server/src/services/community-node-service.ts:49` `npm install` **无 `--ignore-scripts`** → 恶意/抢注包 pre/postinstall 安装期即宿主 RCE；且 `:130` 动态 import 进程内注册。
