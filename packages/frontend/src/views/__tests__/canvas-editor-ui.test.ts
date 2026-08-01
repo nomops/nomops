@@ -70,4 +70,28 @@ describe('canvas editor UI', () => {
     expect(workflowCanvas).toContain('closeCtx();');
     expect(workflowCanvas).toContain('closePaneCtx();');
   });
+
+  it('connects the Focus panel trigger to a named complementary panel', () => {
+    expect(canvas).toContain('aria-controls="workflow-focus-panel"');
+    expect(canvas).toContain(':aria-expanded="editor.focusPanelOpen"');
+    expect(canvas).toContain('id="workflow-focus-panel"');
+    expect(canvas).toContain('aria-labelledby="focus-panel-title"');
+  });
+
+  it('keeps the Focus panel and node picker mutually exclusive', () => {
+    expect(canvas).toContain('if (opening) editor.nodePickerOpen = false;');
+    expect(canvas).toContain('if (open && editor.focusPanelOpen) closeFocusPanel(false);');
+  });
+
+  it('closes the Focus panel with Escape and restores its trigger', () => {
+    expect(canvas).toContain("event.key === 'Escape' && editor.focusPanelOpen");
+    expect(canvas).toContain('focusPanelTrigger.value?.focus()');
+    expect(canvas).toContain('@click="closeFocusPanel()"');
+  });
+
+  it('uses the shared empty state for an unconfigured Focus panel', () => {
+    expect(canvas).toContain("import UiState from '../components/ui/UiState.vue'");
+    expect(canvas).toContain('title="Keep a parameter within reach"');
+    expect(canvas).toContain('data-test="focus-empty"');
+  });
 });

@@ -24,6 +24,7 @@ import NdvModal from '../components/ndv/NdvModal.vue';
 import DataPane from '../components/ndv/DataPane.vue';
 import { inputItemsFor, lastRunOf, outputPorts } from '../lib/run-data.js';
 import UiDialog from '../components/ui/UiDialog.vue';
+import UiState from '../components/ui/UiState.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -365,7 +366,7 @@ const canvasCommands: PaletteCommand[] = [
   { id: 'download', group: 'Workflow', label: 'Download workflow', run: () => downloadWorkflow() },
   { id: 'import-url', group: 'Workflow', label: 'Import workflow from URL', run: () => void importFromUrl() },
   { id: 'import-file', group: 'Workflow', label: 'Import workflow from file', run: () => triggerImport() },
-  { id: 'focus-panel', group: 'Workflow', label: 'Toggle focus panel', run: () => (editor.focusPanelOpen = !editor.focusPanelOpen) },
+  { id: 'focus-panel', group: 'Workflow', label: 'Toggle focus panel', run: () => toggleFocusPanel() },
   { id: 'archive', group: 'Workflow', label: 'Archive workflow', run: () => void archiveFromCanvas() },
 ];
 
@@ -379,9 +380,30 @@ const pinnedEntries = computed(() =>
     })
     .filter((e): e is NonNullable<typeof e> => e !== null),
 );
+const focusPanelTrigger = ref<HTMLButtonElement>();
+function toggleFocusPanel() {
+  const opening = !editor.focusPanelOpen;
+  if (opening) editor.nodePickerOpen = false;
+  editor.focusPanelOpen = opening;
+}
+function closeFocusPanel(restoreFocus = true) {
+  editor.focusPanelOpen = false;
+  if (restoreFocus) void nextTick(() => focusPanelTrigger.value?.focus());
+}
+watch(
+  () => editor.nodePickerOpen,
+  (open) => {
+    if (open && editor.focusPanelOpen) closeFocusPanel(false);
+  },
+);
 
 /** undo/redo 快捷键（Cmd/Ctrl+Z / Shift+Cmd/Ctrl+Z）；输入框聚焦时不劫持（保留原生文本撤销）。 */
 function onKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && editor.focusPanelOpen && !document.querySelector('[aria-modal="true"]')) {
+    event.preventDefault();
+    closeFocusPanel();
+    return;
+  }
   const meta = event.metaKey || event.ctrlKey;
   if (meta && event.key.toLowerCase() === 's') {
     event.preventDefault(); // 习惯性 Cmd+S：立即落盘（平时自动保存）
@@ -1434,28 +1456,35 @@ async function loadSavePolicy() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="i16"><path d="M5 4h14a1 1 0 0 1 1 1v9l-6 6H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" /><path d="M14 20v-5a1 1 0 0 1 1-1h5" /></svg>
           </button>
           <button
+            ref="focusPanelTrigger"
             title="Open focus panel"
+            aria-label="Open focus panel"
+            aria-controls="workflow-focus-panel"
+            :aria-expanded="editor.focusPanelOpen"
             data-test="side-focus-panel"
             :class="{ on: editor.focusPanelOpen }"
-            @click="editor.focusPanelOpen = !editor.focusPanelOpen"
+            @click="toggleFocusPanel"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="i16"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M14 4v16" /></svg>
           </button>
         </div>
 
         <!-- Focus panel（对标基线：钉住参数持续可见，可直接编辑） -->
-        <aside v-if="editor.focusPanelOpen" class="focus-panel" data-test="focus-panel">
+        <aside v-if="editor.focusPanelOpen" id="workflow-focus-panel" class="focus-panel" aria-labelledby="focus-panel-title" data-test="focus-panel">
           <div class="focus-head">
-            <span>Focus panel</span>
-            <button class="focus-x" type="button" aria-label="Close focus panel" data-test="focus-close" @click="editor.focusPanelOpen = false">
+            <span id="focus-panel-title">Focus panel</span>
+            <button class="focus-x" type="button" aria-label="Close focus panel" data-test="focus-close" @click="closeFocusPanel()">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
             </button>
           </div>
-          <div v-if="pinnedEntries.length === 0" class="focus-empty dim" data-test="focus-empty">
-            <p><strong>Show a node parameter here, to iterate easily</strong></p>
-            <p>For example, keep your prompt always visible so you can run the workflow while tweaking it.</p>
-            <p>Pin a parameter from the node editor (double-click a node, then click the pin icon next to a field).</p>
-          </div>
+          <UiState
+            v-if="pinnedEntries.length === 0"
+            class="focus-empty"
+            compact
+            title="Keep a parameter within reach"
+            description="Pin a parameter from the node editor to edit it here while running the workflow."
+            data-test="focus-empty"
+          />
           <div v-for="entry in pinnedEntries" :key="`${entry.nodeName}:${entry.paramName}`" class="focus-item">
             <div class="focus-item-head">
               <span class="focus-item-title">{{ entry.nodeName }} · {{ entry.prop.displayName }}</span>
