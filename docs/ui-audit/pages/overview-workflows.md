@@ -10,7 +10,7 @@
 - 标题 `Overview` + 副标题「All the workflows, credentials and data tables you have access to」——Nomops 逐字一致。
 - 右上主操作按钮随 tab 变（Create workflow / Create credential / Create variable…）+ 下拉——一致。
 - 5 张 KPI 卡（Prod. executions / Failed prod. executions / Failure rate / Time saved / Run time avg）——Nomops 一致，含 Time saved 的 ⓘ tooltip。
-- Tab 行：Workflows/Credentials/Executions/Variables/Data tables——一致。
+- Tab 行：Workflows/Credentials/Executions/Variables/Data tables——一致。2026-08-01 修复 Tab 容器被纵向 overflow 裁成 14px 横条的问题；Overview、Personal、团队项目页均实测完整可见。
 
 ## B. 各 Tab 对照
 
@@ -47,6 +47,7 @@
 |---|---|---|---|
 | Logo | n8n | nomops 品牌 logo | 品牌替换（正确） |
 | 顶部 | ＋新建 / 🔍搜索 / 折叠 | 一致 | 一致 |
+| ＋ → New project | 产品内命名弹窗 | 产品内 Modal（名称校验、Enter 提交、Esc/遮罩取消、错误态） | 一致 ✅ |
 | 主导航 | Overview(Home) / Personal / Chat`Preview` | 一致 | 一致 |
 | PROJECTS 组 | 项目列表 | `My project` / `测试` | 一致 |
 | 底部 | Templates / Insights / Help(红点) / Settings | 一致 | 一致 |

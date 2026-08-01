@@ -1728,9 +1728,13 @@ const fmtRunTime = (row: ExecutionRow): string => {
 .overview-tabs {
   width: max-content;
   max-width: 100%;
+  height: 42px;
+  flex: 0 0 auto;
+  align-items: center;
   margin: 0 0 var(--spacing--sm);
   padding: var(--spacing--4xs);
   overflow-x: auto;
+  overflow-y: hidden;
   background: var(--color--background--light-3);
   border: var(--border-width) var(--border-style) var(--border-color);
   border-radius: var(--radius--lg);

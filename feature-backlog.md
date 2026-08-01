@@ -222,6 +222,8 @@
 
 > 2026-08-01 补充交付（用户直接 UI 任务，无新增编号）：画布节点本体按本地基线实测对齐（96px 卡片、48px 图标、16px 主端口、外置 16px/500 标签、触发器轮廓、6px 中性选中环）；新增 2 项组件回归，生产构建与全量 1001 项测试通过，隔离生产实例同视口复验且控制台零 warning/error。
 
+> 2026-08-01 UI 反馈修复（无新增编号）：Overview/Personal/团队项目页资源 Tab 因 overflow 高度坍缩仅剩 14px 横条，现锁定 42px 可见高度并保留窄屏横向滚动；侧栏 New project 移除浏览器 `prompt()`，改为产品内 Modal。新增 4 项回归，生产构建 6/6、全量 1005 项测试通过；隔离生产实例复验五 Tab、Project settings、Modal 及干净控制台。
+
 - [ ] **66. 执行可视化正确性（串台 + 重连 + 频道）** `M`（🟠 A6）
   踩坑：`packages/frontend/src/stores/execution.ts:44` handleEvent 不按 executionId 过滤（并发执行/多用户高亮串台）；`packages/server/src/ws/push-hub.ts:27` 广播全连接无 workflow 频道；`execution.ts:38` WS 断线不重连（静默丢实时进度）。三者叠加使执行可视化在任意并发/断网下失真。
   → handleEvent 首行按 executionId 过滤（executionStarted 除外）；push-hub 按 workflowId 分频道；WS 加指数退避重连 + 心跳。

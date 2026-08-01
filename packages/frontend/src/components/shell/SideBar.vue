@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '../../stores/auth.js';
 import { useProjectsStore } from '../../stores/projects.js';
@@ -120,22 +120,54 @@ function quickNewDataTable() {
   closeAll();
   void router.push({ name: 'overview', query: { tab: 'data-tables' } });
 }
+const projectModalOpen = ref(false);
+const projectNameDraft = ref('');
+const projectModalError = ref('');
+const projectCreating = ref(false);
+const projectNameInput = ref<HTMLInputElement | null>(null);
+
 /** 新建团队项目（低套餐显示 Upgrade；有 rbac 才可建）。 */
-async function quickNewProject() {
+function quickNewProject() {
   closeAll();
   if (!projects.hasFeature('rbac')) {
     void router.push({ name: 'settings', query: { s: 'billing' } });
     return;
   }
-  const name = window.prompt(t('Project name'), t('My project'));
-  if (name === null) return;
-  const project = await projects.createProject(name.trim() || t('My project'));
-  projects.switchTo(project.id);
-  void router.push({ name: 'overview', query: { project: project.id } }).then(() => router.go(0));
+  projectNameDraft.value = t('My project');
+  projectModalError.value = '';
+  projectModalOpen.value = true;
+  void nextTick(() => projectNameInput.value?.select());
+}
+
+function closeProjectModal() {
+  if (projectCreating.value) return;
+  projectModalOpen.value = false;
+  projectModalError.value = '';
+}
+
+async function confirmCreateProject() {
+  const name = projectNameDraft.value.trim();
+  if (!name || projectCreating.value) return;
+  projectCreating.value = true;
+  projectModalError.value = '';
+  try {
+    const project = await projects.createProject(name);
+    projects.switchTo(project.id);
+    projectModalOpen.value = false;
+    void router.push({ name: 'overview', query: { project: project.id } }).then(() => router.go(0));
+  } catch (e) {
+    projectModalError.value = (e as Error).message;
+  } finally {
+    projectCreating.value = false;
+  }
 }
 
 /* ⌘K / Ctrl-K 打开命令面板 */
 function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && projectModalOpen.value) {
+    closeProjectModal();
+    return;
+  }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
     e.preventDefault();
     ui.openPalette();
@@ -332,6 +364,31 @@ async function openAbout() {
     </div>
   </aside>
 
+  <div v-if="projectModalOpen" class="project-modal-mask" data-test="project-modal" @click.self="closeProjectModal">
+    <form class="project-modal-card" role="dialog" aria-modal="true" :aria-label="t('New project')" @submit.prevent="confirmCreateProject">
+      <div class="project-modal-head">
+        <h2>{{ t('New project') }}</h2>
+        <button type="button" class="project-modal-x" :title="t('Close')" @click="closeProjectModal">×</button>
+      </div>
+      <label for="new-project-name">{{ t('Project name') }}</label>
+      <input
+        id="new-project-name"
+        ref="projectNameInput"
+        v-model="projectNameDraft"
+        data-test="project-name-input"
+        :disabled="projectCreating"
+        autocomplete="off"
+      />
+      <p v-if="projectModalError" class="project-modal-error" data-test="project-modal-error">{{ projectModalError }}</p>
+      <div class="project-modal-actions">
+        <button type="button" class="btn secondary" :disabled="projectCreating" @click="closeProjectModal">{{ t('Cancel') }}</button>
+        <button type="submit" class="btn primary" data-test="project-create" :disabled="!projectNameDraft.trim() || projectCreating">
+          {{ projectCreating ? t('Creating…') : t('Create') }}
+        </button>
+      </div>
+    </form>
+  </div>
+
   <div v-if="showAbout" class="about-overlay" data-test="about-modal" @click.self="showAbout = false">
     <div class="about-card">
       <div class="brand-word" style="font-size: 24px">nomops</div>
@@ -465,6 +522,39 @@ async function openAbout() {
 }
 .flyout-item.qc.disabled { opacity: 0.5; cursor: default; }
 .flyout-item.qc.disabled:hover { background: none; }
+
+.project-modal-mask {
+  position: fixed; inset: 0; z-index: 120;
+  display: flex; align-items: center; justify-content: center; padding: var(--spacing--lg);
+  background: var(--color--black-alpha-600);
+}
+.project-modal-card {
+  width: 440px; max-width: 100%; padding: var(--spacing--lg);
+  background: var(--color--background--light-3);
+  border: var(--border-width) var(--border-style) var(--border-color--strong);
+  border-radius: var(--radius--lg);
+  box-shadow: var(--shadow--dark);
+}
+.project-modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--spacing--sm); }
+.project-modal-head h2 {
+  margin: 0; color: var(--color--text--shade-1);
+  font-size: var(--font-size--lg); font-weight: var(--font-weight--bold);
+}
+.project-modal-x {
+  width: 28px; height: 28px; padding: 0; border: none; background: none;
+  color: var(--color--text--tint-1); font-size: 20px; line-height: 1;
+}
+.project-modal-x:hover { background: var(--background--hover); color: var(--color--text--shade-1); }
+.project-modal-card label { margin: 0 0 var(--spacing--4xs); color: var(--color--text--tint-1); }
+.project-modal-card input {
+  width: 100%; height: 36px; padding: 0 var(--spacing--xs);
+  background: var(--bg-input); color: var(--text);
+  border: var(--border-width) var(--border-style) var(--border); border-radius: var(--radius);
+}
+.project-modal-card input:focus { outline: none; border-color: var(--accent); }
+.project-modal-error { margin: var(--spacing--2xs) 0 0; color: var(--color--danger); font-size: var(--font-size--xs); }
+.project-modal-actions { display: flex; justify-content: flex-end; gap: var(--spacing--2xs); margin-top: var(--spacing--lg); }
+.project-modal-actions .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 /* D015 What's new 新闻标题条 */
 .wn-item { display: flex; align-items: center; gap: 8px; }
 .wn-dot { width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; background: var(--err, #e5484d); }
