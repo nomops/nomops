@@ -4,6 +4,11 @@ import vue from '@vitejs/plugin-vue';
 // 开发期：vite 托前端，/api /auth /ws 代理到后端 5680(基线实例占用 5678)
 export default defineConfig({
   plugins: [vue()],
+  resolve: {
+    alias: {
+      '@jitl/quickjs-wasmfile-release-sync': '@jitl/quickjs-singlefile-browser-release-sync',
+    },
+  },
   server: {
     proxy: {
       '/api': 'http://localhost:5680',
