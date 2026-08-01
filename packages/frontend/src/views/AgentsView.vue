@@ -6,8 +6,11 @@
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { api, type AgentChannelRow, type AgentFileRow, type AgentRow, type AgentTaskRow, type CredentialView } from '../api/client.js';
+import UiState from '../components/ui/UiState.vue';
+import { useUiStore } from '../stores/ui.js';
 
 const router = useRouter();
+const ui = useUiStore();
 const agents = ref<AgentRow[]>([]);
 const selected = ref<AgentRow | null>(null);
 const versions = ref<Array<{ id: string; versionNumber: number; createdAt: string }>>([]);
@@ -15,6 +18,7 @@ const newName = ref('');
 const systemDraft = ref('');
 const busy = ref('');
 const error = ref('');
+const loading = ref(true);
 
 /* 模型配置（#44 M2） */
 const provider = ref('anthropic');
@@ -58,6 +62,7 @@ async function createTask() {
     taskName.value = '';
     taskMessage.value = '';
     await loadTasks();
+    ui.notify({ kind: 'success', title: 'Scheduled task created' });
   } catch (e) {
     error.value = (e as Error).message;
   } finally {
@@ -66,13 +71,21 @@ async function createTask() {
 }
 async function toggleTask(t: AgentTaskRow) {
   if (!selected.value) return;
-  await api.agents.updateTask(selected.value.id, t.id, { active: !t.active }).catch(() => undefined);
-  await loadTasks();
+  try {
+    await api.agents.updateTask(selected.value.id, t.id, { active: !t.active });
+    await loadTasks();
+    ui.notify({ kind: 'success', title: t.active ? 'Scheduled task paused' : 'Scheduled task resumed' });
+  } catch (e) { error.value = (e as Error).message; }
 }
 async function removeTask(t: AgentTaskRow) {
-  if (!selected.value || !window.confirm(`Delete task "${t.name}"?`)) return;
-  await api.agents.removeTask(selected.value.id, t.id).catch(() => undefined);
-  await loadTasks();
+  if (!selected.value) return;
+  const confirmed = await ui.requestConfirm({ title: 'Delete scheduled task?', message: `“${t.name}” and its schedule will be removed.`, confirmLabel: 'Delete', tone: 'danger' });
+  if (!confirmed) return;
+  try {
+    await api.agents.removeTask(selected.value.id, t.id);
+    await loadTasks();
+    ui.notify({ kind: 'success', title: 'Scheduled task deleted' });
+  } catch (e) { error.value = (e as Error).message; }
 }
 const scheduleLabel = (t: AgentTaskRow) =>
   t.schedule.mode === 'cron' ? `cron ${t.schedule.cron}` : t.schedule.mode === 'once' ? `once @ ${t.schedule.fireAt}` : `every ${t.schedule.everySeconds}s`;
@@ -100,6 +113,7 @@ async function uploadFile(e: Event) {
     await api.agents.uploadFile(selected.value.id, { fileName: f.name, mimeType: f.type || 'application/octet-stream', data: btoa(bin) });
     input.value = '';
     await loadFilesChannels();
+    ui.notify({ kind: 'success', title: 'File uploaded', message: f.name });
   } catch (err) {
     error.value = (err as Error).message;
   } finally {
@@ -107,9 +121,14 @@ async function uploadFile(e: Event) {
   }
 }
 async function removeFile(f: AgentFileRow) {
-  if (!selected.value || !window.confirm(`Delete file "${f.fileName}"?`)) return;
-  await api.agents.removeFile(selected.value.id, f.id).catch(() => undefined);
-  await loadFilesChannels();
+  if (!selected.value) return;
+  const confirmed = await ui.requestConfirm({ title: 'Delete agent file?', message: `“${f.fileName}” will no longer be available to this agent.`, confirmLabel: 'Delete', tone: 'danger' });
+  if (!confirmed) return;
+  try {
+    await api.agents.removeFile(selected.value.id, f.id);
+    await loadFilesChannels();
+    ui.notify({ kind: 'success', title: 'Agent file deleted' });
+  } catch (e) { error.value = (e as Error).message; }
 }
 function downloadFile(f: AgentFileRow) {
   if (!selected.value) return;
@@ -134,6 +153,7 @@ async function addChannel() {
   try {
     await api.agents.createChannel(selected.value.id, { type: 'telegram', credentialId: channelCredentialId.value });
     await loadFilesChannels();
+    ui.notify({ kind: 'success', title: 'Telegram channel connected' });
   } catch (e) {
     error.value = (e as Error).message;
   } finally {
@@ -146,16 +166,28 @@ async function toggleChannel(c: AgentChannelRow) {
   await loadFilesChannels();
 }
 async function removeChannel(c: AgentChannelRow) {
-  if (!selected.value || !window.confirm('Delete this channel?')) return;
-  await api.agents.removeChannel(selected.value.id, c.id).catch(() => undefined);
-  await loadFilesChannels();
+  if (!selected.value) return;
+  const confirmed = await ui.requestConfirm({ title: 'Disconnect channel?', message: 'Incoming messages through this channel will stop reaching the agent.', confirmLabel: 'Disconnect', tone: 'danger' });
+  if (!confirmed) return;
+  try {
+    await api.agents.removeChannel(selected.value.id, c.id);
+    await loadFilesChannels();
+    ui.notify({ kind: 'success', title: 'Channel disconnected' });
+  } catch (e) { error.value = (e as Error).message; }
 }
 async function copyWebhookUrl(c: AgentChannelRow) {
-  await navigator.clipboard.writeText(c.webhookUrl).catch(() => undefined);
+  try {
+    await navigator.clipboard.writeText(c.webhookUrl);
+    ui.notify({ kind: 'success', title: 'Webhook URL copied' });
+  } catch { error.value = 'Could not copy the webhook URL'; }
 }
 
 async function load() {
-  agents.value = await api.agents.list().catch(() => []);
+  error.value = '';
+  loading.value = true;
+  try { agents.value = await api.agents.list(); }
+  catch (e) { error.value = (e as Error).message; }
+  finally { loading.value = false; }
 }
 onMounted(async () => {
   await load();
@@ -214,6 +246,7 @@ async function create() {
     newName.value = '';
     await load();
     await select(a);
+    ui.notify({ kind: 'success', title: 'Agent created', message: a.name });
   } catch (e) {
     error.value = (e as Error).message;
   }
@@ -228,6 +261,9 @@ async function saveSystem() {
     });
     selected.value = a;
     await load();
+    ui.notify({ kind: 'success', title: 'Agent settings saved' });
+  } catch (e) {
+    error.value = (e as Error).message;
   } finally {
     busy.value = '';
   }
@@ -240,6 +276,9 @@ async function publish() {
     await api.agents.publish(selected.value.id);
     await select(selected.value);
     await load();
+    ui.notify({ kind: 'success', title: 'Agent published' });
+  } catch (e) {
+    error.value = (e as Error).message;
   } finally {
     busy.value = '';
   }
@@ -253,16 +292,23 @@ async function rollback(versionId: string) {
     const fresh = await api.agents.get(selected.value.id);
     await select(fresh);
     await load();
+    ui.notify({ kind: 'success', title: 'Agent version restored' });
+  } catch (e) {
+    error.value = (e as Error).message;
   } finally {
     busy.value = '';
   }
 }
 
 async function remove(a: AgentRow) {
-  if (!window.confirm(`Delete agent "${a.name}"?`)) return;
-  await api.agents.remove(a.id).catch(() => undefined);
-  if (selected.value?.id === a.id) selected.value = null;
-  await load();
+  const confirmed = await ui.requestConfirm({ title: 'Delete agent?', message: `“${a.name}” and its tasks, files, channels, and history will be permanently deleted.`, confirmLabel: 'Delete', tone: 'danger' });
+  if (!confirmed) return;
+  try {
+    await api.agents.remove(a.id);
+    if (selected.value?.id === a.id) selected.value = null;
+    await load();
+    ui.notify({ kind: 'success', title: 'Agent deleted', message: a.name });
+  } catch (e) { error.value = (e as Error).message; }
 }
 
 const fmt = (iso: string) => new Date(iso).toLocaleString();
@@ -278,8 +324,9 @@ const fmt = (iso: string) => new Date(iso).toLocaleString();
         <input v-model="newName" placeholder="New agent name" data-test="agent-new-name" @keyup.enter="create" />
         <button class="btn primary" data-test="agent-create" :disabled="!newName.trim()" @click="create">Create</button>
       </div>
-      <p v-if="error" class="error-text">{{ error }}</p>
-      <p v-if="!agents.length" class="dim" style="padding: 12px">No agents yet.</p>
+      <p v-if="error" class="error-text" role="alert">{{ error }}</p>
+      <UiState v-if="loading" compact title="Loading agents" />
+      <UiState v-else-if="!agents.length && !error" compact title="No agents yet" description="Create an agent to configure its model, tools, memory, and channels." />
       <ul class="agents-ul">
         <li
           v-for="a in agents"
@@ -509,4 +556,12 @@ const fmt = (iso: string) => new Date(iso).toLocaleString();
 .agent-task-main { display: flex; gap: 8px; align-items: center; min-width: 0; }
 .agent-task-side { display: flex; gap: 10px; align-items: center; flex-shrink: 0; font-size: 12px; }
 .agent-file-upload { align-self: flex-start; cursor: pointer; }
+@media (max-width: 780px) {
+  .agents-page { flex-direction: column; overflow-y: auto; }
+  .agents-list { width: 100%; max-height: 220px; border-right: none; border-bottom: 1px solid var(--border-color, #2a2a33); }
+  .agent-detail { overflow: visible; padding: 18px 16px; }
+  .agent-detail-head, .agent-model-row, .agent-task { flex-wrap: wrap; }
+  .agent-model-row > * { flex: 1 1 180px; }
+  .agent-task-side { flex-wrap: wrap; }
+}
 </style>

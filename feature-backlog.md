@@ -240,6 +240,8 @@
 
 > 2026-08-01 UI 顺序改造第 7 项（Canvas / NDV）：工作流描述、Workflow settings 与 URL 导入统一迁入 `UiDialog`，彻底移除浏览器原生 URL 输入框；归档工作流与删除测试运行改用产品内确认，设置、描述、导入、复制、归档等动作补齐 Toast。节点编辑器升级为可访问对话框，支持 Escape 关闭、Tab 焦点循环、关闭后焦点恢复、语义化 SVG 关闭按钮，并为窄屏提供三栏横向浏览。新增 5 项视图契约回归，生产构建 6/6、全量 1038 项测试通过；浏览器登录态已过期，未伪造在线画布数据，交互由类型检查与组件契约覆盖验收。
 
+> 2026-08-01 UI 顺序改造第 8 项（Chat / Agents）：Chat 会话与 Personal agent 删除增加产品内影响确认及成功/失败反馈，系统字符关闭按钮替换为带可访问名称的主题 SVG；尚未接入操作的 Tools 控件明确禁用并解释能力边界。Agents 的 agent、定时任务、文件、渠道删除及 Instance Assistant 的线程、检查点恢复、MCP 断开全部迁入产品内确认，关键写操作补齐 Toast，列表补加载/错误/空态，两套复杂管理页补窄屏重排。新增 5 项视图契约回归，生产构建 6/6、全量 1043 项测试通过。
+
 - [ ] **66. 执行可视化正确性（串台 + 重连 + 频道）** `M`（🟠 A6）
   踩坑：`packages/frontend/src/stores/execution.ts:44` handleEvent 不按 executionId 过滤（并发执行/多用户高亮串台）；`packages/server/src/ws/push-hub.ts:27` 广播全连接无 workflow 频道；`execution.ts:38` WS 断线不重连（静默丢实时进度）。三者叠加使执行可视化在任意并发/断网下失真。
   → handleEvent 首行按 executionId 过滤（executionStarted 除外）；push-hub 按 workflowId 分频道；WS 加指数退避重连 + 心跳。

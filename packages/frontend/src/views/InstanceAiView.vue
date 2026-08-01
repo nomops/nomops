@@ -5,7 +5,10 @@
  */
 import { computed, onMounted, ref } from 'vue';
 import { api, type InstanceAiThreadRow, type InstanceAiMessageRow, type InstanceAiCheckpointRow, type InstanceAiActionRow, type InstanceAiRunNodeRow, type InstanceAiMemoryRow, type InstanceAiMcpRow } from '../api/client.js';
+import UiState from '../components/ui/UiState.vue';
+import { useUiStore } from '../stores/ui.js';
 
+const ui = useUiStore();
 const threads = ref<InstanceAiThreadRow[]>([]);
 const selected = ref<InstanceAiThreadRow | null>(null);
 const messages = ref<InstanceAiMessageRow[]>([]);
@@ -38,9 +41,14 @@ const cpLabel = ref('');
 const stateDraft = ref('{}');
 const busy = ref('');
 const error = ref('');
+const loading = ref(true);
 
 async function loadList() {
-  threads.value = await api.instanceAi.list().catch(() => []);
+  error.value = '';
+  loading.value = true;
+  try { threads.value = await api.instanceAi.list(); }
+  catch (e) { error.value = (e as Error).message; }
+  finally { loading.value = false; }
 }
 onMounted(loadList);
 
@@ -72,6 +80,7 @@ async function mcpConnect() {
     mcpUrl.value = '';
     mcpToken.value = '';
     await refresh();
+    ui.notify({ kind: 'success', title: 'MCP server connected' });
   } catch (e) {
     error.value = (e as Error).message;
   } finally {
@@ -79,9 +88,13 @@ async function mcpConnect() {
   }
 }
 async function mcpDisconnect(c: InstanceAiMcpRow) {
-  if (!window.confirm(`Disconnect "${c.serverName}"?`)) return;
-  await api.instanceAi.mcpDisconnect(c.id).catch(() => undefined);
-  await refresh();
+  const confirmed = await ui.requestConfirm({ title: 'Disconnect MCP server?', message: `Tools from “${c.serverName}” will no longer be available to this assistant.`, confirmLabel: 'Disconnect', tone: 'danger' });
+  if (!confirmed) return;
+  try {
+    await api.instanceAi.mcpDisconnect(c.id);
+    await refresh();
+    ui.notify({ kind: 'success', title: 'MCP server disconnected' });
+  } catch (e) { error.value = (e as Error).message; }
 }
 async function proposeMcpTool(c: InstanceAiMcpRow, tool: string) {
   if (!selected.value) return;
@@ -112,6 +125,7 @@ async function remember() {
       content: memContent.value.trim(),
     });
     memContent.value = '';
+    ui.notify({ kind: 'success', title: 'Memory saved' });
   } catch (e) {
     error.value = (e as Error).message;
   } finally {
@@ -174,6 +188,7 @@ async function createThread() {
     newTitle.value = '';
     await loadList();
     await select(t);
+    ui.notify({ kind: 'success', title: 'Assistant thread created', message: t.title });
   } catch (e) {
     error.value = (e as Error).message;
   }
@@ -216,6 +231,9 @@ async function saveState() {
   try {
     await api.instanceAi.setState(selected.value.id, parsed);
     await refresh();
+    ui.notify({ kind: 'success', title: 'Working state saved' });
+  } catch (e) {
+    error.value = (e as Error).message;
   } finally {
     busy.value = '';
   }
@@ -228,29 +246,42 @@ async function saveCheckpoint() {
     await api.instanceAi.checkpoint(selected.value.id, cpLabel.value.trim());
     cpLabel.value = '';
     await refresh();
+    ui.notify({ kind: 'success', title: 'Checkpoint created' });
+  } catch (e) {
+    error.value = (e as Error).message;
   } finally {
     busy.value = '';
   }
 }
 
 async function restore(cp: InstanceAiCheckpointRow) {
-  if (!selected.value || !window.confirm(`Restore to checkpoint "${cp.label || 'v' + cp.seq}"? Messages and state after it are discarded.`)) return;
+  if (!selected.value) return;
+  const label = cp.label || `v${cp.seq}`;
+  const confirmed = await ui.requestConfirm({ title: 'Restore checkpoint?', message: `Restore to “${label}”? Messages and working state after it will be discarded.`, confirmLabel: 'Restore', tone: 'danger' });
+  if (!confirmed) return;
   busy.value = 'restore';
   error.value = '';
   try {
     const d = await api.instanceAi.restore(selected.value.id, cp.id);
     applyDetail(d);
     await loadList();
+    ui.notify({ kind: 'success', title: 'Checkpoint restored', message: label });
+  } catch (e) {
+    error.value = (e as Error).message;
   } finally {
     busy.value = '';
   }
 }
 
 async function remove(t: InstanceAiThreadRow) {
-  if (!window.confirm(`Delete thread "${t.title}"?`)) return;
-  await api.instanceAi.remove(t.id).catch(() => undefined);
-  if (selected.value?.id === t.id) selected.value = null;
-  await loadList();
+  const confirmed = await ui.requestConfirm({ title: 'Delete assistant thread?', message: `“${t.title}” and its messages, state, checkpoints, and pending actions will be permanently deleted.`, confirmLabel: 'Delete', tone: 'danger' });
+  if (!confirmed) return;
+  try {
+    await api.instanceAi.remove(t.id);
+    if (selected.value?.id === t.id) selected.value = null;
+    await loadList();
+    ui.notify({ kind: 'success', title: 'Assistant thread deleted', message: t.title });
+  } catch (e) { error.value = (e as Error).message; }
 }
 </script>
 
@@ -263,14 +294,17 @@ async function remove(t: InstanceAiThreadRow) {
         <input v-model="newTitle" data-test="iai-new-title" placeholder="New thread title…" @keyup.enter="createThread" />
         <button class="btn primary" data-test="iai-create" @click="createThread">New</button>
       </div>
-      <p v-if="error" class="error-text">{{ error }}</p>
+      <p v-if="error" class="error-text" role="alert">{{ error }}</p>
+      <UiState v-if="loading" compact kind="loading" title="Loading assistant threads" />
       <ul class="iai-ul">
         <li v-for="t in threads" :key="t.id" class="iai-item" :class="{ sel: selected?.id === t.id }" data-test="iai-item" @click="select(t)">
           <span class="iai-item-title">{{ t.title }}</span>
           <span class="iai-badge">{{ t.kind }}</span>
-          <button class="link discard" title="Delete" @click.stop="remove(t)">✕</button>
+          <button class="link discard" type="button" aria-label="Delete assistant thread" title="Delete" @click.stop="remove(t)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
+          </button>
         </li>
-        <li v-if="!threads.length" class="dim" style="padding: 12px">No threads yet.</li>
+        <li v-if="!loading && !threads.length && !error"><UiState compact title="No threads yet" description="Create a thread to start a stateful assistant conversation." /></li>
       </ul>
     </aside>
 
@@ -389,7 +423,9 @@ async function remove(t: InstanceAiThreadRow) {
           <div class="iai-mcp-head">
             <b>{{ c.serverName }}</b>
             <span class="iai-badge">{{ c.status }}</span>
-            <button class="link" data-test="iai-mcp-disconnect" style="margin-left: auto" @click="mcpDisconnect(c)">✕</button>
+            <button class="link iai-icon-button" data-test="iai-mcp-disconnect" style="margin-left: auto" type="button" aria-label="Disconnect MCP server" @click="mcpDisconnect(c)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
+            </button>
           </div>
           <div class="iai-mcp-tools">
             <button v-for="t in c.tools" :key="t.name" class="iai-tool-chip" data-test="iai-mcp-tool" :title="t.description" :disabled="busy === 'mcp'" @click="proposeMcpTool(c, t.name)">
@@ -420,6 +456,7 @@ async function remove(t: InstanceAiThreadRow) {
 .iai-badge { font-size: 10.5px; padding: 2px 6px; border-radius: 10px; background: var(--color--background--light-1, rgba(127,127,127,0.15)); color: var(--text-dim, #9a9aa5); }
 .discard { opacity: 0; }
 .iai-item:hover .discard { opacity: 1; }
+.discard svg, .iai-icon-button svg { width: 14px; height: 14px; }
 .iai-main { flex: 1; display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--border-color, #2a2a33); }
 .iai-main.empty { align-items: center; justify-content: center; }
 .iai-chat { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 8px; }
@@ -461,4 +498,15 @@ async function remove(t: InstanceAiThreadRow) {
 .iai-mcp-tools { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 5px; }
 .iai-tool-chip { padding: 3px 9px; border: 1px solid var(--border-color, #2a2a33); border-radius: 12px; background: none; color: inherit; font-size: 11.5px; cursor: pointer; font-family: var(--font-family--monospace, monospace); }
 .iai-tool-chip:hover { border-color: var(--accent, #ff6900); color: var(--accent, #ff6900); }
+@media (max-width: 1000px) {
+  .iai-row { flex-wrap: wrap; overflow-y: auto; }
+  .iai-list { width: 100%; max-height: 210px; border-right: none; border-bottom: 1px solid var(--border-color, #2a2a33); }
+  .iai-main { min-height: 420px; }
+  .iai-side { width: 360px; }
+}
+@media (max-width: 700px) {
+  .iai-main, .iai-side { flex: 1 0 100%; width: 100%; }
+  .iai-input { flex-wrap: wrap; padding: 12px; }
+  .iai-model { flex: 1 1 140px; }
+}
 </style>

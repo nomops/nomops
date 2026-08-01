@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { api, type WorkflowRow, type ChatAttachment } from '../api/client.js';
 import SettingsMenu from '../components/shell/SettingsMenu.vue';
+import { useUiStore } from '../stores/ui.js';
 
 /**
  * Chat 页（D1，完全对标基线 Chat）：整页接管布局。
@@ -44,6 +45,7 @@ interface ChatSession {
 }
 
 const router = useRouter();
+const ui = useUiStore();
 
 /* ── 持久化（backlog #14:落后端,跨设备;旧 localStorage 首载一次性迁移后清除） ── */
 const LEGACY_SESSIONS_KEY = 'nomops.chat.sessions.v2';
@@ -233,9 +235,19 @@ function openSession(id: string) {
   view.value = 'chat';
   void scrollDown();
 }
-function deleteSession(id: string) {
-  sessions.value = sessions.value.filter((s) => s.id !== id);
-  void api.chat.deleteSession(id).catch(() => undefined);
+async function deleteSession(id: string) {
+  const session = sessions.value.find((s) => s.id === id);
+  if (!session) return;
+  const confirmed = await ui.requestConfirm({ title: 'Delete chat?', message: `“${session.title}” and its message history will be permanently deleted.`, confirmLabel: 'Delete', tone: 'danger' });
+  if (!confirmed) return;
+  try {
+    await api.chat.deleteSession(id);
+    sessions.value = sessions.value.filter((s) => s.id !== id);
+    ui.notify({ kind: 'success', title: 'Chat deleted' });
+  } catch (e) {
+    ui.notify({ kind: 'error', title: 'Could not delete chat', message: (e as Error).message });
+    return;
+  }
   if (activeSessionId.value === id) activeSessionId.value = null;
 }
 
@@ -421,9 +433,18 @@ function saveAgent() {
   agentDraftSystem.value = '';
   agentFormOpen.value = false;
 }
-function deleteAgent(id: string) {
-  agents.value = agents.value.filter((a) => a.id !== id);
-  void api.chat.deleteAgent(id).catch(() => undefined);
+async function deleteAgent(id: string) {
+  const agent = agents.value.find((a) => a.id === id);
+  if (!agent) return;
+  const confirmed = await ui.requestConfirm({ title: 'Delete personal agent?', message: `“${agent.name}” will no longer be available in the model picker. Existing chats are preserved.`, confirmLabel: 'Delete', tone: 'danger' });
+  if (!confirmed) return;
+  try {
+    await api.chat.deleteAgent(id);
+    agents.value = agents.value.filter((a) => a.id !== id);
+    ui.notify({ kind: 'success', title: 'Personal agent deleted', message: agent.name });
+  } catch (e) {
+    ui.notify({ kind: 'error', title: 'Could not delete personal agent', message: (e as Error).message });
+  }
 }
 function chatWith(target: ChatTarget) {
   newChat();
@@ -465,7 +486,9 @@ function chatWith(target: ChatTarget) {
             :class="{ active: s.id === activeSessionId && view === 'chat' }"
           >
             <button class="side-chat-title" :data-test-session="s.id" @click="openSession(s.id)">{{ s.title }}</button>
-            <button class="side-chat-del" title="Delete chat" @click="deleteSession(s.id)">×</button>
+            <button class="side-chat-del" type="button" aria-label="Delete chat" title="Delete chat" @click="deleteSession(s.id)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
+            </button>
           </div>
         </template>
       </div>
@@ -503,7 +526,9 @@ function chatWith(target: ChatTarget) {
           <div v-for="a in agents" :key="a.id" class="agent-card" :data-test-agent="a.id">
             <div class="agent-head">
               <strong>{{ a.name }}</strong>
-              <button class="side-chat-del show" title="Delete agent" @click="deleteAgent(a.id)">×</button>
+              <button class="side-chat-del show" type="button" aria-label="Delete personal agent" title="Delete agent" @click="deleteAgent(a.id)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
+              </button>
             </div>
             <p class="agent-system dim">{{ a.system }}</p>
             <button
@@ -662,7 +687,9 @@ function chatWith(target: ChatTarget) {
             <div v-if="attachments.length" class="composer-attachments" data-test="chat-attachments">
               <span v-for="(a, i) in attachments" :key="i" class="attach-chip" data-test="attach-chip">
                 <span class="attach-name">{{ a.fileName ?? a.mimeType }}</span>
-                <button class="attach-x" data-test="attach-remove" @click="removeAttachment(i)">×</button>
+                <button class="attach-x" type="button" :aria-label="`Remove ${a.fileName ?? 'attachment'}`" data-test="attach-remove" @click="removeAttachment(i)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
+                </button>
               </span>
             </div>
             <textarea
@@ -675,7 +702,7 @@ function chatWith(target: ChatTarget) {
             />
             <input ref="fileInput" type="file" multiple accept="image/*" style="display: none" data-test="chat-file-input" @change="onPickFiles" />
             <div class="composer-bar">
-              <button class="composer-tools" data-test="chat-tools" :disabled="!activeSession?.target">
+              <button class="composer-tools" data-test="chat-tools" disabled title="Tool selection is managed by the selected model or agent">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14" /></svg>
                 Tools
               </button>
@@ -874,6 +901,7 @@ function chatWith(target: ChatTarget) {
 }
 .attach-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .attach-x { border: none; background: none; color: var(--text-dim); cursor: pointer; font-size: 14px; line-height: 1; padding: 0; }
+.attach-x svg, .side-chat-del svg { width: 13px; height: 13px; }
 
 /* Agents 页 */
 .agents-page { padding: 26px 30px; overflow-y: auto; }
