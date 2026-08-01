@@ -23,6 +23,7 @@ import NodePanel from '../components/canvas/NodePanel.vue';
 import NdvModal from '../components/ndv/NdvModal.vue';
 import DataPane from '../components/ndv/DataPane.vue';
 import { inputItemsFor, lastRunOf, outputPorts } from '../lib/run-data.js';
+import UiDialog from '../components/ui/UiDialog.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -87,6 +88,7 @@ async function saveWfSettings() {
     if (wfSaveProgress.value) settings['saveExecutionProgress'] = true;
     await api.workflows.update(editor.id!, { settings } as never);
     wfSettingsOpen.value = false;
+    ui.notify({ kind: 'success', title: 'Workflow settings saved' });
   } catch (e) {
     wfSettingsError.value = (e as Error).message;
   } finally {
@@ -114,6 +116,7 @@ async function duplicateWorkflow() {
     nodes: editor.nodes,
     connections: editor.connections,
   });
+  ui.notify({ kind: 'success', title: 'Workflow duplicated', message: wf.name });
   void router.push({ name: 'canvas', params: { id: wf.id } });
 }
 
@@ -238,6 +241,7 @@ async function saveDescription() {
   try {
     await api.workflows.update(editor.id, { description: descDraft.value.trim() || null });
     descModalOpen.value = false;
+    ui.notify({ kind: 'success', title: 'Workflow description saved' });
   } finally {
     descSaving.value = false;
   }
@@ -260,10 +264,20 @@ async function toggleFavoriteCanvas() {
 }
 
 /* Import from URL…：拉取 JSON 定义导入画布（跨域站点需允许 CORS，失败原样提示） */
-async function importFromUrl() {
+const importUrlOpen = ref(false);
+const importUrlDraft = ref('');
+const importUrlBusy = ref(false);
+const importUrlError = ref('');
+function importFromUrl() {
   closeMenu();
-  const url = window.prompt('Workflow JSON URL');
+  importUrlDraft.value = '';
+  importUrlError.value = '';
+  importUrlOpen.value = true;
+}
+async function submitImportFromUrl() {
+  const url = importUrlDraft.value.trim();
   if (!url) return;
+  importUrlBusy.value = true;
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -274,9 +288,12 @@ async function importFromUrl() {
     editor.connections = parsed.connections ?? {};
     editor.selectedNodeName = null;
     editor.dirty = true;
-    activateError.value = '';
+    importUrlOpen.value = false;
+    ui.notify({ kind: 'success', title: 'Workflow imported from URL' });
   } catch (e) {
-    activateError.value = `Import from URL failed — ${(e as Error).message}`;
+    importUrlError.value = `Import failed — ${(e as Error).message}`;
+  } finally {
+    importUrlBusy.value = false;
   }
 }
 
@@ -298,8 +315,20 @@ async function pushToGit() {
 async function archiveFromCanvas() {
   closeMenu();
   if (!editor.id) return;
-  await api.workflows.archive(editor.id).catch((e) => (activateError.value = (e as Error).message));
-  void router.push({ name: 'overview' });
+  const confirmed = await ui.requestConfirm({
+    title: 'Archive workflow?',
+    message: `“${editor.name}” will be unpublished and hidden from the default workflow list.`,
+    confirmLabel: 'Archive',
+    tone: 'danger',
+  });
+  if (!confirmed) return;
+  try {
+    await api.workflows.archive(editor.id);
+    ui.notify({ kind: 'success', title: 'Workflow archived', message: editor.name });
+    void router.push({ name: 'overview' });
+  } catch (e) {
+    activateError.value = (e as Error).message;
+  }
 }
 
 /* 版本历史:对标基线跳转整页 /workflow/:id/history(只读斜纹画布 + 版本面板) */
@@ -722,13 +751,20 @@ async function runTest() {
 }
 
 async function deleteTestRun(id: string) {
-  if (!confirm('Delete this test run?')) return;
+  const confirmed = await ui.requestConfirm({
+    title: 'Delete test run?',
+    message: 'Test cases and metric results from this run will be permanently deleted.',
+    confirmLabel: 'Delete',
+    tone: 'danger',
+  });
+  if (!confirmed) return;
   await api.evaluations.remove(id).catch(() => undefined);
   if (evalSelectedRunId.value === id) {
     evalSelectedRunId.value = null;
     evalDetail.value = null;
   }
   await loadEvalRuns();
+  ui.notify({ kind: 'success', title: 'Test run deleted' });
 }
 
 function fmtMetric(v: number): string {
@@ -1546,35 +1582,63 @@ async function loadSavePolicy() {
       </div>
     </div>
 
-    <!-- Edit description 弹窗（对标基线） -->
-    <div v-if="descModalOpen" class="wfs-mask" data-test="desc-modal" @click.self="descModalOpen = false">
-      <div class="wfs-card" style="width: 560px">
-        <div style="display: flex; align-items: flex-start; justify-content: space-between">
-          <h2 class="wfs-title">Edit description</h2>
-          <button class="wfs-x" @click="descModalOpen = false">×</button>
-        </div>
+    <!-- Edit description 弹窗（统一产品内模态与键盘焦点管理） -->
+    <UiDialog :open="descModalOpen" title="Edit description" width="560px" test-id="desc-modal" @close="descModalOpen = false">
+      <label class="dialog-field">
+        <span>Description</span>
         <textarea
           v-model="descDraft"
           data-test="desc-input"
           rows="5"
+          autofocus
           placeholder="What does this workflow do?"
-          style="width: 100%; resize: vertical"
         />
-        <div style="margin-top: 18px">
-          <button class="primary" data-test="desc-save" :disabled="descSaving" @click="saveDescription">
-            {{ descSaving ? 'Saving…' : 'Save' }}
-          </button>
-        </div>
-      </div>
-    </div>
+      </label>
+      <template #footer>
+        <button type="button" @click="descModalOpen = false">Cancel</button>
+        <button class="primary" data-test="desc-save" :disabled="descSaving" @click="saveDescription">
+          {{ descSaving ? 'Saving…' : 'Save' }}
+        </button>
+      </template>
+    </UiDialog>
+
+    <UiDialog
+      :open="importUrlOpen"
+      title="Import workflow from URL"
+      description="Paste a direct URL to a workflow JSON file. The remote server must allow browser access."
+      width="520px"
+      test-id="import-url-dialog"
+      @close="importUrlOpen = false"
+    >
+      <label class="dialog-field">
+        <span>Workflow JSON URL</span>
+        <input
+          v-model="importUrlDraft"
+          data-test="import-url-input"
+          type="url"
+          autofocus
+          placeholder="https://example.com/workflow.json"
+          @keyup.enter="submitImportFromUrl"
+        />
+      </label>
+      <p v-if="importUrlError" class="error-text" role="alert" data-test="import-url-error">{{ importUrlError }}</p>
+      <template #footer>
+        <button type="button" :disabled="importUrlBusy" @click="importUrlOpen = false">Cancel</button>
+        <button class="primary" data-test="import-url-submit" :disabled="importUrlBusy || !importUrlDraft.trim()" @click="submitImportFromUrl">
+          {{ importUrlBusy ? 'Importing…' : 'Import' }}
+        </button>
+      </template>
+    </UiDialog>
 
     <!-- Workflow settings 弹窗（对标基线：左标签右控件，左下 Save） -->
-    <div v-if="wfSettingsOpen" class="wfs-mask" data-test="wf-settings-modal" @click.self="wfSettingsOpen = false">
-      <div class="wfs-card">
-        <div style="display: flex; align-items: flex-start; justify-content: space-between">
-          <h2 class="wfs-title">Workflow settings for {{ editor.name }} <span class="wfs-id">#{{ editor.id }}</span></h2>
-          <button class="wfs-x" @click="wfSettingsOpen = false">×</button>
-        </div>
+    <UiDialog
+      :open="wfSettingsOpen"
+      :title="`Workflow settings for ${editor.name}`"
+      :description="editor.id ? `Workflow ID ${editor.id}` : ''"
+      width="720px"
+      test-id="wf-settings-modal"
+      @close="wfSettingsOpen = false"
+    >
 
         <div class="wfs-row">
           <label>Execution Logic</label>
@@ -1642,14 +1706,14 @@ async function loadSavePolicy() {
           <select disabled data-test="wfs-redact-manual"><option>Default - Do not redact</option></select>
         </div>
 
-        <p v-if="wfSettingsError" class="error-text" data-test="wfs-error">{{ wfSettingsError }}</p>
-        <div style="margin-top: 22px">
-          <button class="primary" data-test="wfs-save" :disabled="wfSettingsSaving" @click="saveWfSettings">
-            {{ wfSettingsSaving ? 'Saving…' : 'Save' }}
-          </button>
-        </div>
-      </div>
-    </div>
+        <p v-if="wfSettingsError" class="error-text" role="alert" data-test="wfs-error">{{ wfSettingsError }}</p>
+      <template #footer>
+        <button type="button" :disabled="wfSettingsSaving" @click="wfSettingsOpen = false">Cancel</button>
+        <button class="primary" data-test="wfs-save" :disabled="wfSettingsSaving" @click="saveWfSettings">
+          {{ wfSettingsSaving ? 'Saving…' : 'Save' }}
+        </button>
+      </template>
+    </UiDialog>
 
     <NdvModal />
   </div>
@@ -1967,21 +2031,10 @@ async function loadSavePolicy() {
 }
 .publish-menu { right: 0; top: calc(100% + 6px); left: auto; }
 
-/* Workflow settings 弹窗 */
-.wfs-mask {
-  position: fixed; inset: 0; z-index: 100; background: rgba(0, 0, 0, 0.55);
-  display: flex; align-items: flex-start; justify-content: center; padding-top: 9vh;
-}
-.wfs-card {
-  width: 720px; max-width: 94vw; max-height: 80vh; overflow-y: auto;
-  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
-  padding: 24px 28px 26px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-}
-.wfs-title { margin: 0 0 20px; font-size: 19px; font-weight: 500; color: var(--text-hi); }
-.wfs-id { color: var(--text-faint); font-weight: 400; font-size: 14px; }
+/* Workflow settings / import / description 产品弹窗内容 */
+.dialog-field { display: flex; flex-direction: column; gap: 7px; color: var(--text); font-size: 13px; }
+.dialog-field input, .dialog-field textarea { width: 100%; resize: vertical; }
 .wfs-upgrade { font-size: 11px; font-weight: 400; padding: 1px 8px; margin-left: 6px; border: 1px solid var(--border); border-radius: 6px; color: var(--text-dim); }
-.wfs-x { background: none; border: none; color: var(--text-dim); font-size: 20px; cursor: pointer; padding: 0 6px; line-height: 1; }
-.wfs-x:hover { color: var(--text-hi); }
 .wfs-row { display: flex; align-items: center; gap: 20px; margin-bottom: 14px; }
 .wfs-row label { flex: 0 0 300px; margin: 0; font-size: 13.5px; color: var(--text-hi); line-height: 1.4; }
 .wfs-row select { flex: 1; }

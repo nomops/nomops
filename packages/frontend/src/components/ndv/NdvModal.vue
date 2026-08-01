@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import {
   RETRY_MAX_TRIES_DEFAULT,
@@ -29,6 +29,54 @@ const nodeTypes = useNodeTypesStore();
 const node = computed(() => editor.selectedNode);
 const desc = computed(() => (node.value ? nodeTypes.byType.get(node.value.type) : undefined));
 const tab = ref<'parameters' | 'settings'>('parameters');
+const ndvRoot = ref<HTMLElement | null>(null);
+let previouslyFocused: HTMLElement | null = null;
+
+function focusableElements() {
+  return Array.from(ndvRoot.value?.querySelectorAll<HTMLElement>(
+    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+  ) ?? []);
+}
+
+function onNdvKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    close();
+    return;
+  }
+  if (event.key !== 'Tab') return;
+  const focusable = focusableElements();
+  if (!focusable.length) {
+    event.preventDefault();
+    ndvRoot.value?.focus();
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last?.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first?.focus();
+  }
+}
+
+watch(
+  () => editor.ndvOpen,
+  async (open) => {
+    if (open) {
+      previouslyFocused = document.activeElement as HTMLElement | null;
+      await nextTick();
+      (focusableElements()[0] ?? ndvRoot.value)?.focus();
+    } else {
+      previouslyFocused?.focus();
+      previouslyFocused = null;
+    }
+  },
+  { immediate: true },
+);
+onBeforeUnmount(() => previouslyFocused?.focus());
 
 /* D091:头带 Docs 外链,指向项目自有的节点文档。 */
 const docsUrl = computed(() => 'https://github.com/nomops/nomops/tree/main/docs/03-MODULES.md');
@@ -191,7 +239,15 @@ async function executeStep() {
 
 <template>
   <div v-if="editor.ndvOpen && node" class="ndv-overlay" data-test="ndv-modal" @click.self="close">
-    <div class="ndv">
+    <div
+      ref="ndvRoot"
+      class="ndv"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="`Edit ${node.name}`"
+      tabindex="-1"
+      @keydown="onNdvKeydown"
+    >
       <header class="ndv-head">
         <div class="ndv-title">
           <span class="ndv-node-icon"><IconSvg v-bind="nodeIcon(node.type)" :size="20" /></span>
@@ -205,7 +261,9 @@ async function executeStep() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="ndv-docs-i"><path d="M4 5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" /><path d="M13 3v5h5" /></svg>
             Docs
           </a>
-          <button data-test="ndv-close" @click="close">✕</button>
+          <button class="ndv-close" type="button" aria-label="Close node editor" data-test="ndv-close" @click="close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
+          </button>
         </div>
       </header>
 
@@ -396,6 +454,7 @@ async function executeStep() {
   flex: 1; min-height: 0; margin: 0 25px 25px;
   display: flex; flex-direction: column; overflow: hidden;
 }
+.ndv:focus { outline: none; }
 .ndv-head {
   display: flex; justify-content: space-between; align-items: center;
   height: 66px; flex-shrink: 0; padding: 0 var(--spacing--sm);
@@ -410,6 +469,12 @@ async function executeStep() {
 }
 .ndv-docs:hover { color: var(--color--text--shade-1); background: var(--color--background--light-1); }
 .ndv-docs-i { width: 14px; height: 14px; }
+.ndv-close {
+  width: 28px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  border: none; background: transparent; color: var(--color--text--tint-1);
+}
+.ndv-close:hover { color: var(--color--text--shade-1); background: var(--color--background--light-1); }
+.ndv-close svg { width: 16px; height: 16px; }
 .ndv-wish-row { display: flex; justify-content: center; padding: 18px 0 8px; }
 .ndv-wish { font-size: var(--font-size--2xs); color: var(--color--text--tint-1); cursor: pointer; }
 .ndv-wish:hover { color: var(--color--primary); text-decoration: underline; }
@@ -545,4 +610,11 @@ async function executeStep() {
 .ndv-pin:hover { color: var(--text); border-color: var(--border-strong); }
 .ndv-pin.on { color: var(--accent); border-color: var(--accent); }
 .pin-i { width: 13px; height: 13px; }
+@media (max-width: 900px) {
+  .ndv { margin: 0; }
+  .ndv-body { overflow-x: auto; }
+  .ndv-col.side { flex: 0 0 320px; }
+  .ndv-col.params { min-width: 360px; }
+  .floating-nodes { display: none; }
+}
 </style>
