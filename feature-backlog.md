@@ -262,6 +262,8 @@
 
 > 2026-08-01 UI 顺序改造第 18 项（画布上下文菜单专项）：节点右键菜单与悬浮工具条统一 Execute step 能力判断，模型/记忆子节点不再展示无法执行的入口；将已有 Pin data 能力接入右键菜单，支持执行后 Pin 与已 Pin 节点 Unpin，并隐藏能力子节点不适用入口。画布、便签和节点菜单补语义名称，Escape 可统一关闭。新增 4 项画布回归，生产构建 6/6、全量 1091 项测试通过。
 
+> 2026-08-01 UI 顺序改造第 19 项（画布连线交互专项）：连线透明命中区升级为可聚焦、可命名的键盘入口，Enter、Space 与点击/触摸均可稳定打开中点操作；中点操作建模为 Connection actions 工具条，焦点进入时保持可见，插入节点与删除连线图标按钮补齐独立名称，连线获得可见焦点反馈。新增 4 项连线回归，生产构建 6/6、全量 1095 项测试通过。
+
 - [ ] **66. 执行可视化正确性（串台 + 重连 + 频道）** `M`（🟠 A6）
   踩坑：`packages/frontend/src/stores/execution.ts:44` handleEvent 不按 executionId 过滤（并发执行/多用户高亮串台）；`packages/server/src/ws/push-hub.ts:27` 广播全连接无 workflow 频道；`execution.ts:38` WS 断线不重连（静默丢实时进度）。三者叠加使执行可视化在任意并发/断网下失真。
   → handleEvent 首行按 executionId 过滤（executionStarted 除外）；push-hub 按 workflowId 分频道；WS 加指数退避重连 + 心跳。

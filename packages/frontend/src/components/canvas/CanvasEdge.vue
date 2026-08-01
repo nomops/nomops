@@ -35,6 +35,14 @@ const bezier = computed(() =>
 const path = computed(() => bezier.value[0]);
 const labelX = computed(() => bezier.value[1]);
 const labelY = computed(() => bezier.value[2]);
+
+function toggleTools() {
+  hovered.value = !hovered.value;
+}
+function onToolsFocusOut(event: FocusEvent) {
+  const toolbar = event.currentTarget as HTMLElement;
+  if (!toolbar.contains(event.relatedTarget as Node | null)) hovered.value = false;
+}
 </script>
 
 <template>
@@ -43,22 +51,33 @@ const labelY = computed(() => bezier.value[2]);
   <path
     :d="path"
     class="edge-hit"
+    role="button"
+    tabindex="0"
+    aria-label="Show connection actions"
     @mouseenter="hovered = true"
     @mouseleave="hovered = false"
+    @focus="hovered = true"
+    @click.stop="toggleTools"
+    @keydown.enter.prevent="hovered = true"
+    @keydown.space.prevent="toggleTools"
   />
   <EdgeLabelRenderer>
     <div
       class="edge-tools"
       :class="{ on: hovered }"
+      role="toolbar"
+      aria-label="Connection actions"
       :style="{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }"
       :data-test-edge-tools="id"
       @mouseenter="hovered = true"
       @mouseleave="hovered = false"
+      @focusin="hovered = true"
+      @focusout="onToolsFocusOut"
     >
-      <button class="et-btn" title="Add node" :data-test-edge-insert="id" @click.stop="emit('insert', id)">
+      <button class="et-btn" title="Add node" aria-label="Insert node into connection" :data-test-edge-insert="id" @click.stop="emit('insert', id)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14" /></svg>
       </button>
-      <button class="et-btn danger" title="Delete connection" :data-test-edge-remove="id" @click.stop="emit('remove', id)">
+      <button class="et-btn danger" title="Delete connection" aria-label="Delete connection" :data-test-edge-remove="id" @click.stop="emit('remove', id)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
       </button>
     </div>
@@ -68,6 +87,7 @@ const labelY = computed(() => bezier.value[2]);
 <style scoped>
 /* 透明加宽交互带(不改视觉,只扩大命中区) */
 .edge-hit { fill: none; stroke: transparent; stroke-width: 18px; pointer-events: stroke; cursor: pointer; }
+.edge-hit:focus-visible { stroke: var(--canvas--color--selected-transparent); stroke-width: 8px; outline: none; }
 
 .edge-tools {
   position: absolute; z-index: 8; display: flex; gap: 4px; padding: 2px;
@@ -76,7 +96,7 @@ const labelY = computed(() => bezier.value[2]);
   border-radius: var(--radius);
   opacity: 0; pointer-events: none; transition: opacity 0.1s;
 }
-.edge-tools.on { opacity: 1; pointer-events: all; }
+.edge-tools.on, .edge-tools:focus-within { opacity: 1; pointer-events: all; }
 .et-btn {
   width: 20px; height: 20px; padding: 0; display: flex; align-items: center; justify-content: center;
   background: none; border: none; border-radius: var(--radius);
