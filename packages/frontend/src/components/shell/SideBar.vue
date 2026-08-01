@@ -204,11 +204,12 @@ async function openAbout() {
     :class="{ collapsed }"
     :style="collapsed ? undefined : { width: `${ui.sidebarWidth}px` }"
     data-test="sidebar"
+    aria-label="Primary navigation"
     @click="closeAll"
   >
     <!-- D002 修正(基线 ResizeWrapper):右缘拖拽调宽 200–500;
          折叠态拖过 100px 自动展开,展开态拖到 100px 内自动折叠 -->
-    <div class="sidebar-resizer" data-test="sidebar-resizer" @pointerdown.prevent="startResize" />
+    <div class="sidebar-resizer" data-test="sidebar-resizer" aria-hidden="true" @pointerdown.prevent="startResize" />
     <!-- 品牌 + 顶栏工具 -->
     <div class="brand-row">
       <RouterLink class="brand" :to="{ name: 'overview' }" title="nomops">
@@ -230,34 +231,34 @@ async function openAbout() {
       <!-- 顶部工具:+/搜索/折叠开关。折叠态竖排(对标基线折叠列仍含这三个图标) -->
       <div class="brand-tools" @click.stop>
         <div class="flyout-anchor">
-          <button class="icon-btn" data-test="quick-create" :title="t('Create')" @click.stop="quickOpen = !quickOpen; flyout = null">
+          <button class="icon-btn" data-test="quick-create" :title="t('Create')" :aria-label="t('Create')" aria-controls="quick-create-menu" :aria-expanded="quickOpen" @click.stop="quickOpen = !quickOpen; flyout = null">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14" /></svg>
           </button>
           <!-- D008/D010 对标基线:+ 菜单项**无尾部 ›**(live 实测基线 5 项、宽 198,均无 chevron) -->
-          <div v-if="quickOpen" class="flyout quick" data-test="quick-menu" @click.stop>
-            <button class="flyout-item qc" data-test="quick-workflow" @click="quickNewWorkflow">{{ t('New workflow') }}</button>
-            <button class="flyout-item qc" data-test="quick-credential" @click="quickNewCredential">{{ t('New credential') }}</button>
-            <button class="flyout-item qc" data-test="quick-datatable" @click="quickNewDataTable">{{ t('New data table') }}</button>
+          <div v-if="quickOpen" id="quick-create-menu" class="flyout quick" role="menu" data-test="quick-menu" @click.stop>
+            <button class="flyout-item qc" role="menuitem" data-test="quick-workflow" @click="quickNewWorkflow">{{ t('New workflow') }}</button>
+            <button class="flyout-item qc" role="menuitem" data-test="quick-credential" @click="quickNewCredential">{{ t('New credential') }}</button>
+            <button class="flyout-item qc" role="menuitem" data-test="quick-datatable" @click="quickNewDataTable">{{ t('New data table') }}</button>
             <!-- D009 对标基线:New project 带 Enterprise 徽章且置灰不可点 -->
-            <button v-if="projects.hasFeature('rbac')" class="flyout-item qc" data-test="quick-project" @click="quickNewProject">
+            <button v-if="projects.hasFeature('rbac')" class="flyout-item qc" role="menuitem" data-test="quick-project" @click="quickNewProject">
               {{ t('New project') }}
             </button>
-            <span v-else class="flyout-item qc disabled" data-test="quick-project" :title="t('Available on the Enterprise plan')">
+            <span v-else class="flyout-item qc disabled" role="menuitem" aria-disabled="true" data-test="quick-project" :title="t('Available on the Enterprise plan')">
               {{ t('New project') }}<span class="qc-enterprise">{{ t('Enterprise') }}</span>
             </span>
           </div>
         </div>
-        <button class="icon-btn" data-test="sidebar-search" :title="t('Search (⌘K)')" @click.stop="ui.openPalette()">
+        <button class="icon-btn" data-test="sidebar-search" :title="t('Search (⌘K)')" :aria-label="t('Search (⌘K)')" @click.stop="ui.openPalette()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
         </button>
-        <button class="icon-btn" data-test="sidebar-collapse" :title="collapsed ? t('Expand') : t('Collapse')" @click.stop="ui.toggleSidebar()">
+        <button class="icon-btn" data-test="sidebar-collapse" :title="collapsed ? t('Expand') : t('Collapse')" :aria-label="collapsed ? t('Expand') : t('Collapse')" :aria-pressed="collapsed" @click.stop="ui.toggleSidebar()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /></svg>
         </button>
       </div>
     </div>
 
     <!-- 顶部导航 -->
-    <RouterLink class="nav-item" :class="{ active: (route.name === 'overview' && !route.query.project) || route.name === 'canvas' }" :to="{ name: 'overview' }" :title="t('Overview')">
+    <RouterLink class="nav-item" :class="{ active: route.name === 'overview' && !route.query.project }" :aria-current="route.name === 'overview' && !route.query.project ? 'page' : undefined" :to="{ name: 'overview' }" :title="t('Overview')">
       <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V20h14V9.5" /></svg>
       <span class="lbl">{{ t('Overview') }}</span>
     </RouterLink>
@@ -267,6 +268,7 @@ async function openAbout() {
       v-if="personalProject"
       class="nav-item"
       :class="{ active: route.name === 'overview' && route.query.project === personalProject.id }"
+      :aria-current="route.name === 'overview' && route.query.project === personalProject.id ? 'page' : undefined"
       data-test="nav-personal"
       :title="t('Personal')"
       @click="switchProject(personalProject.id)"
@@ -275,27 +277,27 @@ async function openAbout() {
       <span class="lbl">{{ t('Personal') }}</span>
     </button>
 
-    <RouterLink v-if="chatEnabled" class="nav-item" :class="{ active: route.name === 'chat' }" :title="t('Chat')" data-test="nav-chat" :to="{ name: 'chat' }">
+    <RouterLink v-if="chatEnabled" class="nav-item" :class="{ active: route.name === 'chat' }" :aria-current="route.name === 'chat' ? 'page' : undefined" :title="t('Chat')" data-test="nav-chat" :to="{ name: 'chat' }">
       <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14a2 2 0 0 1-2 2H8l-4 3.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z" /></svg>
       <span class="lbl">{{ t('Chat') }}</span>
       <span v-if="!collapsed" class="badge-preview">{{ t('Preview') }}</span>
     </RouterLink>
 
     <!-- Agents 平台（#44 M1） -->
-    <RouterLink class="nav-item" :class="{ active: route.name === 'agents' }" :title="t('Agents')" data-test="nav-agents" :to="{ name: 'agents' }">
+    <RouterLink class="nav-item" :class="{ active: route.name === 'agents' }" :aria-current="route.name === 'agents' ? 'page' : undefined" :title="t('Agents')" data-test="nav-agents" :to="{ name: 'agents' }">
       <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="2" /><path d="M12 8V4M9 14h.01M15 14h.01" /></svg>
       <span class="lbl">{{ t('Agents') }}</span>
     </RouterLink>
 
     <!-- AI 建流会话（#45 M1） -->
-    <RouterLink v-if="chatEnabled" class="nav-item" :class="{ active: route.name === 'builder' }" :title="t('AI Builder')" data-test="nav-builder" :to="{ name: 'builder' }">
+    <RouterLink v-if="chatEnabled" class="nav-item" :class="{ active: route.name === 'builder' }" :aria-current="route.name === 'builder' ? 'page' : undefined" :title="t('AI Builder')" data-test="nav-builder" :to="{ name: 'builder' }">
       <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5z" /></svg>
       <span class="lbl">{{ t('AI Builder') }}</span>
       <span v-if="!collapsed" class="badge-preview">{{ t('Preview') }}</span>
     </RouterLink>
 
     <!-- 实例助手 · 有检查点的 AI 线程（#45 M2） -->
-    <RouterLink v-if="chatEnabled" class="nav-item" :class="{ active: route.name === 'instanceAi' }" :title="t('Assistant')" data-test="nav-assistant" :to="{ name: 'instanceAi' }">
+    <RouterLink v-if="chatEnabled" class="nav-item" :class="{ active: route.name === 'instanceAi' }" :aria-current="route.name === 'instanceAi' ? 'page' : undefined" :title="t('Assistant')" data-test="nav-assistant" :to="{ name: 'instanceAi' }">
       <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a4 4 0 0 1 4 4v1a4 4 0 0 1-8 0V7a4 4 0 0 1 4-4zM5 21v-1a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v1M9 11l2 2 4-4" /></svg>
       <span class="lbl">{{ t('Assistant') }}</span>
       <span v-if="!collapsed" class="badge-preview">{{ t('Preview') }}</span>
@@ -306,7 +308,7 @@ async function openAbout() {
     <!-- 团队项目 -->
     <template v-if="teamProjects.length">
       <div v-if="!collapsed" class="nav-section">{{ t('Projects') }}</div>
-      <button v-for="p in teamProjects" :key="p.id" class="nav-item" :class="{ active: route.name === 'overview' && route.query.project === p.id }" :data-test-project="p.id" :title="p.name" @click="switchProject(p.id)">
+      <button v-for="p in teamProjects" :key="p.id" class="nav-item" :class="{ active: route.name === 'overview' && route.query.project === p.id }" :aria-current="route.name === 'overview' && route.query.project === p.id ? 'page' : undefined" :data-test-project="p.id" :title="p.name" @click="switchProject(p.id)">
         <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3" /><path d="M2 20c0-3.2 2.6-5 5.5-5 1 0 1.9.2 2.7.6" /><circle cx="17" cy="10" r="2.6" /><path d="M12.5 20c0-2.8 2.2-4.4 4.7-4.4S22 17.2 22 20" /></svg>
         <span class="lbl">{{ p.name }}</span>
       </button>
@@ -327,7 +329,7 @@ async function openAbout() {
       </RouterLink>
 
       <div class="flyout-anchor" @mouseenter="flyoutEnter('help')" @mouseleave="flyoutLeave">
-        <button class="nav-item" data-test="help-menu" :title="t('Help')" @click.stop="toggleFlyout('help')">
+        <button class="nav-item" data-test="help-menu" :title="t('Help')" aria-controls="help-flyout" :aria-expanded="flyout === 'help'" @click.stop="toggleFlyout('help')">
           <span class="ico-wrap">
             <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.8.4-1 .8-1 1.7" /><path d="M12 17h.01" /></svg>
             <span v-if="newsUnread" class="news-dot" data-test="news-dot" />
@@ -337,7 +339,7 @@ async function openAbout() {
         </button>
         <!-- D012–D015 对标基线 Help 菜单:Quickstart/Documentation/Forum/Course/Report a bug 外链自有仓库(见 lib/links.ts);
              About 保留 nomops 品牌;底部 What's new 分组(新闻标题 + Full changelog + Update)。 -->
-        <div v-if="flyout === 'help'" class="flyout" data-test="help-flyout" @click.stop>
+        <div v-if="flyout === 'help'" id="help-flyout" class="flyout" data-test="help-flyout" @click.stop>
           <a class="flyout-item" :href="HELP_LINKS.quickstart" target="_blank" rel="noopener" data-test="help-quickstart" @click="closeAll">{{ t('Quickstart') }}</a>
           <a class="flyout-item" :href="HELP_LINKS.documentation" target="_blank" rel="noopener" data-test="help-docs" @click="closeAll">{{ t('Documentation') }}</a>
           <a class="flyout-item" :href="HELP_LINKS.forum" target="_blank" rel="noopener" data-test="help-forum" @click="closeAll">{{ t('Forum') }}</a>
@@ -354,12 +356,12 @@ async function openAbout() {
       </div>
 
       <div class="flyout-anchor" @mouseenter="flyoutEnter('settings')" @mouseleave="flyoutLeave">
-        <button class="nav-item" :class="{ active: route.name === 'settings' }" data-test="settings-menu" :title="t('Settings')" @click.stop="toggleFlyout('settings')">
+        <button class="nav-item" :class="{ active: route.name === 'settings' }" :aria-current="route.name === 'settings' ? 'page' : undefined" data-test="settings-menu" :title="t('Settings')" aria-controls="settings-flyout" :aria-expanded="flyout === 'settings'" @click.stop="toggleFlyout('settings')">
           <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2" /><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.5-2-3.4-2.3 1a7.6 7.6 0 0 0-1.7-1L15 3H11l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.3-1-2 3.4L4.6 11a7.6 7.6 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7.6 7.6 0 0 0 1.7 1L11 21h4l.4-2.6a7.6 7.6 0 0 0 1.7-1l2.3 1 2-3.4-2-1.5z" /></svg>
           <span class="lbl">{{ t('Settings') }}</span>
           <svg v-if="!collapsed" class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6" /></svg>
         </button>
-        <div v-if="flyout === 'settings'" class="flyout flyout-bare" @click.stop>
+        <div v-if="flyout === 'settings'" id="settings-flyout" class="flyout flyout-bare" @click.stop>
           <SettingsMenu @close="closeAll" />
         </div>
       </div>

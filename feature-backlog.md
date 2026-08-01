@@ -248,6 +248,8 @@
 
 > 2026-08-01 UI 顺序改造第 11 项（AI Builder）：修复 `/builder/:id` 深链仅声明路由却不选中会话的问题，列表选择同步 URL；会话列表、详情、对话和草稿预览补齐加载/错误/空态及重试，版本恢复增加影响确认并与新建、应用工作流、丢弃会话统一 Toast，关闭字符替换为可访问 SVG。三栏在平板重排、手机纵向堆叠。新增 5 项视图契约回归，生产构建 6/6、全量 1059 项测试通过。
 
+> 2026-08-01 UI 顺序改造第 12 项（全局 Shell / 导航）：补齐 Agents、AI Builder、Assistant、Data table 与 SSO 完成页的浏览器标题；应用外壳增加跳转主内容链接、main landmark 和路由读屏播报；侧栏修正画布误高亮 Overview，当前项统一 `aria-current`，图标按钮、折叠菜单补齐可访问名称与展开状态；命令面板按 dialog + combobox + listbox 语义接线。新增 5 项视图契约回归，生产构建 6/6、全量 1064 项测试通过。
+
 - [ ] **66. 执行可视化正确性（串台 + 重连 + 频道）** `M`（🟠 A6）
   踩坑：`packages/frontend/src/stores/execution.ts:44` handleEvent 不按 executionId 过滤（并发执行/多用户高亮串台）；`packages/server/src/ws/push-hub.ts:27` 广播全连接无 workflow 频道；`execution.ts:38` WS 断线不重连（静默丢实时进度）。三者叠加使执行可视化在任意并发/断网下失真。
   → handleEvent 首行按 executionId 过滤（executionStarted 除外）；push-hub 按 workflowId 分频道；WS 加指数退避重连 + 心跳。

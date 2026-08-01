@@ -66,6 +66,11 @@ const ROUTE_TITLE: Record<string, string> = {
   projects: 'Projects',
   audit: 'Audit',
   templates: 'Templates',
+  agents: 'Agents',
+  builder: 'AI Builder',
+  instanceAi: 'Assistant',
+  datatable: 'Data table',
+  ssoDone: 'Completing sign in',
   login: 'Sign in',
   signup: 'Sign up',
 };

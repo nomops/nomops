@@ -161,7 +161,8 @@ function onKey(e: KeyboardEvent) {
 
 <template>
   <div v-if="ui.paletteOpen" class="palette-overlay" data-test="command-palette" @click.self="ui.closePalette()">
-    <div class="palette">
+    <section class="palette" role="dialog" aria-modal="true" aria-labelledby="command-palette-title">
+      <h2 id="command-palette-title" class="sr-only">Command palette</h2>
       <div class="palette-search">
         <!-- D026:上下文徽标(工作流内打开时显示 "Workflow · 名称") -->
         <span v-if="ui.paletteContextLabel" class="palette-ctx" data-test="palette-ctx">{{ ui.paletteContextLabel }}</span>
@@ -170,11 +171,16 @@ function onKey(e: KeyboardEvent) {
           v-model="query"
           data-test="palette-input"
           placeholder="Type a command or search..."
+          role="combobox"
+          aria-autocomplete="list"
+          aria-controls="command-palette-results"
+          aria-expanded="true"
+          :aria-activedescendant="results[active] ? `command-result-${active}` : undefined"
           @keydown="onKey"
         />
         <span class="kbd">esc</span>
       </div>
-      <div class="palette-list">
+      <div id="command-palette-results" class="palette-list" role="listbox" aria-label="Command results">
         <template v-for="g in groups" :key="g.label">
           <div class="palette-group-label">{{ g.label }}</div>
           <button
@@ -183,6 +189,9 @@ function onKey(e: KeyboardEvent) {
             class="palette-item"
             :class="{ active: results.indexOf(item) === active }"
             :data-test-palette-item="item.label"
+            :id="`command-result-${results.indexOf(item)}`"
+            role="option"
+            :aria-selected="results.indexOf(item) === active"
             @mouseenter="active = results.indexOf(item)"
             @click="item.run()"
           >
@@ -198,7 +207,7 @@ function onKey(e: KeyboardEvent) {
         </template>
         <p v-if="results.length === 0" class="dim" style="padding: 20px; text-align: center">No results</p>
       </div>
-    </div>
+    </section>
   </div>
 </template>
 

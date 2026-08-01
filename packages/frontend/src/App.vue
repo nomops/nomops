@@ -10,6 +10,7 @@ import CommandPalette from './components/shell/CommandPalette.vue';
 import UiConfirmHost from './components/ui/UiConfirmHost.vue';
 import UiToastHost from './components/ui/UiToastHost.vue';
 import UiInputHost from './components/ui/UiInputHost.vue';
+import { titleFor } from './router.js';
 
 const auth = useAuthStore();
 const projects = useProjectsStore();
@@ -26,6 +27,7 @@ async function hydratePrefs() {
 const showShell = computed(() => Boolean(auth.token));
 // 整页接管路由（对标基线）：Chat 与 Settings 用专属侧栏替换主侧栏
 const chatHubTakeover = computed(() => route.name === 'chat' || route.name === 'settings');
+const currentPageTitle = computed(() => titleFor(route) || 'nomops');
 
 onMounted(() => {
   if (auth.token) {
@@ -48,14 +50,16 @@ watch(
 <template>
   <!-- app 外壳：左侧边栏 + 主区。营销全幅页 / 登录态外则走裸 RouterView -->
   <div v-if="showShell" class="app-shell">
+    <a class="skip-link" href="#main-content">Skip to main content</a>
     <SideBar v-if="!chatHubTakeover" />
-    <div class="app-main">
+    <main id="main-content" class="app-main" tabindex="-1">
+      <span class="sr-only" role="status" aria-live="polite">{{ currentPageTitle }}</span>
       <RouterView
         :style="chatHubTakeover
           ? 'flex: 1; min-height: 0; display: flex; overflow: hidden'
           : 'flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto'"
       />
-    </div>
+    </main>
     <CommandPalette />
   </div>
   <RouterView v-else />
