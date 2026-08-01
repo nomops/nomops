@@ -236,6 +236,8 @@
 
 > 2026-08-01 UI 顺序改造第 5 项（Variables / Data tables）：变量创建/保存/删除补齐 Toast，删除前说明 `$vars` 引用影响，引用代码支持一键复制，空态用主题 SVG；数据表详情新增加载/致命错误/操作错误/空表/搜索无结果状态，重命名迁入 `UiDialog`，表/列/行删除迁入产品内确认，各项写操作补齐反馈并适配窄屏工具栏。尚无导入实现的 CSV 选项明确禁用并标注 Coming soon，避免误导。新增 5 项视图契约回归，生产构建 6/6、全量 1028 项测试通过；浏览器实测变量空态、数据表空态和创建弹窗禁用状态正常。
 
+> 2026-08-01 UI 顺序改造第 6 项（Projects / Shared）：Projects 页把页头常驻名称输入改为 `UiDialog` 创建流，加载/失败/空态分离，成员新增、角色变更、移除补齐反馈且移除前说明访问影响；表格与成员区适配窄屏。Shared 页不再把请求失败伪装成空列表，新增加载/错误/重试状态，Create workflow 改为真正创建并进入编辑器，移除无行为的 Update filters 链接并补齐移动端行布局。新增 5 项视图契约回归，生产构建 6/6、全量 1033 项测试通过；浏览器在登录态过期条件下实测两页错误态与重试入口正常。
+
 - [ ] **66. 执行可视化正确性（串台 + 重连 + 频道）** `M`（🟠 A6）
   踩坑：`packages/frontend/src/stores/execution.ts:44` handleEvent 不按 executionId 过滤（并发执行/多用户高亮串台）；`packages/server/src/ws/push-hub.ts:27` 广播全连接无 workflow 频道；`execution.ts:38` WS 断线不重连（静默丢实时进度）。三者叠加使执行可视化在任意并发/断网下失真。
   → handleEvent 首行按 executionId 过滤（executionStarted 除外）；push-hub 按 workflowId 分频道；WS 加指数退避重连 + 心跳。

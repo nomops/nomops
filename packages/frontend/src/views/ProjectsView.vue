@@ -2,22 +2,35 @@
 import { onMounted, ref } from 'vue';
 import { api, type MemberRow } from '../api/client.js';
 import { useProjectsStore } from '../stores/projects.js';
+import { useUiStore } from '../stores/ui.js';
+import UiDialog from '../components/ui/UiDialog.vue';
+import UiState from '../components/ui/UiState.vue';
 
 const projects = useProjectsStore();
+const ui = useUiStore();
 
 /** projectId → 本月用量（owner 项目才拉，docs/08）。 */
 const usageById = ref<Record<string, { used: number; limit: number | null; plan: string }>>({});
 
 const newName = ref('');
 const error = ref('');
+const loading = ref(true);
+const createOpen = ref(false);
+const creating = ref(false);
 const expandedId = ref<string | null>(null);
 const members = ref<MemberRow[]>([]);
 const memberEmail = ref('');
 const memberRole = ref('project:editor');
 
 onMounted(async () => {
-  await projects.fetch();
-  await loadUsage();
+  try {
+    await projects.fetch();
+    await loadUsage();
+  } catch (e) {
+    error.value = (e as Error).message;
+  } finally {
+    loading.value = false;
+  }
 });
 
 async function loadUsage() {
@@ -37,12 +50,20 @@ function usageLabel(projectId: string): string {
 }
 
 async function createProject() {
+  const name = newName.value.trim();
+  if (!name || creating.value) return;
   error.value = '';
+  creating.value = true;
   try {
-    await projects.createProject(newName.value.trim() || 'New team project');
+    await projects.createProject(name);
     newName.value = '';
+    createOpen.value = false;
+    await loadUsage();
+    ui.notify({ kind: 'success', title: 'Project created', message: name });
   } catch (e) {
     error.value = (e as Error).message;
+  } finally {
+    creating.value = false;
   }
 }
 
@@ -67,6 +88,7 @@ async function addMember() {
     await api.projects.addMember(expandedId.value, memberEmail.value, memberRole.value);
     members.value = await api.projects.members(expandedId.value);
     memberEmail.value = '';
+    ui.notify({ kind: 'success', title: 'Project member added' });
   } catch (e) {
     error.value = (e as Error).message;
   }
@@ -78,6 +100,7 @@ async function changeRole(userId: string, event: Event) {
   try {
     await api.projects.updateMember(expandedId.value, userId, (event.target as HTMLSelectElement).value);
     members.value = await api.projects.members(expandedId.value);
+    ui.notify({ kind: 'success', title: 'Member role updated' });
   } catch (e) {
     error.value = (e as Error).message;
     members.value = await api.projects.members(expandedId.value);
@@ -86,10 +109,19 @@ async function changeRole(userId: string, event: Event) {
 
 async function removeMember(userId: string) {
   if (!expandedId.value) return;
+  const member = members.value.find((item) => item.userId === userId);
+  const confirmed = await ui.requestConfirm({
+    title: 'Remove project member?',
+    message: `${member?.email ?? 'This member'} will immediately lose access to this project.`,
+    confirmLabel: 'Remove',
+    tone: 'danger',
+  });
+  if (!confirmed) return;
   error.value = '';
   try {
     await api.projects.removeMember(expandedId.value, userId);
     members.value = await api.projects.members(expandedId.value);
+    ui.notify({ kind: 'success', title: 'Project member removed', message: member?.email });
   } catch (e) {
     error.value = (e as Error).message;
   }
@@ -109,13 +141,7 @@ const roleLabel: Record<string, string> = {
       <h1>Projects</h1>
       <div class="head-actions">
         <template v-if="projects.hasFeature('rbac')">
-          <input
-            v-model="newName"
-            class="new-name"
-            placeholder="Team project name"
-            data-test="new-project-name"
-          />
-          <button class="primary btn-new" data-test="create-project" @click="createProject">
+          <button class="primary btn-new" data-test="create-project" @click="createOpen = true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="ic14"><path d="M12 5v14M5 12h14" /></svg>
             New project
           </button>
@@ -126,10 +152,17 @@ const roleLabel: Record<string, string> = {
       </div>
     </div>
 
-    <p v-if="error" class="error-text" data-test="projects-error">{{ error }}</p>
+    <p v-if="error && projects.projects.length" class="error-text" role="alert" data-test="projects-error">{{ error }}</p>
 
     <!-- ── Table ── -->
-    <div class="card" style="padding: 0">
+    <UiState v-if="loading" kind="loading" title="Loading projects" description="Fetching your project access and monthly usage…" />
+    <UiState v-else-if="error && !projects.projects.length" kind="error" title="Could not load projects" :description="error">
+      <button class="primary" @click="$router.go(0)">Retry</button>
+    </UiState>
+    <UiState v-else-if="!projects.projects.length" title="No projects yet" description="Create a team project to organize workflows, credentials, and members.">
+      <button v-if="projects.hasFeature('rbac')" class="primary" @click="createOpen = true">Create project</button>
+    </UiState>
+    <div v-else class="card projects-table-wrap" style="padding: 0">
       <table data-test="projects-table">
         <thead>
           <tr>
@@ -203,6 +236,15 @@ const roleLabel: Record<string, string> = {
         </tbody>
       </table>
     </div>
+
+    <UiDialog :open="createOpen" title="Create team project" description="Projects keep workflows, credentials, and access separate." width="440px" test-id="projects-create-dialog" @close="createOpen = false">
+      <label class="dialog-label" for="project-name-input">Project name</label>
+      <input id="project-name-input" v-model="newName" class="dialog-input" placeholder="Team project name" data-test="new-project-name" autofocus @keyup.enter="createProject" />
+      <template #footer>
+        <button @click="createOpen = false">Cancel</button>
+        <button class="primary" data-test="create-project-submit" :disabled="!newName.trim() || creating" @click="createProject">{{ creating ? 'Creating…' : 'Create project' }}</button>
+      </template>
+    </UiDialog>
   </div>
 </template>
 
@@ -213,7 +255,6 @@ const roleLabel: Record<string, string> = {
 .head { display: flex; align-items: center; gap: 16px; margin-bottom: 22px; }
 .head h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.2px; color: var(--text-hi); }
 .head-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
-.new-name { width: 220px; }
 .btn-new { display: inline-flex; align-items: center; gap: 6px; }
 .upsell { font-size: 12px; color: var(--text-faint); text-align: right; }
 
@@ -232,4 +273,18 @@ const roleLabel: Record<string, string> = {
 .members-table tr:last-child td { border-bottom: none; }
 .add-row { display: flex; gap: 8px; margin-top: 12px; }
 .add-role { width: 140px; }
+.projects-table-wrap { overflow-x: auto; }
+.projects-table-wrap > table { min-width: 720px; }
+.dialog-label { display: block; margin-bottom: var(--spacing--2xs); color: var(--text-dim); font-size: var(--font-size--xs); }
+.dialog-input { width: 100%; height: 36px; padding: 0 var(--spacing--xs); border: 1px solid var(--border); border-radius: var(--radius--2xs); background: var(--bg-input); color: var(--text-hi); font: inherit; }
+.dialog-input:focus { outline: none; border-color: var(--accent); }
+
+@media (max-width: 720px) {
+  .page-wrap { padding: var(--spacing--sm); }
+  .head { align-items: flex-start; }
+  .upsell { max-width: 220px; }
+  .add-row { flex-wrap: wrap; }
+  .add-row input { flex: 1 1 100%; }
+  .add-role { flex: 1; }
+}
 </style>

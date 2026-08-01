@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router';
 import { api, type CredentialView, type WorkflowRow } from '../api/client.js';
 import { credentialIcon } from '../lib/icons.js';
 import IconSvg from '../components/IconSvg.vue';
+import UiState from '../components/ui/UiState.vue';
+import { useUiStore } from '../stores/ui.js';
 
 /**
  * Shared with you — 对标基线 /shared/workflows | /shared/credentials。
@@ -11,22 +13,27 @@ import IconSvg from '../components/IconSvg.vue';
  */
 const route = useRoute();
 const router = useRouter();
+const ui = useUiStore();
 const tab = computed<'workflows' | 'credentials'>(() => (route.path.includes('credentials') ? 'credentials' : 'workflows'));
 const noun = computed(() => (tab.value === 'credentials' ? 'credential' : 'workflow'));
 
 const workflows = ref<WorkflowRow[]>([]);
 const credentials = ref<CredentialView[]>([]);
 const loading = ref(true);
+const error = ref('');
 
 async function load() {
   loading.value = true;
+  error.value = '';
   try {
     const [wfs, creds] = await Promise.all([
-      api.shared.workflows().catch(() => [] as WorkflowRow[]),
-      api.shared.credentials().catch(() => [] as CredentialView[]),
+      api.shared.workflows(),
+      api.shared.credentials(),
     ]);
     workflows.value = wfs.filter((w) => !w.archived);
     credentials.value = creds;
+  } catch (e) {
+    error.value = (e as Error).message;
   } finally {
     loading.value = false;
   }
@@ -41,7 +48,12 @@ const isEmpty = computed(() =>
 const fmtWhen = (iso: string | null | undefined): string => (iso ? new Date(iso).toLocaleDateString() : '—');
 
 async function createWorkflow() {
-  await router.push('/');
+  try {
+    const workflow = await api.workflows.create({ name: 'My workflow', nodes: [], connections: {} });
+    await router.push({ name: 'canvas', params: { id: workflow.id } });
+  } catch (e) {
+    ui.notify({ kind: 'error', title: 'Could not create workflow', message: (e as Error).message });
+  }
 }
 </script>
 
@@ -61,11 +73,16 @@ async function createWorkflow() {
     </div>
 
     <div v-if="tab === 'workflows'" class="notice" data-test="shared-archived-notice">
-      Archived workflows are hidden in this view. <a href="#" class="link" @click.prevent>Update filters</a>
+      Archived workflows are hidden in this view.
     </div>
 
+    <UiState v-if="loading" kind="loading" title="Loading shared resources" description="Fetching workflows and credentials shared with your project…" />
+    <UiState v-else-if="error" kind="error" title="Could not load shared resources" :description="error">
+      <button class="btn" @click="load">Retry</button>
+    </UiState>
+
     <!-- 受享清单（真数据;受享方可开可跑,删除/再共享仍归 owner 项目） -->
-    <template v-if="!loading && !isEmpty">
+    <template v-else-if="!isEmpty">
       <div v-if="tab === 'workflows'" class="rows" data-test="shared-workflows">
         <RouterLink v-for="w in workflows" :key="w.id" class="row" :to="`/workflow/${w.id}`" :data-test-shared-wf="w.id">
           <span class="row-name">{{ w.name }}</span>
@@ -81,10 +98,9 @@ async function createWorkflow() {
       </div>
     </template>
 
-    <div v-else-if="!loading" class="empty" data-test="shared-empty">
-      <p class="empty-text">No {{ noun }} has been shared with you</p>
+    <UiState v-else :title="`No ${noun} has been shared with you`" description="Shared resources will appear here without exposing credential secrets." data-test="shared-empty">
       <RouterLink class="link back" to="/" data-test="shared-back">Back to Personal</RouterLink>
-    </div>
+    </UiState>
   </div>
 </template>
 
@@ -117,10 +133,12 @@ async function createWorkflow() {
 .row:hover { border-color: var(--border-strong); }
 .row-name { font-weight: var(--font-weight--medium); color: var(--color--text--shade-1); }
 .row-meta { margin-left: auto; font-size: var(--font-size--2xs); }
-.empty {
-  display: flex; flex-direction: column; align-items: center; gap: 10px;
-  padding: 96px 24px; text-align: center;
-}
-.empty-text { margin: 0; font-size: var(--font-size--md); color: var(--text-dim); }
 .back { font-size: var(--font-size--sm); }
+@media (max-width: 720px) {
+  .shared { padding: var(--spacing--sm); }
+  .head { align-items: center; }
+  .sub { display: none; }
+  .row { align-items: flex-start; flex-wrap: wrap; }
+  .row-meta { width: 100%; margin-left: 0; }
+}
 </style>
