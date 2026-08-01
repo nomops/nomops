@@ -16,9 +16,11 @@ import {
   type WorkflowMetaRow,
 } from '../api/client.js';
 import { useProjectsStore } from '../stores/projects.js';
+import { useUiStore } from '../stores/ui.js';
 import CredentialModal from '../components/credentials/CredentialModal.vue';
 import StatsBar from '../components/shell/StatsBar.vue';
 import IconSvg from '../components/IconSvg.vue';
+import UiDialog from '../components/ui/UiDialog.vue';
 import { credentialTypeMeta } from '../lib/credential-types.js';
 import { credentialIcon } from '../lib/icons.js';
 import { locale, t } from '../lib/i18n.js';
@@ -32,6 +34,7 @@ type StatusFilter = 'all' | 'published' | 'unpublished';
 const route = useRoute();
 const router = useRouter();
 const projects = useProjectsStore();
+const ui = useUiStore();
 
 const tab = ref<Tab>((route.query['tab'] as Tab) ?? 'workflows');
 const search = ref('');
@@ -179,8 +182,16 @@ function openDataTable(id: string) {
 }
 async function deleteDataTable(id: string) {
   closeMenus();
+  const confirmed = await ui.requestConfirm({
+    title: t('Delete data table?'),
+    message: t('This permanently deletes the table and all of its rows.'),
+    confirmLabel: t('Delete'),
+    tone: 'danger',
+  });
+  if (!confirmed) return;
   await api.dataTables.remove(id).catch((err) => (dtError.value = (err as Error).message));
   await loadDataTables();
+  if (!dtError.value) ui.notify({ kind: 'success', title: t('Data table deleted') });
 }
 
 /* 弹层：create 下拉 / 排序 / 某行的 ⋮ 菜单 */
@@ -252,6 +263,16 @@ async function createTag() {
   }
 }
 async function deleteTag(id: string) {
+  const tag = allTags.value.find((item) => item.id === id);
+  const confirmed = await ui.requestConfirm({
+    title: t('Delete tag?'),
+    message: tag
+      ? t('“{name}” will be removed from every workflow that uses it.', { name: tag.name })
+      : t('This tag will be removed from every workflow that uses it.'),
+    confirmLabel: t('Delete'),
+    tone: 'danger',
+  });
+  if (!confirmed) return;
   tagError.value = '';
   try {
     await api.tags.remove(id);
@@ -272,6 +293,7 @@ async function saveWorkflowTags() {
     await api.tags.setForWorkflow(wf.id, [...managedTagIds.value]);
     managingTagsFor.value = null;
     await loadTagsMeta();
+    ui.notify({ kind: 'success', title: t('Tags updated'), message: wf.name });
   } catch (err) {
     tagError.value = (err as Error).message;
   }
@@ -413,6 +435,9 @@ const folderModalOpen = ref(false);
 const folderNameDraft = ref('');
 const folderModalError = ref('');
 const currentFolderName = computed(() => folders.value.find((f) => f.id === currentFolderId.value)?.name ?? null);
+const folderDialogTitle = computed(() => currentFolderName.value
+  ? t("Create folder in '{parent}'", { parent: currentFolderName.value })
+  : t('Create a new folder here'));
 function openCreateFolder() {
   folderNameDraft.value = '';
   folderModalError.value = '';
@@ -425,15 +450,23 @@ async function confirmCreateFolder() {
     await api.folders.create(name, currentFolderId.value);
     folderModalOpen.value = false;
     await reload();
+    ui.notify({ kind: 'success', title: t('Folder created'), message: name });
   } catch (e) {
     folderModalError.value = (e as Error).message;
   }
 }
 async function deleteFolder(id: string) {
-  if (!window.confirm(t('Delete this folder? It must be empty.'))) return;
+  const confirmed = await ui.requestConfirm({
+    title: t('Delete folder?'),
+    message: t('The folder must be empty before it can be deleted.'),
+    confirmLabel: t('Delete'),
+    tone: 'danger',
+  });
+  if (!confirmed) return;
   try {
     await api.folders.remove(id);
     await reload();
+    ui.notify({ kind: 'success', title: t('Folder deleted') });
   } catch (e) {
     error.value = (e as Error).message;
   }
@@ -468,8 +501,10 @@ async function moveToFolder(folderId: string | null) {
   moveError.value = '';
   try {
     await api.workflows.move(moveFor.value.id, folderId);
+    const workflowName = moveFor.value.name;
     moveFor.value = null;
     await reload();
+    ui.notify({ kind: 'success', title: t('Workflow moved'), message: workflowName });
   } catch (e) {
     moveError.value = (e as Error).message;
   } finally {
@@ -478,18 +513,24 @@ async function moveToFolder(folderId: string | null) {
 }
 async function transferToProject(projectId: string, projectName: string) {
   if (!moveFor.value) return;
-  if (
-    !window.confirm(
-      `Move "${moveFor.value.name}" to project "${projectName}"?\n\nCredentials do not move with it — reassign them in the target project. Existing shares are removed.`,
-    )
-  )
-    return;
+  const workflowName = moveFor.value.name;
+  const confirmed = await ui.requestConfirm({
+    title: t('Move workflow to another project?'),
+    message: t('Move "{workflow}" to "{project}"? Credentials do not move with it and existing shares are removed.', {
+      workflow: workflowName,
+      project: projectName,
+    }),
+    confirmLabel: t('Move workflow'),
+    tone: 'danger',
+  });
+  if (!confirmed) return;
   moveBusy.value = true;
   moveError.value = '';
   try {
     await api.workflows.transfer(moveFor.value.id, projectId);
     moveFor.value = null;
     await reload();
+    ui.notify({ kind: 'success', title: t('Workflow moved'), message: projectName });
   } catch (e) {
     moveError.value = (e as Error).message;
   } finally {
@@ -538,8 +579,19 @@ async function toggleActive(row: WorkflowRow) {
 
 async function removeWorkflow(id: string) {
   closeMenus();
+  const row = workflows.value.find((workflow) => workflow.id === id);
+  const confirmed = await ui.requestConfirm({
+    title: t('Delete workflow?'),
+    message: row
+      ? t('“{name}” will be permanently deleted. This action cannot be undone.', { name: row.name })
+      : t('This workflow will be permanently deleted. This action cannot be undone.'),
+    confirmLabel: t('Delete'),
+    tone: 'danger',
+  });
+  if (!confirmed) return;
   await api.workflows.remove(id);
   workflows.value = workflows.value.filter((w) => w.id !== id);
+  ui.notify({ kind: 'success', title: t('Workflow deleted'), message: row?.name });
 }
 
 /* ── B2 对标基线卡片菜单：Open / Share... / Favorite / Duplicate / Archive / Enable MCP access ── */
@@ -587,6 +639,7 @@ async function saveShare() {
   try {
     await api.workflows.setShares(shareFor.value.id, [...shareSelected.value]);
     shareFor.value = null;
+    ui.notify({ kind: 'success', title: t('Sharing updated') });
   } catch (e) {
     shareError.value = (e as Error).message;
   } finally {
@@ -609,6 +662,7 @@ async function duplicateWorkflow(row: WorkflowRow) {
     connections: full.connections,
     folderId: full.folderId,
   });
+  ui.notify({ kind: 'success', title: t('Workflow duplicated'), message: copy.name });
   void router.push({ name: 'canvas', params: { id: copy.id } });
 }
 
@@ -616,12 +670,14 @@ async function archiveWorkflow(row: WorkflowRow) {
   closeMenus();
   await api.workflows.archive(row.id).catch((e) => (error.value = (e as Error).message));
   await reload();
+  if (!error.value) ui.notify({ kind: 'success', title: t('Workflow archived'), message: row.name });
 }
 
 async function unarchiveWorkflow(row: WorkflowRow) {
   closeMenus();
   await api.workflows.unarchive(row.id).catch((e) => (error.value = (e as Error).message));
   await reload();
+  if (!error.value) ui.notify({ kind: 'success', title: t('Workflow restored'), message: row.name });
 }
 
 /** 加入实例 MCP 白名单（需要 admin + 工作流已发布，失败原样提示）。 */
@@ -635,6 +691,7 @@ async function enableMcpAccess(row: WorkflowRow) {
       return;
     }
     await api.mcp.setWorkflows([...status.workflowIds, row.id]);
+    ui.notify({ kind: 'success', title: t('MCP access enabled'), message: row.name });
   } catch (e) {
     error.value = (e as Error).message; // 非 admin 403 / 未发布 400 / MCP 未启用
   }
@@ -652,8 +709,19 @@ function onCredCreated(created: CredentialView) {
 const credLabel = (type: string) => credentialTypeMeta(type)?.displayName ?? type;
 
 async function removeCredential(id: string) {
+  const row = credentials.value.find((credential) => credential.id === id);
+  const confirmed = await ui.requestConfirm({
+    title: t('Delete credential?'),
+    message: row
+      ? t('“{name}” will be permanently deleted and unavailable to workflows.', { name: row.name })
+      : t('This credential will be permanently deleted and unavailable to workflows.'),
+    confirmLabel: t('Delete'),
+    tone: 'danger',
+  });
+  if (!confirmed) return;
   await api.credentials.remove(id);
   credentials.value = credentials.value.filter((c) => c.id !== id);
+  ui.notify({ kind: 'success', title: t('Credential deleted'), message: row?.name });
 }
 
 /* ── B5 对标基线 Executions 表：行点击进画布执行视图；多选/重试/删除/自动刷新 ── */
@@ -1501,27 +1569,29 @@ const fmtRunTime = (row: ExecutionRow): string => {
     </template>
 
     <!-- Add folder 命名弹窗（B7 对标基线 message.prompt） -->
-    <div v-if="folderModalOpen" class="modal-mask" data-test="folder-modal" @click.self="folderModalOpen = false">
-      <div class="modal-card">
-        <h2 class="modal-title">
-          {{ currentFolderName ? t("Create folder in '{parent}'", { parent: currentFolderName }) : t('Create a new folder here') }}
-        </h2>
+    <UiDialog
+      :open="folderModalOpen"
+      :title="folderDialogTitle"
+      test-id="folder-modal"
+      width="440px"
+      @close="folderModalOpen = false"
+    >
         <input
           v-model="folderNameDraft"
           class="modal-input"
           data-test="folder-name-input"
           :placeholder="t('Folder name')"
+          autofocus
           @keydown.enter="confirmCreateFolder"
         />
-        <p v-if="folderModalError" class="error-text">{{ folderModalError }}</p>
-        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px">
+        <p v-if="folderModalError" class="error-text" role="alert">{{ folderModalError }}</p>
+        <template #footer>
           <button class="btn neutral" @click="folderModalOpen = false">{{ t('Cancel') }}</button>
           <button class="btn primary" data-test="folder-create" :disabled="!folderNameDraft.trim()" @click="confirmCreateFolder">
             {{ t('Create') }}
           </button>
-        </div>
-      </div>
-    </div>
+        </template>
+    </UiDialog>
 
     <!-- 凭证弹窗（根级：任何 tab 经 caret 下拉均可创建；edit 非空 = 编辑） -->
     <CredentialModal
@@ -1534,33 +1604,30 @@ const fmtRunTime = (row: ExecutionRow): string => {
 
     <!-- ── Create data table 弹窗 ── -->
     <!-- D048 对标基线:label "Data table name"* + 单选 From scratch/Import CSV + Cancel/Create -->
-    <div v-if="showDataTableModal" class="modal-mask" data-test="data-table-modal" @click.self="showDataTableModal = false">
-      <div class="modal-card">
-        <h2 class="modal-title">{{ t('Create new data table') }}</h2>
+    <UiDialog :open="showDataTableModal" :title="t('Create new data table')" test-id="data-table-modal" width="480px" @close="showDataTableModal = false">
         <label class="modal-label">{{ t('Data table name') }} <span style="color: var(--err)">*</span></label>
         <input
           v-model="newTableName"
           class="modal-input"
           data-test="data-table-name"
           :placeholder="t('Enter data table name')"
+          autofocus
           @keyup.enter="createDataTable"
         />
         <div class="dt-source" data-test="data-table-source">
           <label class="dt-radio"><input v-model="dtSource" type="radio" value="scratch" /> {{ t('From scratch') }}</label>
           <label class="dt-radio"><input v-model="dtSource" type="radio" value="csv" /> {{ t('Import CSV') }}</label>
         </div>
-        <p v-if="dtError" class="error-text">{{ dtError }}</p>
-        <div class="modal-actions">
+        <p v-if="dtError" class="error-text" role="alert">{{ dtError }}</p>
+        <template #footer>
           <button class="btn secondary" @click="showDataTableModal = false">{{ t('Cancel') }}</button>
           <button class="btn primary" data-test="data-table-create" :disabled="!newTableName.trim() || creatingTable" @click="createDataTable">{{ t('Create') }}</button>
-        </div>
-      </div>
-    </div>
+        </template>
+    </UiDialog>
 
     <!-- 弹窗：管理某工作流的标签（覆盖式保存） -->
-    <div v-if="managingTagsFor" class="modal-mask" data-test="manage-tags-modal" @click.self="managingTagsFor = null">
-      <div class="modal-card">
-        <h2 class="modal-title">{{ t('Manage tags') }}</h2>
+    <UiDialog :open="Boolean(managingTagsFor)" :title="t('Manage tags')" test-id="manage-tags-modal" width="480px" @close="managingTagsFor = null">
+      <template v-if="managingTagsFor">
         <p class="tag-modal-sub">{{ managingTagsFor.name }}</p>
         <div class="tag-new-row">
           <input
@@ -1568,6 +1635,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
             class="modal-input"
             data-test="new-tag-name"
             :placeholder="t('Create new tag')"
+            autofocus
             @keyup.enter="createTag"
           />
           <button class="btn secondary btn-xs" data-test="new-tag-create" :disabled="!newTagName.trim()" @click="createTag">{{ t('Add') }}</button>
@@ -1580,21 +1648,17 @@ const fmtRunTime = (row: ExecutionRow): string => {
           </label>
         </div>
         <p v-else class="dim" style="font-size: 13px">{{ t('No tags yet — create one above.') }}</p>
-        <p v-if="tagError" class="error-text">{{ tagError }}</p>
-        <div class="modal-actions">
-          <button class="btn secondary" @click="managingTagsFor = null">{{ t('Cancel') }}</button>
-          <button class="btn primary" data-test="save-workflow-tags" @click="saveWorkflowTags">{{ t('Save') }}</button>
-        </div>
-      </div>
-    </div>
+        <p v-if="tagError" class="error-text" role="alert">{{ tagError }}</p>
+      </template>
+      <template #footer>
+        <button class="btn secondary" @click="managingTagsFor = null">{{ t('Cancel') }}</button>
+        <button class="btn primary" data-test="save-workflow-tags" @click="saveWorkflowTags">{{ t('Save') }}</button>
+      </template>
+    </UiDialog>
 
     <!-- backlog #13:Move 弹窗(文件夹 + 跨项目) -->
-    <div v-if="moveFor" class="modal-mask" data-test="move-modal" @click.self="moveFor = null">
-      <div class="modal-card" style="width: 460px">
-        <div style="display: flex; align-items: flex-start; justify-content: space-between">
-          <h2 class="modal-title">{{ t('Move') }} “{{ moveFor.name }}”</h2>
-          <button class="modal-x" @click="moveFor = null">×</button>
-        </div>
+    <UiDialog :open="Boolean(moveFor)" :title="moveFor ? `${t('Move')} “${moveFor.name}”` : t('Move')" test-id="move-modal" width="460px" @close="moveFor = null">
+      <template v-if="moveFor">
         <p v-if="moveError" class="error-text" data-test="move-error">{{ moveError }}</p>
 
         <p class="dim" style="margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px">{{ t('Folders') }}</p>
@@ -1638,16 +1702,12 @@ const fmtRunTime = (row: ExecutionRow): string => {
         <p class="dim" style="margin: 12px 0 0; font-size: 12px">
           {{ t('Moving to another project keeps the workflow running there; credentials do not move with it.') }}
         </p>
-      </div>
-    </div>
+      </template>
+    </UiDialog>
 
     <!-- backlog #12:真共享弹窗(licensed) -->
-    <div v-if="shareFor" class="modal-mask" data-test="share-modal" @click.self="shareFor = null">
-      <div class="modal-card" style="width: 480px">
-        <div style="display: flex; align-items: flex-start; justify-content: space-between">
-          <h2 class="modal-title">{{ t('Share') }} “{{ shareFor.name }}”</h2>
-          <button class="modal-x" @click="shareFor = null">×</button>
-        </div>
+    <UiDialog :open="Boolean(shareFor)" :title="shareFor ? `${t('Share')} “${shareFor.name}”` : t('Share')" test-id="share-modal" width="480px" @close="shareFor = null">
+      <template v-if="shareFor">
         <p class="dim" style="margin: 0 0 12px; font-size: 13px">
           {{ t('Shared users and projects can view, run and edit this workflow. Only this project can delete or re-share it.') }}
         </p>
@@ -1663,19 +1723,18 @@ const fmtRunTime = (row: ExecutionRow): string => {
             <span class="dim" style="margin-left: auto; font-size: 12px">{{ tgt.kind === 'user' ? t('User') : t('Project') }}</span>
           </label>
         </div>
-        <div class="modal-actions" style="justify-content: flex-end; gap: 10px">
-          <button class="btn secondary" @click="shareFor = null">{{ t('Cancel') }}</button>
-          <button class="btn primary" data-test="share-save" :disabled="shareBusy" @click="saveShare">
-            {{ shareBusy ? t('Saving…') : t('Save') }}
-          </button>
-        </div>
-      </div>
-    </div>
+      </template>
+      <template #footer>
+        <button class="btn secondary" @click="shareFor = null">{{ t('Cancel') }}</button>
+        <button class="btn primary" data-test="share-save" :disabled="shareBusy" @click="saveShare">
+          {{ shareBusy ? t('Saving…') : t('Save') }}
+        </button>
+      </template>
+    </UiDialog>
 
     <!-- D039 Share... Enterprise 锁(对标基线 Community:工作流共享需升级) -->
-    <div v-if="shareLockOpen" class="modal-mask" data-test="share-lock-modal" @click.self="shareLockOpen = false">
-      <div class="modal-card" style="max-width: 460px; text-align: center">
-        <h2 style="margin: 0 0 10px">{{ t('Available on the Enterprise plan') }}</h2>
+    <UiDialog :open="shareLockOpen" :title="t('Available on the Enterprise plan')" test-id="share-lock-modal" width="460px" @close="shareLockOpen = false">
+      <div style="text-align: center">
         <p class="dim" style="margin: 0 0 20px; font-size: 14px">
           {{ t('Share workflows with other users and projects to collaborate.') }}
         </p>
@@ -1684,7 +1743,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
           <a class="btn primary" :href="LINKS.pricing" target="_blank" rel="noopener">{{ t('See plans') }}</a>
         </div>
       </div>
-    </div>
+    </UiDialog>
   </div>
 </template>
 
@@ -2099,16 +2158,6 @@ const fmtRunTime = (row: ExecutionRow): string => {
 .dt-card-meta { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim); }
 .dt-dot { color: var(--text-faint); }
 
-/* Modal (Create data table) */
-.modal-mask {
-  position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.55);
-  display: flex; align-items: center; justify-content: center; padding: 20px;
-}
-.modal-card {
-  width: 480px; max-width: 100%; background: var(--bg-panel); border: 1px solid var(--border-strong);
-  border-radius: 12px; padding: 24px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-}
-.modal-title { margin: 0 0 18px; font-size: 18px; font-weight: 600; color: var(--text-hi); }
 .modal-label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 6px; }
 .modal-input {
   width: 100%; height: 36px; padding: 0 12px; background: var(--bg-input); border: 1px solid var(--border);
@@ -2119,14 +2168,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
 .dt-source { display: flex; gap: 18px; margin-top: 14px; }
 .dt-radio { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); cursor: pointer; }
 .dt-radio input { width: auto; }
-.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
-.modal-actions .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 /* backlog #12 共享弹窗 */
-.modal-x {
-  width: 28px; height: 28px; padding: 0; background: none; border: none;
-  color: var(--text-dim); font-size: 20px; line-height: 1; cursor: pointer; border-radius: 4px;
-}
-.modal-x:hover { color: var(--text); background: var(--bg-hover); }
 .pick-list {
   overflow: auto; border: 1px solid var(--border); border-radius: 8px; padding: 6px;
   display: flex; flex-direction: column; gap: 2px;
@@ -2162,7 +2204,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
 }
 .tag-chip:hover { border-color: var(--accent); color: var(--accent); }
 .tag-filter-on { border-color: var(--accent); color: var(--accent); }
-.tag-modal-sub { margin: -12px 0 14px; font-size: 13px; color: var(--text-dim); }
+.tag-modal-sub { margin: 0 0 14px; font-size: 13px; color: var(--text-dim); }
 .tag-new-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
 .tag-new-row .modal-input { flex: 1; margin: 0; }
 .tag-check-list { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }

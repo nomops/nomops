@@ -17,4 +17,21 @@ describe('Overview 资源 Tab 布局契约', () => {
     expect(styles).toContain('overflow-x: auto');
     expect(styles).toContain('overflow-y: hidden');
   });
+
+  it('资源操作统一使用产品内弹窗，不调用浏览器原生确认框', () => {
+    expect(source).toContain("import UiDialog from '../components/ui/UiDialog.vue'");
+    expect(source).toContain('ui.requestConfirm({');
+    expect(source).not.toContain('window.confirm(');
+    expect(source).not.toContain('class="modal-mask"');
+
+    for (const id of ['folder-modal', 'data-table-modal', 'manage-tags-modal', 'move-modal', 'share-modal']) {
+      expect(source).toContain(`test-id="${id}"`);
+    }
+  });
+
+  it('工作流资源操作提供完成反馈', () => {
+    for (const title of ['Workflow moved', 'Workflow duplicated', 'Workflow archived', 'Tags updated']) {
+      expect(source).toContain(`title: t('${title}')`);
+    }
+  });
 });
