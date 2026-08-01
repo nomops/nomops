@@ -19,6 +19,8 @@ const systemDraft = ref('');
 const busy = ref('');
 const error = ref('');
 const loading = ref(true);
+const detailLoading = ref(false);
+const detailError = ref('');
 
 /* 模型配置（#44 M2） */
 const provider = ref('anthropic');
@@ -38,7 +40,8 @@ type MemoryRow = Awaited<ReturnType<typeof api.agents.memory>>[number];
 const memories = ref<MemoryRow[]>([]);
 async function loadMemory() {
   if (!selected.value) return;
-  memories.value = await api.agents.memory(selected.value.id).catch(() => []);
+  try { memories.value = await api.agents.memory(selected.value.id); }
+  catch (e) { detailError.value = `Could not load memory: ${(e as Error).message}`; }
 }
 
 /* 定时任务（#44 M4）：任务定义 ↔ #38 调度作业 */
@@ -50,7 +53,8 @@ const taskCron = ref('0 9 * * *');
 const taskEvery = ref(3600);
 async function loadTasks() {
   if (!selected.value) return;
-  tasks.value = await api.agents.tasks(selected.value.id).catch(() => []);
+  try { tasks.value = await api.agents.tasks(selected.value.id); }
+  catch (e) { detailError.value = `Could not load scheduled tasks: ${(e as Error).message}`; }
 }
 async function createTask() {
   if (!selected.value || !taskName.value.trim() || !taskMessage.value.trim()) return;
@@ -96,8 +100,12 @@ const channels = ref<AgentChannelRow[]>([]);
 const channelCredentialId = ref('');
 async function loadFilesChannels() {
   if (!selected.value) return;
-  files.value = await api.agents.files(selected.value.id).catch(() => []);
-  channels.value = await api.agents.channels(selected.value.id).catch(() => []);
+  try {
+    [files.value, channels.value] = await Promise.all([
+      api.agents.files(selected.value.id),
+      api.agents.channels(selected.value.id),
+    ]);
+  } catch (e) { detailError.value = `Could not load files and channels: ${(e as Error).message}`; }
 }
 async function uploadFile(e: Event) {
   const input = e.target as HTMLInputElement;
@@ -130,19 +138,24 @@ async function removeFile(f: AgentFileRow) {
     ui.notify({ kind: 'success', title: 'Agent file deleted' });
   } catch (e) { error.value = (e as Error).message; }
 }
-function downloadFile(f: AgentFileRow) {
+async function downloadFile(f: AgentFileRow) {
   if (!selected.value) return;
-  void fetch(api.agents.fileDownloadUrl(selected.value.id, f.id), {
-    headers: { Authorization: `Bearer ${localStorage.getItem('nomops.token') ?? ''}` },
-  })
-    .then((r) => r.blob())
-    .then((blob) => {
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = f.fileName;
-      a.click();
-      URL.revokeObjectURL(a.href);
+  error.value = '';
+  try {
+    const response = await fetch(api.agents.fileDownloadUrl(selected.value.id, f.id), {
+      headers: { Authorization: `Bearer ${localStorage.getItem('nomops.token') ?? ''}` },
     });
+    if (!response.ok) throw new Error(`Download failed (${response.status})`);
+    const blob = await response.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = f.fileName;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    ui.notify({ kind: 'success', title: 'Agent file downloaded', message: f.fileName });
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
 }
 const fmtSize = (n: number) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`);
 const telegramCredentials = computed(() => credentials.value.filter((c) => c.type === 'telegramApi'));
@@ -162,8 +175,11 @@ async function addChannel() {
 }
 async function toggleChannel(c: AgentChannelRow) {
   if (!selected.value) return;
-  await api.agents.updateChannel(selected.value.id, c.id, { active: !c.active }).catch(() => undefined);
-  await loadFilesChannels();
+  try {
+    await api.agents.updateChannel(selected.value.id, c.id, { active: !c.active });
+    await loadFilesChannels();
+    ui.notify({ kind: 'success', title: c.active ? 'Channel paused' : 'Channel resumed' });
+  } catch (e) { error.value = (e as Error).message; }
 }
 async function removeChannel(c: AgentChannelRow) {
   if (!selected.value) return;
@@ -191,7 +207,8 @@ async function load() {
 }
 onMounted(async () => {
   await load();
-  credentials.value = await api.credentials.list().catch(() => []);
+  try { credentials.value = await api.credentials.list(); }
+  catch (e) { error.value = `Could not load credentials: ${(e as Error).message}`; }
 });
 
 async function select(a: AgentRow) {
@@ -200,12 +217,23 @@ async function select(a: AgentRow) {
   provider.value = String(a.config?.['provider'] ?? 'anthropic');
   model.value = String(a.config?.['model'] ?? '');
   credentialId.value = String(a.config?.['credentialId'] ?? '');
-  versions.value = await api.agents.versions(a.id).catch(() => []);
+  detailLoading.value = true;
+  detailError.value = '';
   messages.value = [];
   threadId.value = null;
-  await loadMemory();
-  await loadTasks();
-  await loadFilesChannels();
+  try {
+    const [nextVersions] = await Promise.all([
+      api.agents.versions(a.id),
+      loadMemory(),
+      loadTasks(),
+      loadFilesChannels(),
+    ]);
+    versions.value = nextVersions;
+  } catch (e) {
+    detailError.value = `Could not load version history: ${(e as Error).message}`;
+  } finally {
+    detailLoading.value = false;
+  }
 }
 
 async function sendChat() {
@@ -351,6 +379,12 @@ const fmt = (iso: string) => new Date(iso).toLocaleString();
           {{ busy === 'publish' ? 'Publishing…' : 'Publish' }}
         </button>
       </header>
+
+      <UiState v-if="detailLoading" kind="loading" title="Loading agent workspace" description="Fetching versions, memory, scheduled tasks, files, and channels." />
+      <UiState v-else-if="detailError" kind="error" title="Could not load agent workspace" :description="detailError">
+        <button type="button" @click="select(selected)">Retry</button>
+      </UiState>
+      <template v-else>
 
       <label class="agent-label">System prompt</label>
       <textarea v-model="systemDraft" class="agent-system" data-test="agent-system" rows="6" placeholder="You are a helpful assistant…" />
@@ -502,6 +536,7 @@ const fmt = (iso: string) => new Date(iso).toLocaleString();
           </div>
         </li>
       </ul>
+      </template>
     </section>
     <section v-else class="agent-detail empty"><p class="dim">Select or create an agent.</p></section>
   </div>

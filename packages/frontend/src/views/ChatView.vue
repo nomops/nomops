@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { api, type WorkflowRow, type ChatAttachment } from '../api/client.js';
 import SettingsMenu from '../components/shell/SettingsMenu.vue';
+import UiState from '../components/ui/UiState.vue';
 import { useUiStore } from '../stores/ui.js';
 
 /**
@@ -59,6 +60,8 @@ const loadJson = <T,>(key: string, fallback: T): T => {
 };
 const sessions = ref<ChatSession[]>([]);
 const agents = ref<PersonalAgent[]>([]);
+const surfaceLoading = ref(true);
+const surfaceError = ref('');
 
 async function saveSession(s: ChatSession) {
   await api.chat
@@ -78,7 +81,7 @@ const persistSessions = () => {
 };
 
 async function loadPersisted() {
-  const [ss, ags] = await Promise.all([api.chat.sessions().catch(() => []), api.chat.agents().catch(() => [])]);
+  const [ss, ags] = await Promise.all([api.chat.sessions(), api.chat.agents()]);
   sessions.value = ss.map((r) => ({
     id: r.id,
     title: r.title,
@@ -123,8 +126,6 @@ async function migrateLegacy() {
   localStorage.removeItem(LEGACY_SESSIONS_KEY);
   localStorage.removeItem(LEGACY_AGENTS_KEY);
 }
-onMounted(() => void loadPersisted());
-
 /* ── 视图 ── */
 type View = 'chat' | 'personal-agents' | 'workflow-agents';
 const view = ref<View>('chat');
@@ -205,16 +206,27 @@ async function toggleRecording() {
 /* ── Workflow agents（含 Chat Trigger 的工作流） ── */
 const workflowAgents = ref<WorkflowRow[]>([]);
 async function loadWorkflowAgents() {
-  const all = await api.workflows.list().catch(() => [] as WorkflowRow[]);
+  const all = await api.workflows.list();
   workflowAgents.value = all.filter((w) => w.nodes.some((n) => n.type === 'nomops.chatTrigger' && !n.disabled));
 }
-onMounted(loadWorkflowAgents);
 
 /* ── Chat providers（服务端注册表：Anthropic / DeepSeek / 豆包 / 千问 / Kimi / GLM） ── */
 const providers = ref<Array<{ id: string; label: string; credentialType: string; models: string[]; enabled: boolean }>>([]);
-onMounted(async () => {
-  providers.value = await api.assistant.providers().catch(() => []);
-});
+async function loadProviders() {
+  providers.value = await api.assistant.providers();
+}
+async function loadChatSurface() {
+  surfaceLoading.value = true;
+  surfaceError.value = '';
+  try {
+    await Promise.all([loadPersisted(), loadWorkflowAgents(), loadProviders()]);
+  } catch (e) {
+    surfaceError.value = (e as Error).message;
+  } finally {
+    surfaceLoading.value = false;
+  }
+}
+onMounted(loadChatSurface);
 
 /* ── 会话 ── */
 function newChat() {
@@ -407,12 +419,17 @@ function openExecution(workflowId: string, executionId: string) {
 
 async function applyWorkflow(m: Msg) {
   if (!m.workflow) return;
-  const wf = await api.workflows.create({
-    name: m.workflow.name,
-    nodes: m.workflow.nodes as never,
-    connections: m.workflow.connections as never,
-  });
-  void router.push(`/workflow/${wf.id}`);
+  try {
+    const wf = await api.workflows.create({
+      name: m.workflow.name,
+      nodes: m.workflow.nodes as never,
+      connections: m.workflow.connections as never,
+    });
+    ui.notify({ kind: 'success', title: 'Workflow added to canvas', message: wf.name });
+    void router.push(`/workflow/${wf.id}`);
+  } catch (e) {
+    ui.notify({ kind: 'error', title: 'Could not create workflow', message: (e as Error).message });
+  }
 }
 function displayText(m: Msg): string {
   return m.content.replace(/```json[\s\S]*?```/g, '').trim();
@@ -422,16 +439,21 @@ function displayText(m: Msg): string {
 const agentDraftName = ref('');
 const agentDraftSystem = ref('');
 const agentFormOpen = ref(false);
-function saveAgent() {
+async function saveAgent() {
   const name = agentDraftName.value.trim();
   const system = agentDraftSystem.value.trim();
   if (!name || !system) return;
   const agent = { id: crypto.randomUUID(), name, system };
-  agents.value.push(agent);
-  void api.chat.saveAgent(agent).catch(() => undefined);
-  agentDraftName.value = '';
-  agentDraftSystem.value = '';
-  agentFormOpen.value = false;
+  try {
+    await api.chat.saveAgent(agent);
+    agents.value.push(agent);
+    agentDraftName.value = '';
+    agentDraftSystem.value = '';
+    agentFormOpen.value = false;
+    ui.notify({ kind: 'success', title: 'Personal agent created', message: agent.name });
+  } catch (e) {
+    ui.notify({ kind: 'error', title: 'Could not create personal agent', message: (e as Error).message });
+  }
 }
 async function deleteAgent(id: string) {
   const agent = agents.value.find((a) => a.id === id);
@@ -471,7 +493,7 @@ function chatWith(target: ChatTarget) {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14a2 2 0 0 1-2 2H8l-4 3.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z" /></svg>
         Personal agents
       </button>
-      <button class="side-item" :class="{ active: view === 'workflow-agents' }" data-test="chat-workflow-agents" @click="view = 'workflow-agents'; void loadWorkflowAgents()">
+      <button class="side-item" :class="{ active: view === 'workflow-agents' }" data-test="chat-workflow-agents" @click="view = 'workflow-agents'">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
         Workflow agents
       </button>
@@ -507,8 +529,12 @@ function chatWith(target: ChatTarget) {
 
     <!-- 主区 -->
     <div class="chat-main">
+      <UiState v-if="surfaceLoading" kind="loading" title="Loading chat workspace" description="Fetching conversations, personal agents, workflow agents, and model providers." />
+      <UiState v-else-if="surfaceError" kind="error" title="Could not load chat workspace" :description="surfaceError">
+        <button type="button" @click="loadChatSurface">Retry</button>
+      </UiState>
       <!-- Personal agents 页(对标基线:标题 + 副标 + 右上 New Agent 橙钮 + 空态) -->
-      <div v-if="view === 'personal-agents'" class="agents-page" data-test="personal-agents-page">
+      <div v-else-if="view === 'personal-agents'" class="agents-page" data-test="personal-agents-page">
         <div class="agents-head">
           <div>
             <h1>Personal Agents</h1>

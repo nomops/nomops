@@ -42,6 +42,11 @@ const stateDraft = ref('{}');
 const busy = ref('');
 const error = ref('');
 const loading = ref(true);
+const detailLoading = ref(false);
+const detailError = ref('');
+const recallLoading = ref(false);
+const recallError = ref('');
+const recallAttempted = ref(false);
 
 async function loadList() {
   error.value = '';
@@ -61,9 +66,15 @@ function applyDetail(d: { thread: InstanceAiThreadRow; messages: InstanceAiMessa
 
 async function loadActions() {
   if (!selected.value) return;
-  actions.value = await api.instanceAi.actions(selected.value.id).catch(() => []);
-  runs.value = await api.instanceAi.runs(selected.value.id).catch(() => []);
-  mcpConns.value = await api.instanceAi.mcpConnections().catch(() => []);
+  try {
+    [actions.value, runs.value, mcpConns.value] = await Promise.all([
+      api.instanceAi.actions(selected.value.id),
+      api.instanceAi.runs(selected.value.id),
+      api.instanceAi.mcpConnections(),
+    ]);
+  } catch (e) {
+    detailError.value = `Could not load assistant tools and runs: ${(e as Error).message}`;
+  }
 }
 
 async function mcpConnect() {
@@ -112,7 +123,12 @@ async function proposeMcpTool(c: InstanceAiMcpRow, tool: string) {
 
 async function doRecall() {
   if (!selected.value || !recallQuery.value.trim()) return;
-  recallResults.value = await api.instanceAi.recall(recallQuery.value.trim(), selected.value.id).catch(() => []);
+  recallLoading.value = true;
+  recallError.value = '';
+  recallAttempted.value = true;
+  try { recallResults.value = await api.instanceAi.recall(recallQuery.value.trim(), selected.value.id); }
+  catch (e) { recallError.value = (e as Error).message; }
+  finally { recallLoading.value = false; }
 }
 async function remember() {
   if (!selected.value || !memContent.value.trim()) return;
@@ -134,9 +150,20 @@ async function remember() {
 }
 
 async function select(t: InstanceAiThreadRow) {
-  const d = await api.instanceAi.get(t.id).catch(() => null);
-  if (d) applyDetail(d);
-  await loadActions();
+  detailLoading.value = true;
+  detailError.value = '';
+  recallResults.value = [];
+  recallError.value = '';
+  recallAttempted.value = false;
+  try {
+    const d = await api.instanceAi.get(t.id);
+    applyDetail(d);
+    await loadActions();
+  } catch (e) {
+    detailError.value = `Could not load assistant thread: ${(e as Error).message}`;
+  } finally {
+    detailLoading.value = false;
+  }
 }
 
 async function proposeTool() {
@@ -175,9 +202,16 @@ async function approveAction(a: InstanceAiActionRow) {
 
 async function rejectAction(a: InstanceAiActionRow) {
   busy.value = 'act';
-  await api.instanceAi.reject(a.id).catch(() => undefined);
-  await refresh();
-  busy.value = '';
+  error.value = '';
+  try {
+    await api.instanceAi.reject(a.id);
+    await refresh();
+    ui.notify({ kind: 'success', title: 'Assistant action rejected' });
+  } catch (e) {
+    error.value = (e as Error).message;
+  } finally {
+    busy.value = '';
+  }
 }
 
 async function createThread() {
@@ -196,9 +230,14 @@ async function createThread() {
 
 async function refresh() {
   if (!selected.value) return;
-  const d = await api.instanceAi.get(selected.value.id).catch(() => null);
-  if (d) applyDetail(d);
-  await loadActions();
+  detailError.value = '';
+  try {
+    const d = await api.instanceAi.get(selected.value.id);
+    applyDetail(d);
+    await loadActions();
+  } catch (e) {
+    detailError.value = `Could not refresh assistant thread: ${(e as Error).message}`;
+  }
 }
 
 async function sendChat() {
@@ -308,7 +347,12 @@ async function remove(t: InstanceAiThreadRow) {
       </ul>
     </aside>
 
-    <section v-if="selected" class="iai-main">
+    <UiState v-if="detailLoading" class="iai-detail-state" kind="loading" title="Loading assistant workspace" description="Fetching messages, checkpoints, actions, run tree, and MCP servers." />
+    <UiState v-else-if="detailError" class="iai-detail-state" kind="error" title="Could not load assistant workspace" :description="detailError">
+      <button v-if="selected" type="button" @click="select(selected)">Retry</button>
+    </UiState>
+
+    <section v-else-if="selected" class="iai-main">
       <div class="iai-chat" data-test="iai-messages">
         <div v-for="m in messages" :key="m.id" class="iai-msg" :class="m.role">
           <span class="iai-seq">#{{ m.seq }}</span>
@@ -325,7 +369,7 @@ async function remove(t: InstanceAiThreadRow) {
       </div>
     </section>
 
-    <section v-if="selected" class="iai-side">
+    <section v-if="selected && !detailLoading && !detailError" class="iai-side">
       <h3 class="iai-side-title">Working state <span class="dim" style="font-weight: 400">· serializable</span></h3>
       <textarea v-model="stateDraft" class="iai-state" data-test="iai-state" rows="6" spellcheck="false"></textarea>
       <button class="btn" data-test="iai-state-save" :disabled="busy === 'state'" @click="saveState">Save state</button>
@@ -398,8 +442,12 @@ async function remove(t: InstanceAiThreadRow) {
       </div>
       <div class="iai-cp-new" style="margin-top: 6px">
         <input v-model="recallQuery" data-test="iai-recall-q" placeholder="Recall relevant memory…" @keyup.enter="doRecall" />
-        <button class="btn" data-test="iai-recall" @click="doRecall">Recall</button>
+        <button class="btn" data-test="iai-recall" :disabled="recallLoading" @click="doRecall">{{ recallLoading ? 'Recalling…' : 'Recall' }}</button>
       </div>
+      <UiState v-if="recallError" compact kind="error" title="Could not recall memory" :description="recallError">
+        <button type="button" @click="doRecall">Retry</button>
+      </UiState>
+      <UiState v-else-if="!recallLoading && recallAttempted && !recallResults.length" compact title="No matching memory" description="Try a different phrase or record a new observation." />
       <ul v-if="recallResults.length" class="iai-cps" data-test="iai-recall-results">
         <li v-for="m in recallResults" :key="m.id" class="iai-mem-hit">
           <span class="iai-badge">{{ m.scope }}·{{ m.kind }}</span>
@@ -435,7 +483,7 @@ async function remove(t: InstanceAiThreadRow) {
         </li>
       </ul>
     </section>
-    <section v-else class="iai-main empty"><p class="dim">Select or create a thread.</p></section>
+    <section v-if="!selected && !detailLoading" class="iai-main empty"><p class="dim">Select or create a thread.</p></section>
    </div>
   </div>
 </template>
@@ -443,6 +491,7 @@ async function remove(t: InstanceAiThreadRow) {
 <style scoped>
 .iai-page { flex: 1; min-height: 0; display: flex; }
 .iai-row { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: row; overflow: hidden; }
+.iai-detail-state { flex: 1; min-width: 0; }
 .iai-list { width: 260px; flex-shrink: 0; border-right: 1px solid var(--border-color, #2a2a33); overflow-y: auto; }
 .iai-head { padding: 18px 16px 6px; }
 .iai-head h1 { margin: 0; font-size: 20px; }
