@@ -355,6 +355,7 @@ const bottomStyle = (i: number, count: number) => ({
         :key="`in-main-${i}`"
         type="target"
         :position="Position.Left"
+        class="main-handle"
         :style="sideStyle(i, mainInputs.length)"
       />
 
@@ -374,7 +375,7 @@ const bottomStyle = (i: number, count: number) => ({
         >{{ AI_LABELS[t] ?? t }}<span v-if="AI_REQUIRED[t]" class="ai-req">*</span></span>
       </template>
 
-      <IconSvg class="node-icon" :svg="visual.svg" :color="visual.color" :size="isSubNode ? 28 : 38" />
+      <IconSvg class="node-icon" :svg="visual.svg" :color="visual.color" :size="isSubNode ? 28 : 48" />
 
       <!-- main 输出：右侧 -->
       <template v-for="(_, i) in mainOutputs" :key="`out-main-${i}`">
@@ -382,6 +383,7 @@ const bottomStyle = (i: number, count: number) => ({
           :id="`out-main-${i}`"
           type="source"
           :position="Position.Right"
+          class="main-handle"
           :style="sideStyle(i, mainOutputs.length)"
         />
         <span v-if="outputLabel(i)" class="port-label" :style="sideStyle(i, mainOutputs.length)">
@@ -434,9 +436,8 @@ const bottomStyle = (i: number, count: number) => ({
 .port-plus svg { width: 11px; height: 11px; }
 .nomops-node:hover .port-plus, .port-plus:hover, .port-plus:focus-visible { opacity: 1; }
 .port-plus:hover { border-color: var(--color--primary); color: var(--color--primary); }
-/* 基线实测（2.30.4 画布 _node_）：96×96、bg --node--color--background(dark #2b2b2b)、
-   border 1.5px rgba(255,255,255,.63)（实测 oklch 白/0.632）、圆角 8；图标 48；
-   子节点圆 80×80；label 卡下 192px 宽白字 14px */
+/* 基线实测画布节点：96×96、dark bg #2b2b2b、1.5px 白色 20% 边、8px 圆角；
+   图标 48×48；子节点圆 80×80；label 卡下 192px 宽、16px/500 白字。 */
 .nomops-node {
   position: relative;
   width: 96px; height: 96px;
@@ -447,7 +448,7 @@ const bottomStyle = (i: number, count: number) => ({
 }
 .nomops-node.trigger { border-top-left-radius: 36px; border-bottom-left-radius: 36px; } /* 基线实测 36 */
 .nomops-node.subnode { width: 80px; height: 80px; border-radius: 50%; }
-.nomops-node.selected { border-color: var(--canvas--color--selected); box-shadow: 0 0 0 1px var(--canvas--color--selected); }
+.nomops-node.selected { box-shadow: 0 0 0 6px var(--canvas--color--selected); }
 .nomops-node.disabled { border-color: var(--color--foreground); } /* 基线实测:禁用态边框 → foreground 中灰 */
 .nomops-node.status-running { border-color: var(--node--border-color--running); }
 .nomops-node.status-success { border-color: var(--color--success); }
@@ -464,11 +465,16 @@ const bottomStyle = (i: number, count: number) => ({
 .pin-badge-i { width: 12px; height: 12px; }
 .node-icon { line-height: 0; }
 .node-label {
-  margin-top: 6px; font-size: var(--font-size--md); font-weight: var(--font-weight--regular); /* 基线实测 16px */
+  margin-top: 6px; font-size: var(--font-size--md); font-weight: var(--font-weight--medium);
   color: var(--color--text--shade-1); line-height: var(--line-height--lg);
   width: 192px; max-width: 192px; text-align: center;
   white-space: normal; overflow: hidden; text-overflow: ellipsis;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+:deep(.main-handle) {
+  width: 16px; height: 16px;
+  background: var(--node--color--background);
+  border: 1.5px solid var(--color--white-alpha-400);
 }
 .port-label {
   position: absolute; right: -6px; transform: translateX(100%);

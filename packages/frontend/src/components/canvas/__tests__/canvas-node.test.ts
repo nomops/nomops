@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import type { INode } from '@nomops/workflow';
+import { useNodeTypesStore } from '../../../stores/node-types.js';
 import CanvasNode from '../CanvasNode.vue';
 
 /**
@@ -21,6 +22,15 @@ const plainNode: INode = {
   id: 'n1',
   name: 'HTTP Request',
   type: 'nomops.httpRequest',
+  typeVersion: 1,
+  position: [0, 0],
+  parameters: {},
+};
+
+const triggerNode: INode = {
+  id: 't1',
+  name: 'Manual Trigger',
+  type: 'nomops.manualTrigger',
   typeVersion: 1,
   position: [0, 0],
   parameters: {},
@@ -47,6 +57,22 @@ describe('CanvasNode 悬停工具条', () => {
     const w = mountNode(plainNode);
     const titles = w.findAll('.tb-btn').map((b) => b.attributes('title'));
     expect(titles).toEqual(['Execute step', 'Deactivate', 'Delete', 'More actions']);
+  });
+
+  it('普通节点使用 48px 图标、16px 主端口，并保留外置名称', () => {
+    const w = mountNode(plainNode);
+    expect(w.findComponent({ name: 'IconSvg' }).attributes('size')).toBe('48');
+    expect(w.findAll('.main-handle')).toHaveLength(2);
+    expect(w.find('.node-label').text()).toBe('HTTP Request');
+  });
+
+  it('无输入节点使用触发器轮廓，选中态落在节点本体', () => {
+    useNodeTypesStore().descriptions = [{ type: triggerNode.type, inputs: [], outputs: ['main'] }] as never;
+    const w = mount(CanvasNode, {
+      props: { data: { node: triggerNode }, selected: true },
+      global: { stubs: { Handle: true, IconSvg: true } },
+    });
+    expect(w.find('.nomops-node').classes()).toEqual(expect.arrayContaining(['trigger', 'selected']));
   });
 
   // 回归：色板/菜单曾用 @mouseleave 关，因工具条 pointer-events:none 鼠标穿透到画布触发 mouseleave，
