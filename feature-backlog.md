@@ -230,6 +230,8 @@
 
 > 2026-08-01 UI 顺序改造第 2 项（Overview / Workflows）：把新建文件夹、数据表、标签管理、移动、共享与授权提示六类页面私有弹层迁入统一 `UiDialog`，删除文件夹/标签/工作流/凭证/数据表及跨项目移动全部使用产品内确认框；资源移动、共享、复制、归档、恢复、删除和 MCP 授权补齐 Toast 反馈。新增 2 项布局回归，生产构建 6/6、全量 1016 项测试通过；浏览器实测五个资源 Tab、弹窗自动聚焦和关闭流程正常。
 
+> 2026-08-01 UI 顺序改造第 3 项（Credentials）：类型选择与三 Tab 编辑器迁入统一 `UiDialog`，获得焦点圈、Escape、焦点恢复和移动端底部面板；删除凭证改用产品内引用影响确认，保存/创建/共享/删除补齐 Toast；连接测试升级为自动测试加载态与成功/失败状态条（含 Retry），类型搜索自动聚焦，帮助入口改为真实文档链接，列表空态用主题 SVG 取代系统 Emoji。新增 3 项组件契约回归，生产构建 6/6、全量 1019 项测试通过；浏览器实测类型搜索、编辑器三 Tab、表达式入口和关闭流程正常。
+
 - [ ] **66. 执行可视化正确性（串台 + 重连 + 频道）** `M`（🟠 A6）
   踩坑：`packages/frontend/src/stores/execution.ts:44` handleEvent 不按 executionId 过滤（并发执行/多用户高亮串台）；`packages/server/src/ws/push-hub.ts:27` 广播全连接无 workflow 频道；`execution.ts:38` WS 断线不重连（静默丢实时进度）。三者叠加使执行可视化在任意并发/断网下失真。
   → handleEvent 首行按 executionId 过滤（executionStarted 除外）；push-hub 按 workflowId 分频道；WS 加指数退避重连 + 心跳。

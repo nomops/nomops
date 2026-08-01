@@ -2,11 +2,13 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { api, type CredentialView } from '../../api/client.js';
 import { useProjectsStore } from '../../stores/projects.js';
+import { useUiStore } from '../../stores/ui.js';
 import { CREDENTIAL_TYPES, credentialTypeMeta } from '../../lib/credential-types.js';
 import { credentialIcon } from '../../lib/icons.js';
 import IconSvg from '../IconSvg.vue';
 import { LINKS } from '../../lib/links.js';
 import CredentialExpressionField from './CredentialExpressionField.vue';
+import UiDialog from '../ui/UiDialog.vue';
 
 /**
  * 「Add new credential」弹窗：
@@ -25,6 +27,7 @@ const tab = ref<'connection' | 'sharing' | 'details'>('connection');
 
 /* backlog #12:Sharing tab 真实现(licensed + 已保存凭证);受享方打开 → owner 专属 403 原样呈现 */
 const projectsStore = useProjectsStore();
+const ui = useUiStore();
 const sharingLicensed = computed(() => projectsStore.hasFeature('sharing'));
 const shareTargets = ref<Array<{ projectId: string; kind: 'user' | 'project'; label: string }>>([]);
 const shareSelected = ref<Set<string>>(new Set());
@@ -56,6 +59,7 @@ async function saveShares() {
   shareError.value = '';
   try {
     await api.credentials.setShares(credId.value, [...shareSelected.value]);
+    ui.notify({ kind: 'success', title: 'Credential sharing updated' });
   } catch (e) {
     shareError.value = (e as Error).message;
   } finally {
@@ -103,13 +107,20 @@ async function deleteCredential() {
   // #40b：删前查引用方,把工作流名列进确认框
   const usage = await api.credentials.usage(id).catch(() => ({ workflows: [] as Array<{ name: string }> }));
   const used = usage.workflows;
-  const msg = used.length
+  const message = used.length
     ? `This credential is used by ${used.length} workflow(s):\n${used.map((w) => `• ${w.name}`).join('\n')}\n\nDelete anyway? They will stop working.`
     : 'Delete this credential? Workflows using it will stop working.';
-  if (!window.confirm(msg)) return;
+  const confirmed = await ui.requestConfirm({
+    title: 'Delete credential?',
+    message,
+    confirmLabel: 'Delete',
+    tone: 'danger',
+  });
+  if (!confirmed) return;
   deleting.value = true;
   try {
     await api.credentials.remove(id);
+    ui.notify({ kind: 'success', title: 'Credential deleted', message: credInfo.value?.name });
     emit('close');
   } catch {
     deleting.value = false;
@@ -267,6 +278,7 @@ async function save() {
       await ensureSaved();
       if (createdView.value) emit('created', createdView.value);
     }
+    ui.notify({ kind: 'success', title: props.edit ? 'Credential saved' : 'Credential created', message: name.value });
     emit('close');
   } catch (e) {
     error.value = (e as Error).message;
@@ -336,15 +348,36 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="cred-overlay" data-test="credential-modal" @click.self="emit('close')">
+  <UiDialog
+    :open="true"
+    :width="step === 'pick' ? '420px' : 'min(1080px, 70vw)'"
+    test-id="credential-modal"
+    @close="emit('close')"
+  >
+    <template #header>
+      <template v-if="step === 'pick'">
+        <div class="cred-title">Add new credential</div>
+      </template>
+      <template v-else>
+        <div class="cred-head config">
+          <span class="head-icon"><IconSvg v-bind="credentialIcon(selectedType)" :size="26" /></span>
+          <div class="head-name">
+            <input v-model="name" class="name-input" data-test="cred-name" placeholder="Name this credential" />
+            <div class="head-type">{{ meta?.displayName }}</div>
+          </div>
+          <button class="btn neutral head-save" data-test="cred-save" :disabled="busy" @click="save">
+            {{ busy ? 'Saving…' : 'Save' }}
+          </button>
+          <button v-if="credInfo" class="icon-trash" data-test="cred-delete" title="Delete credential" :disabled="deleting" @click="deleteCredential">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /></svg>
+          </button>
+        </div>
+      </template>
+    </template>
+
     <div class="cred-modal" :class="step">
       <!-- ── Step 1: pick type (combobox + Continue) ── -->
       <template v-if="step === 'pick'">
-        <header class="cred-head">
-          <div class="cred-title">Add new credential</div>
-          <button class="icon-x" data-test="cred-close" @click="emit('close')">✕</button>
-        </header>
-
         <div class="cred-body">
           <label class="fld-label">Select an app or service to connect to</label>
           <div ref="comboRef" class="combo" :class="{ open: pickerOpen }">
@@ -356,6 +389,7 @@ onUnmounted(() => {
                 data-test="cred-search"
                 placeholder="Search for app..."
                 autocomplete="off"
+                autofocus
                 @focus="pickerOpen = true"
                 @input="pickerOpen = true; pendingType = ''"
               />
@@ -384,22 +418,6 @@ onUnmounted(() => {
 
       <!-- ── Step 2: configure (wide, left rail tabs) ── -->
       <template v-else>
-        <header class="cred-head config">
-          <span class="head-icon"><IconSvg v-bind="credentialIcon(selectedType)" :size="26" /></span>
-          <div class="head-name">
-            <input v-model="name" class="name-input" data-test="cred-name" placeholder="Name this credential" />
-            <div class="head-type">{{ meta?.displayName }}</div>
-          </div>
-          <button class="btn neutral head-save" data-test="cred-save" :disabled="busy" @click="save">
-            {{ busy ? 'Saving…' : 'Save' }}
-          </button>
-          <!-- D054 对标基线:已存凭证头部有垃圾桶(删除) -->
-          <button v-if="credInfo" class="icon-trash" data-test="cred-delete" title="Delete credential" :disabled="deleting" @click="deleteCredential">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /></svg>
-          </button>
-          <button class="icon-x" data-test="cred-close" @click="emit('close')">✕</button>
-        </header>
-
         <div class="config-body">
           <!-- 左侧竖排标签 -->
           <nav class="side-tabs">
@@ -415,7 +433,7 @@ onUnmounted(() => {
               <p class="setup-help">
                 <!-- D055 基线原文：Need help filling out these fields? / Read our docs -->
                 Need help filling out these fields?
-                <a href="#docs" @click.prevent>Read our docs</a>
+                <a :href="LINKS.docs" target="_blank" rel="noopener">Read our docs</a>
               </p>
 
               <template v-if="meta?.oauth">
@@ -467,20 +485,27 @@ onUnmounted(() => {
                 <p v-if="f.hint" class="fld-hint">{{ f.hint }}</p>
               </div>
 
-              <!-- 非 OAuth：Test connection -->
-              <div v-if="!meta?.oauth" class="test-row">
-                <button class="btn neutral" data-test="cred-test" :disabled="testing" @click="testConnection">
-                  {{ testing ? 'Testing…' : 'Test connection' }}
-                </button>
-                <span
-                  v-if="testResult"
-                  class="test-result"
+              <!-- 非 OAuth：自动测试状态条 + Retry -->
+              <div v-if="!meta?.oauth" class="test-area">
+                <div v-if="testing" class="test-banner neutral" role="status" data-test="cred-test-loading">
+                  <span class="test-spinner" />
+                  <div><strong>Testing connection…</strong><span>Checking these settings securely.</span></div>
+                </div>
+                <div
+                  v-else-if="testResult"
+                  class="test-banner"
                   :class="{ ok: testResult.ok, bad: !testResult.ok, neutral: !testResult.tested }"
+                  :role="testResult.ok ? 'status' : 'alert'"
                   data-test="cred-test-result"
                 >
                   <span class="tr-icon">{{ testResult.tested ? (testResult.ok ? '✓' : '✕') : 'ⓘ' }}</span>
-                  <span>{{ testResult.message }}</span>
-                </span>
+                  <div>
+                    <strong>{{ testResult.tested ? (testResult.ok ? 'Connection successful' : "Couldn't connect with these settings") : 'Connection test unavailable' }}</strong>
+                    <span v-if="testResult.message">{{ testResult.message }}</span>
+                  </div>
+                  <button class="btn neutral" data-test="cred-test" @click="testConnection">Retry</button>
+                </div>
+                <button v-else class="btn neutral" data-test="cred-test" @click="testConnection">Test connection</button>
               </div>
 
               <!-- OAuth2: Connect my account（整块琥珀横幅） -->
@@ -499,11 +524,11 @@ onUnmounted(() => {
                 </button>
               </div>
 
-              <p v-if="error" class="error-text" data-test="cred-error">{{ error }}</p>
+              <p v-if="error" class="error-text" role="alert" data-test="cred-error">{{ error }}</p>
 
               <p class="vault-note">
                 <span class="vault-i">ⓘ</span> Enterprise plan users can pull in credentials from external vaults.
-                <a href="#docs" @click.prevent>More info</a>
+                <a :href="LINKS.docs" target="_blank" rel="noopener">More info</a>
               </p>
             </template>
 
@@ -549,28 +574,19 @@ onUnmounted(() => {
         </div>
       </template>
     </div>
-  </div>
+  </UiDialog>
 </template>
 
 <style scoped>
-/* 基线实测：遮罩 = --dialog--overlay--color--background(slate-alpha-700)；
-   面板 bg light-3 / 1px border / 圆角 8 / el-dialog 阴影 0 6px 16px rgba(68,28,23,.06)；
-   pick 步 420px；config 步 70% 视宽 */
-.cred-overlay {
-  position: fixed; inset: 0; z-index: var(--modals--z); background: var(--dialog--overlay--color--background);
-  display: flex; align-items: center; justify-content: center; padding: 20px;
-}
+/* UiDialog 提供遮罩、焦点圈、Escape 和移动端底部面板；凭证组件只负责内容布局。 */
+:deep(.ui-dialog-body) { padding: 0; }
 .cred-modal {
-  background: var(--dialog--color--background); border: var(--border-width) var(--border-style) var(--border-color);
-  border-radius: var(--radius--lg);
-  display: flex; flex-direction: column; max-height: 86vh;
-  box-shadow: 0 6px 16px rgba(68, 28, 23, 0.06); /* el-dialog 实测值，无对应全局令牌 */
+  display: flex; flex-direction: column; min-height: 0;
 }
-.cred-modal.pick { width: 420px; max-width: 94vw; overflow: visible; }
-.cred-modal.config { width: 70vw; max-width: 94vw; overflow: hidden; }
+.cred-modal.config { height: min(620px, calc(100vh - 136px)); overflow: hidden; }
 
 /* Header */
-.cred-head { display: flex; align-items: center; gap: 14px; padding: var(--spacing--sm) var(--spacing--lg); border-bottom: var(--border-width) var(--border-style) var(--border-color); }
+.cred-head { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; }
 /* 基线实测：模态标题 20px/400 白 */
 .cred-title { font-size: var(--font-size--xl); font-weight: var(--font-weight--regular); color: var(--color--text--shade-1); flex: 1; }
 .icon-x {
@@ -700,12 +716,23 @@ onUnmounted(() => {
 .oauth-banner.ok { background: rgba(76, 195, 138, 0.12); border-color: rgba(76, 195, 138, 0.4); color: var(--ok); }
 
 /* Test connection */
-.test-row { display: flex; align-items: center; gap: 12px; margin-top: 4px; flex-wrap: wrap; }
-.test-result { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; }
-.test-result.ok { color: var(--ok); }
-.test-result.bad { color: var(--err); }
-.test-result.neutral { color: var(--text-dim); }
-.test-result .tr-icon { font-weight: 700; }
+.test-area { margin-top: 4px; }
+.test-banner {
+  display: flex; align-items: center; gap: 10px; padding: 11px 12px;
+  border: 1px solid currentColor; border-radius: var(--radius--2xs); font-size: 12.5px;
+}
+.test-banner > div { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
+.test-banner strong { color: currentColor; font-size: 13px; font-weight: var(--font-weight--medium); }
+.test-banner > div > span { color: var(--color--text); line-height: var(--line-height--lg); }
+.test-banner.ok { color: var(--ok); background: rgba(76, 195, 138, 0.1); }
+.test-banner.bad { color: var(--err); background: rgba(239, 111, 108, 0.1); }
+.test-banner.neutral { color: var(--color--text--tint-1); background: var(--color--background--light-2); border-color: var(--border-color); }
+.test-banner .tr-icon { flex: none; font-size: 15px; font-weight: 700; }
+.test-spinner {
+  width: 14px; height: 14px; flex: none; border: 2px solid var(--border-color--strong);
+  border-top-color: var(--color--primary); border-radius: 50%; animation: credential-spin .75s linear infinite;
+}
+@keyframes credential-spin { to { transform: rotate(360deg); } }
 
 /* Enterprise vault 提示 */
 .vault-note { display: flex; align-items: baseline; gap: 7px; margin-top: 20px; font-size: 12px; color: var(--text-faint); }
@@ -760,4 +787,23 @@ onUnmounted(() => {
 .btn.neutral:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .error-text { color: var(--err); font-size: 13px; margin: 14px 0 0; }
+
+@media (max-width: 720px) {
+  .cred-modal.config { height: min(680px, calc(100vh - 112px)); }
+  .config-body { flex-direction: column; }
+  .side-tabs {
+    width: 100%; padding: var(--spacing--2xs) var(--spacing--sm); flex-direction: row;
+    overflow-x: auto; border-right: none; border-bottom: var(--border-width) var(--border-style) var(--border-color);
+  }
+  .side-tabs button { flex: 1; min-width: max-content; text-align: center; }
+  .tab-content { padding: var(--spacing--sm); }
+  .name-input { font-size: var(--font-size--md); }
+  .head-type { display: none; }
+  .head-save { padding: 0 var(--spacing--xs); }
+  .test-banner { align-items: flex-start; flex-wrap: wrap; }
+  .test-banner .btn { margin-left: 24px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .test-spinner { animation: none; }
+}
 </style>

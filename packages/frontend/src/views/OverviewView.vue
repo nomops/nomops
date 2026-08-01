@@ -1201,7 +1201,9 @@ const fmtRunTime = (row: ExecutionRow): string => {
     <!-- ── Credentials ── -->
     <template v-else-if="tab === 'credentials'">
       <div v-if="credentials.length === 0" class="cred-empty" data-test="credential-empty">
-        <div class="lock">🔒</div>
+        <svg class="empty-resource-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+          <rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v2" />
+        </svg>
         <h3>{{ t('Create your first credential') }}</h3>
         <p class="dim">{{ t('Credentials let your workflows securely connect to your apps and services') }}</p>
         <button class="btn primary" data-test="new-credential" style="margin-top: 8px" @click="showCredModal = true">
@@ -2008,6 +2010,7 @@ const fmtRunTime = (row: ExecutionRow): string => {
   border: 2px dashed var(--border-strong); border-radius: 14px; padding: 48px 24px; text-align: center; margin-top: 8px;
 }
 .cred-empty .lock { font-size: 40px; opacity: 0.8; }
+.empty-resource-icon { width: 40px; height: 40px; color: var(--color--text--tint-1); }
 .cred-empty h3 { margin: 8px 0 0; font-weight: 600; color: var(--text-hi); }
 .cred-empty code { font-family: var(--font-family--monospace); font-size: 0.9em; background: var(--bg-input); padding: 1px 5px; border-radius: 4px; color: var(--text); }
 /* 基线实测：凭证品牌图标 26×26 裸图，无底框无圆角 */
