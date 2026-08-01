@@ -39,12 +39,12 @@ const handlerFlow = (name: string, failInside = false) => ({
   connections: { Start: { main: [[{ node: failInside ? 'Boom' : 'Notify', type: 'main', index: 0 }]] } },
 });
 
-/** 必炸主流：Start → Code(throw)。 */
+/** 必炸主流：Start → Stop and Error。 */
 const failingFlow = (name: string, errorWorkflowId: string) => ({
   name,
   nodes: [
     { id: 'a', name: 'Start', type: 'nomops.manualTrigger', typeVersion: 1, position: [0, 0], parameters: {} },
-    { id: 'b', name: 'Fail', type: 'nomops.code', typeVersion: 1, position: [200, 0], parameters: { code: 'throw new Error("main boom")' } },
+    { id: 'b', name: 'Fail', type: 'nomops.stopAndError', typeVersion: 1, position: [200, 0], parameters: { errorMessage: 'main boom', errorDescription: 'controlled stop' } },
   ],
   connections: { Start: { main: [[{ node: 'Fail', type: 'main', index: 0 }]] } },
   settings: { errorWorkflow: errorWorkflowId },
@@ -61,7 +61,7 @@ async function executionsOf(workflowId: string) {
 }
 
 describe('错误处理流', () => {
-  it('主流失败 → 错误流以 mode=error 运行并收到失败上下文', async () => {
+  it('Stop and Error 主动终止 → Error Trigger 流以 mode=error 运行并收到失败上下文', async () => {
     const handler = await request(app).post('/api/workflows').set(authed()).send(handlerFlow('err-handler')).expect(201);
     const main = await request(app)
       .post('/api/workflows')

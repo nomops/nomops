@@ -1,0 +1,52 @@
+import type { INodeTypeDescription } from '@nomops/workflow';
+
+export const totpDescription: INodeTypeDescription = {
+  displayName: 'TOTP',
+  name: 'totp',
+  group: ['transform'],
+  categories: ['core'],
+  aliases: ['two factor', 'one time password', 'otp', 'authenticator'],
+  version: 1,
+  description: 'Generate or verify a time-based one-time password',
+  defaults: { name: 'TOTP' },
+  inputs: ['main'],
+  outputs: ['main'],
+  credentials: [{ name: 'totp', required: true }],
+  properties: [
+    {
+      displayName: 'Operation',
+      name: 'operation',
+      type: 'options',
+      default: 'generate',
+      noDataExpression: true,
+      options: [{ name: 'Generate', value: 'generate' }, { name: 'Verify', value: 'verify' }],
+    },
+    {
+      displayName: 'Code',
+      name: 'code',
+      type: 'string',
+      default: '',
+      required: true,
+      displayOptions: { show: { operation: ['verify'] } },
+    },
+    {
+      displayName: 'Algorithm',
+      name: 'algorithm',
+      type: 'options',
+      default: 'sha1',
+      noDataExpression: true,
+      options: [{ name: 'SHA1', value: 'sha1' }, { name: 'SHA256', value: 'sha256' }, { name: 'SHA512', value: 'sha512' }],
+    },
+    {
+      displayName: 'Digits',
+      name: 'digits',
+      type: 'options',
+      default: 6,
+      noDataExpression: true,
+      options: [{ name: '6', value: 6 }, { name: '8', value: 8 }],
+    },
+    { displayName: 'Period (Seconds)', name: 'period', type: 'number', default: 30, required: true },
+    { displayName: 'Verification Window', name: 'window', type: 'number', default: 1, displayOptions: { show: { operation: ['verify'] } } },
+    { displayName: 'Put Result in Field', name: 'outputField', type: 'string', default: 'totp', required: true },
+  ],
+};

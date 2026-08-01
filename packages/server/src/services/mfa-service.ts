@@ -1,6 +1,7 @@
-import { createHash, createHmac, randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { OperationalError } from '@nomops/workflow';
 import type { Repositories, User } from '@nomops/db';
+import { generateTotp, verifyTotpCode } from '@nomops/nodes';
 
 /**
  * 两步验证（TOTP，RFC 6238 / RFC 4648 base32）——零外部依赖，node:crypto 自实现。
@@ -32,47 +33,19 @@ function base32Encode(buf: Buffer): string {
   return out;
 }
 
-function base32Decode(str: string): Buffer {
-  const clean = str.toUpperCase().replace(/[^A-Z2-7]/g, '');
-  let bits = 0;
-  let value = 0;
-  const out: number[] = [];
-  for (const c of clean) {
-    value = (value << 5) | B32.indexOf(c);
-    bits += 5;
-    if (bits >= 8) {
-      out.push((value >>> (bits - 8)) & 0xff);
-      bits -= 8;
-    }
-  }
-  return Buffer.from(out);
-}
-
-/** HOTP(secret, counter) → DIGITS 位数字串（RFC 4226 动态截断）。 */
-function hotp(secret: Buffer, counter: number): string {
-  const msg = Buffer.alloc(8);
-  msg.writeBigUInt64BE(BigInt(counter));
-  const hmac = createHmac('sha1', secret).update(msg).digest();
-  const offset = hmac[hmac.length - 1]! & 0xf;
-  const bin = hmac.readUInt32BE(offset) & 0x7fffffff;
-  return (bin % 10 ** DIGITS).toString().padStart(DIGITS, '0');
-}
-
 /** 当前 TOTP 码（测试/生成用）。 */
 export function totp(secretBase32: string, now = Date.now()): string {
-  return hotp(base32Decode(secretBase32), Math.floor(now / 1000 / STEP_SECONDS));
+  return generateTotp(secretBase32, { timestamp: now, digits: DIGITS, period: STEP_SECONDS });
 }
 
 /** 校验 TOTP 码（含 ±SKEW_WINDOWS 时间窗）。 */
 export function verifyTotp(secretBase32: string, code: string, now = Date.now()): boolean {
-  const normalized = code.replace(/\s/g, '');
-  if (!/^\d{6}$/.test(normalized)) return false;
-  const secret = base32Decode(secretBase32);
-  const counter = Math.floor(now / 1000 / STEP_SECONDS);
-  for (let i = -SKEW_WINDOWS; i <= SKEW_WINDOWS; i += 1) {
-    if (hotp(secret, counter + i) === normalized) return true;
-  }
-  return false;
+  return verifyTotpCode(secretBase32, code, {
+    timestamp: now,
+    digits: DIGITS,
+    period: STEP_SECONDS,
+    window: SKEW_WINDOWS,
+  });
 }
 
 function hashCode(code: string): string {

@@ -14,7 +14,7 @@ let token: string;
 let wfId = '';
 const authed = () => ({ Authorization: `Bearer ${token}` });
 
-/** ChatTrigger 不需要——用 manualTrigger → SetMetadata，metadata 值取表达式。 */
+/** ChatTrigger 不需要——用 manualTrigger → Execution Data，metadata 值取表达式。 */
 const wfWith = (customerId: string) => ({
   name: `meta-${customerId}`,
   nodes: [
@@ -22,10 +22,10 @@ const wfWith = (customerId: string) => ({
     {
       id: 'm',
       name: 'Meta',
-      type: 'nomops.setMetadata',
+      type: 'nomops.executionData',
       typeVersion: 1,
       position: [240, 0],
-      parameters: { metadata: { customerId, stage: 'checkout' } },
+      parameters: { operation: 'set', metadata: { customerId, stage: 'checkout' } },
     },
   ],
   connections: { Start: { main: [[{ node: 'Meta', type: 'main', index: 0 }]] } },
@@ -50,7 +50,7 @@ const runWf = async (customerId: string): Promise<string> => {
 };
 
 describe('执行自定义元数据（backlog #35b）', () => {
-  it('SetMetadata 写的 KV 进执行详情 metadata', async () => {
+  it('Execution Data 写的 KV 进执行详情 metadata', async () => {
     const execId = await runWf('alice');
     const detail = (await request(app).get(`/api/executions/${execId}`).set(authed()).expect(200)).body;
     const asObj = Object.fromEntries(detail.metadata.map((m: { key: string; value: string }) => [m.key, m.value]));

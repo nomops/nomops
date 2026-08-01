@@ -53,6 +53,10 @@ import { formDescription } from './nodes/Form/Form.description.js';
 import { rssFeedReadDescription } from './nodes/RssFeedRead/RssFeedRead.description.js';
 import { rssFeedReadTriggerDescription } from './nodes/RssFeedReadTrigger/RssFeedReadTrigger.description.js';
 import { sseTriggerDescription } from './nodes/SseTrigger/SseTrigger.description.js';
+import { stopAndErrorDescription } from './nodes/StopAndError/StopAndError.description.js';
+import { executionDataDescription } from './nodes/ExecutionData/ExecutionData.description.js';
+import { totpDescription } from './nodes/Totp/Totp.description.js';
+import { gitDescription } from './nodes/Git/Git.description.js';
 import { declarative } from './nodes/integrations/declarative.js';
 import { integrationDescriptions } from './nodes/integrations/integrations.js';
 
@@ -95,6 +99,26 @@ export const builtinNodeManifest: ILoadableNodeType[] = [
     type: `nomops.${setMetadataDescription.name}`,
     description: setMetadataDescription,
     load: () => import('./nodes/SetMetadata/SetMetadata.node.js').then((m) => m.SetMetadata),
+  },
+  {
+    type: `nomops.${executionDataDescription.name}`,
+    description: executionDataDescription,
+    load: () => import('./nodes/ExecutionData/ExecutionData.node.js').then((m) => m.ExecutionData),
+  },
+  {
+    type: `nomops.${stopAndErrorDescription.name}`,
+    description: stopAndErrorDescription,
+    load: () => import('./nodes/StopAndError/StopAndError.node.js').then((m) => m.StopAndError),
+  },
+  {
+    type: `nomops.${totpDescription.name}`,
+    description: totpDescription,
+    load: () => import('./nodes/Totp/Totp.node.js').then((m) => m.Totp),
+  },
+  {
+    type: `nomops.${gitDescription.name}`,
+    description: gitDescription,
+    load: () => import('./nodes/Git/Git.node.js').then((m) => m.Git),
   },
   {
     type: `nomops.${errorTriggerDescription.name}`,

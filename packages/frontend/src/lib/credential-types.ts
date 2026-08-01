@@ -34,6 +34,36 @@ export interface CredentialTypeMeta {
 
 export const CREDENTIAL_TYPES: CredentialTypeMeta[] = [
   {
+    type: 'totp',
+    displayName: 'TOTP Secret',
+    icon: '⏱️',
+    description: 'Generate or verify time-based one-time passwords',
+    fields: [
+      { name: 'secret', label: 'Base32 Secret', type: 'password', required: true },
+    ],
+  },
+  {
+    type: 'gitToken',
+    displayName: 'Git Access Token',
+    icon: '🔗',
+    description: 'Authenticate to an HTTPS Git repository',
+    fields: [
+      { name: 'username', label: 'Username', type: 'text', default: 'git', required: true },
+      { name: 'accessToken', label: 'Access Token', type: 'password', required: true },
+    ],
+  },
+  {
+    type: 'gitSsh',
+    displayName: 'Git SSH Key',
+    icon: '🔑',
+    description: 'Authenticate to an SSH Git repository',
+    fields: [
+      { name: 'privateKey', label: 'Private Key', type: 'password', required: true },
+      { name: 'passphrase', label: 'Passphrase', type: 'password' },
+      { name: 'knownHosts', label: 'Known Hosts', type: 'password', hint: 'Optional pinned known_hosts entry. Without it, the first host key is accepted for this operation.' },
+    ],
+  },
+  {
     type: 'ftp',
     displayName: 'FTP',
     icon: '📁',

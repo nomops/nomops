@@ -224,6 +224,31 @@ describe('凭证系统（铁律 3：明文不落库、不出 API）', () => {
       .expect(200);
     expect(test.body.ok).toBe(true);
   });
+
+  it('TOTP 与 Git 凭证明文不落库、不出 API', async () => {
+    const token = await registerAndLogin('tool-cred@test.dev');
+    const login = await request(app).post('/auth/login').send({ email: 'tool-cred@test.dev', password: 'password-123' }).expect(200);
+    const projectId = login.body.projectId as string;
+    const inputs = [
+      { name: 'TOTP', type: 'totp', data: { secret: 'JBSWY3DPEHPK3PXP' }, secrets: ['JBSWY3DPEHPK3PXP'] },
+      { name: 'Git token', type: 'gitToken', data: { username: 'git', accessToken: 'git-token-plain' }, secrets: ['git-token-plain'] },
+      { name: 'Git SSH', type: 'gitSsh', data: { privateKey: 'ssh-private-key-plain', passphrase: 'ssh-passphrase-plain' }, secrets: ['ssh-private-key-plain', 'ssh-passphrase-plain'] },
+    ];
+    const plaintext = inputs.flatMap((input) => input.secrets);
+    for (const input of inputs) {
+      const response = await request(app).post('/api/credentials').set(authed(token)).send(input).expect(201);
+      for (const secret of input.secrets) expect(JSON.stringify(response.body)).not.toContain(secret);
+    }
+
+    const list = await request(app).get('/api/credentials').set(authed(token)).expect(200);
+    const rows = await boot.services.repos.credentials.findAllByProject(projectId);
+    expect(rows).toHaveLength(3);
+    for (const secret of plaintext) {
+      expect(JSON.stringify(list.body)).not.toContain(secret);
+      expect(rows.every((row) => !row.data.includes(secret))).toBe(true);
+    }
+    expect(rows.every((row) => row.data.startsWith('v1:'))).toBe(true);
+  });
 });
 
 describe('node-types', () => {
@@ -249,11 +274,13 @@ describe('node-types', () => {
       'evaluationTrigger',
       'executeWorkflow',
       'executeWorkflowTrigger',
+      'executionData',
       'extractFromFile',
       'filter',
       'form',
       'formTrigger',
       'ftp',
+      'git',
       'github',
       'googleSheets',
       'hackerNews',
@@ -286,10 +313,12 @@ describe('node-types', () => {
       'sseTrigger',
       'ssh',
       'stickyNote',
+      'stopAndError',
       'stripe',
       'summarize',
       'switch',
       'telegram',
+      'totp',
       'wait',
       'webhook',
       'windowMemory',
