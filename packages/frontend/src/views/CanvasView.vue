@@ -838,6 +838,7 @@ async function stopExecDetail() {
     await api.executions.stop(id).catch(() => undefined);
     await loadExecList();
     await selectExec(id);
+    ui.notify({ kind: 'success', title: 'Execution stopped', message: id.slice(0, 8) });
   } finally {
     execStopping.value = false;
   }
@@ -848,14 +849,22 @@ const execDeleting = ref(false);
 async function deleteExecution() {
   const id = selectedExecId.value;
   if (!id || execDeleting.value) return;
+  const confirmed = await ui.requestConfirm({
+    title: 'Delete execution?',
+    message: `Execution ${id.slice(0, 8)} and its run data will be permanently deleted.`,
+    confirmLabel: 'Delete',
+    tone: 'danger',
+  });
+  if (!confirmed) return;
   execDeleting.value = true;
   try {
     await api.executions.remove(id);
     execDetail.value = null;
     selectedExecId.value = null;
     await loadExecList();
-  } catch {
-    /* 忽略:列表刷新失败不阻塞 */
+    ui.notify({ kind: 'success', title: 'Execution deleted', message: id.slice(0, 8) });
+  } catch (error) {
+    ui.notify({ kind: 'error', title: 'Could not delete execution', message: (error as Error).message });
   } finally {
     execDeleting.value = false;
   }
@@ -1099,7 +1108,8 @@ async function loadSavePolicy() {
               title="Stop this execution"
               @click="stopExecDetail"
             >
-              ■ {{ execStopping ? 'Stopping…' : 'Stop' }}
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2" /></svg>
+              {{ execStopping ? 'Stopping…' : 'Stop' }}
             </button>
             <button class="exec-copy-btn" data-test="exec-copy-editor" title="Copy this execution's workflow to the editor" @click="copyExecToEditor">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg>
@@ -1117,15 +1127,17 @@ async function loadSavePolicy() {
               :class="{ on: annotation.vote === 'up' }"
               data-test="annot-up"
               title="Rate good"
+              aria-label="Rate execution as good"
               @click="toggleVote('up')"
-            >👍</button>
+            ><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M7 10v11H3V10h4Zm0 9h9.2a2 2 0 0 0 1.9-1.4l2.5-8A2 2 0 0 0 18.7 7H14l.7-3.1A2.4 2.4 0 0 0 10.2 2L7 10Z" /></svg></button>
             <button
               class="annot-vote"
               :class="{ on: annotation.vote === 'down' }"
               data-test="annot-down"
               title="Rate bad"
+              aria-label="Rate execution as bad"
               @click="toggleVote('down')"
-            >👎</button>
+            ><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M7 14V3H3v11h4Zm0-9h9.2a2 2 0 0 1 1.9 1.4l2.5 8a2 2 0 0 1-1.9 2.6H14l.7 3.1a2.4 2.4 0 0 1-4.5 1.9L7 14Z" /></svg></button>
             <span v-for="tg in annotation.tags" :key="tg.id" class="annot-tag" data-test="annot-tag">
               {{ tg.name }}
               <button class="annot-tag-x" data-test="annot-tag-remove" @click="removeAnnotationTag(tg.name)">×</button>
@@ -1890,8 +1902,10 @@ async function loadSavePolicy() {
 }
 .annot-vote {
   width: 30px; height: 28px; border: 1px solid var(--border-color); border-radius: 6px;
-  background: none; cursor: pointer; font-size: 14px; opacity: 0.55;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; cursor: pointer; opacity: 0.55;
 }
+.annot-vote svg { width: 15px; height: 15px; }
 .annot-vote:hover { opacity: 0.85; }
 .annot-vote.on { opacity: 1; border-color: var(--accent); background: var(--color--background--light-1); }
 .annot-tag {
@@ -2083,4 +2097,12 @@ async function loadSavePolicy() {
 }
 .log-io-tabs button.on { background: var(--bg-panel); color: var(--text); }
 .log-detail-data { flex: 1; min-height: 0; overflow: hidden; }
+
+@media (max-width: 900px) {
+  .exec-detail-head { align-items: flex-start; flex-wrap: wrap; padding: var(--spacing--sm); }
+  .exec-detail-head .spacer { display: none; }
+  .exec-detail-head .exec-copy-btn:first-of-type { margin-left: auto; }
+  .exec-annotation { padding: var(--spacing--2xs) var(--spacing--sm); }
+  .annot-note { flex-basis: 100%; }
+}
 </style>

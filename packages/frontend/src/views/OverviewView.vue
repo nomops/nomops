@@ -778,9 +778,23 @@ function toggleExecSelectAll() {
 }
 async function deleteSelectedExecs() {
   const ids = [...selectedExecIds.value];
-  await api.executions.removeMany(ids).catch((e) => (error.value = (e as Error).message)); // 单请求批量（backlog #10）
-  selectedExecIds.value = new Set();
-  executions.value = executions.value.filter((e) => !ids.includes(e.id));
+  if (!ids.length) return;
+  const confirmed = await ui.requestConfirm({
+    title: t(ids.length === 1 ? 'Delete execution?' : 'Delete {n} executions?', { n: ids.length }),
+    message: t('Execution data will be permanently deleted. This action cannot be undone.'),
+    confirmLabel: t('Delete'),
+    tone: 'danger',
+  });
+  if (!confirmed) return;
+  error.value = '';
+  try {
+    await api.executions.removeMany(ids); // 单请求批量（backlog #10）
+    selectedExecIds.value = new Set();
+    executions.value = executions.value.filter((e) => !ids.includes(e.id));
+    ui.notify({ kind: 'success', title: t(ids.length === 1 ? 'Execution deleted' : '{n} executions deleted', { n: ids.length }) });
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
 }
 
 /* 停止（backlog #2）：new(排队/手动在跑)/running/waiting 可停 */
@@ -792,6 +806,7 @@ async function stopExec(row: ExecutionRow) {
   try {
     await api.executions.stop(row.id);
     executions.value = (await api.executions.list()).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    ui.notify({ kind: 'success', title: t('Execution stopped'), message: row.id.slice(0, 8) });
   } catch (e) {
     error.value = (e as Error).message;
   } finally {
@@ -803,9 +818,17 @@ const selectedStoppableIds = computed(() =>
 );
 async function stopSelectedExecs() {
   const ids = selectedStoppableIds.value;
+  if (!ids.length) return;
+  const confirmed = await ui.requestConfirm({
+    title: t(ids.length === 1 ? 'Stop execution?' : 'Stop {n} executions?', { n: ids.length }),
+    message: t('Running and waiting executions will stop as soon as possible.'),
+    confirmLabel: t('Stop'),
+  });
+  if (!confirmed) return;
   await Promise.all(ids.map((id) => api.executions.stop(id).catch(() => {})));
   selectedExecIds.value = new Set();
   executions.value = (await api.executions.list()).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  ui.notify({ kind: 'success', title: t(ids.length === 1 ? 'Execution stopped' : '{n} executions stopped', { n: ids.length }) });
 }
 
 /* 行 ⋮：Retry ×2 / Delete */
@@ -817,6 +840,7 @@ async function retryExec(row: ExecutionRow, useOriginal: boolean) {
   try {
     await api.executions.retry(row.id, useOriginal);
     executions.value = (await api.executions.list()).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    ui.notify({ kind: 'success', title: t('Execution retry started'), message: row.id.slice(0, 8) });
   } catch (e) {
     error.value = (e as Error).message;
   } finally {
@@ -825,8 +849,21 @@ async function retryExec(row: ExecutionRow, useOriginal: boolean) {
 }
 async function deleteExec(row: ExecutionRow) {
   closeMenus();
-  await api.executions.remove(row.id).catch((e) => (error.value = (e as Error).message));
-  executions.value = executions.value.filter((e) => e.id !== row.id);
+  const confirmed = await ui.requestConfirm({
+    title: t('Delete execution?'),
+    message: t('Execution {id} and its run data will be permanently deleted.', { id: row.id.slice(0, 8) }),
+    confirmLabel: t('Delete'),
+    tone: 'danger',
+  });
+  if (!confirmed) return;
+  error.value = '';
+  try {
+    await api.executions.remove(row.id);
+    executions.value = executions.value.filter((e) => e.id !== row.id);
+    ui.notify({ kind: 'success', title: t('Execution deleted'), message: row.id.slice(0, 8) });
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
 }
 
 const sortLabel = computed(
@@ -1342,7 +1379,16 @@ const fmtRunTime = (row: ExecutionRow): string => {
           </thead>
           <tbody>
             <tr v-if="filteredExecutions.length === 0">
-              <td colspan="8" class="exec-empty">{{ t('No executions') }}</td>
+              <td colspan="8" class="exec-empty">
+                <div class="exec-empty-content" data-test="executions-empty">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                    <circle cx="12" cy="12" r="8" /><path d="M12 8v4l2.5 2.5" />
+                  </svg>
+                  <strong>{{ execStatusFilter === 'all' ? t('No executions yet') : t('No executions match this filter') }}</strong>
+                  <span>{{ execStatusFilter === 'all' ? t('Workflow runs will appear here as soon as they start.') : t('Try another status or clear the filter.') }}</span>
+                  <button v-if="execStatusFilter !== 'all'" class="btn neutral" data-test="exec-clear-filter" @click="execStatusFilter = 'all'">{{ t('Clear filter') }}</button>
+                </div>
+              </td>
             </tr>
             <tr
               v-for="row in filteredExecutions"
@@ -2127,6 +2173,11 @@ const fmtRunTime = (row: ExecutionRow): string => {
 .expand-caret { display: inline-block; color: var(--text-faint); font-size: 15px; transition: transform 0.15s; }
 .expand-caret.open { transform: rotate(90deg); color: var(--text); }
 .exec-empty { text-align: center; padding: 34px; color: var(--text-dim); }
+.exec-empty-content { min-height: 190px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+.exec-empty-content svg { width: 34px; height: 34px; margin-bottom: 4px; color: var(--color--text--tint-1); }
+.exec-empty-content strong { color: var(--color--text--shade-1); font-size: var(--font-size--sm); font-weight: var(--font-weight--medium); }
+.exec-empty-content span { color: var(--color--text--tint-1); font-size: var(--font-size--xs); }
+.exec-empty-content .btn { margin-top: 6px; }
 .exec-pill {
   display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500;
   padding: 3px 10px 3px 8px; border-radius: 12px; white-space: nowrap;
@@ -2261,5 +2312,9 @@ const fmtRunTime = (row: ExecutionRow): string => {
   .wf-card > .chip { display: none; }
   .pager { justify-content: center; flex-wrap: wrap; }
   .exec-table { min-width: 760px; }
+  .exec-bulkbar {
+    left: var(--spacing--sm); right: var(--spacing--sm); bottom: var(--spacing--sm); transform: none;
+    justify-content: center; flex-wrap: wrap; padding: var(--spacing--2xs);
+  }
 }
 </style>

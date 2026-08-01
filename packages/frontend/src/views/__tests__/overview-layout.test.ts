@@ -34,4 +34,12 @@ describe('Overview 资源 Tab 布局契约', () => {
       expect(source).toContain(`title: t('${title}')`);
     }
   });
+
+  it('执行列表区分空列表与筛选无结果，并保护批量危险操作', () => {
+    expect(source).toContain("t('No executions yet')");
+    expect(source).toContain("t('No executions match this filter')");
+    expect(source).toContain('data-test="exec-clear-filter"');
+    expect(source).toContain("title: t(ids.length === 1 ? 'Delete execution?' : 'Delete {n} executions?'");
+    expect(source).toContain("title: t(ids.length === 1 ? 'Stop execution?' : 'Stop {n} executions?'");
+  });
 });
