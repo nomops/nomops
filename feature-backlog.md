@@ -258,6 +258,8 @@
 
 > 2026-08-01 UI 顺序改造第 16 项（页面路由与最终验收）：移除与 Stateful Assistant 可选参数路由冲突的旧 `/assistant → /chat` 重定向，确保侧栏进入、地址直达和刷新始终落到同一 Assistant 页面；新增所有顶层 View 路由覆盖、命名页标题、公开路由边界、Assistant 解析与旧资源跳转 5 项回归。生产构建 6/6、全量 1084 项测试通过；浏览器实测公开登录表单语义及 `/assistant`、`/agents`、`/chat` 未登录守卫均正常。
 
+> 2026-08-01 UI 顺序改造第 17 项（画布节点执行态专项）：修复执行详情使用 `ok` 而节点样式仅识别 `success` 导致成功态丢失的问题，实时运行与只读快照统一状态模型；节点新增 n8n 式运行中、成功、失败角标（含减弱动画设置），disabled 快照复用禁用视觉，工具条与快捷新增图标按钮补齐可访问名称。新增 3 项节点回归，生产构建 6/6、全量 1087 项测试通过。
+
 - [ ] **66. 执行可视化正确性（串台 + 重连 + 频道）** `M`（🟠 A6）
   踩坑：`packages/frontend/src/stores/execution.ts:44` handleEvent 不按 executionId 过滤（并发执行/多用户高亮串台）；`packages/server/src/ws/push-hub.ts:27` 广播全连接无 workflow 频道；`execution.ts:38` WS 断线不重连（静默丢实时进度）。三者叠加使执行可视化在任意并发/断网下失真。
   → handleEvent 首行按 executionId 过滤（executionStarted 除外）；push-hub 按 workflowId 分频道；WS 加指数退避重连 + 心跳。

@@ -75,6 +75,42 @@ describe('CanvasNode 悬停工具条', () => {
     expect(w.find('.nomops-node').classes()).toEqual(expect.arrayContaining(['trigger', 'selected']));
   });
 
+  it('执行详情的 ok 状态归一为 success，并显示成功徽标', () => {
+    const w = mount(CanvasNode, {
+      props: { data: { node: plainNode }, readonly: true, runStatus: 'ok' },
+      global: { stubs: { Handle: true, IconSvg: true } },
+    });
+    expect(w.find('.nomops-node').classes()).toContain('status-success');
+    expect(w.find('[data-test="node-run-status"]').attributes('aria-label')).toBe('Node finished successfully');
+    expect(w.find('.run-success').exists()).toBe(true);
+  });
+
+  it('错误状态显示明确徽标，disabled 快照复用节点禁用视觉', () => {
+    const failed = mount(CanvasNode, {
+      props: { data: { node: plainNode }, readonly: true, runStatus: 'error' },
+      global: { stubs: { Handle: true, IconSvg: true } },
+    });
+    expect(failed.find('.run-error').attributes('aria-label')).toBe('Node execution failed');
+
+    const disabled = mount(CanvasNode, {
+      props: { data: { node: plainNode }, readonly: true, runStatus: 'disabled' },
+      global: { stubs: { Handle: true, IconSvg: true } },
+    });
+    expect(disabled.find('.nomops-node').classes()).toContain('disabled');
+    expect(disabled.find('.node-label').text()).toContain('(Deactivated)');
+  });
+
+  it('节点工具条与快捷新增的图标按钮都有可访问名称', () => {
+    const w = mountNode(plainNode);
+    expect(w.findAll('.tb-btn').map((button) => button.attributes('aria-label'))).toEqual([
+      'Execute step',
+      'Deactivate',
+      'Delete',
+      'More actions',
+    ]);
+    expect(w.find('.port-plus').attributes('aria-label')).toBe('Add node');
+  });
+
   // 回归：色板/菜单曾用 @mouseleave 关，因工具条 pointer-events:none 鼠标穿透到画布触发 mouseleave，
   // 没点到就自关。改为点击外部才关后，mouseleave 不应关闭已打开的色板。
   it('色板打开后，节点 mouseleave 不再误关（改点击外部才关）', async () => {

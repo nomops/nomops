@@ -28,7 +28,11 @@ const ui = useUiStore();
 const desc = computed(() => nodeTypes.byType.get(props.data.node.type));
 const inputs = computed(() => desc.value?.inputs ?? ['main']);
 const outputs = computed(() => desc.value?.outputs ?? ['main']);
-const status = computed(() => props.runStatus ?? execution.statusByNode[props.data.node.name]);
+/** 执行详情 API 使用 ok，实时执行 store 使用 success；渲染前统一为同一视觉状态。 */
+const status = computed<'running' | 'success' | 'error' | 'disabled' | undefined>(() => {
+  const value = props.runStatus ?? execution.statusByNode[props.data.node.name];
+  return value === 'ok' ? 'success' : value;
+});
 
 /** 端口按连接类型分组：main 走左右，ai_* 能力口走上下。 */
 const mainInputs = computed(() => inputs.value.filter((t) => t === 'main'));
@@ -97,7 +101,13 @@ const visual = computed(() => nodeIcon(props.data.node.type));
    - 普通/触发器/Agent/Tool 子节点 → ▶ Execute step · ⏻ Deactivate · 🗑 Delete · ⋯ More
    - 能力子节点(仅 ai_languageModel/ai_memory 输出,不能单独跑)→ 去掉 ▶,余 3 键
    - 便签 → 🗑 Delete · 🎨 颜色 · ⋯ More(见便签分支) */
-const isDisabled = computed(() => Boolean(props.data.node.disabled));
+const isDisabled = computed(() => Boolean(props.data.node.disabled) || status.value === 'disabled');
+const runStatusLabel = computed(() => {
+  if (status.value === 'running') return 'Node is running';
+  if (status.value === 'success') return 'Node finished successfully';
+  if (status.value === 'error') return 'Node execution failed';
+  return '';
+});
 /** 输出被钉住（pin data）：节点角标提示，手动执行时引擎用冻结数据代替重跑。 */
 const isOutputPinned = computed(() => editor.isNodeDataPinned(props.data.node.name));
 const canExecute = computed(() => {
@@ -242,13 +252,13 @@ const bottomStyle = (i: number, count: number) => ({
     <!-- 便签悬停工具条(对标基线:🗑 Delete · 🎨 颜色 · ⋯ More;无执行/无禁用) -->
     <div v-if="!readonly" ref="toolbarRef" class="node-toolbar sticky-toolbar" :class="{ pinned: overflowOpen || stickyColorOpen }" @mousedown.stop @dblclick.stop>
       <div class="node-toolbar-items" data-test="canvas-node-toolbar">
-        <button class="tb-btn" title="Delete" data-test-node-tb="delete" @click.stop="onDelete">
+        <button class="tb-btn" title="Delete" aria-label="Delete" data-test-node-tb="delete" @click.stop="onDelete">
           <svg viewBox="0 0 24 24" class="tb-i"><path fill="currentColor" d="M21 6a1 1 0 1 1 0 2h-1v12.125c0 .817-.424 1.534-.941 2.019-.522.488-1.256.856-2.059.856H7c-.803 0-1.537-.368-2.059-.856C4.424 21.659 4 20.943 4 20.125V8H3a1 1 0 0 1 0-2zm-7-5a3 3 0 0 1 3 3H7a3 3 0 0 1 3-3z" /></svg>
         </button>
-        <button class="tb-btn" title="Change color" data-test-node-tb="sticky-color" @click.stop="stickyColorOpen = !stickyColorOpen; overflowOpen = false">
+        <button class="tb-btn" title="Change color" aria-label="Change color" data-test-node-tb="sticky-color" @click.stop="stickyColorOpen = !stickyColorOpen; overflowOpen = false">
           <svg viewBox="0 0 24 24" class="tb-i"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M12 22a1 1 0 0 1 0-20a10 9 0 0 1 10 9a5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z" /><circle cx="13.5" cy="6.5" r=".5" fill="currentColor" /><circle cx="17.5" cy="10.5" r=".5" fill="currentColor" /><circle cx="6.5" cy="12.5" r=".5" fill="currentColor" /><circle cx="8.5" cy="7.5" r=".5" fill="currentColor" /></g></svg>
         </button>
-        <button class="tb-btn" title="More actions" data-test-node-tb="overflow" @click.stop="overflowOpen = !overflowOpen; stickyColorOpen = false">
+        <button class="tb-btn" title="More actions" aria-label="More actions" data-test-node-tb="overflow" @click.stop="overflowOpen = !overflowOpen; stickyColorOpen = false">
           <svg viewBox="0 0 24 24" class="tb-i"><path fill="currentColor" d="M4.5 9.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5m7.5 0a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5m7.5 0a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5" /></svg>
         </button>
       </div>
@@ -299,8 +309,9 @@ const bottomStyle = (i: number, count: number) => ({
         <div class="node-toolbar-items" data-test="canvas-node-toolbar">
           <button
             v-if="canExecute"
-            class="tb-btn"
-            title="Execute step"
+          class="tb-btn"
+          title="Execute step"
+          aria-label="Execute step"
             data-test-node-tb="execute"
             :disabled="execution.running"
             @click.stop="onExecute"
@@ -310,17 +321,19 @@ const bottomStyle = (i: number, count: number) => ({
           <button
             class="tb-btn"
             :title="isDisabled ? 'Activate' : 'Deactivate'"
+            :aria-label="isDisabled ? 'Activate' : 'Deactivate'"
             data-test-node-tb="disable"
             @click.stop="onToggleDisable"
           >
             <svg viewBox="0 0 24 24" class="tb-i"><path fill="currentColor" d="M16.645 5.907a1.5 1.5 0 0 1 2.122.028 9.77 9.77 0 0 1 2.585 4.953 9.9 9.9 0 0 1-.53 5.579 9.66 9.66 0 0 1-3.476 4.357 9.36 9.36 0 0 1-5.28 1.657 9.36 9.36 0 0 1-5.292-1.623 9.66 9.66 0 0 1-3.504-4.335 9.9 9.9 0 0 1-.564-5.576 9.77 9.77 0 0 1 2.556-4.97l.11-.105a1.501 1.501 0 0 1 2.05 2.187l-.166.178a6.8 6.8 0 0 0-1.602 3.266 6.9 6.9 0 0 0 .393 3.884 6.66 6.66 0 0 0 2.413 2.989 6.36 6.36 0 0 0 3.595 1.105 6.36 6.36 0 0 0 3.59-1.128 6.66 6.66 0 0 0 2.394-3.005 6.9 6.9 0 0 0 .37-3.887 6.77 6.77 0 0 0-1.79-3.433 1.5 1.5 0 0 1 .026-2.12" /><path fill="currentColor" d="M12.035 1.481a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-3 0v-9a1.5 1.5 0 0 1 1.5-1.5" /></svg>
           </button>
-          <button class="tb-btn" title="Delete" data-test-node-tb="delete" @click.stop="onDelete">
+          <button class="tb-btn" title="Delete" aria-label="Delete" data-test-node-tb="delete" @click.stop="onDelete">
             <svg viewBox="0 0 24 24" class="tb-i"><path fill="currentColor" d="M21 6a1 1 0 1 1 0 2h-1v12.125c0 .817-.424 1.534-.941 2.019-.522.488-1.256.856-2.059.856H7c-.803 0-1.537-.368-2.059-.856C4.424 21.659 4 20.943 4 20.125V8H3a1 1 0 0 1 0-2zm-7-5a3 3 0 0 1 3 3H7a3 3 0 0 1 3-3z" /></svg>
           </button>
           <button
             class="tb-btn"
             title="More actions"
+            aria-label="More actions"
             data-test-node-tb="overflow"
             @click.stop="overflowOpen = !overflowOpen"
           >
@@ -379,6 +392,20 @@ const bottomStyle = (i: number, count: number) => ({
 
       <IconSvg class="node-icon" :svg="visual.svg" :color="visual.color" :size="isSubNode ? 28 : 48" />
 
+      <span
+        v-if="runStatusLabel"
+        class="run-badge"
+        :class="`run-${status}`"
+        role="status"
+        :aria-label="runStatusLabel"
+        :title="runStatusLabel"
+        data-test="node-run-status"
+      >
+        <svg v-if="status === 'running'" viewBox="0 0 24 24" class="run-icon run-spinner" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="3" d="M20 12a8 8 0 1 1-8-8" /></svg>
+        <svg v-else-if="status === 'success'" viewBox="0 0 24 24" class="run-icon" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="m6 12 4 4 8-9" /></svg>
+        <svg v-else viewBox="0 0 24 24" class="run-icon" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="3" d="m7 7 10 10M17 7 7 17" /></svg>
+      </span>
+
       <!-- main 输出：右侧 -->
       <template v-for="(_, i) in mainOutputs" :key="`out-main-${i}`">
         <Handle
@@ -397,6 +424,7 @@ const bottomStyle = (i: number, count: number) => ({
           class="port-plus"
           :style="sideStyle(i, mainOutputs.length)"
           title="Add node"
+          aria-label="Add node"
           data-test="port-plus"
           @mousedown.stop
           @click.stop="quickAddFrom"
@@ -455,6 +483,21 @@ const bottomStyle = (i: number, count: number) => ({
 .nomops-node.status-running { border-color: var(--node--border-color--running); }
 .nomops-node.status-success { border-color: var(--color--success); }
 .nomops-node.status-error { border-color: var(--color--danger); }
+/* 基线式节点执行角标：实时运行与执行快照共用，状态不只依赖细边框颜色。 */
+.run-badge {
+  position: absolute; right: -10px; bottom: -10px; z-index: 4;
+  width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center;
+  color: #fff; border: 2px solid var(--canvas--color--background);
+  box-shadow: 0 1px 4px var(--color--black-alpha-100);
+}
+.run-success { background: var(--color--success); }
+.run-error { background: var(--color--danger); }
+.run-running { background: var(--node--border-color--running); }
+.run-icon { width: 12px; height: 12px; }
+.run-spinner { animation: node-run-spin 0.8s linear infinite; }
+@keyframes node-run-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .run-spinner { animation: none; } }
 /* Pin data：被钉节点用强调色边（手动执行走冻结数据）+ 右上角图钉角标 */
 .nomops-node.output-pinned { border-color: var(--color--primary); }
 .pin-badge {
