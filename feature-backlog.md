@@ -55,7 +55,7 @@
 
 - [x] **17. 重试从失败节点续跑** `M` ✅ 2026-07-22（复用 buildPartialRunState:失败节点标脏(闭包含下游),成功上游 runData 原样保留不重放触发;去掉 destination 止步续跑到底;定位失败/前置不足时优雅退回全量;1 server 测(时间戳证上游未重跑+删节点回退)）
 
-- [x] **18. SMTP 邮件投递** `M` ✅ 2026-07-22（零依赖手搓 SMTP 客户端(EHLO/STARTTLS 升级/AUTH LOGIN/dot-stuffing/多行应答,同 metrics·TOTP 取舍);NOMOPS_SMTP_* 环境变量,未配置 NullMailer 保持日志回退;重置/邀请两流接线(fire-and-forget 不给枚举面);4 server 测(假 SMTP 服务器全协议+记录桩接线)）。✅ 2026-08-02 加固：SMTP 已启用时不再向日志输出密码重置 token；TLS 证书保持默认严格校验，可对明确信任的本地自签名邮服单独显式关闭；`accounts@nomops.com` 真实投递到 `guowangkun@outlook.com` 已获 SMTP 成功回执，邮件/重置定向 8 测、全量构建 6/6 与全量测试通过。
+- [x] **18. SMTP 邮件投递** `M` ✅ 2026-07-22（零依赖手搓 SMTP 客户端(EHLO/STARTTLS 升级/AUTH LOGIN/dot-stuffing/多行应答,同 metrics·TOTP 取舍);NOMOPS_SMTP_* 环境变量,未配置 NullMailer 保持日志回退;重置/邀请两流接线(fire-and-forget 不给枚举面);4 server 测(假 SMTP 服务器全协议+记录桩接线)）。✅ 2026-08-02 加固：SMTP 已启用时不再向日志输出密码重置 token；TLS 证书保持默认严格校验，可对明确信任的本地自签名邮服单独显式关闭；Message-ID 使用真实发件域而非 `nomops.local`。`accounts@nomops.com` 本地自投递成功，发往 `guowangkun@outlook.com` 已获 SMTP 接收回执但 Outlook 未实际收到；定位为邮服未添加 DKIM、PTR 仍是 Vultr 通用主机名且 TLS 使用自签名证书，外部可投递性待邮服/DNS 运维修复；邮件/重置定向 8 测、全量构建 6/6 与全量测试通过。
 
 ## P5 · 引擎/表达式深化
 

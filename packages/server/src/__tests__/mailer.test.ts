@@ -78,6 +78,7 @@ describe('SmtpMailer（手搓客户端）', () => {
     expect(log).toContain(Buffer.from('bot@corp.com').toString('base64'));
     const data = fake.data();
     expect(data).toContain('Subject: =?UTF-8?B?'); // UTF-8 主题编码
+    expect(data).toMatch(/Message-ID: <[^>]+@corp\.com>/);
     expect(data).toContain('..starts-with-dot'); // dot-stuffing
     expect(data).toContain('Reset link: https://x/y');
   });

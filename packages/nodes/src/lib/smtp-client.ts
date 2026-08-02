@@ -60,7 +60,12 @@ function dotStuff(value: string): string {
   return value.replaceAll('\r\n', '\n').split('\n').map((line) => (line.startsWith('.') ? `.${line}` : line)).join('\r\n');
 }
 
-function messageBody(message: ISmtpMessage, messageId: string): string {
+function messageIdDomain(envelopeFrom: string): string {
+  const domain = envelopeFrom.split('@').at(-1)?.trim();
+  return domain && /^[a-z0-9.-]+$/i.test(domain) ? domain : 'nomops.local';
+}
+
+function messageBody(message: ISmtpMessage, messageId: string, idDomain: string): string {
   const from = safeHeader(message.from, 'from');
   const to = safeHeader(message.to, 'to');
   const cc = message.cc ? safeHeader(message.cc, 'cc') : '';
@@ -72,7 +77,7 @@ function messageBody(message: ISmtpMessage, messageId: string): string {
     ...(replyTo ? [`Reply-To: ${replyTo}`] : []),
     `Subject: =?UTF-8?B?${base64(safeHeader(message.subject, 'subject'))}?=`,
     `Date: ${new Date().toUTCString()}`,
-    `Message-ID: <${messageId}@nomops.local>`,
+    `Message-ID: <${messageId}@${idDomain}>`,
     'MIME-Version: 1.0',
   ];
   if (!message.html) {
@@ -188,7 +193,7 @@ export async function sendSmtpMail(options: ISmtpConnectionOptions, message: ISm
     for (const recipient of accepted) await command(`RCPT TO:<${recipient}>`, 'RCPT TO');
     await command('DATA', 'DATA');
     const messageId = randomUUID();
-    socket.write(`${messageBody(message, messageId)}\r\n.\r\n`);
+    socket.write(`${messageBody(message, messageId, messageIdDomain(envelopeFrom))}\r\n.\r\n`);
     const completed = await readReply();
     if (completed.code >= 400) throw new OperationalError(`SMTP DATA failed (${completed.code})`, {});
     socket.write('QUIT\r\n');
