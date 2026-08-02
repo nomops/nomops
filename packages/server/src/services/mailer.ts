@@ -11,6 +11,7 @@ export interface IMailerConfig {
   user: string;
   pass: string;
   from: string;
+  rejectUnauthorized: boolean;
 }
 
 export interface IMailer {
@@ -29,6 +30,8 @@ export function mailerConfigFromEnv(env: NodeJS.ProcessEnv): IMailerConfig | nul
     user: env['NOMOPS_SMTP_USER'] ?? '',
     pass: env['NOMOPS_SMTP_PASS'] ?? '',
     from: env['NOMOPS_SMTP_FROM'] ?? env['NOMOPS_SMTP_USER'] ?? 'nomops@localhost',
+    // 默认严格校验 SMTP TLS 证书；仅为自签名的本地/内网邮服提供显式逃生口。
+    rejectUnauthorized: env['NOMOPS_SMTP_REJECT_UNAUTHORIZED'] !== 'false',
   };
 }
 
@@ -51,6 +54,7 @@ export class SmtpMailer implements IMailer {
         secure: this.config.secure,
         user: this.config.user,
         password: this.config.pass,
+        rejectUnauthorized: this.config.rejectUnauthorized,
       },
       { from: this.config.from, to, subject, text },
     );

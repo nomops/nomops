@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createServer, type Server, type Socket } from 'node:net';
 import request from 'supertest';
 import type { Express } from 'express';
@@ -66,6 +66,7 @@ describe('SmtpMailer（手搓客户端）', () => {
       user: 'bot@corp.com',
       pass: 'hunter2',
       from: 'nomops@corp.com',
+      rejectUnauthorized: true,
     });
     await mailer.send('alice@corp.com', '测试主题', 'line one\n.starts-with-dot\nReset link: https://x/y');
     fake.server.close();
@@ -84,7 +85,10 @@ describe('SmtpMailer（手搓客户端）', () => {
   it('env 解析:未配 host → null;465 → secure', () => {
     expect(mailerConfigFromEnv({} as NodeJS.ProcessEnv)).toBeNull();
     const cfg = mailerConfigFromEnv({ NOMOPS_SMTP_HOST: 'smtp.x.com', NOMOPS_SMTP_PORT: '465' } as unknown as NodeJS.ProcessEnv);
-    expect(cfg).toMatchObject({ host: 'smtp.x.com', port: 465, secure: true });
+    expect(cfg).toMatchObject({ host: 'smtp.x.com', port: 465, secure: true, rejectUnauthorized: true });
+    expect(
+      mailerConfigFromEnv({ NOMOPS_SMTP_HOST: 'smtp.x.com', NOMOPS_SMTP_REJECT_UNAUTHORIZED: 'false' } as unknown as NodeJS.ProcessEnv),
+    ).toMatchObject({ rejectUnauthorized: false });
   });
 });
 
@@ -111,16 +115,20 @@ describe('流程接线（记录桩）', () => {
   });
 
   it('密码重置发邮件（含重置链接;不存在的邮箱不发但响应恒 ok）', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     await request(app).post('/auth/forgot').send({ email: 'admin@mail.dev' }).expect(200);
     await new Promise((r) => setTimeout(r, 50)); // fire-and-forget 落定
     const mail = sent.find((m) => m.subject.includes('Reset'));
     expect(mail?.to).toBe('admin@mail.dev');
     expect(mail?.text).toMatch(/\/login\?reset=/);
+    expect(log.mock.calls.flat().join('\n')).not.toContain('/login?reset=');
+    expect(log.mock.calls.flat().join('\n')).toContain('密码重置邮件发送成功');
 
     const before = sent.length;
     await request(app).post('/auth/forgot').send({ email: 'ghost@mail.dev' }).expect(200);
     await new Promise((r) => setTimeout(r, 50));
     expect(sent.length).toBe(before); // 不枚举:不存在的邮箱不发
+    log.mockRestore();
   });
 
   it('邀请发邮件（含接受链接）', async () => {

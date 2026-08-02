@@ -224,7 +224,9 @@ export function createAuthRouter(services: AppServices): Router {
         const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
         const base = process.env['NOMOPS_BASE_URL'] ?? `${proto}://${req.headers.host ?? 'localhost'}`;
         const link = `${base.replace(/\/$/, '')}/login?reset=${encodeURIComponent(result.token)}`;
-        console.log(`[nomops] 密码重置链接（${result.email}）: ${link}`);
+        // SMTP 已启用时不把一次性 token 写进日志，避免重置凭据泄露到日志聚合系统。
+        if (services.mailer.enabled) console.log(`[nomops] 密码重置邮件已排队（${result.email}）`);
+        else console.log(`[nomops] 密码重置链接（${result.email}）: ${link}`);
         // SMTP 已配置则真发邮件（backlog #18）;失败只记日志——响应恒 ok,不给枚举面
         void services.mailer
           .send(
@@ -232,6 +234,9 @@ export function createAuthRouter(services: AppServices): Router {
             'Reset your nomops password',
             `You requested a password reset for your nomops account.\n\nReset link: ${link}\n\nIf you did not request this, you can safely ignore this email.`,
           )
+          .then(() => {
+            if (services.mailer.enabled) console.log(`[nomops] 密码重置邮件发送成功（${result.email}）`);
+          })
           .catch((e: Error) => console.error('[nomops] 重置邮件发送失败:', e.message));
       }
       res.json({ ok: true });

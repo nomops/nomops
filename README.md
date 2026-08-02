@@ -103,6 +103,11 @@ required for a basic SQLite install.
 | `EXECUTIONS_MODE` | `regular` | `regular` (single process) or `queue` (BullMQ workers). |
 | `REDIS_HOST` / `REDIS_PORT` | `localhost` / `6379` | Redis, required for `queue` mode. |
 | `NOMOPS_BASE_URL` | `http://localhost:5678` | Public base URL (used in e.g. password-reset links). |
+| `NOMOPS_SMTP_HOST` / `NOMOPS_SMTP_PORT` | — / `587` | SMTP server used for password-reset and invitation emails. |
+| `NOMOPS_SMTP_SECURE` | `false` | Use implicit TLS; port `465` enables it automatically. |
+| `NOMOPS_SMTP_USER` / `NOMOPS_SMTP_PASS` | — | SMTP authentication credentials. |
+| `NOMOPS_SMTP_FROM` | `NOMOPS_SMTP_USER` | Sender address, optionally with a display name. |
+| `NOMOPS_SMTP_REJECT_UNAUTHORIZED` | `true` | Verify the SMTP TLS certificate. Keep enabled in production; set `false` only for explicitly trusted local/self-signed mail servers. |
 | `NOMOPS_STATIC_DIR` | *(auto)* | Frontend build dir to serve. Auto-detected next to the server; override to disable/relocate. |
 | `LICENSE_KEY` | — | Unlocks enterprise features (see below). Community edition is free. |
 
