@@ -36,6 +36,15 @@ const triggerNode: INode = {
   parameters: {},
 };
 
+const agentNode: INode = {
+  id: 'a1',
+  name: 'AI Agent',
+  type: 'nomops.aiAgent',
+  typeVersion: 1,
+  position: [0, 0],
+  parameters: {},
+};
+
 const mountNode = (node: INode) =>
   mount(CanvasNode, {
     props: { data: { node } },
@@ -109,6 +118,21 @@ describe('CanvasNode 悬停工具条', () => {
       'More actions',
     ]);
     expect(w.find('.port-plus').attributes('aria-label')).toBe('Add node');
+  });
+
+  it('AI Agent 将首尾能力口标签向外锚定，并为节点名称预留垂直空间', () => {
+    useNodeTypesStore().descriptions = [{
+      type: agentNode.type,
+      inputs: ['main', 'ai_languageModel', 'ai_tool', 'ai_memory'],
+      outputs: ['main'],
+    }] as never;
+    const w = mountNode(agentNode);
+    const labels = w.findAll('.ai-port-label');
+
+    expect(w.find('.node-wrap').classes()).toContain('has-ai-inputs');
+    expect(labels[0]?.classes()).toContain('first');
+    expect(labels[1]?.classes()).toContain('staggered');
+    expect(labels[2]?.classes()).toContain('last');
   });
 
   // 回归：色板/菜单曾用 @mouseleave 关，因工具条 pointer-events:none 鼠标穿透到画布触发 mouseleave，

@@ -272,6 +272,8 @@
 
 > 2026-08-01 UI 顺序改造第 23 项（画布主操作区专项）：Add first step、Execute 与 Stop 的系统字符替换为主题 SVG；多触发器选择入口补 expanded/controls 并关联命名 menu，选项使用 menuitemradio/checked，Escape 可关闭。运行失败升级为 alert；右侧 Canvas tools 工具条及节点、命令、便签图标入口补齐名称，命令入口声明打开 dialog。新增 5 项画布回归，生产构建 6/6、全量 1115 项测试通过。
 
+> 2026-08-02 UI 顺序改造第 24 项（登录态视觉验收修正）：复用 Chrome 有效登录态完成最终验收，覆盖 Overview 五个资源 Tab、产品内 New project Dialog、真实工作流画布、节点选择器、Chat、Agents、Assistant、Projects、Settings，以及 Credentials / Executions / Variables / Data tables，页面均无加载错误。验收发现 AI Agent 的 Chat Model / Tool / Memory 底部端口标签互相重叠并压住节点名称；首尾标签改为向外锚定，中间标签错层，含 AI 能力输入的节点为名称预留独立垂直空间，浏览器复验通过。新增 1 项节点回归，生产构建 6/6、全量 1116 项测试通过。
+
 - [ ] **66. 执行可视化正确性（串台 + 重连 + 频道）** `M`（🟠 A6）
   踩坑：`packages/frontend/src/stores/execution.ts:44` handleEvent 不按 executionId 过滤（并发执行/多用户高亮串台）；`packages/server/src/ws/push-hub.ts:27` 广播全连接无 workflow 频道；`execution.ts:38` WS 断线不重连（静默丢实时进度）。三者叠加使执行可视化在任意并发/断网下失真。
   → handleEvent 首行按 executionId 过滤（executionStarted 除外）；push-hub 按 workflowId 分频道；WS 加指数退避重连 + 心跳。

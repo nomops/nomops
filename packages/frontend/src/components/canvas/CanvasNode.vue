@@ -292,7 +292,7 @@ const bottomStyle = (i: number, count: number) => ({
     <div v-else class="sticky-content" v-html="stickyHtml" />
   </div>
 
-  <div v-else class="node-wrap" :data-test-node="data.node.name">
+  <div v-else class="node-wrap" :class="{ 'has-ai-inputs': aiInputs.length > 0 }" :data-test-node="data.node.name">
     <!-- D073 对标基线:触发器仅左侧圆弧,无外挂 ⚡ 旗标(已移除) -->
 
     <div
@@ -385,7 +385,11 @@ const bottomStyle = (i: number, count: number) => ({
         />
         <span
           class="ai-port-label"
-          :class="{ staggered: i % 2 === 1 }"
+          :class="{
+            staggered: i % 2 === 1,
+            first: aiInputs.length > 1 && i === 0,
+            last: aiInputs.length > 1 && i === aiInputs.length - 1,
+          }"
           :style="bottomStyle(i, aiInputs.length)"
         >{{ AI_LABELS[t] ?? t }}<span v-if="AI_REQUIRED[t]" class="ai-req">*</span></span>
       </template>
@@ -516,6 +520,7 @@ const bottomStyle = (i: number, count: number) => ({
   white-space: normal; overflow: hidden; text-overflow: ellipsis;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
+.node-wrap.has-ai-inputs .node-label { margin-top: 36px; }
 :deep(.main-handle) {
   width: 16px; height: 16px;
   background: var(--node--color--background);
@@ -605,6 +610,8 @@ const bottomStyle = (i: number, count: number) => ({
   font-size: 9px; color: var(--text-faint); white-space: nowrap;
 }
 .ai-port-label.staggered { bottom: -27px; }
+.ai-port-label.first { transform: translateX(-100%); }
+.ai-port-label.last { transform: translateX(0); }
 
 /* 便签 — 基线实测：--sticky--* 令牌（dark: 变体1 黄=yellow-900底/800边;
    蓝=blue-900/800; 绿=green-950/900; 紫=purple-950/800）、圆角 4、1px 边 */
