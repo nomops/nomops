@@ -11,4 +11,12 @@ describe('工具节点凭证元数据', () => {
     expect(CREDENTIAL_TYPES.find((item) => item.type === 'gitToken')?.fields.find((field) => field.name === 'accessToken')?.type).toBe('password');
     expect(CREDENTIAL_TYPES.find((item) => item.type === 'gitSsh')?.fields.find((field) => field.name === 'privateKey')?.type).toBe('password');
   });
+
+  it('不暴露后端尚未兑现的 OAuth2 grant、Digest 与 OAuth1', () => {
+    const oauth2 = CREDENTIAL_TYPES.find((item) => item.type === 'oauth2Api');
+    expect(oauth2?.fields.some((field) => field.name === 'grantType')).toBe(false);
+    expect(oauth2?.fields.some((field) => field.name === 'ignoreSSL')).toBe(false);
+    expect(CREDENTIAL_TYPES.some((item) => item.type === 'httpDigestAuth')).toBe(false);
+    expect(CREDENTIAL_TYPES.some((item) => item.type === 'oauth1Api')).toBe(false);
+  });
 });

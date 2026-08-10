@@ -46,15 +46,17 @@ describe('声明式集成节点结构守卫', () => {
       }
     }
 
-    // 凭证注入必须引用已声明的凭证
-    if (desc.credentialInjection) {
+    // 凭证类型级认证必须引用已声明凭证；注入模板只声明一次，由工厂复用
+    if (desc.credentialAuthentication) {
       const declared = new Set((desc.credentials ?? []).map((c) => c.name));
-      expect(declared.has(desc.credentialInjection.credentialName)).toBe(true);
-      expect(['header', 'query', 'path']).toContain(desc.credentialInjection.in);
-      expect(desc.credentialInjection.template).toMatch(/\{\{\s*\w+\s*\}\}/);
-      // path 注入:每个 operation 的 url 必须带 {key} 占位符（否则 token 无处可落）
-      if (desc.credentialInjection.in === 'path') {
-        const placeholder = `{${desc.credentialInjection.key}}`;
+      expect(declared.has(desc.credentialAuthentication.credentialName)).toBe(true);
+      for (const injection of desc.credentialAuthentication.injections ?? []) {
+        expect(['header', 'query', 'path', 'body', 'basic']).toContain(injection.in);
+        expect(injection.template).toMatch(/\{\{\s*\w+\s*\}\}/);
+      }
+      const pathInjection = desc.credentialAuthentication.injections?.find((item) => item.in === 'path');
+      if (pathInjection) {
+        const placeholder = `{${pathInjection.key}}`;
         for (const option of opProp!.options ?? []) {
           expect(option.routing!.url, `操作 ${String(option.value)} 缺 url 占位符 ${placeholder}`).toContain(placeholder);
         }
@@ -69,10 +71,11 @@ describe('声明式集成节点结构守卫', () => {
     }
   });
 
-  it('清单里共 8 个集成节点，且 HackerNews 无需凭证', () => {
+  it('清单里共 8 个集成节点，全部可自动派生工具，且 HackerNews 无需凭证', () => {
     expect(integrationDescriptions).toHaveLength(8);
+    expect(integrationDescriptions.every((description) => description.usableAsTool)).toBe(true);
     const hn = integrationDescriptions.find((d) => d.name === 'hackerNews')!;
     expect(hn.credentials ?? []).toHaveLength(0);
-    expect(hn.credentialInjection).toBeUndefined();
+    expect(hn.credentialAuthentication).toBeUndefined();
   });
 });

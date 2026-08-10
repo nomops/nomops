@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import type {
+  IAiTool,
+  IBinaryData,
   ILoadableNodeType,
   INodeExecutionData,
   INodeType,
   INodeTypeDescription,
+  ISupplyDataContext,
 } from '@nomops/workflow';
 import { NodeLoader, NodeTypeNotFoundError } from './node-loader.js';
 
@@ -71,5 +74,58 @@ describe('NodeLoader', () => {
     await expect(loader.getByNameAndVersion('nomops.missing')).rejects.toBeInstanceOf(
       NodeTypeNotFoundError,
     );
+  });
+
+  it('usableAsTool 在 loader 层自动派生并复用原节点 execute', async () => {
+    const baseDescription: INodeTypeDescription = {
+      ...description('echo'),
+      name: 'echo',
+      displayName: 'Echo',
+      description: 'Echo configured text',
+      usableAsTool: true,
+      properties: [{
+        displayName: 'Text', name: 'text', type: 'string', default: "={{ $fromAI('text','Text to echo','string') }}",
+      }],
+    };
+    const source: ILoadableNodeType = {
+      type: 'nomops.echo',
+      description: baseDescription,
+      load: async () => class implements INodeType {
+        description = baseDescription;
+        async execute(this: import('@nomops/workflow').IExecuteContext): Promise<INodeExecutionData[][]> {
+          return [[{ json: { echoed: this.getNodeParameter('text', 0) } }]];
+        }
+      },
+    };
+    const loader = new NodeLoader([source]);
+    expect(loader.getAllTypes()).toEqual(['nomops.echo', 'nomops.echoTool']);
+    expect(loader.describeAll().find((item) => item.type === 'nomops.echoTool')).toMatchObject({
+      name: 'echoTool', inputs: [], outputs: ['ai_tool'], categories: ['ai'],
+    });
+
+    const derived = await loader.getByNameAndVersion('nomops.echoTool', 1);
+    const raw: Record<string, unknown> = {
+      toolName: 'echo_text',
+      toolDescription: 'Echo text',
+      text: "={{ $fromAI('text','Text to echo','string') }}",
+    };
+    const supply: ISupplyDataContext = {
+      getNodeParameter(name: string, fallback?: unknown) { return raw[name] ?? fallback; },
+      getRawNodeParameter(name: string) { return raw[name]; },
+      getCredentials: async () => ({}),
+      getWorkflowStaticData: () => ({}),
+      getInputConnectionData: async () => [],
+      helpers: {
+        httpRequest: async () => ({}),
+        binaryToBuffer: async (binary: IBinaryData) => Buffer.from(binary.data ?? '', 'base64'),
+        bufferToBinary: async (buffer, meta) => ({ data: Buffer.from(buffer).toString('base64'), ...meta }),
+      },
+    };
+    const tool = await derived.supplyData!.call(supply) as IAiTool;
+    expect(tool.spec).toMatchObject({
+      name: 'echo_text',
+      parameters: { type: 'object', required: ['text'] },
+    });
+    await expect(tool.invoke({ text: 'hello' })).resolves.toBe('{"echoed":"hello"}');
   });
 });

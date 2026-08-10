@@ -1,5 +1,7 @@
 import type {
+  ICredentialAuthentication,
   IExecuteContext,
+  IHttpPaginationDeclaration,
   IHttpRequestDeclaration,
   IHttpRequestOptions,
   INodeExecutionData,
@@ -8,124 +10,312 @@ import type {
 } from '@nomops/workflow';
 import { OperationalError } from '@nomops/workflow';
 
-/**
- * 声明式 routing 执行器：节点不写 execute()，只在 description 里声明
- * 「operation → HTTP 请求怎么拼」，本执行器按声明逐 item 发请求。
- * 加集成节点因此退化为纯数据录入（url/body/凭证注入全是声明）。
- *
- * 求值规则：url/qs/body/headers 的字符串值支持 `={{ }}` 表达式，
- * 由 ctx.getNodeParameter 之外的独立通道解析——这里直接复用 execute 上下文
- * 的参数求值语义：声明值先替换 {{$parameter.x}} 之类由调用方（引擎上下文）处理。
- */
+type RoutingContext = IExecuteContext & {
+  resolveValue(value: unknown, itemIndex: number, overrides?: { json?: JsonObject }): unknown;
+};
 
 /** description 是否是声明式节点（任一 operation 选项带 routing）。 */
 export function hasRoutingDeclarations(description: INodeTypeDescription): boolean {
-  return description.properties.some((p) =>
-    (p.options ?? []).some((o) => o.routing !== undefined),
+  return description.properties.some((property) =>
+    (property.options ?? []).some((option) => option.routing !== undefined),
   );
 }
 
-/** 找到当前选中 operation 的 routing 声明（按 property 顺序第一个命中）。 */
 function findRouting(
   description: INodeTypeDescription,
   getParam: (name: string) => unknown,
 ): IHttpRequestDeclaration {
-  for (const prop of description.properties) {
-    const options = prop.options ?? [];
-    if (!options.some((o) => o.routing)) continue;
-    const selected = getParam(prop.name) ?? prop.default;
-    const match = options.find((o) => o.value === selected);
+  for (const property of description.properties) {
+    const options = property.options ?? [];
+    if (!options.some((option) => option.routing)) continue;
+    const selected = getParam(property.name) ?? property.default;
+    const match = options.find((option) => option.value === selected);
     if (match?.routing) return match.routing;
-    throw new OperationalError(
-      `声明式节点：操作 "${String(selected)}" 没有对应的 routing 声明`,
-      { parameter: prop.name },
-    );
+    throw new OperationalError(`声明式节点：操作 "${String(selected)}" 没有对应的 routing 声明`, {
+      parameter: property.name,
+    });
   }
   throw new OperationalError('声明式节点：description 里没有任何 routing 声明');
 }
 
-/** 解析凭证注入模板：'Bearer {{apiKey}}' + 凭证 data → 实际值。 */
 function renderCredentialTemplate(template: string, credential: JsonObject): string {
-  return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, field: string) =>
+  return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, field: string) =>
     String(credential[field] ?? ''),
   );
 }
 
+function getPath(value: unknown, path?: string): unknown {
+  if (!path) return value;
+  let current = value;
+  for (const segment of path.split('.').filter(Boolean)) {
+    if (current === null || typeof current !== 'object') return undefined;
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return current;
+}
+
+function asObject(value: unknown): JsonObject {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as JsonObject)
+    : { data: value };
+}
+
+function setBucket(
+  options: IHttpRequestOptions,
+  target: 'headers' | 'qs' | 'body',
+  key: string,
+  value: unknown,
+): void {
+  if (target === 'headers') (options.headers ??= {})[key] = String(value);
+  else if (target === 'qs') (options.qs ??= {})[key] = value;
+  else {
+    const body = asObject(options.body ?? {});
+    body[key] = value;
+    options.body = body;
+  }
+}
+
+function removeBucket(
+  options: IHttpRequestOptions,
+  target: 'headers' | 'qs' | 'body',
+  key: string,
+): void {
+  if (target === 'headers') delete options.headers?.[key];
+  else if (target === 'qs') delete options.qs?.[key];
+  else if (options.body !== null && typeof options.body === 'object' && !Array.isArray(options.body)) {
+    delete (options.body as JsonObject)[key];
+  }
+}
+
+function legacyAuthentication(description: INodeTypeDescription): ICredentialAuthentication | undefined {
+  const injection = description.credentialInjection;
+  return injection
+    ? {
+        credentialName: injection.credentialName,
+        injections: [{ in: injection.in, key: injection.key, template: injection.template }],
+      }
+    : undefined;
+}
+
+function placePagination(
+  options: IHttpRequestOptions,
+  pagination: IHttpPaginationDeclaration,
+  token: string | number,
+): void {
+  const target = pagination.request.in === 'query'
+    ? 'qs'
+    : pagination.request.in === 'header'
+      ? 'headers'
+      : 'body';
+  setBucket(options, target, pagination.request.name, token);
+}
+
+function cloneRequest(options: IHttpRequestOptions): IHttpRequestOptions {
+  return {
+    ...options,
+    ...(options.headers ? { headers: { ...options.headers } } : {}),
+    ...(options.qs ? { qs: { ...options.qs } } : {}),
+    ...(options.body !== null && typeof options.body === 'object' && !Array.isArray(options.body)
+      ? { body: { ...(options.body as JsonObject) } }
+      : {}),
+  };
+}
+
+async function applyAuthentication(
+  options: IHttpRequestOptions,
+  authentication: ICredentialAuthentication | undefined,
+  credential: JsonObject | null,
+  customAuthenticate?: (
+    credentials: JsonObject,
+    request: IHttpRequestOptions,
+  ) => IHttpRequestOptions | Promise<IHttpRequestOptions>,
+): Promise<IHttpRequestOptions> {
+  if (!authentication || !credential) return options;
+  if (authentication.type === 'custom') {
+    if (!customAuthenticate) {
+      throw new OperationalError(`凭证 ${authentication.credentialName} 声明 custom 认证但节点未实现 authenticate`);
+    }
+    return customAuthenticate(credential, options);
+  }
+
+  for (const injection of authentication.injections ?? []) {
+    const rendered = renderCredentialTemplate(injection.template, credential);
+    if (injection.in === 'header') (options.headers ??= {})[injection.key] = rendered;
+    else if (injection.in === 'query') (options.qs ??= {})[injection.key] = rendered;
+    else if (injection.in === 'body') setBucket(options, 'body', injection.key, rendered);
+    else if (injection.in === 'basic') {
+      (options.headers ??= {})[injection.key || 'authorization'] = `Basic ${Buffer.from(rendered).toString('base64')}`;
+    } else {
+      options.url = options.url.split(`{${injection.key}}`).join(rendered);
+    }
+  }
+  return options;
+}
+
+function credentialSecrets(credential: JsonObject | null): string[] {
+  if (!credential) return [];
+  const found: string[] = [];
+  const visit = (value: unknown): void => {
+    if (typeof value === 'string' && value.length >= 4) found.push(value);
+    else if (Array.isArray(value)) value.forEach(visit);
+    else if (value !== null && typeof value === 'object') Object.values(value).forEach(visit);
+  };
+  visit(credential);
+  return found.sort((a, b) => b.length - a.length);
+}
+
+function redact(value: string, secrets: string[]): string {
+  return secrets.reduce((text, secret) => text.split(secret).join('***'), value);
+}
+
+async function postProcess(
+  ctx: RoutingContext,
+  routing: IHttpRequestDeclaration,
+  itemIndex: number,
+  response: unknown,
+): Promise<unknown> {
+  let current = response;
+  for (const transform of routing.postReceive ?? []) {
+    if (transform.type === 'extract') {
+      current = getPath(current, transform.path);
+      continue;
+    }
+    const values = Array.isArray(current) ? current : [current];
+    current = values.map((value) => {
+      const json = asObject(value);
+      const mapped: JsonObject = {};
+      for (const [key, declaration] of Object.entries(transform.fields)) {
+        mapped[key] = ctx.resolveValue(declaration, itemIndex, { json });
+      }
+      return mapped;
+    });
+  }
+  return current;
+}
+
 /**
- * 以 execute 上下文跑声明式节点：逐 item 求值声明 → 拼请求 → 发送 → 输出响应。
- * 表达式求值借道 getNodeParameter 的机制：把声明值临时挂为「虚拟参数」不可行，
- * 因此引擎在构造上下文时提供 resolveValue（与参数求值同一作用域）。
+ * 声明式 routing 执行器：分页、请求/响应变换、二进制与凭证认证都由纯数据描述驱动。
+ * custom authenticate 是唯一运行期函数扩展点，留在节点类上，不进入 API/工作流 JSON。
  */
 export async function executeRoutingNode(
-  ctx: IExecuteContext & { resolveValue(value: unknown, itemIndex: number): unknown },
+  ctx: RoutingContext,
   description: INodeTypeDescription,
+  customAuthenticate?: (
+    credentials: JsonObject,
+    request: IHttpRequestOptions,
+  ) => IHttpRequestOptions | Promise<IHttpRequestOptions>,
 ): Promise<INodeExecutionData[][]> {
   const items = ctx.getInputData();
-  const out: INodeExecutionData[] = [];
-  const injection = description.credentialInjection;
-  // 凭证整个执行取一次（同一节点同一凭证）；明文只在本函数作用域存在
-  const credential = injection ? await ctx.getCredentials(injection.credentialName) : null;
+  const output: INodeExecutionData[] = [];
+  const authentication = description.credentialAuthentication ?? legacyAuthentication(description);
+  const credential = authentication ? await ctx.getCredentials(authentication.credentialName) : null;
+  const secrets = credentialSecrets(credential);
 
-  for (let i = 0; i < Math.max(items.length, 1); i++) {
-    const routing = findRouting(description, (name) => ctx.getNodeParameter(name, i));
-    const resolve = (v: unknown) => ctx.resolveValue(v, i);
-
+  for (let itemIndex = 0; itemIndex < Math.max(items.length, 1); itemIndex++) {
+    const routing = findRouting(description, (name) => ctx.getNodeParameter(name, itemIndex));
+    const resolve = (value: unknown) => ctx.resolveValue(value, itemIndex);
     const rawUrl = String(resolve(routing.url));
-    const base = description.requestDefaults?.baseUrl ?? '';
-    let url = /^https?:\/\//.test(rawUrl) ? rawUrl : `${base.replace(/\/$/, '')}${rawUrl}`;
-
-    const headers: Record<string, string> = {
-      ...(description.requestDefaults?.headers ?? {}),
+    const baseUrl = description.requestDefaults?.baseUrl ?? '';
+    const url = /^https?:\/\//.test(rawUrl) ? rawUrl : `${baseUrl.replace(/\/$/, '')}${rawUrl}`;
+    const request: IHttpRequestOptions = {
+      url,
+      method: routing.method ?? 'GET',
+      headers: { ...(description.requestDefaults?.headers ?? {}) },
+      qs: {},
+      ...(routing.response?.format && routing.response.format !== 'auto'
+        ? { responseFormat: routing.response.format }
+        : {}),
     };
-    for (const [k, v] of Object.entries(routing.headers ?? {})) headers[k] = String(resolve(v));
-
-    const qs: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(routing.qs ?? {})) {
-      const resolved = resolve(v);
-      if (resolved !== undefined && resolved !== null && resolved !== '') qs[k] = resolved;
+    for (const [key, value] of Object.entries(routing.headers ?? {})) {
+      request.headers![key] = String(resolve(value));
+    }
+    for (const [key, value] of Object.entries(routing.qs ?? {})) {
+      const resolved = resolve(value);
+      if (resolved !== undefined && resolved !== null && resolved !== '') request.qs![key] = resolved;
+    }
+    if (routing.body) request.body = resolve(routing.body);
+    for (const transform of routing.preSend ?? []) {
+      if (transform.type === 'remove') removeBucket(request, transform.target, transform.key);
+      else setBucket(request, transform.target, transform.key, resolve(transform.value));
     }
 
-    let body: JsonObject | undefined;
-    if (routing.body) {
-      body = {};
-      for (const [k, v] of Object.entries(routing.body)) {
-        const resolved = resolve(v);
-        if (resolved !== undefined) body[k] = resolved;
+    if (routing.response?.format === 'binary' && routing.pagination) {
+      throw new OperationalError('声明式 routing 的 binary 响应不支持分页');
+    }
+
+    const pages: unknown[] = [];
+    const pagination = routing.pagination;
+    const maxPages = Math.min(Math.max(pagination?.maxPages ?? 100, 1), 1000);
+    let token: string | number = pagination?.start ?? (pagination?.mode === 'offset' ? 0 : '');
+    const seenCursors = new Set<string>();
+
+    for (let page = 0; page < (pagination ? maxPages : 1); page++) {
+      let pageRequest = cloneRequest(request);
+      if (pagination && (pagination.mode === 'offset' || token !== '')) {
+        placePagination(pageRequest, pagination, token);
+      }
+      pageRequest = await applyAuthentication(pageRequest, authentication, credential, customAuthenticate);
+
+      let response: unknown;
+      try {
+        response = await ctx.helpers.httpRequest(pageRequest);
+      } catch (error) {
+        const message = redact(String((error as Error).message), secrets);
+        throw new OperationalError(message, { url: redact(pageRequest.url, secrets) });
+      }
+
+      if (routing.response?.format === 'binary') {
+        if (!(response instanceof Uint8Array)) {
+          throw new OperationalError('声明式 binary 响应必须由 HTTP helper 返回 Uint8Array');
+        }
+        const binary = await ctx.helpers.bufferToBinary(response, {
+          mimeType: routing.response.mimeType ?? 'application/octet-stream',
+          ...(routing.response.fileName ? { fileName: String(resolve(routing.response.fileName)) } : {}),
+        });
+        output.push({
+          json: {},
+          binary: { [routing.response.binaryPropertyName ?? 'data']: binary },
+          pairedItem: { item: itemIndex },
+        });
+        break;
+      }
+
+      const pageResults = getPath(response, pagination?.response.resultsPath);
+      if (pagination && Array.isArray(pageResults)) pages.push(...pageResults);
+      else pages.push(pageResults);
+      if (!pagination) break;
+
+      if (pagination.mode === 'cursor') {
+        const next = getPath(response, pagination.response.nextCursorPath);
+        if (next === undefined || next === null || next === '') break;
+        const cursor = String(next);
+        if (seenCursors.has(cursor)) throw new OperationalError('声明式分页返回了重复 cursor');
+        if (page === maxPages - 1) {
+          throw new OperationalError(`声明式分页超过最大页数 ${maxPages}`);
+        }
+        seenCursors.add(cursor);
+        token = cursor;
+      } else {
+        const hasMore = pagination.response.hasMorePath
+          ? Boolean(getPath(response, pagination.response.hasMorePath))
+          : Array.isArray(pageResults) && pageResults.length > 0;
+        if (!hasMore) break;
+        if (page === maxPages - 1) {
+          throw new OperationalError(`声明式分页超过最大页数 ${maxPages}`);
+        }
+        token = Number(token) + (pagination.increment ?? 1);
       }
     }
 
-    let injected: string | null = null;
-    if (injection && credential) {
-      injected = renderCredentialTemplate(injection.template, credential);
-      if (injection.in === 'header') headers[injection.key] = injected;
-      else if (injection.in === 'query') qs[injection.key] = injected;
-      else url = url.split(`{${injection.key}}`).join(injected); // path:URL 占位符
+    if (routing.response?.format === 'binary') continue;
+    const combined = pagination ? pages : pages[0];
+    const processed = await postProcess(ctx, routing, itemIndex, combined);
+    const split = Boolean(pagination || routing.postReceive?.length);
+    const values = split && Array.isArray(processed) ? processed : [processed];
+    for (const value of values) {
+      output.push({ json: asObject(value), pairedItem: { item: itemIndex } });
     }
-
-    const options: IHttpRequestOptions = {
-      url,
-      method: routing.method ?? 'GET',
-      ...(Object.keys(headers).length > 0 ? { headers } : {}),
-      ...(Object.keys(qs).length > 0 ? { qs } : {}),
-      ...(body ? { body } : {}),
-    };
-
-    let response: unknown;
-    try {
-      response = await ctx.helpers.httpRequest(options);
-    } catch (error) {
-      // 注入的凭证值绝不进错误消息/执行数据（铁律 3;path 注入时 URL 含明文,必须打码后再抛）
-      const redact = (s: string) => (injected && injected.length >= 4 ? s.split(injected).join('***') : s);
-      throw new OperationalError(redact(String((error as Error).message)), { url: redact(url) });
-    }
-    out.push({
-      json:
-        response !== null && typeof response === 'object' && !Array.isArray(response)
-          ? (response as JsonObject)
-          : { data: response },
-      pairedItem: { item: i },
-    });
   }
 
-  return [out];
+  return [output];
 }

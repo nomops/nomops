@@ -229,17 +229,6 @@ export const CREDENTIAL_TYPES: CredentialTypeMeta[] = [
     description: 'Generic OAuth2 (authorization code) — connect any provider by its authorization & token URLs',
     oauth: true,
     fields: [
-      {
-        name: 'grantType',
-        label: 'Grant Type',
-        type: 'select',
-        default: 'authorizationCode',
-        options: [
-          { label: 'Authorization Code', value: 'authorizationCode' },
-          { label: 'Client Credentials', value: 'clientCredentials' },
-          { label: 'PKCE', value: 'pkce' },
-        ],
-      },
       { name: 'clientId', label: 'Client ID', type: 'text' },
       { name: 'clientSecret', label: 'Client Secret', type: 'password' },
       { name: 'authUrl', label: 'Authorization URL', type: 'text', placeholder: 'https://provider.com/oauth/authorize' },
@@ -256,7 +245,6 @@ export const CREDENTIAL_TYPES: CredentialTypeMeta[] = [
           { label: 'Send client credentials in body', value: 'body' },
         ],
       },
-      { name: 'ignoreSSL', label: 'Ignore SSL Issues (Insecure)', type: 'toggle', default: false },
     ],
   },
   {
@@ -271,16 +259,6 @@ export const CREDENTIAL_TYPES: CredentialTypeMeta[] = [
 
   // ── Generic auth schemes ──────────────────────────────────────────────
   {
-    type: 'httpDigestAuth',
-    displayName: 'HTTP Digest Auth',
-    icon: '🔐',
-    description: 'Digest access authentication with a username and password',
-    fields: [
-      { name: 'user', label: 'Username', type: 'text' },
-      { name: 'password', label: 'Password', type: 'password' },
-    ],
-  },
-  {
     type: 'httpQueryAuth',
     displayName: 'HTTP Query Auth',
     icon: '🔎',
@@ -290,20 +268,6 @@ export const CREDENTIAL_TYPES: CredentialTypeMeta[] = [
       { name: 'value', label: 'Parameter value', type: 'password' },
     ],
   },
-  {
-    type: 'oauth1Api',
-    displayName: 'OAuth1 API',
-    icon: '🔗',
-    description: 'Generic OAuth1 — connect a provider with consumer key/secret and token URLs',
-    fields: [
-      { name: 'consumerKey', label: 'Consumer Key', type: 'text' },
-      { name: 'consumerSecret', label: 'Consumer Secret', type: 'password' },
-      { name: 'requestTokenUrl', label: 'Request Token URL', type: 'text', placeholder: 'https://provider.com/oauth/request_token' },
-      { name: 'authUrl', label: 'Authorization URL', type: 'text', placeholder: 'https://provider.com/oauth/authorize' },
-      { name: 'accessTokenUrl', label: 'Access Token URL', type: 'text', placeholder: 'https://provider.com/oauth/access_token' },
-    ],
-  },
-
   // ── Applications (A–Z) ────────────────────────────────────────────────
   {
     type: 'activeCampaignApi',

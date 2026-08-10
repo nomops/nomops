@@ -305,19 +305,30 @@ export function createDefaultHttpRequest(dependencies: ISafeFetchDependencies = 
       ...(options.urlTrust ? { urlTrust: options.urlTrust } : {}),
     }, dependencies);
     try {
-      const text = await result.response.text();
-      let body: unknown = text;
-      try {
-        body = JSON.parse(text);
-      } catch {
-        // 非 JSON 响应原样返回文本
-      }
       if (!result.response.ok) {
+        const text = await result.response.text();
+        let body: unknown = text;
+        try {
+          body = JSON.parse(text);
+        } catch {
+          // 非 JSON 错误响应原样保留文本
+        }
         throw new OperationalError(`HTTP ${result.response.status} ${result.response.statusText}`, {
           url: sanitizedUrl(url),
           status: result.response.status,
           body,
         });
+      }
+      if (options.responseFormat === 'binary') {
+        return new Uint8Array(await result.response.arrayBuffer());
+      }
+      const text = await result.response.text();
+      if (options.responseFormat === 'text') return text;
+      let body: unknown = text;
+      try {
+        body = JSON.parse(text);
+      } catch {
+        // 非 JSON 响应原样返回文本
       }
       return body;
     } finally {

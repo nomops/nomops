@@ -1,4 +1,5 @@
 import type { INodeTypeDescription } from '@nomops/workflow';
+import { integrationDescription } from './credential-auth.js';
 
 /**
  * 声明式集成节点清单：每个节点 = 一份纯数据描述（requestDefaults + 凭证注入 + 各 operation 的 routing）。
@@ -6,7 +7,7 @@ import type { INodeTypeDescription } from '@nomops/workflow';
  * 参数用 displayOptions 按 operation 条件显示；表达式作用域含 $parameter/$json/$vars。
  */
 
-export const slackDescription: INodeTypeDescription = {
+export const slackDescription: INodeTypeDescription = integrationDescription({
   displayName: 'Slack',
   name: 'slack',
   group: ['output'],
@@ -19,7 +20,6 @@ export const slackDescription: INodeTypeDescription = {
   outputs: ['main'],
   credentials: [{ name: 'slackApi', required: true }],
   requestDefaults: { baseUrl: 'https://slack.com/api', headers: { 'content-type': 'application/json' } },
-  credentialInjection: { credentialName: 'slackApi', in: 'header', key: 'authorization', template: 'Bearer {{accessToken}}' },
   properties: [
     {
       displayName: 'Operation',
@@ -39,7 +39,26 @@ export const slackDescription: INodeTypeDescription = {
         {
           name: 'List Channels',
           value: 'listChannels',
-          routing: { method: 'GET', url: '/conversations.list', qs: { limit: '={{ $parameter.limit }}' } },
+          routing: {
+            method: 'GET',
+            url: '/conversations.list',
+            qs: { limit: '={{ $parameter.limit }}' },
+            pagination: {
+              mode: 'cursor',
+              request: { in: 'query', name: 'cursor' },
+              response: { resultsPath: 'channels', nextCursorPath: 'response_metadata.next_cursor' },
+            },
+            postReceive: [
+              {
+                type: 'map',
+                fields: {
+                  id: '={{ $json.id }}',
+                  name: '={{ $json.name }}',
+                  isPrivate: '={{ $json.is_private ?? false }}',
+                },
+              },
+            ],
+          },
         },
       ],
     },
@@ -69,9 +88,9 @@ export const slackDescription: INodeTypeDescription = {
       displayOptions: { show: { operation: ['listChannels'] } },
     },
   ],
-};
+});
 
-export const githubDescription: INodeTypeDescription = {
+export const githubDescription: INodeTypeDescription = integrationDescription({
   displayName: 'GitHub',
   name: 'github',
   group: ['output'],
@@ -87,7 +106,6 @@ export const githubDescription: INodeTypeDescription = {
     baseUrl: 'https://api.github.com',
     headers: { accept: 'application/vnd.github+json', 'user-agent': 'nomops' },
   },
-  credentialInjection: { credentialName: 'githubApi', in: 'header', key: 'authorization', template: 'Bearer {{accessToken}}' },
   properties: [
     {
       displayName: 'Operation',
@@ -150,9 +168,9 @@ export const githubDescription: INodeTypeDescription = {
       displayOptions: { show: { operation: ['listIssues'] } },
     },
   ],
-};
+});
 
-export const sendGridDescription: INodeTypeDescription = {
+export const sendGridDescription: INodeTypeDescription = integrationDescription({
   displayName: 'SendGrid',
   name: 'sendGrid',
   group: ['output'],
@@ -165,7 +183,6 @@ export const sendGridDescription: INodeTypeDescription = {
   outputs: ['main'],
   credentials: [{ name: 'sendGridApi', required: true }],
   requestDefaults: { baseUrl: 'https://api.sendgrid.com/v3', headers: { 'content-type': 'application/json' } },
-  credentialInjection: { credentialName: 'sendGridApi', in: 'header', key: 'authorization', template: 'Bearer {{apiKey}}' },
   properties: [
     {
       displayName: 'Operation',
@@ -194,9 +211,9 @@ export const sendGridDescription: INodeTypeDescription = {
     { displayName: 'Subject', name: 'subject', type: 'string', default: '', required: true },
     { displayName: 'Text', name: 'text', type: 'string', default: '', required: true },
   ],
-};
+});
 
-export const stripeDescription: INodeTypeDescription = {
+export const stripeDescription: INodeTypeDescription = integrationDescription({
   displayName: 'Stripe',
   name: 'stripe',
   group: ['transform'],
@@ -209,7 +226,6 @@ export const stripeDescription: INodeTypeDescription = {
   outputs: ['main'],
   credentials: [{ name: 'stripeApi', required: true }],
   requestDefaults: { baseUrl: 'https://api.stripe.com/v1' },
-  credentialInjection: { credentialName: 'stripeApi', in: 'header', key: 'authorization', template: 'Bearer {{secretKey}}' },
   properties: [
     {
       displayName: 'Operation',
@@ -233,9 +249,9 @@ export const stripeDescription: INodeTypeDescription = {
       displayOptions: { show: { operation: ['listCustomers'] } },
     },
   ],
-};
+});
 
-export const notionDescription: INodeTypeDescription = {
+export const notionDescription: INodeTypeDescription = integrationDescription({
   displayName: 'Notion',
   name: 'notion',
   group: ['transform'],
@@ -251,7 +267,6 @@ export const notionDescription: INodeTypeDescription = {
     baseUrl: 'https://api.notion.com/v1',
     headers: { 'content-type': 'application/json', 'Notion-Version': '2022-06-28' },
   },
-  credentialInjection: { credentialName: 'notionApi', in: 'header', key: 'authorization', template: 'Bearer {{apiKey}}' },
   properties: [
     {
       displayName: 'Operation',
@@ -275,10 +290,10 @@ export const notionDescription: INodeTypeDescription = {
       displayOptions: { show: { operation: ['search'] } },
     },
   ],
-};
+});
 
 /** 无凭证的公开 API 示例：证明声明式节点可以完全零配置跑通。 */
-export const hackerNewsDescription: INodeTypeDescription = {
+export const hackerNewsDescription: INodeTypeDescription = integrationDescription({
   displayName: 'Hacker News',
   name: 'hackerNews',
   group: ['transform'],
@@ -314,9 +329,9 @@ export const hackerNewsDescription: INodeTypeDescription = {
       displayOptions: { show: { operation: ['getItem'] } },
     },
   ],
-};
+});
 
-export const telegramDescription: INodeTypeDescription = {
+export const telegramDescription: INodeTypeDescription = integrationDescription({
   displayName: 'Telegram',
   name: 'telegram',
   group: ['output'],
@@ -329,8 +344,6 @@ export const telegramDescription: INodeTypeDescription = {
   outputs: ['main'],
   credentials: [{ name: 'telegramApi', required: true }],
   requestDefaults: { baseUrl: 'https://api.telegram.org', headers: { 'content-type': 'application/json' } },
-  // bot token 在 URL path（Telegram API 形态）：注入替换 {botToken} 占位符
-  credentialInjection: { credentialName: 'telegramApi', in: 'path', key: 'botToken', template: '{{accessToken}}' },
   properties: [
     {
       displayName: 'Operation',
@@ -373,9 +386,9 @@ export const telegramDescription: INodeTypeDescription = {
       displayOptions: { show: { operation: ['sendMessage'] } },
     },
   ],
-};
+});
 
-export const googleSheetsDescription: INodeTypeDescription = {
+export const googleSheetsDescription: INodeTypeDescription = integrationDescription({
   displayName: 'Google Sheets',
   name: 'googleSheets',
   group: ['transform'],
@@ -390,13 +403,6 @@ export const googleSheetsDescription: INodeTypeDescription = {
   requestDefaults: {
     baseUrl: 'https://sheets.googleapis.com/v4',
     headers: { 'content-type': 'application/json' },
-  },
-  // OAuth2 凭证：授权码回调换到的 access_token（oauth2-service 落库字段名）
-  credentialInjection: {
-    credentialName: 'googleSheetsOAuth2Api',
-    in: 'header',
-    key: 'authorization',
-    template: 'Bearer {{access_token}}',
   },
   properties: [
     {
@@ -450,7 +456,7 @@ export const googleSheetsDescription: INodeTypeDescription = {
       displayOptions: { show: { operation: ['appendRow'] } },
     },
   ],
-};
+});
 
 export const integrationDescriptions: INodeTypeDescription[] = [
   slackDescription,

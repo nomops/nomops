@@ -195,3 +195,166 @@ describe('凭证 path 注入', () => {
     expect(run.data.resultData.error?.message).toContain('***');
   });
 });
+
+describe('#62/#63 声明式 routing 平台能力', () => {
+  const advancedDescription: INodeTypeDescription = {
+    displayName: 'Advanced API',
+    name: 'advancedApi',
+    group: ['transform'],
+    version: 1,
+    description: 'pagination and transforms',
+    defaults: { name: 'Advanced API' },
+    inputs: ['main'],
+    outputs: ['main'],
+    credentials: [{ name: 'advancedApi', required: true }],
+    requestDefaults: { baseUrl: 'https://advanced.example.com' },
+    credentialAuthentication: {
+      credentialName: 'advancedApi',
+      injections: [
+        { in: 'body', key: 'apiKey', template: '{{apiKey}}' },
+        { in: 'basic', key: 'authorization', template: '{{user}}:{{password}}' },
+      ],
+    },
+    properties: [
+      {
+        displayName: 'Operation',
+        name: 'operation',
+        type: 'options',
+        default: 'list',
+        options: [
+          {
+            name: 'List',
+            value: 'list',
+            routing: {
+              method: 'POST',
+              url: '/records',
+              body: { filter: '={{ $parameter.filter }}' },
+              preSend: [{ type: 'set', target: 'headers', key: 'x-client', value: 'nomops' }],
+              pagination: {
+                mode: 'cursor',
+                request: { in: 'body', name: 'cursor' },
+                response: { resultsPath: 'records', nextCursorPath: 'next' },
+              },
+              postReceive: [{ type: 'map', fields: { recordId: '={{ $json.id }}', label: '={{ $json.name }}' } }],
+            },
+          },
+          {
+            name: 'Download',
+            value: 'download',
+            routing: {
+              url: '/download',
+              response: {
+                format: 'binary',
+                binaryPropertyName: 'attachment',
+                mimeType: 'text/plain',
+                fileName: 'report.txt',
+              },
+            },
+          },
+        ],
+      },
+      { displayName: 'Filter', name: 'filter', type: 'string', default: 'active' },
+    ],
+  };
+
+  const advancedLoadable: ILoadableNodeType = {
+    type: 't.advanced',
+    description: advancedDescription,
+    load: async () => class implements INodeType { description = advancedDescription; },
+  };
+
+  it('cursor 翻页聚合、preSend、postReceive map 与 body/basic 凭证认证一起生效', async () => {
+    const calls: IHttpRequestOptions[] = [];
+    const engine = new WorkflowExecute(new NodeLoader([advancedLoadable]), {
+      additionalData: {
+        getCredentials: async () => ({ apiKey: 'key-1234', user: 'alice', password: 'secret' }),
+        httpRequest: async (options) => {
+          calls.push(options);
+          const cursor = (options.body as Record<string, unknown>)['cursor'];
+          return cursor === 'next-2'
+            ? { records: [{ id: 2, name: 'Beta' }], next: '' }
+            : { records: [{ id: 1, name: 'Alpha' }], next: 'next-2' };
+        },
+      },
+    });
+    const workflow = new Workflow({
+      name: 'advanced',
+      nodes: [{ id: 'A', name: 'A', type: 't.advanced', typeVersion: 1, position: [0, 0], parameters: { operation: 'list', filter: 'open' } }],
+      connections: {},
+    });
+
+    const run = await engine.run(workflow, undefined, undefined, [{ json: {} }]);
+    expect(run.status).toBe('success');
+    expect(calls).toHaveLength(2);
+    expect(calls[0]!.headers).toEqual({
+      'x-client': 'nomops',
+      authorization: `Basic ${Buffer.from('alice:secret').toString('base64')}`,
+    });
+    expect(calls[0]!.body).toEqual({ filter: 'open', apiKey: 'key-1234' });
+    expect(calls[1]!.body).toEqual({ filter: 'open', cursor: 'next-2', apiKey: 'key-1234' });
+    const output = run.data.resultData.runData['A']![0]!.data!['main']![0]!;
+    expect(output.map((item) => item.json)).toEqual([
+      { recordId: 1, label: 'Alpha' },
+      { recordId: 2, label: 'Beta' },
+    ]);
+  });
+
+  it('binary response 进入 binary 生命周期而不是塞进 json', async () => {
+    const engine = new WorkflowExecute(new NodeLoader([advancedLoadable]), {
+      additionalData: {
+        getCredentials: async () => ({ apiKey: 'key-1234', user: 'alice', password: 'secret' }),
+        httpRequest: async (options) => {
+          expect(options.responseFormat).toBe('binary');
+          return new TextEncoder().encode('hello');
+        },
+      },
+    });
+    const workflow = new Workflow({
+      name: 'download',
+      nodes: [{ id: 'A', name: 'A', type: 't.advanced', typeVersion: 1, position: [0, 0], parameters: { operation: 'download' } }],
+      connections: {},
+    });
+
+    const run = await engine.run(workflow, undefined, undefined, [{ json: {} }]);
+    const item = run.data.resultData.runData['A']![0]!.data!['main']![0]![0]!;
+    expect(item.json).toEqual({});
+    expect(item.binary?.['attachment']).toMatchObject({
+      data: Buffer.from('hello').toString('base64'),
+      mimeType: 'text/plain',
+      fileName: 'report.txt',
+    });
+  });
+
+  it('custom authenticate 函数只在节点运行期改写请求', async () => {
+    const description: INodeTypeDescription = {
+      displayName: 'Signed', name: 'signed', group: ['output'], version: 1, description: '',
+      defaults: { name: 'Signed' }, inputs: ['main'], outputs: ['main'],
+      credentials: [{ name: 'signedApi' }],
+      credentialAuthentication: { credentialName: 'signedApi', type: 'custom' },
+      properties: [{ displayName: 'Op', name: 'op', type: 'options', default: 'go', options: [{ name: 'Go', value: 'go', routing: { url: 'https://signed.example.com' } }] }],
+    };
+    const loadable: ILoadableNodeType = {
+      type: 't.signed',
+      description,
+      load: async () => class implements INodeType {
+        description = description;
+        authenticate(credentials: Record<string, unknown>, request: IHttpRequestOptions) {
+          return { ...request, headers: { ...request.headers, 'x-signature': String(credentials['signature']) } };
+        }
+      },
+    };
+    const calls: IHttpRequestOptions[] = [];
+    const engine = new WorkflowExecute(new NodeLoader([loadable]), {
+      additionalData: {
+        getCredentials: async () => ({ signature: 'sig-value' }),
+        httpRequest: async (options) => { calls.push(options); return { ok: true }; },
+      },
+    });
+    const workflow = new Workflow({
+      name: 'signed', nodes: [{ id: 'S', name: 'S', type: 't.signed', typeVersion: 1, position: [0, 0], parameters: { op: 'go' } }], connections: {},
+    });
+    const run = await engine.run(workflow, undefined, undefined, [{ json: {} }]);
+    expect(run.status).toBe('success');
+    expect(calls[0]!.headers?.['x-signature']).toBe('sig-value');
+  });
+});

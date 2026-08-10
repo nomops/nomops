@@ -94,6 +94,17 @@ describe('SSRF 出站防护', () => {
     expect(fetch).toHaveBeenCalledOnce();
   });
 
+  it('responseFormat=binary 返回原始字节而不经过文本/JSON转换', async () => {
+    const fetch = vi.fn(async () => new Response(new Uint8Array([0, 1, 2, 255]), { status: 200 }));
+    const request = createDefaultHttpRequest({ fetch: fetch as never });
+    const value = await request({
+      url: 'https://files.example.com/report.bin',
+      urlTrust: 'trusted',
+      responseFormat: 'binary',
+    });
+    expect(value).toEqual(new Uint8Array([0, 1, 2, 255]));
+  });
+
   it('真实本地服务仅允许 trusted 请求，严格请求在连接前被拦截', async () => {
     let hits = 0;
     const server = createServer((_request, response) => {

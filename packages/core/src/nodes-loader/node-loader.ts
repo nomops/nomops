@@ -4,6 +4,7 @@ import type {
   INodeTypeDescription,
 } from '@nomops/workflow';
 import { OperationalError } from '@nomops/workflow';
+import { convertNodeToAiTool } from './ai-tool-converter.js';
 
 /**
  * 节点加载器契约。
@@ -53,12 +54,21 @@ export class NodeLoader implements INodeLoader {
 
   register(nodes: ILoadableNodeType[]): void {
     for (const node of nodes) {
-      for (const version of versionsOf(node.description)) {
-        this.registry.set(registryKey(node.type, version), node);
-        const current = this.latestVersion.get(node.type);
-        if (current === undefined || version > current) {
-          this.latestVersion.set(node.type, version);
-        }
+      this.registerOne(node);
+    }
+    for (const node of nodes) {
+      if (!node.description.usableAsTool) continue;
+      const derived = convertNodeToAiTool(node);
+      if (!this.latestVersion.has(derived.type)) this.registerOne(derived);
+    }
+  }
+
+  private registerOne(node: ILoadableNodeType): void {
+    for (const version of versionsOf(node.description)) {
+      this.registry.set(registryKey(node.type, version), node);
+      const current = this.latestVersion.get(node.type);
+      if (current === undefined || version > current) {
+        this.latestVersion.set(node.type, version);
       }
     }
   }

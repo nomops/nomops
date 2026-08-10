@@ -45,6 +45,25 @@ export class OAuth2Service {
     return data['provider'] === 'demo' ? `${this.baseUrl}/oauth2/demo/token` : String(data['accessTokenUrl'] ?? '');
   }
 
+  /** token endpoint 的 client 认证；旧凭证无字段时保持 body，显式 header 才走 HTTP Basic。 */
+  private applyClientAuthentication(
+    data: JsonObject,
+    body: URLSearchParams,
+  ): Record<string, string> {
+    const clientId = String(data['clientId'] ?? '');
+    const clientSecret = String(data['clientSecret'] ?? '');
+    if (data['authentication'] === 'header') {
+      return {
+        'content-type': 'application/x-www-form-urlencoded',
+        accept: 'application/json',
+        authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
+      };
+    }
+    body.set('client_id', clientId);
+    body.set('client_secret', clientSecret);
+    return { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' };
+  }
+
   /** 生成提供方授权跳转 URL（state 关联到待连接的 credential）。 */
   async buildAuthUrl(credentialId: string, projectId: string): Promise<string> {
     const data = await this.credentials.rawData(credentialId, projectId);
@@ -90,13 +109,12 @@ export class OAuth2Service {
       grant_type: 'authorization_code',
       code,
       redirect_uri: this.redirectUri(),
-      client_id: String(data['clientId'] ?? ''),
-      client_secret: String(data['clientSecret'] ?? ''),
     });
+    const headers = this.applyClientAuthentication(data, body);
 
     const res = await fetch(tokenUrl, {
       method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
+      headers,
       body,
     }).catch((error: Error) => {
       throw new OperationalError(`OAuth2 token exchange request failed: ${error.message}`, { status: 400 });
@@ -140,12 +158,11 @@ export class OAuth2Service {
     const body = new URLSearchParams({
       grant_type: 'refresh_token',
       refresh_token: String(refreshToken),
-      client_id: String(data['clientId'] ?? ''),
-      client_secret: String(data['clientSecret'] ?? ''),
     });
+    const headers = this.applyClientAuthentication(data, body);
     const res = await fetch(tokenUrl, {
       method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
+      headers,
       body,
     }).catch((error: Error) => {
       throw new OperationalError(`OAuth2 token refresh request failed: ${error.message}`, { status: 400 });

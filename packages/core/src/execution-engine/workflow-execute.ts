@@ -520,6 +520,7 @@ export class WorkflowExecute {
       return executeRoutingNode(
         context as Parameters<typeof executeRoutingNode>[0],
         nodeType.description,
+        nodeType.authenticate?.bind(nodeType),
       );
     }
     return nodeType.execute!.call(context);

@@ -24,18 +24,18 @@ afterAll(async () => {
 
 const authed = () => ({ Authorization: `Bearer ${token}` });
 
-async function createDemoCred(): Promise<string> {
+async function createDemoCred(extra: Record<string, unknown> = {}): Promise<string> {
   const res = await request(app)
     .post('/api/credentials')
     .set(authed())
-    .send({ name: 'Demo OAuth2 account', type: 'demoOAuth2', data: { provider: 'demo', clientId: 'demo' } })
+    .send({ name: 'Demo OAuth2 account', type: 'demoOAuth2', data: { provider: 'demo', clientId: 'demo', ...extra } })
     .expect(201);
   return res.body.id as string;
 }
 
 describe('凭证 OAuth2', () => {
   it('create → auth URL → callback 换 token → connected 变 true', async () => {
-    const id = await createDemoCred();
+    const id = await createDemoCred({ clientSecret: 'demo-secret', authentication: 'header' });
 
     const before = await request(app).get(`/api/credentials/${id}/oauth-status`).set(authed()).expect(200);
     expect(before.body).toEqual({ connected: false });
@@ -55,6 +55,11 @@ describe('凭证 OAuth2', () => {
       ),
     );
     await request(app).get(`/oauth2/callback?code=demo-code&state=${state}`).expect(200);
+    const tokenInit = fetchSpy.mock.calls[0]![1] as RequestInit;
+    expect(tokenInit.headers).toMatchObject({
+      authorization: `Basic ${Buffer.from('demo:demo-secret').toString('base64')}`,
+    });
+    expect(String(tokenInit.body)).not.toContain('client_secret');
     fetchSpy.mockRestore();
 
     const after = await request(app).get(`/api/credentials/${id}/oauth-status`).set(authed()).expect(200);

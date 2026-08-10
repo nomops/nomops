@@ -11,6 +11,7 @@ export const httpRequestDescription: INodeTypeDescription = {
   defaults: { name: 'HTTP Request' },
   inputs: ['main'],
   outputs: ['main'],
+  usableAsTool: true,
   properties: [
     {
       displayName: 'URL',

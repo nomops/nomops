@@ -180,6 +180,50 @@ export interface IHttpRequestDeclaration {
   qs?: Record<string, unknown>;
   body?: JsonObject;
   headers?: Record<string, string>;
+  /** 发出请求前的纯数据变换；按顺序执行，凭证注入最后应用，避免被覆盖。 */
+  preSend?: IHttpRequestTransform[];
+  /** 多页请求；cursor/offset 都由描述驱动，不把 provider 特判写进执行器。 */
+  pagination?: IHttpPaginationDeclaration;
+  /** 收到全部页面后的纯数据变换。 */
+  postReceive?: IHttpResponseTransform[];
+  /** 二进制响应写入 item.binary；缺省 auto 仍按 JSON/文本处理。 */
+  response?: IHttpResponseDeclaration;
+}
+
+export interface IHttpRequestTransform {
+  type: 'set' | 'remove';
+  target: 'headers' | 'qs' | 'body';
+  key: string;
+  /** type=set 时必填；支持与 routing 其他值相同的表达式作用域。 */
+  value?: unknown;
+}
+
+export interface IHttpPaginationDeclaration {
+  mode: 'cursor' | 'offset';
+  request: { in: 'query' | 'body' | 'header'; name: string };
+  response: {
+    /** 每页结果数组的点路径；省略表示整页响应。 */
+    resultsPath?: string;
+    /** cursor 模式下，下一游标的点路径。空值结束。 */
+    nextCursorPath?: string;
+    /** offset 模式可选的 has-more 标志点路径；省略时以空结果结束。 */
+    hasMorePath?: string;
+  };
+  start?: string | number;
+  increment?: number;
+  /** 防 provider 坏响应造成无限翻页；缺省 100，最大 1000。 */
+  maxPages?: number;
+}
+
+export type IHttpResponseTransform =
+  | { type: 'extract'; path: string }
+  | { type: 'map'; fields: Record<string, unknown> };
+
+export interface IHttpResponseDeclaration {
+  format: 'auto' | 'text' | 'binary';
+  binaryPropertyName?: string;
+  mimeType?: string;
+  fileName?: string;
 }
 
 export interface INodePropertyOption {
@@ -276,10 +320,20 @@ export interface IWebhookDescription {
  */
 export interface ICredentialInjection {
   credentialName: string; // 对应 credentials[].name
-  /** path = 替换 URL 里的 {key} 占位符（如 Telegram 的 /bot{botToken}/…）。 */
-  in: 'header' | 'query' | 'path';
+  /** path = 替换 URL 占位符；body/basic 为 #63 新增桶。 */
+  in: 'header' | 'query' | 'path' | 'body' | 'basic';
   key: string; // header 名 / query 参数名 / URL 占位符名
   template: string; // 如 'Bearer {{apiKey}}' / '{{token}}'
+}
+
+/**
+ * 凭证类型级认证声明。一种凭证只声明一次，节点只引用 credentialName。
+ * custom 模式由 INodeType.authenticate 在运行期接管，函数不会进入 description/API。
+ */
+export interface ICredentialAuthentication {
+  credentialName: string;
+  type?: 'generic' | 'custom';
+  injections?: Array<Omit<ICredentialInjection, 'credentialName'>>;
 }
 
 /** 声明式节点描述：同时驱动前端表单、参数校验与执行。 */
@@ -310,7 +364,11 @@ export interface INodeTypeDescription {
   /** 声明式节点：请求默认值（相对 url 拼 baseUrl；headers 逐请求合并）。 */
   requestDefaults?: { baseUrl?: string; headers?: Record<string, string> };
   /** 声明式节点：凭证注入方式。 */
+  credentialAuthentication?: ICredentialAuthentication;
+  /** @deprecated 兼容旧社区节点；新节点用 credentialAuthentication。 */
   credentialInjection?: ICredentialInjection;
+  /** loader 自动生成 *Tool 变体，原节点执行逻辑与凭证边界保持不变。 */
+  usableAsTool?: boolean;
 }
 
 /* ────────────────  节点执行上下文（引擎在 Phase 2 实现，此处定契约）  ──────────────── */
@@ -321,6 +379,8 @@ export interface IHttpRequestOptions {
   headers?: Record<string, string>;
   body?: unknown;
   qs?: Record<string, unknown>;
+  /** 缺省 auto(JSON 优先/文本兜底)；binary 返回 Uint8Array。 */
+  responseFormat?: 'auto' | 'text' | 'binary';
   /** 用户可控 URL 必须标记，core 会在连接与每次重定向时拒绝私网地址。 */
   urlTrust?: 'trusted' | 'user-controlled';
 }
@@ -493,9 +553,7 @@ export interface ISupplyDataContext {
   getWorkflowStaticData(type: string): JsonObject;
   /** 嵌套组合：子节点自己也可挂子节点（如 RAG 工具挂 embedding 模型）。 */
   getInputConnectionData(connectionType: string): Promise<unknown[]>;
-  helpers: {
-    httpRequest(options: IHttpRequestOptions): Promise<unknown>;
-  };
+  helpers: Pick<INodeExecutionHelpers, 'httpRequest' | 'binaryToBuffer' | 'bufferToBinary'>;
 }
 
 /**
@@ -525,6 +583,11 @@ export interface INodeType {
   poll?(this: IPollContext): Promise<INodeExecutionData[][] | null>;
   /** 能力供给（ai_* 子节点）：宿主执行时被解析，返回模型/工具/记忆等能力对象。 */
   supplyData?(this: ISupplyDataContext): Promise<unknown>;
+  /** credentialAuthentication.type=custom 时，在 HTTP 发送前最后改写请求。 */
+  authenticate?(
+    credentials: JsonObject,
+    request: IHttpRequestOptions,
+  ): IHttpRequestOptions | Promise<IHttpRequestOptions>;
   /** NDV 动态参数方法；仅由 server 的受保护代查端点调用。 */
   methods?: {
     loadOptions?: Record<string, (this: ILoadOptionsContext) => Promise<INodePropertyOption[]>>;

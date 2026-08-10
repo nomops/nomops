@@ -150,6 +150,24 @@ export function createSupplyContext(args: {
 
     helpers: {
       httpRequest: additionalData.httpRequest ?? defaultHttpRequest,
+      async binaryToBuffer(binary: IBinaryData): Promise<Uint8Array> {
+        if (binary.id) {
+          if (!additionalData.binaryStore) {
+            throw new OperationalError('二进制存储未注入，无法读取引用形态的 binary 数据', { node: node.name });
+          }
+          return additionalData.binaryStore.get(binary.id);
+        }
+        return Buffer.from(binary.data ?? '', 'base64');
+      },
+      async bufferToBinary(buffer: Uint8Array, meta: { mimeType: string; fileName?: string }): Promise<IBinaryData> {
+        if (additionalData.binaryStore) return additionalData.binaryStore.put(Buffer.from(buffer), meta);
+        return {
+          data: Buffer.from(buffer).toString('base64'),
+          mimeType: meta.mimeType,
+          ...(meta.fileName ? { fileName: meta.fileName } : {}),
+          fileSize: buffer.byteLength,
+        };
+      },
     },
   };
 }
@@ -361,9 +379,9 @@ export function createExecuteContext(args: {
      * （$json/$itemIndex/$parameter/$vars/$node…）。不属于公开 IExecuteContext 契约。
      */
     // @ts-expect-error 引擎内部扩展成员
-    resolveValue(value: unknown, itemIndex: number): unknown {
+    resolveValue(value: unknown, itemIndex: number, overrides?: { json?: JsonObject }): unknown {
       return resolveParameterValue(value, {
-        json: items[itemIndex]?.json ?? {},
+        json: overrides?.json ?? items[itemIndex]?.json ?? {},
         itemIndex,
         items,
         runData,
