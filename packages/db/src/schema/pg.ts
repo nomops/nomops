@@ -10,6 +10,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import type { IConnections, INode, IPinData, IWorkflowSettings, JsonObject } from '@nomops/workflow';
 
 /**
@@ -738,9 +739,14 @@ export const executions = pgTable(
     stoppedAt: timestamp('stopped_at'),
     // waiting 状态的唤醒时刻；null = 等外部信号（resume API）
     waitTill: timestamp('wait_till'),
+    waitClaimedBy: text('wait_claimed_by'),
+    waitClaimExpiresAt: timestamp('wait_claim_expires_at'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
   },
-  (t) => [index('executions_workflow_id_created_at_idx').on(t.workflowId, t.createdAt)],
+  (t) => [
+    index('executions_workflow_id_created_at_idx').on(t.workflowId, t.createdAt),
+    index('executions_status_wait_till_idx').on(t.status, t.waitTill).where(sql`${t.status} = 'waiting' AND ${t.waitTill} IS NOT NULL`),
+  ],
 );
 
 export const executionData = pgTable('execution_data', {
@@ -1008,6 +1014,41 @@ export const publicationTriggerStatus = pgTable(
   (t) => [primaryKey({ columns: [t.workflowId, t.nodeName] })],
 );
 
+/** OAuth 回调 state：只落 SHA-256 摘要，可跨实例一次性消费。 */
+export const oauthPendingStates = pgTable(
+  'oauth_pending_states',
+  {
+    stateHash: text('state_hash').primaryKey(),
+    credentialId: uuid('credential_id').notNull().references(() => credentials.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    expiresAt: timestamp('expires_at').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('oauth_pending_states_expiry_idx').on(t.expiresAt)],
+);
+
+export const oauthRefreshLocks = pgTable('oauth_refresh_locks', {
+  credentialId: uuid('credential_id').primaryKey().references(() => credentials.id, { onDelete: 'cascade' }),
+  owner: text('owner').notNull(),
+  expiresAt: timestamp('expires_at').notNull(),
+});
+
+export const publicationOutbox = pgTable(
+  'publication_outbox',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workflowId: uuid('workflow_id').notNull().references(() => workflows.id, { onDelete: 'cascade' }),
+    versionId: uuid('version_id').notNull(),
+    attempts: integer('attempts').notNull().default(0),
+    nextAttemptAt: timestamp('next_attempt_at').notNull().defaultNow(),
+    deliveredAt: timestamp('delivered_at'),
+    claimedBy: text('claimed_by'),
+    claimExpiresAt: timestamp('claim_expires_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('publication_outbox_pending_idx').on(t.nextAttemptAt).where(sql`${t.deliveredAt} IS NULL`)],
+);
+
 /** 凭证引用索引（backlog #40）。 */
 export const credentialDependency = pgTable(
   'credential_dependency',
@@ -1267,6 +1308,9 @@ export const pgSchema = {
   insightsMetadata,
   workflowPublishHistory,
   publicationTriggerStatus,
+  oauthPendingStates,
+  oauthRefreshLocks,
+  publicationOutbox,
   credentialDependency,
   roleMappingRule,
   roleMappingRuleProject,

@@ -1,10 +1,11 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import type { Server } from 'node:http';
 import type { Express } from 'express';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
+import { OAuth2Service } from '../services/oauth2-service.js';
 
 /**
  * OAuth2 token 临期自动续期（backlog #16）：
@@ -80,5 +81,29 @@ describe('OAuth2 自动续期', () => {
       .expect(201);
     const injected = await boot.services.credentials.getDecryptedData(cred.body.id as string, projectId);
     expect(injected['apiKey']).toBe('plain-key');
+  });
+
+  it('两个实例并发刷新同一凭证只请求一次 token endpoint', async () => {
+    const cred = await request(app).post('/api/credentials').set(authed()).send({
+      name: 'shared-oauth', type: 'demoOAuth2',
+      data: { provider: 'demo', clientId: 'c2', clientSecret: 's2' },
+    }).expect(201);
+    await boot.services.credentials.updateData(cred.body.id as string, projectId, {
+      oauthTokenData: { access_token: 'stale', refresh_token: 'refresh', expires_at: Date.now() - 1 },
+    });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      return new Response(JSON.stringify({ access_token: 'fresh', refresh_token: 'rotated', expires_in: 3600 }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    });
+    const a = new OAuth2Service(boot.services.credentials, process.env['NOMOPS_BASE_URL']!, boot.services.repos);
+    const b = new OAuth2Service(boot.services.credentials, process.env['NOMOPS_BASE_URL']!, boot.services.repos);
+    await Promise.all([
+      a.refreshIfNeeded(cred.body.id as string, projectId),
+      b.refreshIfNeeded(cred.body.id as string, projectId),
+    ]);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    fetchSpy.mockRestore();
   });
 });

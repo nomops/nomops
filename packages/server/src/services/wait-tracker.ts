@@ -1,4 +1,5 @@
 import type { Repositories } from '@nomops/db';
+import { randomUUID } from 'node:crypto';
 import type { ExecutionService } from './execution-service.js';
 
 /**
@@ -10,16 +11,20 @@ export class WaitTracker {
   private timer: ReturnType<typeof setInterval> | null = null;
   /** 正在唤醒中的执行（防同一 tick 内重复触发）。 */
   private readonly inFlight = new Set<string>();
+  private readonly owner = randomUUID();
 
   constructor(
     private readonly repos: Repositories,
     private readonly executions: ExecutionService,
     private readonly intervalMs = 10_000,
+    private readonly isLeader: () => boolean = () => true,
   ) {}
 
   start(): void {
     if (this.timer) return;
-    this.timer = setInterval(() => void this.tick(), this.intervalMs);
+    this.timer = setInterval(() => {
+      if (this.isLeader()) void this.tick();
+    }, this.intervalMs);
     this.timer.unref?.(); // 不阻止进程退出
   }
 
@@ -30,7 +35,7 @@ export class WaitTracker {
 
   /** 单轮扫描（测试可直接调用，无需等定时器）。 */
   async tick(): Promise<void> {
-    const due = await this.repos.executions.findDueWaiting(new Date());
+    const due = await this.repos.executions.claimDueWaiting(new Date(), this.owner);
     for (const execution of due) {
       if (this.inFlight.has(execution.id)) continue;
       this.inFlight.add(execution.id);
@@ -38,6 +43,7 @@ export class WaitTracker {
         await this.executions.resume(execution.id);
       } catch (error) {
         console.error(`[nomops] 唤醒执行失败 ${execution.id}:`, (error as Error).message);
+        await this.repos.executions.releaseWaitClaim(execution.id, this.owner);
       } finally {
         this.inFlight.delete(execution.id);
       }

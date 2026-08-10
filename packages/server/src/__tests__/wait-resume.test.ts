@@ -4,6 +4,7 @@ import type { Express } from 'express';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
+import { WaitTracker } from '../services/wait-tracker.js';
 
 /**
  * Wait 节点 + wait/resume 全链路：
@@ -93,5 +94,24 @@ describe('wait/resume', () => {
 
     // 已完成的执行再 resume → 409
     await request(app).post(`/api/executions/${run.body.executionId}/resume`).set(authed()).send({}).expect(409);
+  });
+
+  it('两个 tracker 并发扫描同一 waiting 执行只会 resume 一次', async () => {
+    const created = await request(app).post('/api/workflows').set(authed()).send(waitFlow('wait-race', 'afterDelay', 25)).expect(201);
+    const run = await request(app).post(`/api/workflows/${created.body.id}/run`).set(authed()).send({}).expect(200);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    let calls = 0;
+    const executionFacade = {
+      resume: async (id: string) => {
+        calls++;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        return boot.services.executions.resume(id);
+      },
+    };
+    const a = new WaitTracker(boot.services.repos, executionFacade as never);
+    const b = new WaitTracker(boot.services.repos, executionFacade as never);
+    await Promise.all([a.tick(), b.tick()]);
+    expect(calls).toBe(1);
+    expect((await statusOf(run.body.executionId as string)).status).toBe('success');
   });
 });

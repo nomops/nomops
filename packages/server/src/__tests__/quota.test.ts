@@ -230,3 +230,22 @@ describe('社区版：不设限但照常计数', () => {
     expect(usage.body.used).toBe(2);
   });
 });
+
+describe('多 worker 原子配额', () => {
+  it('20 个并发 consume 在上限 3 时只放行 3 个', async () => {
+    const boot = await bootstrap({ dbConfig: { type: 'sqlite' }, ...licensedBoot() });
+    const app = createApp(boot.services);
+    try {
+      const owner = await setupOwner(app, 'quota-race@corp.dev');
+      await boot.services.repos.quotas.upsertQuota(owner.projectId, 'custom', 3);
+      const settled = await Promise.allSettled(
+        Array.from({ length: 20 }, () => boot.services.quota.consume(owner.projectId)),
+      );
+      expect(settled.filter((result) => result.status === 'fulfilled')).toHaveLength(3);
+      expect(settled.filter((result) => result.status === 'rejected')).toHaveLength(17);
+      expect(await boot.services.repos.quotas.getUsage(owner.projectId, boot.services.quota.currentPeriod())).toBe(3);
+    } finally {
+      await boot.shutdown();
+    }
+  });
+});

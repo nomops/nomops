@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import { createDatabase, type DatabaseHandle } from '../client.js';
 import { runMigrations } from '../migrate.js';
 import { createRepositories, type Repositories } from '../repositories.js';
@@ -84,5 +85,17 @@ describe.each(dialects)('仓储 @ %s', (type) => {
     expect(await repos.settings.get('instanceId')).toBe('abc');
     await repos.settings.set('instanceId', 'def');
     expect(await repos.settings.get('instanceId')).toBe('def');
+  });
+
+  it('发布生产指针与 outbox 在双方言中一并提交', async () => {
+    const project = await repos.projects.create({ name: `publish-${type}` });
+    const workflow = await repos.workflows.create({ name: 'publish-atomic', nodes: [], connections: {} }, project.id);
+    const versionId = randomUUID();
+    const published = await repos.workflows.markPublished(workflow.id, versionId);
+    expect(published.publishedVersionId).toBe(versionId);
+    const claimed = await repos.publishPipeline.claimPublications(`worker-${type}`);
+    expect(claimed).toEqual([
+      expect.objectContaining({ workflowId: workflow.id, versionId }),
+    ]);
   });
 });

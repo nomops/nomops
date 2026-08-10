@@ -383,6 +383,8 @@ export interface IHttpRequestOptions {
   responseFormat?: 'auto' | 'text' | 'binary';
   /** 用户可控 URL 必须标记，core 会在连接与每次重定向时拒绝私网地址。 */
   urlTrust?: 'trusted' | 'user-controlled';
+  /** 执行取消/超时时由引擎向所有节点请求传播。 */
+  signal?: AbortSignal;
 }
 
 export interface INodeExecutionHelpers {

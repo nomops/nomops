@@ -4,6 +4,7 @@ import type { Express } from 'express';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
+import { OAuth2Service } from '../services/oauth2-service.js';
 
 /** 凭证 OAuth2（Connect my account）流程：授权 URL → 回调换 token → 连接状态；token 绝不出 API。 */
 let boot: BootstrapResult;
@@ -54,13 +55,18 @@ describe('凭证 OAuth2', () => {
         { status: 200, headers: { 'content-type': 'application/json' } },
       ),
     );
-    await request(app).get(`/oauth2/callback?code=demo-code&state=${state}`).expect(200);
+    // 用第二个 service 实例消费第一个实例生成的 state，证明回调不依赖进程内存。
+    const secondInstance = new OAuth2Service(boot.services.credentials, 'http://localhost:5678', boot.services.repos);
+    await secondInstance.handleCallback(new URL(`http://localhost/oauth2/callback?code=demo-code&state=${state}`));
     const tokenInit = fetchSpy.mock.calls[0]![1] as RequestInit;
     expect(tokenInit.headers).toMatchObject({
       authorization: `Basic ${Buffer.from('demo:demo-secret').toString('base64')}`,
     });
     expect(String(tokenInit.body)).not.toContain('client_secret');
     fetchSpy.mockRestore();
+
+    await expect(secondInstance.handleCallback(new URL(`http://localhost/oauth2/callback?code=x&state=${state}`)))
+      .rejects.toThrow(/not found or expired/i); // state 全局一次性消费
 
     const after = await request(app).get(`/api/credentials/${id}/oauth-status`).set(authed()).expect(200);
     expect(after.body).toEqual({ connected: true });

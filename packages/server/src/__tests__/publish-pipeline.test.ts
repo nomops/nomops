@@ -4,6 +4,7 @@ import type { Express } from 'express';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
+import { PublicationOutboxService } from '../services/publication-outbox-service.js';
 
 /**
  * backlog #40a：发布史可回看 + 逐触发器激活状态（失败有状态与错误）。
@@ -11,6 +12,7 @@ import { createApp } from '../app.js';
 let boot: BootstrapResult;
 let app: Express;
 let token: string;
+let projectId: string;
 const authed = () => ({ Authorization: `Bearer ${token}` });
 
 const webhookWf = (name: string, path: string) => ({
@@ -23,7 +25,8 @@ beforeAll(async () => {
   boot = await bootstrap({ dbConfig: { type: 'sqlite' } });
   await boot.leader.start();
   app = createApp(boot.services);
-  await request(app).post('/auth/register').send({ email: 'pub@test.dev', password: 'password-123' }).expect(201);
+  const registered = await request(app).post('/auth/register').send({ email: 'pub@test.dev', password: 'password-123' }).expect(201);
+  projectId = registered.body.projectId as string;
   token = (await request(app).post('/auth/login').send({ email: 'pub@test.dev', password: 'password-123' }).expect(200)).body.token;
 });
 
@@ -49,6 +52,20 @@ describe('发布史（backlog #40a）', () => {
     expect(history.length).toBeGreaterThanOrEqual(3);
     expect(history.some((h) => h.action === 'publish')).toBe(true);
     expect(history[0]!.action).toBe('rollback'); // 最新在前
+  });
+
+  it('两个发布 worker 并发领取同一 outbox 事件只投递一次', async () => {
+    const wf = (await request(app).post('/api/workflows').set(authed()).send(webhookWf('pub-outbox', 'pub-outbox')).expect(201)).body;
+    boot.services.publicationOutbox.stop();
+    await boot.services.repos.workflows.setActive(wf.id as string, true);
+    const row = await boot.services.workflows.publish(wf.id as string, projectId, null);
+    expect(row?.publishedVersionId).toBeTruthy();
+    let deliveries = 0;
+    const manager = { add: async () => { deliveries++; await new Promise((resolve) => setTimeout(resolve, 20)); } };
+    const a = new PublicationOutboxService(boot.services.repos, manager as never, () => true);
+    const b = new PublicationOutboxService(boot.services.repos, manager as never, () => true);
+    await Promise.all([a.tick(true), b.tick(true)]);
+    expect(deliveries).toBe(1);
   });
 });
 

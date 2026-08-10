@@ -24,7 +24,7 @@ import {
 } from '@nomops/workflow';
 import type { INodeLoader } from '../nodes-loader/node-loader.js';
 import type { IWorkflowExecuteAdditionalData } from './node-execution-context.js';
-import { createExecuteContext } from './node-execution-context.js';
+import { createExecuteContext, defaultHttpRequest } from './node-execution-context.js';
 import { executeRoutingNode, hasRoutingDeclarations } from './routing-executor.js';
 
 /** 引擎 hooks：server 层挂 WS 推送/落库；引擎只调，不知其用途。 */
@@ -157,15 +157,17 @@ export function routeNodeOutput(
  */
 export class WorkflowExecute {
   private canceled = false;
+  private abortController = new AbortController();
 
   constructor(
     private readonly nodeLoader: INodeLoader,
     private readonly options: IWorkflowExecuteOptions = {},
   ) {}
 
-  /** 请求取消：主循环在下一个节点边界停下，剩余状态保留在 executionData 里。 */
+  /** 请求取消：立即中断节点 HTTP，主循环在节点边界收束。 */
   cancel(): void {
     this.canceled = true;
+    this.abortController.abort(new Error('Execution canceled'));
   }
 
   /** 从头跑。startNode 缺省取图的起点；destinationNode 给定时只跑其祖先集合（部分执行）。 */
@@ -431,9 +433,7 @@ export class WorkflowExecute {
   }
 
   /**
-   * 让节点执行与超时赛跑。节点内部没有中断能力（execute 拿不到 abort signal），
-   * 因此超时只能让**引擎**不再等它——被抛下的 promise 仍在后台跑到自然结束，
-   * 这里挂一个空 catch 防止它变成 unhandled rejection。
+   * 让节点执行与超时赛跑。到期同时 abort 节点 HTTP，避免请求在后台继续运行。
    */
   private async runNodeWithDeadline(
     workflow: Workflow,
@@ -452,7 +452,11 @@ export class WorkflowExecute {
 
     let timer: ReturnType<typeof setTimeout>;
     const expiry = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new ExecutionTimeout(deadline.timeoutMs)), remaining);
+      timer = setTimeout(() => {
+        const error = new ExecutionTimeout(deadline.timeoutMs);
+        this.abortController.abort(error);
+        reject(error);
+      }, remaining);
     });
     try {
       return await Promise.race([pending, expiry]);
@@ -509,7 +513,7 @@ export class WorkflowExecute {
       inputData: exec.data,
       runData: state.resultData.runData,
       staticData: this.options.staticData ?? {},
-      additionalData: this.options.additionalData ?? {},
+      additionalData: this.additionalDataWithSignal(),
       contextData: (state.contextData ??= {}), // 节点执行上下文（随状态序列化）
       source: exec.source, // $prevNode / $('X').item 血缘起点
       resumed: exec.resumed === true,
@@ -524,6 +528,20 @@ export class WorkflowExecute {
       );
     }
     return nodeType.execute!.call(context);
+  }
+
+  private additionalDataWithSignal(): IWorkflowExecuteAdditionalData {
+    const additionalData = this.options.additionalData ?? {};
+    const request = additionalData.httpRequest ?? defaultHttpRequest;
+    return {
+      ...additionalData,
+      httpRequest: (options) => {
+        const signal = options.signal
+          ? AbortSignal.any([options.signal, this.abortController.signal])
+          : this.abortController.signal;
+        return request({ ...options, signal });
+      },
+    };
   }
 
   /* ── 输出扩散（实现在模块级 routeNodeOutput，触发种子注入复用同一逻辑） ── */

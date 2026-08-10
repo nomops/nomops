@@ -34,7 +34,7 @@ export class QuotaExceededError extends OperationalError {
  * 配额网关（docs/08）：唯一强制点是 consume()——所有执行入口共用。
  * - 计数始终进行（社区版也计，用量展示有价值）
  * - 限额只在企业版（quotas 功能）且 project 配了有限套餐时强制
- * - 已知边界：检查与自增间的小竞态窗口（单实例可忽略，多 worker 原子化留给 queue 切片）
+ * - 有限额时由数据库单条 UPSERT 原子完成“检查 + 自增”，多 worker 不会穿透上限
  */
 export class QuotaService implements IUsageGate {
   constructor(
@@ -81,10 +81,9 @@ export class QuotaService implements IUsageGate {
       const period = this.currentPeriod();
       const { plan, limit } = await this.resolveLimit(projectId);
       if (limit !== null) {
-        const used = await this.repos.quotas.getUsage(projectId, period);
-        if (used >= limit) {
-          throw new QuotaExceededError({ period, used, limit, plan });
-        }
+        const result = await this.repos.quotas.consumeUsage(projectId, period, limit);
+        if (!result.allowed) throw new QuotaExceededError({ period, used: result.used, limit, plan });
+        return;
       }
     }
     await this.counter.consume(projectId);

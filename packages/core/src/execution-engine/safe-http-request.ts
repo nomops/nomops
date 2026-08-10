@@ -303,6 +303,7 @@ export function createDefaultHttpRequest(dependencies: ISafeFetchDependencies = 
       headers,
       ...(hasBody ? { body: JSON.stringify(options.body) } : {}),
       ...(options.urlTrust ? { urlTrust: options.urlTrust } : {}),
+      ...(options.signal ? { signal: options.signal } : {}),
     }, dependencies);
     try {
       if (!result.response.ok) {

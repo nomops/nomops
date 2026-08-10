@@ -105,16 +105,19 @@ function handoffHtml(opts: { token?: string; email?: string; error?: string }): 
  */
 export function createInternalRouter(services: AppServices): Router {
   const router = Router();
+  const assertInternal = (req: Request): void => {
+    const token = process.env['NOMOPS_INTERNAL_TOKEN'];
+    if (!token) throw new OperationalError('Not found', { status: 404 });
+    const provided = Buffer.from(req.header('x-internal-token') ?? '');
+    const expected = Buffer.from(token);
+    if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+      throw new OperationalError('Unauthorized', { status: 401 });
+    }
+  };
   router.get(
     '/internal/usage',
     h(async (req, res) => {
-      const token = process.env['NOMOPS_INTERNAL_TOKEN'];
-      if (!token) throw new OperationalError('Not found', { status: 404 });
-      const provided = Buffer.from(req.header('x-internal-token') ?? '');
-      const expected = Buffer.from(token);
-      if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
-        throw new OperationalError('Unauthorized', { status: 401 });
-      }
+      assertInternal(req);
       // owner 项目聚合本月用量。limit/plan 默认取自下发 env，有项目用量则以其为准（二者本应一致）。
       const period = services.quota.currentPeriod();
       const planQuota = process.env['NOMOPS_PLAN_QUOTA'];
@@ -135,6 +138,20 @@ export function createInternalRouter(services: AppServices): Router {
         }
       }
       res.json({ period, used, limit, plan });
+    }),
+  );
+  router.post(
+    '/internal/license/revocations',
+    h(async (req, res) => {
+      assertInternal(req);
+      const ids = (req.body as { ids?: unknown } | undefined)?.ids;
+      if (!Array.isArray(ids) || ids.some((id) => typeof id !== 'string' || id.length > 200)) {
+        throw new OperationalError('ids must be an array of license certificate ids', { status: 400 });
+      }
+      const unique = [...new Set(ids as string[])];
+      await services.repos.settings.set('license.revokedIds', JSON.stringify(unique), true);
+      services.license.setRevokedIds(unique);
+      res.json({ revoked: unique.length, license: services.license.info() });
     }),
   );
   return router;
@@ -486,7 +503,7 @@ export function createApiRouter(services: AppServices): Router {
       await assertEditable();
       const row = await services.workflows.publish(param(req, 'id'), auth(req).projectId, auth(req).userId);
       // 激活中的工作流重发布 → 重注册触发器（webhook 路径/轮询间隔可能变了）
-      if (row.active) await services.activeWorkflows.add(row);
+      await services.publicationOutbox.publish(row);
       if (row.publishedVersionId) {
         await services.repos.publishPipeline.recordPublish(row.id, row.publishedVersionId, 'publish', auth(req).userId); // #40
       }

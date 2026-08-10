@@ -47,7 +47,7 @@ export type LicenseQuota = (typeof LICENSE_QUOTAS)[number];
 export const COMMUNITY_PLAN = 'community';
 
 /** 证书当前处于什么状态——展示与排错都需要区分「没填」「填错了」「过期了」。 */
-export type LicenseStatus = 'inactive' | 'active' | 'expired' | 'notYetValid' | 'invalid';
+export type LicenseStatus = 'inactive' | 'active' | 'expired' | 'notYetValid' | 'invalid' | 'revoked';
 
 export interface ILicenseInfo {
   plan: string;
@@ -80,14 +80,16 @@ export class LicenseService {
   private failure: { reason: CertFailureReason; message: string } | null = null;
 
   private readonly publicKey: string;
+  private revokedIds = new Set<string>();
 
   /**
    * @param publicKeyBase64 仅供**测试**注入自签密钥对。
    *   生产路径（bootstrap）不传，一律用编译进产物的 LICENSE_PUBLIC_KEY——
    *   这是构造参数而非环境变量，改它必须改源码 + 重新构建，不能靠配置绕过。
    */
-  constructor(licenseKey: string | null, publicKeyBase64?: string) {
+  constructor(licenseKey: string | null, publicKeyBase64?: string, revokedIds: Iterable<string> = []) {
     this.publicKey = publicKeyBase64 ?? LICENSE_PUBLIC_KEY;
+    this.revokedIds = new Set(revokedIds);
     this.setKey(licenseKey);
   }
 
@@ -107,6 +109,7 @@ export class LicenseService {
   /** 验签通过**且**当前时刻落在有效期内。每次查询都重算，长跑实例自然降级。 */
   private activeCert(): ILicensePayload | null {
     if (!this.payload) return null;
+    if (this.revokedIds.has(this.payload.id)) return null;
     const now = Date.now();
     if (now < Date.parse(this.payload.validFrom)) return null;
     if (now >= Date.parse(this.payload.validTo)) return null;
@@ -116,6 +119,7 @@ export class LicenseService {
   status(): LicenseStatus {
     if (!this.raw) return 'inactive';
     if (!this.payload) return 'invalid';
+    if (this.revokedIds.has(this.payload.id)) return 'revoked';
     const now = Date.now();
     if (now < Date.parse(this.payload.validFrom)) return 'notYetValid';
     if (now >= Date.parse(this.payload.validTo)) return 'expired';
@@ -134,6 +138,11 @@ export class LicenseService {
   /** 已填了 key（不代表有效）——用于区分「没填」与「填了但不认」。 */
   isActivated(): boolean {
     return this.raw !== null;
+  }
+
+  /** 控制平面同步的证书 id 黑名单；即时影响所有功能/配额判断。 */
+  setRevokedIds(ids: Iterable<string>): void {
+    this.revokedIds = new Set(ids);
   }
 
   /** 配额上限；null = 不限（未激活、证书没给该项、或显式 -1）。 */
@@ -173,6 +182,7 @@ export class LicenseService {
       ...(status === 'invalid' && this.failure ? { message: this.failure.message } : {}),
       ...(status === 'expired' ? { message: 'License has expired' } : {}),
       ...(status === 'notYetValid' ? { message: 'License is not valid yet' } : {}),
+      ...(status === 'revoked' ? { message: 'License has been revoked' } : {}),
     };
   }
 }

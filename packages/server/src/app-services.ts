@@ -44,6 +44,7 @@ import type { McpService } from './services/mcp-service.js';
 import type { DynamicNodeParametersService } from './services/dynamic-node-parameters-service.js';
 import type { EncryptionKeyService } from './services/encryption-key-service.js';
 import type { AuthRateLimitService } from './services/auth-rate-limit-service.js';
+import type { PublicationOutboxService } from './services/publication-outbox-service.js';
 
 /** 服务容器：构造函数注入（docs/05），app 层只见接口不见组装细节。 */
 export interface AppServices {
@@ -63,6 +64,7 @@ export interface AppServices {
   executions: ExecutionService;
   pushHub: PushHub;
   activeWorkflows: ActiveWorkflowManager;
+  publicationOutbox: PublicationOutboxService;
   license: LicenseService;
   audit: AuditService;
   sso: OidcService;

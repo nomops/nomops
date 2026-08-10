@@ -450,6 +450,9 @@ export class ProjectRepository extends BaseRepository {
 }
 
 export class WorkflowRepository extends BaseRepository {
+  constructor(db: any, schema: NomopsSchema, private readonly dialect: DatabaseHandle['dialect']) {
+    super(db, schema);
+  }
   async create(input: CreateWorkflowInput, projectId: string): Promise<Workflow> {
     const [row] = await this.db
       .insert(this.schema.workflows)
@@ -604,14 +607,27 @@ export class WorkflowRepository extends BaseRepository {
     ).map(({ publishedVersionId, ...rest }) => ({ ...rest, published: Boolean(publishedVersionId) }));
   }
 
-  /** 发布：把生产指针指向某个版本快照（不 bump updatedAt——发布不是编辑）。 */
+  /** 发布：生产指针与 outbox 同事务提交，避免进程在两次写之间退出而丢激活事件。 */
   async markPublished(id: string, versionId: string): Promise<Workflow> {
-    const [row] = await this.db
-      .update(this.schema.workflows)
-      .set({ publishedVersionId: versionId, publishedAt: new Date() })
-      .where(eq(this.schema.workflows.id, id))
-      .returning();
-    return row as Workflow;
+    if (this.dialect === 'sqlite') {
+      return this.db.transaction((tx: any) => {
+        const [row] = tx.update(this.schema.workflows)
+          .set({ publishedVersionId: versionId, publishedAt: new Date() })
+          .where(eq(this.schema.workflows.id, id))
+          .returning()
+          .all();
+        tx.insert(this.schema.publicationOutbox).values({ workflowId: id, versionId }).run();
+        return row as Workflow;
+      });
+    }
+    return this.db.transaction(async (tx: any) => {
+      const [row] = await tx.update(this.schema.workflows)
+        .set({ publishedVersionId: versionId, publishedAt: new Date() })
+        .where(eq(this.schema.workflows.id, id))
+        .returning();
+      await tx.insert(this.schema.publicationOutbox).values({ workflowId: id, versionId });
+      return row as Workflow;
+    });
   }
 
   async delete(id: string): Promise<void> {
@@ -1270,7 +1286,7 @@ export class ExecutionRepository extends BaseRepository {
   async updateStatus(id: string, status: string, stoppedAt?: Date | null): Promise<void> {
     await this.db
       .update(this.schema.executions)
-      .set({ status, stoppedAt: stoppedAt ?? null, waitTill: null })
+      .set({ status, stoppedAt: stoppedAt ?? null, waitTill: null, waitClaimedBy: null, waitClaimExpiresAt: null })
       .where(eq(this.schema.executions.id, id));
   }
 
@@ -1278,7 +1294,7 @@ export class ExecutionRepository extends BaseRepository {
   async setWaiting(id: string, waitTill: Date | null): Promise<void> {
     await this.db
       .update(this.schema.executions)
-      .set({ status: 'waiting', stoppedAt: null, waitTill })
+      .set({ status: 'waiting', stoppedAt: null, waitTill, waitClaimedBy: null, waitClaimExpiresAt: null })
       .where(eq(this.schema.executions.id, id));
   }
 
@@ -1333,6 +1349,40 @@ export class ExecutionRepository extends BaseRepository {
         ),
       );
     return rows as Execution[];
+  }
+
+  /** 多实例安全领取到点等待项；候选查询后以 owner/lease 条件 CAS，只有一个实例成功。 */
+  async claimDueWaiting(now: Date, owner: string, leaseMs = 30_000, limit = 100): Promise<Execution[]> {
+    const candidates = await this.db
+      .select({ id: this.schema.executions.id })
+      .from(this.schema.executions)
+      .where(and(
+        eq(this.schema.executions.status, 'waiting'),
+        sql`${this.schema.executions.waitTill} IS NOT NULL`,
+        lte(this.schema.executions.waitTill, now),
+        or(isNull(this.schema.executions.waitClaimExpiresAt), lte(this.schema.executions.waitClaimExpiresAt, now)),
+      ))
+      .limit(limit);
+    const claimed: Execution[] = [];
+    for (const candidate of candidates as Array<{ id: string }>) {
+      const rows = await this.db.update(this.schema.executions)
+        .set({ waitClaimedBy: owner, waitClaimExpiresAt: new Date(now.getTime() + leaseMs) })
+        .where(and(
+          eq(this.schema.executions.id, candidate.id),
+          eq(this.schema.executions.status, 'waiting'),
+          lte(this.schema.executions.waitTill, now),
+          or(isNull(this.schema.executions.waitClaimExpiresAt), lte(this.schema.executions.waitClaimExpiresAt, now)),
+        ))
+        .returning();
+      if (rows[0]) claimed.push(rows[0] as Execution);
+    }
+    return claimed;
+  }
+
+  async releaseWaitClaim(id: string, owner: string): Promise<void> {
+    await this.db.update(this.schema.executions)
+      .set({ waitClaimedBy: null, waitClaimExpiresAt: null })
+      .where(and(eq(this.schema.executions.id, id), eq(this.schema.executions.waitClaimedBy, owner)));
   }
 
   /** 更新执行数据大字段（RunExecutionData）。 */
@@ -1538,6 +1588,22 @@ export class QuotaRepository extends BaseRepository {
         target: [this.schema.usageCounters.projectId, this.schema.usageCounters.period],
         set: { executions: sql`${this.schema.usageCounters.executions} + 1` },
       });
+  }
+
+  /** 在单条 UPSERT 中完成“未超限才 +1”，跨进程无检查/自增竞态。 */
+  async consumeUsage(projectId: string, period: string, limit: number): Promise<{ allowed: boolean; used: number }> {
+    if (limit <= 0) return { allowed: false, used: await this.getUsage(projectId, period) };
+    const rows = await this.db
+      .insert(this.schema.usageCounters)
+      .values({ projectId, period, executions: 1 })
+      .onConflictDoUpdate({
+        target: [this.schema.usageCounters.projectId, this.schema.usageCounters.period],
+        set: { executions: sql`${this.schema.usageCounters.executions} + 1` },
+        setWhere: lt(this.schema.usageCounters.executions, limit),
+      })
+      .returning({ used: this.schema.usageCounters.executions });
+    if (rows[0]) return { allowed: true, used: Number(rows[0].used) };
+    return { allowed: false, used: await this.getUsage(projectId, period) };
   }
 }
 
@@ -2781,6 +2847,38 @@ export class InsightsRepository extends BaseRepository {
 /**
  * 发布管线深化（backlog #40）：发布/回滚事件史、逐触发器激活状态、凭证引用索引。
  */
+export class OAuthRuntimeRepository extends BaseRepository {
+  async createPendingState(stateHash: string, credentialId: string, projectId: string, expiresAt: Date): Promise<void> {
+    await this.db.delete(this.schema.oauthPendingStates).where(lte(this.schema.oauthPendingStates.expiresAt, new Date()));
+    await this.db.insert(this.schema.oauthPendingStates).values({ stateHash, credentialId, projectId, expiresAt });
+  }
+
+  /** DELETE ... RETURNING 使 state 在所有实例间只能成功消费一次。 */
+  async consumePendingState(stateHash: string, now = new Date()): Promise<{ credentialId: string; projectId: string } | null> {
+    const rows = await this.db.delete(this.schema.oauthPendingStates)
+      .where(and(eq(this.schema.oauthPendingStates.stateHash, stateHash), gt(this.schema.oauthPendingStates.expiresAt, now)))
+      .returning({ credentialId: this.schema.oauthPendingStates.credentialId, projectId: this.schema.oauthPendingStates.projectId });
+    return rows[0] ?? null;
+  }
+
+  async tryAcquireRefreshLock(credentialId: string, owner: string, expiresAt: Date, now = new Date()): Promise<boolean> {
+    const rows = await this.db.insert(this.schema.oauthRefreshLocks)
+      .values({ credentialId, owner, expiresAt })
+      .onConflictDoUpdate({
+        target: this.schema.oauthRefreshLocks.credentialId,
+        set: { owner, expiresAt },
+        setWhere: lte(this.schema.oauthRefreshLocks.expiresAt, now),
+      })
+      .returning({ owner: this.schema.oauthRefreshLocks.owner });
+    return rows[0]?.owner === owner;
+  }
+
+  async releaseRefreshLock(credentialId: string, owner: string): Promise<void> {
+    await this.db.delete(this.schema.oauthRefreshLocks)
+      .where(and(eq(this.schema.oauthRefreshLocks.credentialId, credentialId), eq(this.schema.oauthRefreshLocks.owner, owner)));
+  }
+}
+
 export class PublishPipelineRepository extends BaseRepository {
   /* ── 发布史 ── */
   async recordPublish(workflowId: string, versionId: string, action: string, userId: string | null): Promise<void> {
@@ -2797,6 +2895,50 @@ export class PublishPipelineRepository extends BaseRepository {
       .orderBy(desc(this.schema.workflowPublishHistory.createdAt))
       .limit(limit);
     return rows as PublishHistoryRow[];
+  }
+
+  async enqueuePublication(workflowId: string, versionId: string): Promise<string> {
+    const [row] = await this.db.insert(this.schema.publicationOutbox)
+      .values({ workflowId, versionId })
+      .returning({ id: this.schema.publicationOutbox.id });
+    return row.id as string;
+  }
+
+  async claimPublications(owner: string, now = new Date(), leaseMs = 30_000, limit = 50): Promise<Array<{ id: string; workflowId: string; versionId: string; attempts: number }>> {
+    const candidates = await this.db.select({ id: this.schema.publicationOutbox.id })
+      .from(this.schema.publicationOutbox)
+      .where(and(
+        isNull(this.schema.publicationOutbox.deliveredAt),
+        lte(this.schema.publicationOutbox.nextAttemptAt, now),
+        or(isNull(this.schema.publicationOutbox.claimExpiresAt), lte(this.schema.publicationOutbox.claimExpiresAt, now)),
+      ))
+      .limit(limit);
+    const claimed: Array<{ id: string; workflowId: string; versionId: string; attempts: number }> = [];
+    for (const candidate of candidates as Array<{ id: string }>) {
+      const rows = await this.db.update(this.schema.publicationOutbox)
+        .set({ claimedBy: owner, claimExpiresAt: new Date(now.getTime() + leaseMs) })
+        .where(and(
+          eq(this.schema.publicationOutbox.id, candidate.id),
+          isNull(this.schema.publicationOutbox.deliveredAt),
+          or(isNull(this.schema.publicationOutbox.claimExpiresAt), lte(this.schema.publicationOutbox.claimExpiresAt, now)),
+        ))
+        .returning();
+      if (rows[0]) claimed.push(rows[0] as typeof claimed[number]);
+    }
+    return claimed;
+  }
+
+  async completePublication(id: string, owner: string): Promise<void> {
+    await this.db.update(this.schema.publicationOutbox)
+      .set({ deliveredAt: new Date(), claimedBy: null, claimExpiresAt: null })
+      .where(and(eq(this.schema.publicationOutbox.id, id), eq(this.schema.publicationOutbox.claimedBy, owner)));
+  }
+
+  async retryPublication(id: string, owner: string, attempts: number): Promise<void> {
+    const delay = Math.min(60_000, 1_000 * 2 ** Math.min(attempts, 6));
+    await this.db.update(this.schema.publicationOutbox)
+      .set({ attempts: attempts + 1, nextAttemptAt: new Date(Date.now() + delay), claimedBy: null, claimExpiresAt: null })
+      .where(and(eq(this.schema.publicationOutbox.id, id), eq(this.schema.publicationOutbox.claimedBy, owner)));
   }
 
   /* ── 逐触发器激活状态 ── */
@@ -2854,6 +2996,7 @@ export class PublishPipelineRepository extends BaseRepository {
   }
 
   async clearWorkflow(workflowId: string): Promise<void> {
+    await this.db.delete(this.schema.publicationOutbox).where(eq(this.schema.publicationOutbox.workflowId, workflowId));
     await this.db.delete(this.schema.credentialDependency).where(eq(this.schema.credentialDependency.workflowId, workflowId));
     await this.db.delete(this.schema.publicationTriggerStatus).where(eq(this.schema.publicationTriggerStatus.workflowId, workflowId));
   }
@@ -3884,6 +4027,7 @@ export interface Repositories {
   authIdentities: AuthIdentityRepository;
   scheduler: SchedulerRepository;
   insights: InsightsRepository;
+  oauthRuntime: OAuthRuntimeRepository;
   publishPipeline: PublishPipelineRepository;
   roleMappings: RoleMappingRepository;
   platform: PlatformRepository;
@@ -3895,7 +4039,7 @@ export interface Repositories {
 
 /** 用一个 DatabaseHandle 组装全部仓储。server 层在启动时调用一次。 */
 export function createRepositories(handle: DatabaseHandle): Repositories {
-  const { db, schema } = handle;
+  const { db, schema, dialect } = handle;
   return {
     users: new UserRepository(db, schema),
     authRateLimits: new AuthRateLimitRepository(db, schema),
@@ -3904,7 +4048,7 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
     invitations: new InvitationRepository(db, schema),
     folders: new FolderRepository(db, schema),
     projects: new ProjectRepository(db, schema),
-    workflows: new WorkflowRepository(db, schema),
+    workflows: new WorkflowRepository(db, schema, dialect),
     workflowVersions: new WorkflowVersionRepository(db, schema),
     installedNodes: new InstalledNodeRepository(db, schema),
     credentials: new CredentialRepository(db, schema),
@@ -3927,6 +4071,7 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
     authIdentities: new AuthIdentityRepository(db, schema),
     scheduler: new SchedulerRepository(db, schema),
     insights: new InsightsRepository(db, schema),
+    oauthRuntime: new OAuthRuntimeRepository(db, schema),
     publishPipeline: new PublishPipelineRepository(db, schema),
     roleMappings: new RoleMappingRepository(db, schema),
     platform: new PlatformRepository(db, schema),

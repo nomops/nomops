@@ -875,11 +875,16 @@ export const executions = sqliteTable(
     stoppedAt: integer('stopped_at', { mode: 'timestamp' }),
     // waiting 状态的唤醒时刻；null = 等外部信号（resume API）。毫秒精度（timestamp 模式是秒，短等待会被截断）
     waitTill: integer('wait_till', { mode: 'timestamp_ms' }),
+    waitClaimedBy: text('wait_claimed_by'),
+    waitClaimExpiresAt: integer('wait_claim_expires_at', { mode: 'timestamp_ms' }),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .$defaultFn(() => new Date()),
   },
-  (t) => [index('executions_workflow_id_created_at_idx').on(t.workflowId, t.createdAt)],
+  (t) => [
+    index('executions_workflow_id_created_at_idx').on(t.workflowId, t.createdAt),
+    index('executions_status_wait_till_idx').on(t.status, t.waitTill),
+  ],
 );
 
 export const executionData = sqliteTable('execution_data', {
@@ -1183,6 +1188,43 @@ export const publicationTriggerStatus = sqliteTable(
   (t) => [primaryKey({ columns: [t.workflowId, t.nodeName] })],
 );
 
+/** OAuth 回调 state：只落 SHA-256 摘要，可跨实例一次性消费。 */
+export const oauthPendingStates = sqliteTable(
+  'oauth_pending_states',
+  {
+    stateHash: text('state_hash').primaryKey(),
+    credentialId: text('credential_id').notNull().references(() => credentials.id, { onDelete: 'cascade' }),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().$defaultFn(() => new Date()),
+  },
+  (t) => [index('oauth_pending_states_expiry_idx').on(t.expiresAt)],
+);
+
+/** OAuth refresh 跨实例租约。 */
+export const oauthRefreshLocks = sqliteTable('oauth_refresh_locks', {
+  credentialId: text('credential_id').primaryKey().references(() => credentials.id, { onDelete: 'cascade' }),
+  owner: text('owner').notNull(),
+  expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+/** 发布 outbox：工作流生产指针和待重注册事件持久化解耦。 */
+export const publicationOutbox = sqliteTable(
+  'publication_outbox',
+  {
+    id: uuidPk('id'),
+    workflowId: text('workflow_id').notNull().references(() => workflows.id, { onDelete: 'cascade' }),
+    versionId: text('version_id').notNull(),
+    attempts: integer('attempts').notNull().default(0),
+    nextAttemptAt: integer('next_attempt_at', { mode: 'timestamp_ms' }).notNull().$defaultFn(() => new Date()),
+    deliveredAt: integer('delivered_at', { mode: 'timestamp_ms' }),
+    claimedBy: text('claimed_by'),
+    claimExpiresAt: integer('claim_expires_at', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().$defaultFn(() => new Date()),
+  },
+  (t) => [index('publication_outbox_pending_idx').on(t.deliveredAt, t.nextAttemptAt)],
+);
+
 /** 凭证引用索引（backlog #40）：工作流保存时重建,删凭证前查引用方。 */
 export const credentialDependency = sqliteTable(
   'credential_dependency',
@@ -1466,6 +1508,9 @@ export const sqliteSchema = {
   insightsMetadata,
   workflowPublishHistory,
   publicationTriggerStatus,
+  oauthPendingStates,
+  oauthRefreshLocks,
+  publicationOutbox,
   credentialDependency,
   roleMappingRule,
   roleMappingRuleProject,

@@ -82,6 +82,7 @@ import {
   encryptionMasterKeyFromEnv,
 } from './services/encryption-key-service.js';
 import { AuthRateLimitService } from './services/auth-rate-limit-service.js';
+import { PublicationOutboxService } from './services/publication-outbox-service.js';
 
 /**
  * ★安装版的 IEncryptionKeyProvider（docs/01「第二个必须早做的抽象」）：
@@ -274,9 +275,20 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
 
   // 激活码优先级：显式注入(测试) > DB 里 UI 激活的 > 环境变量 LICENSE_KEY
   const storedLicenseKey = (await repos.settings.get('license.activationKey')) || null;
+  const storedRevocations = await repos.settings.get('license.revokedIds');
+  let revokedLicenseIds: string[] = [];
+  if (storedRevocations) {
+    try {
+      const parsed = JSON.parse(storedRevocations) as unknown;
+      if (Array.isArray(parsed)) revokedLicenseIds = parsed.filter((id): id is string => typeof id === 'string');
+    } catch {
+      console.warn('[nomops] ignored malformed license.revokedIds setting');
+    }
+  }
   const license = new LicenseService(
     opts.licenseKey ?? storedLicenseKey ?? process.env['LICENSE_KEY'] ?? null,
     opts.licensePublicKey,
+    revokedLicenseIds,
   );
   const mfa = new MfaService(repos, cipher);
   const auth = new AuthService(repos, jwtSecret, mfa);
@@ -398,8 +410,10 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     opts.httpRequest,
     opts.openEventStream,
   );
+  const publicationOutbox = new PublicationOutboxService(repos, activeWorkflows, () => leader.isLeader());
+  if (role === 'main') publicationOutbox.start();
   // 等待唤醒器：leader 到点唤醒 waiting 执行（wait/resume）
-  const waitTracker = new WaitTracker(repos, executions, opts.waitTrackerIntervalMs ?? 10_000);
+  const waitTracker = new WaitTracker(repos, executions, opts.waitTrackerIntervalMs ?? 10_000, () => leader.isLeader());
   if (role === 'main') waitTracker.start();
   // 执行历史清理：leader 周期删除过期终态执行，防 executions/execution_data 无限增长
   const executionPruner = new ExecutionPruner(repos, () => leader.isLeader(), {
@@ -485,7 +499,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
 
   const sso = new OidcService(repos, credentials, auth, baseUrl);
   const saml = new SamlService(repos, credentials, auth, baseUrl);
-  const oauth2 = new OAuth2Service(credentialService, baseUrl);
+  const oauth2 = new OAuth2Service(credentialService, baseUrl, repos);
   // OAuth2 token 临期自动续期（#16）:执行注入前经 refresher 兜一手
   credentialService.setTokenRefresher((id, pid) => oauth2.refreshIfNeeded(id, pid));
   const variables = new VariableService(repos);
@@ -531,6 +545,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     executions,
     pushHub,
     activeWorkflows,
+    publicationOutbox,
     license,
     audit,
     sso,
@@ -592,6 +607,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     scheduler,
     shutdown: async () => {
       waitTracker.stop();
+      publicationOutbox.stop();
       executionPruner.stop();
       scheduler.stop();
       await activeWorkflows.shutdown();

@@ -94,6 +94,10 @@ const testNodes: ILoadableNodeType[] = [
     await sleep((this.getNodeParameter('ms', 0) as number) ?? 50);
     return [[{ json: { done: true } }]];
   }),
+  loadable('t.http', ['main'], async function () {
+    await this.helpers.httpRequest({ url: 'https://example.test/slow' });
+    return [[{ json: { done: true } }]];
+  }),
   // 首跑挂起、续跑放行
   loadable('t.pause', ['main'], async function () {
     record('t.pause');
@@ -330,6 +334,50 @@ describe('alwaysOutputData — 空输出时补空 item', () => {
 /* ────────────── executionTimeout ────────────── */
 
 describe('executionTimeout — 整次执行的时限', () => {
+  it('cancel 立即把 AbortSignal 传播到节点 HTTP', async () => {
+    let aborted = false;
+    const executor = new WorkflowExecute(new NodeLoader(testNodes), {
+      additionalData: {
+        httpRequest: (options) => new Promise((_resolve, reject) => {
+          options.signal?.addEventListener('abort', () => {
+            aborted = true;
+            reject(options.signal?.reason);
+          }, { once: true });
+        }),
+      },
+    });
+    const wf = new Workflow({
+      name: 'abort-http',
+      nodes: [node('N', 't.http')],
+      connections: {},
+    });
+    const pending = executor.run(wf);
+    await sleep(10);
+    executor.cancel();
+    const run = await pending;
+    expect(run.status).toBe('canceled');
+    expect(aborted).toBe(true);
+  });
+
+  it('执行超时也会 abort 节点 HTTP', async () => {
+    let aborted = false;
+    const executor = new WorkflowExecute(new NodeLoader(testNodes), {
+      additionalData: {
+        httpRequest: (options) => new Promise((_resolve, reject) => {
+          options.signal?.addEventListener('abort', () => {
+            aborted = true;
+            reject(options.signal?.reason);
+          }, { once: true });
+        }),
+      },
+    });
+    const wf = new Workflow({ name: 'timeout-http', nodes: [node('N', 't.http')], connections: {}, settings: { executionTimeout: 1 } });
+    const run = await executor.run(wf);
+    expect(run.status).toBe('error');
+    expect(run.data.resultData.error?.name).toBe('ExecutionTimeout');
+    expect(aborted).toBe(true);
+  });
+
   it('不设置时不限时（零回归基线）', async () => {
     const run = await runSingle(node('N', 't.slow', { ms: 60 }));
 
