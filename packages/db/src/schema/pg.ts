@@ -24,6 +24,7 @@ export const users = pgTable('users', {
   firstName: text('first_name'),
   lastName: text('last_name'),
   role: text('role').notNull().default('member'),
+  tokenVersion: integer('token_version').notNull().default(0),
   disabled: boolean('disabled').notNull().default(false), // SCIM deactivate（docs/07）
   // 两步验证（TOTP）：secret 待确认时存在但 enabled=false；备份码存 sha256 哈希数组。
   mfaEnabled: boolean('mfa_enabled').notNull().default(false),
@@ -33,6 +34,14 @@ export const users = pgTable('users', {
   lastActiveAt: timestamp('last_active_at'),
   settings: jsonb('settings').$type<JsonObject>(), // 每用户偏好（backlog #43）；可空避免 ADD NOT NULL 失败
   createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+/** 登录失败限流桶：key 为 HMAC，不落 IP/邮箱明文。 */
+export const authRateLimits = pgTable('auth_rate_limits', {
+  key: text('key').primaryKey(),
+  failures: integer('failures').notNull().default(0),
+  windowStart: timestamp('window_start').notNull(),
+  blockedUntil: timestamp('blocked_until'),
 });
 
 /** Agents 平台 · agent 定义（backlog #44 M1，docs/12）。 */
@@ -1207,6 +1216,7 @@ export const userFavorites = pgTable(
 
 export const pgSchema = {
   users,
+  authRateLimits,
   apiKeys,
   passwordResets,
   invitations,

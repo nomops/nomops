@@ -51,6 +51,7 @@ export async function assertOwnerOf(
   req: Request,
   projectId: string,
 ): Promise<void> {
+  if (req.auth?.projectId === projectId && req.auth.scopes.includes('member:manage')) return;
   const role = await services.repos.projects.findMemberRole(projectId, auth(req).userId);
   if (role !== 'project:owner') {
     throw new OperationalError('Requires project:owner permission for this project', {

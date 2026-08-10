@@ -21,6 +21,7 @@ export const users = sqliteTable('users', {
   firstName: text('first_name'),
   lastName: text('last_name'),
   role: text('role').notNull().default('member'),
+  tokenVersion: integer('token_version').notNull().default(0),
   disabled: integer('disabled', { mode: 'boolean' }).notNull().default(false), // SCIM deactivate（docs/07）
   // 两步验证（TOTP）：secret 待确认时存在但 enabled=false；备份码存 sha256 哈希数组。
   mfaEnabled: integer('mfa_enabled', { mode: 'boolean' }).notNull().default(false),
@@ -34,6 +35,14 @@ export const users = sqliteTable('users', {
   createdAt: integer('created_at', { mode: 'timestamp' })
     .notNull()
     .$defaultFn(() => new Date()),
+});
+
+/** 登录失败限流桶：key 为 HMAC，不落 IP/邮箱明文。 */
+export const authRateLimits = sqliteTable('auth_rate_limits', {
+  key: text('key').primaryKey(),
+  failures: integer('failures').notNull().default(0),
+  windowStart: integer('window_start', { mode: 'timestamp' }).notNull(),
+  blockedUntil: integer('blocked_until', { mode: 'timestamp' }),
 });
 
 /**
@@ -1406,6 +1415,7 @@ export const userFavorites = sqliteTable(
 
 export const sqliteSchema = {
   users,
+  authRateLimits,
   apiKeys,
   passwordResets,
   invitations,

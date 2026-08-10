@@ -6,6 +6,10 @@
 export interface IEncryptionKeyProvider {
   /** 返回 32 字节密钥（AES-256）。context 供 Cloud 按租户取键。 */
   getKey(context?: { projectId?: string }): Promise<Buffer>;
+  /** 可选 keyring 能力：Cipher 检测到后写入带 keyId 的 v2 密文。 */
+  getActiveKey?(context?: { projectId?: string }): Promise<{ id: string; key: Buffer }>;
+  /** 按密文中的 keyId 读取历史 DEK，供无停机轮换。 */
+  getKeyById?(id: string, context?: { projectId?: string }): Promise<Buffer>;
 }
 
 /** 测试/开发用：固定内存密钥。 */

@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, lstatSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
+import { dirname, join, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import type { InstalledNode, Repositories } from '@nomops/db';
@@ -14,15 +14,96 @@ const execFileAsync = promisify(execFile);
 const PKG_NAME_RE = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/;
 /** 合法版本/dist-tag（semver、范围或 latest 之类）。 */
 const VERSION_RE = /^[a-zA-Z0-9.\-+~^><=|* ]+$/;
+const EXACT_VERSION_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+const SOURCE_EXTENSIONS = new Set(['.js', '.cjs', '.mjs', '.ts', '.cts', '.mts']);
+const MAX_SCAN_FILES = 500;
+const MAX_SCAN_BYTES = 5 * 1024 * 1024;
+
+export interface InstalledPackageInfo {
+  version: string;
+  entryPath: string;
+  packageDir: string;
+  integrity?: string;
+}
+
+export interface CommunityNodePolicy {
+  /** Explicit emergency escape hatch. It bypasses provenance, never the static safety scan. */
+  allowUnverified?: boolean;
+  /** Exact `package@version` -> npm lockfile integrity. */
+  trustedIntegrities?: Record<string, string>;
+  /** Imports in addition to relative files and @nomops/workflow. */
+  allowedImports?: string[];
+}
+
+function extension(path: string): string {
+  const index = path.lastIndexOf('.');
+  return index < 0 ? '' : path.slice(index);
+}
+
+/**
+ * Defense-in-depth scan before import. Provenance remains the primary boundary: regex scanning
+ * cannot prove arbitrary JavaScript safe, but it blocks common process-escape primitives and
+ * makes every non-relative dependency an explicit operator decision.
+ */
+export function scanCommunityNodeSource(packageDir: string, allowedImports: readonly string[] = []): void {
+  const allowed = new Set(['@nomops/workflow', ...allowedImports]);
+  let files = 0;
+  let bytes = 0;
+  const visit = (dir: string): void => {
+    for (const name of readdirSync(dir)) {
+      if (name === 'node_modules') continue;
+      const path = join(dir, name);
+      const stat = lstatSync(path);
+      if (stat.isSymbolicLink()) {
+        throw new OperationalError('Community node package contains a symbolic link', { status: 400 });
+      }
+      if (stat.isDirectory()) {
+        visit(path);
+        continue;
+      }
+      if (!stat.isFile() || !SOURCE_EXTENSIONS.has(extension(path))) continue;
+      files += 1;
+      bytes += stat.size;
+      if (files > MAX_SCAN_FILES || bytes > MAX_SCAN_BYTES) {
+        throw new OperationalError('Community node package exceeds static scan limits', { status: 400 });
+      }
+      const source = readFileSync(path, 'utf8');
+      const forbidden = [
+        /\b(?:eval|Function)\s*\(/,
+        /\bnew\s+Function\b/,
+        /\bprocess\s*\.\s*(?:binding|dlopen|mainModule)\b/,
+        /\b(?:child_process|node:child_process|node:vm|node:worker_threads)\b/,
+        /\bimport\s*\((?!\s*['"])/,
+        /\brequire\s*\((?!\s*['"])/,
+      ];
+      if (forbidden.some((pattern) => pattern.test(source))) {
+        throw new OperationalError(`Community node source rejected by static policy (${name})`, { status: 400 });
+      }
+      const imports = [
+        ...source.matchAll(/\b(?:import|export)\s+(?:[^'";]+?\s+from\s+)?['"]([^'"]+)['"]/g),
+        ...source.matchAll(/\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g),
+        ...source.matchAll(/\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g),
+      ];
+      for (const match of imports) {
+        const specifier = match[1]!;
+        if (!specifier.startsWith('.') && !allowed.has(specifier)) {
+          throw new OperationalError(`Community node import is not allowed: ${specifier}`, { status: 400 });
+        }
+      }
+    }
+  };
+  visit(packageDir);
+}
 
 /**
  * 安装器 seam：真实实现走 npm；测试注入假实现（把包名映射到本地 fixture），无需联网。
  * install/resolveEntry 返回入口模块的绝对路径，交给 service 动态 import。
  */
 export interface INodeInstaller {
-  install(pkg: string, version?: string): Promise<{ version: string; entryPath: string }>;
+  install(pkg: string, version?: string): Promise<InstalledPackageInfo>;
   uninstall(pkg: string): Promise<void>;
   resolveEntry(pkg: string): Promise<string>;
+  inspect?(pkg: string): Promise<InstalledPackageInfo>;
 }
 
 /** 社区包入口模块约定：导出 `nomopsNodes: ILoadableNodeType[]`（type 会被归一到 <pkg>.<name>）。 */
@@ -43,15 +124,13 @@ export class NpmNodeInstaller implements INodeInstaller {
     }
   }
 
-  async install(pkg: string, version?: string): Promise<{ version: string; entryPath: string }> {
+  async install(pkg: string, version?: string): Promise<InstalledPackageInfo> {
     this.ensureRoot();
     const spec = version ? `${pkg}@${version}` : pkg;
-    await execFileAsync('npm', ['install', spec, '--prefix', this.dir, '--no-audit', '--no-fund', '--save'], {
+    await execFileAsync('npm', ['install', spec, '--prefix', this.dir, '--no-audit', '--no-fund', '--ignore-scripts', '--save-exact'], {
       timeout: 120_000,
     });
-    const entryPath = await this.resolveEntry(pkg);
-    const pj = JSON.parse(readFileSync(join(this.dir, 'node_modules', pkg, 'package.json'), 'utf8'));
-    return { version: pj.version, entryPath };
+    return this.inspect(pkg);
   }
 
   async uninstall(pkg: string): Promise<void> {
@@ -71,7 +150,28 @@ export class NpmNodeInstaller implements INodeInstaller {
       pj.module ||
       pj.main ||
       'index.js';
-    return join(pkgDir, main);
+    const entry = resolve(pkgDir, main);
+    const root = resolve(pkgDir);
+    if (entry !== root && !entry.startsWith(`${root}${sep}`)) {
+      throw new OperationalError('Community node entry path escapes its package directory', { status: 400, pkg });
+    }
+    return entry;
+  }
+
+  async inspect(pkg: string): Promise<InstalledPackageInfo> {
+    const packageDir = join(this.dir, 'node_modules', pkg);
+    const pj = JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8')) as { version: string };
+    const lock = JSON.parse(readFileSync(join(this.dir, 'package-lock.json'), 'utf8')) as {
+      packages?: Record<string, { integrity?: string }>;
+    };
+    return {
+      version: pj.version,
+      entryPath: await this.resolveEntry(pkg),
+      packageDir,
+      ...(lock.packages?.[`node_modules/${pkg}`]?.integrity
+        ? { integrity: lock.packages[`node_modules/${pkg}`]!.integrity }
+        : {}),
+    };
   }
 }
 
@@ -85,7 +185,23 @@ export class CommunityNodeService {
     private readonly repos: Repositories,
     private readonly nodeLoader: INodeLoader,
     private readonly installer: INodeInstaller,
+    private readonly policy: CommunityNodePolicy = {},
   ) {}
+
+  private verifyPackage(pkg: string, requestedVersion: string | undefined, info: InstalledPackageInfo): void {
+    scanCommunityNodeSource(info.packageDir, this.policy.allowedImports);
+    if (this.policy.allowUnverified) return;
+    if (!requestedVersion || !EXACT_VERSION_RE.test(requestedVersion) || requestedVersion !== info.version) {
+      throw new OperationalError('Community node version must be pinned exactly unless unverified packages are enabled', {
+        status: 400,
+        pkg,
+      });
+    }
+    const expected = this.policy.trustedIntegrities?.[`${pkg}@${info.version}`];
+    if (!expected || !info.integrity || expected !== info.integrity) {
+      throw new OperationalError('Community node package integrity is not trusted', { status: 403, pkg });
+    }
+  }
 
   async list(): Promise<InstalledNode[]> {
     return this.repos.installedNodes.list();
@@ -96,14 +212,20 @@ export class CommunityNodeService {
     if (version !== undefined && !VERSION_RE.test(version)) {
       throw new OperationalError('Invalid version', { status: 400, version });
     }
-    const { version: resolved, entryPath } = await this.installer.install(pkg, version);
-    const nodes = await this.loadModule(pkg, entryPath);
-    return this.repos.installedNodes.upsert({
-      packageName: pkg,
-      version: resolved,
-      nodeTypes: nodes.map((n) => n.type),
-      installedBy: userId,
-    });
+    const info = await this.installer.install(pkg, version);
+    try {
+      this.verifyPackage(pkg, version, info);
+      const nodes = await this.loadModule(pkg, info.entryPath);
+      return await this.repos.installedNodes.upsert({
+        packageName: pkg,
+        version: info.version,
+        nodeTypes: nodes.map((n) => n.type),
+        installedBy: userId,
+      });
+    } catch (error) {
+      await this.installer.uninstall(pkg).catch(() => undefined);
+      throw error;
+    }
   }
 
   async uninstall(pkg: string): Promise<void> {
@@ -118,8 +240,18 @@ export class CommunityNodeService {
   async loadInstalled(): Promise<void> {
     for (const rec of await this.repos.installedNodes.list()) {
       try {
-        const entryPath = await this.installer.resolveEntry(rec.packageName);
-        await this.loadModule(rec.packageName, entryPath);
+        if (!this.installer.inspect && !this.policy.allowUnverified) {
+          throw new Error('installer cannot verify installed package provenance');
+        }
+        const info = this.installer.inspect
+          ? await this.installer.inspect(rec.packageName)
+          : {
+              version: rec.version,
+              entryPath: await this.installer.resolveEntry(rec.packageName),
+              packageDir: dirname(await this.installer.resolveEntry(rec.packageName)),
+            };
+        this.verifyPackage(rec.packageName, rec.version, info);
+        await this.loadModule(rec.packageName, info.entryPath);
       } catch (e) {
         console.warn(`[community-nodes] 重载失败 ${rec.packageName}: ${(e as Error).message}`);
       }

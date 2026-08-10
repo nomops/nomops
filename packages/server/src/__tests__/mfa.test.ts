@@ -54,6 +54,9 @@ describe('设置 → 启用', () => {
     expect(res.body.otpauthUri).toMatch(/^otpauth:\/\/totp\//);
     expect(res.body.otpauthUri).toContain(`secret=${secret}`);
     expect(backupCodes).toHaveLength(10);
+    const stored = await boot.services.repos.users.findByEmail(EMAIL);
+    expect(stored?.mfaSecret).toMatch(/^v1:|^v2:/);
+    expect(stored?.mfaSecret).not.toBe(secret);
     const me = await request(app).get('/api/me').set(bearer()).expect(200);
     expect(me.body.mfaEnabled).toBe(false);
   });

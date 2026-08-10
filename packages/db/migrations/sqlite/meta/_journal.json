@@ -351,6 +351,13 @@
       "when": 1784966213689,
       "tag": "0049_legal_redwing",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "6",
+      "when": 1786329773999,
+      "tag": "0050_condemned_the_order",
+      "breakpoints": true
     }
   ]
 }

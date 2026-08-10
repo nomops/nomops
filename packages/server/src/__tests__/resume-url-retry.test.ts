@@ -71,7 +71,18 @@ describe('#15 匿名恢复 URL', () => {
     await request(app).post(`/webhook-waiting/${execId}/wrong-token-123`).expect(404);
     expect((await dataOf(execId)).status).toBe('waiting');
 
-    // 正确令牌:免鉴权恢复 → 续跑到底
+    // GET/HEAD 只做预览/确认，链接扫描器不得消费一次性恢复令牌。
+    const preview = await request(app).get(path).expect(200);
+    expect(preview.text).toContain('Resume workflow?');
+    expect(preview.headers['cache-control']).toBe('no-store');
+    await request(app).head(path).expect(200);
+    expect((await dataOf(execId)).status).toBe('waiting');
+
+    // 非 POST 方法明确拒绝，且不恢复。
+    await request(app).put(path).send({}).expect(405);
+    expect((await dataOf(execId)).status).toBe('waiting');
+
+    // 正确令牌:显式 POST 免鉴权恢复 → 续跑到底
     const resumed = await request(app).post(path).expect(200);
     expect(resumed.body).toMatchObject({ resumed: true, executionId: execId, status: 'success' });
     const done = await dataOf(execId);

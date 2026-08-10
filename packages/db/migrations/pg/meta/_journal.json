@@ -351,6 +351,13 @@
       "when": 1784966215111,
       "tag": "0049_cynical_obadiah_stane",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1786329775385,
+      "tag": "0050_right_stephen_strange",
+      "breakpoints": true
     }
   ]
 }

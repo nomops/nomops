@@ -168,6 +168,17 @@ export const CREDENTIAL_TYPES: CredentialTypeMeta[] = [
     ],
   },
   {
+    type: 'webhookJwtAuth',
+    displayName: 'Webhook JWT Auth',
+    icon: '🔐',
+    description: 'Verify inbound Bearer JWTs with an HS256 shared secret',
+    fields: [
+      { name: 'secret', label: 'Signing secret', type: 'password', required: true },
+      { name: 'issuer', label: 'Expected issuer', type: 'text' },
+      { name: 'audience', label: 'Expected audience', type: 'text' },
+    ],
+  },
+  {
     type: 'anthropicApi',
     displayName: 'Anthropic API',
     icon: '✦',

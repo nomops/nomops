@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import request from 'supertest';
+import request, { type Test } from 'supertest';
 import type { Express } from 'express';
+import { sign } from 'jsonwebtoken';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
@@ -19,6 +20,11 @@ const authed = () => ({ Authorization: `Bearer ${token}` });
 
 async function createWorkflow(body: Record<string, unknown>): Promise<string> {
   const res = await request(app).post('/api/workflows').set(authed()).send(body).expect(201);
+  return res.body.id as string;
+}
+
+async function createCredential(type: string, name: string, data: Record<string, unknown>): Promise<string> {
+  const res = await request(app).post('/api/credentials').set(authed()).send({ type, name, data }).expect(201);
   return res.body.id as string;
 }
 
@@ -118,6 +124,103 @@ describe('RespondToWebhook', () => {
     const hit = await request(app).post('/webhook/respond-default').send({}).expect(200);
     expect(hit.body.status).toBe('success');
     expect(hit.body.executionId).toBeTruthy();
+  });
+
+  it('lastNode 模式返回末节点输出，而不是执行摘要', async () => {
+    const id = await createWorkflow({
+      name: 'respond-last-node',
+      nodes: [
+        { id: 'a', name: 'Hook', type: 'nomops.webhook', typeVersion: 1, position: [0, 0], parameters: { path: 'respond-last-node', method: 'POST', responseMode: 'lastNode' } },
+        { id: 'b', name: 'Set', type: 'nomops.set', typeVersion: 1, position: [200, 0], parameters: { fields: { result: 'finished' } } },
+      ],
+      connections: { Hook: { main: [[{ node: 'Set', type: 'main', index: 0 }]] } },
+    });
+    await request(app).post(`/api/workflows/${id}/activate`).set(authed()).send({ active: true }).expect(200);
+
+    const hit = await request(app).post('/webhook/respond-last-node').send({ input: 1 }).expect(200);
+    expect(hit.body).toMatchObject({ result: 'finished' });
+    expect(hit.body.executionId).toBeUndefined();
+  });
+
+  it('Basic/Header/JWT 四态鉴权只接受正确的加密凭证', async () => {
+    const basicId = await createCredential('httpBasicAuth', 'hook-basic', { user: 'alice', password: 's3cret' });
+    const headerId = await createCredential('httpHeaderAuth', 'hook-header', { name: 'X-Hook-Key', value: 'header-secret' });
+    const jwtId = await createCredential('webhookJwtAuth', 'hook-jwt', { secret: 'jwt-secret-32-characters-minimum!', issuer: 'issuer-a', audience: 'hooks' });
+    const cases = [
+      {
+        path: 'auth-basic',
+        authentication: 'basic',
+        credentials: { httpBasicAuth: { id: basicId, name: 'hook-basic' } },
+        authorize: (r: Test) => r.set('Authorization', `Basic ${Buffer.from('alice:s3cret').toString('base64')}`),
+      },
+      {
+        path: 'auth-header',
+        authentication: 'header',
+        credentials: { httpHeaderAuth: { id: headerId, name: 'hook-header' } },
+        authorize: (r: Test) => r.set('X-Hook-Key', 'header-secret'),
+      },
+      {
+        path: 'auth-jwt',
+        authentication: 'jwt',
+        credentials: { webhookJwtAuth: { id: jwtId, name: 'hook-jwt' } },
+        authorize: (r: Test) =>
+          r.set(
+            'Authorization',
+            `Bearer ${sign({ sub: 'caller' }, 'jwt-secret-32-characters-minimum!', { algorithm: 'HS256', issuer: 'issuer-a', audience: 'hooks' })}`,
+          ),
+      },
+    ];
+
+    for (const item of cases) {
+      const id = await createWorkflow({
+        name: item.path,
+        nodes: [
+          {
+            id: 'a',
+            name: 'Hook',
+            type: 'nomops.webhook',
+            typeVersion: 1,
+            position: [0, 0],
+            parameters: { path: item.path, method: 'POST', authentication: item.authentication },
+            credentials: item.credentials,
+          },
+          { id: 'b', name: 'Set', type: 'nomops.set', typeVersion: 1, position: [200, 0], parameters: { fields: { ok: true } } },
+        ],
+        connections: { Hook: { main: [[{ node: 'Set', type: 'main', index: 0 }]] } },
+      });
+      await request(app).post(`/api/workflows/${id}/activate`).set(authed()).send({ active: true }).expect(200);
+
+      await request(app).post(`/webhook/${item.path}`).send({}).expect(401);
+      await item.authorize(request(app).post(`/webhook/${item.path}`).send({})).expect(200);
+    }
+  });
+
+  it('ignoreBots 对链接预览 UA 返回 204 且不创建执行', async () => {
+    const id = await createWorkflow({
+      name: 'ignore-preview-bot',
+      nodes: [
+        {
+          id: 'a',
+          name: 'Hook',
+          type: 'nomops.webhook',
+          typeVersion: 1,
+          position: [0, 0],
+          parameters: { path: 'ignore-preview-bot', method: 'POST', ignoreBots: true },
+        },
+        { id: 'b', name: 'Set', type: 'nomops.set', typeVersion: 1, position: [200, 0], parameters: { fields: { ran: true } } },
+      ],
+      connections: { Hook: { main: [[{ node: 'Set', type: 'main', index: 0 }]] } },
+    });
+    await request(app).post(`/api/workflows/${id}/activate`).set(authed()).send({ active: true }).expect(200);
+    const before = await request(app).get('/api/executions').set(authed()).expect(200);
+    const ignored = await request(app)
+      .post('/webhook/ignore-preview-bot')
+      .set('User-Agent', 'Slackbot-LinkExpanding 1.0')
+      .send({})
+      .expect(204);
+    expect(ignored.headers['x-nomops-webhook-ignored']).toBe('bot');
+    const after = await request(app).get('/api/executions').set(authed()).expect(200);
+    expect(after.body).toHaveLength(before.body.length);
   });
 });
 

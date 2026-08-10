@@ -22,7 +22,11 @@ import { ExecutionService } from './services/execution-service.js';
 import { WorkflowService } from './services/workflow-service.js';
 import { ApiKeyService } from './services/api-key-service.js';
 import { MfaService } from './services/mfa-service.js';
-import { CommunityNodeService, NpmNodeInstaller } from './services/community-node-service.js';
+import {
+  CommunityNodeService,
+  NpmNodeInstaller,
+  type CommunityNodePolicy,
+} from './services/community-node-service.js';
 import type { INodeInstaller } from './services/community-node-service.js';
 import { GitService } from './ee/services/git-service.js';
 import { SharingService } from './ee/services/sharing-service.js';
@@ -73,6 +77,11 @@ import { createBullQueue, createRedisLockStore } from './queue/execution-queue.j
 import type { IExecutionQueue, RedisOptions } from './queue/execution-queue.js';
 import type { AppServices } from './app-services.js';
 import type { IEventStreamMessage, IEventStreamOptions, IHttpRequestOptions } from '@nomops/workflow';
+import {
+  EncryptionKeyService,
+  encryptionMasterKeyFromEnv,
+} from './services/encryption-key-service.js';
+import { AuthRateLimitService } from './services/auth-rate-limit-service.js';
 
 /**
  * ★安装版的 IEncryptionKeyProvider（docs/01「第二个必须早做的抽象」）：
@@ -93,11 +102,18 @@ class SettingsKeyProvider implements IEncryptionKeyProvider {
 }
 
 /** 确保实例级密钥存在（加密密钥 + JWT secret），幂等。 */
-async function ensureInstanceSecrets(repos: Repositories): Promise<{ jwtSecret: string }> {
-  let encryptionKey = await repos.settings.get('encryptionKey');
-  if (!encryptionKey) {
-    encryptionKey = randomBytes(32).toString('hex');
-    await repos.settings.set('encryptionKey', encryptionKey, true);
+async function ensureInstanceSecrets(repos: Repositories, createLegacyEncryptionKey: boolean): Promise<{ jwtSecret: string }> {
+  if (createLegacyEncryptionKey) {
+    if (await repos.settings.get('encryptionKeyring.v1')) {
+      throw new Error(
+        'Encrypted keyring exists but NOMOPS_ENCRYPTION_KEY(_FILE) is not configured; refusing to start',
+      );
+    }
+    let encryptionKey = await repos.settings.get('encryptionKey');
+    if (!encryptionKey) {
+      encryptionKey = randomBytes(32).toString('hex');
+      await repos.settings.set('encryptionKey', encryptionKey, true);
+    }
   }
   let jwtSecret = await repos.settings.get('jwtSecret');
   if (!jwtSecret) {
@@ -148,6 +164,8 @@ export interface BootstrapOptions {
   mailer?: IMailer;
   /** 社区节点安装器（缺省 npm 真实实现；测试注入假实现映射到本地 fixture）。 */
   nodeInstaller?: INodeInstaller;
+  /** 社区节点供应链策略；缺省拒绝未配置精确 checksum 的包。 */
+  communityNodePolicy?: CommunityNodePolicy;
   /** 凭证连接测试的 HTTP 客户端（缺省真实 fetch；测试注入假实现，不打真网）。 */
   credentialTester?: import('./services/credential-test.js').ICredentialTester;
   /** 源码同步的 git 工作目录（缺省 NOMOPS_SOURCE_CONTROL_DIR 或 .nomops/source-control；测试传临时目录隔离）。 */
@@ -171,6 +189,8 @@ export interface BootstrapOptions {
   concurrencyQueueDepth?: number;
   /** S3 二进制存储配置（测试注入假客户端；生产走 NOMOPS_S3_* 环境变量）。 */
   s3?: import('@nomops/core').IS3StoreOptions | null;
+  /** 外部信封加密主密钥；null 强制 legacy，undefined 读环境变量。 */
+  encryptionMasterKey?: Buffer | null;
 }
 
 export interface BootstrapResult {
@@ -214,7 +234,15 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   const dbHandle = await createDatabase(dbConfig);
   await runMigrations(dbHandle);
   const repos = createRepositories(dbHandle);
-  const { jwtSecret } = await ensureInstanceSecrets(repos);
+  const encryptionMasterKey =
+    opts.encryptionMasterKey === undefined ? encryptionMasterKeyFromEnv(process.env) : opts.encryptionMasterKey;
+  const { jwtSecret } = await ensureInstanceSecrets(repos, encryptionMasterKey === null);
+  const encryptionKeys = encryptionMasterKey ? new EncryptionKeyService(repos.settings, encryptionMasterKey) : null;
+  if (encryptionKeys) {
+    await encryptionKeys.initialize();
+    await encryptionKeys.getActiveKey(); // fail fast on wrong external master key
+  }
+  const cipher = new Cipher(encryptionKeys ?? new SettingsKeyProvider(repos.settings));
 
   // #34 一次性回填：全局 workflows.favorite → 各项目 owner 的 user_favorites。
   // settings 标志位保证只跑一次（否则用户取消收藏后重启会被重新加回）。
@@ -226,7 +254,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   const nodeLoader = new NodeLoader(builtinNodeManifest);
   await nodeLoader.loadAll();
 
-  const credentials = new Credentials(new Cipher(new SettingsKeyProvider(repos.settings)));
+  const credentials = new Credentials(cipher);
   const pushHub = new PushHub();
 
   // 队列与 leader：regular 用内存锁（单进程恒为 leader）；queue 用 Redis
@@ -250,8 +278,9 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     opts.licenseKey ?? storedLicenseKey ?? process.env['LICENSE_KEY'] ?? null,
     opts.licensePublicKey,
   );
-  const mfa = new MfaService(repos);
+  const mfa = new MfaService(repos, cipher);
   const auth = new AuthService(repos, jwtSecret, mfa);
+  const authRateLimit = new AuthRateLimitService(repos, jwtSecret);
   const apiKeys = new ApiKeyService(repos);
   const workflows = new WorkflowService(repos, nodeLoader);
   // 社区节点：安装器缺省走 npm，装到 NOMOPS_COMMUNITY_NODES_DIR（默认 .nomops/nodes）
@@ -260,6 +289,25 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     nodeLoader,
     opts.nodeInstaller ??
       new NpmNodeInstaller(process.env['NOMOPS_COMMUNITY_NODES_DIR'] ?? join(process.cwd(), '.nomops', 'nodes')),
+    opts.communityNodePolicy ?? {
+      allowUnverified: process.env['NOMOPS_ALLOW_UNVERIFIED_COMMUNITY_NODES'] === 'true',
+      trustedIntegrities: (() => {
+        const raw = process.env['NOMOPS_COMMUNITY_NODE_INTEGRITIES'];
+        if (!raw) return {};
+        try {
+          const parsed = JSON.parse(raw) as unknown;
+          return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+            ? (parsed as Record<string, string>)
+            : {};
+        } catch {
+          throw new Error('NOMOPS_COMMUNITY_NODE_INTEGRITIES must be a JSON object');
+        }
+      })(),
+      allowedImports: (process.env['NOMOPS_COMMUNITY_NODE_ALLOWED_IMPORTS'] ?? '')
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean),
+    },
   );
   // 源码同步：把项目工作流 push/pull 到 git 仓库
   const git = new GitService(
@@ -268,7 +316,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     opts.sourceControlDir ??
       process.env['NOMOPS_SOURCE_CONTROL_DIR'] ??
       join(process.cwd(), '.nomops', 'source-control'),
-    new Cipher(new SettingsKeyProvider(repos.settings)),
+    cipher,
   );
   // 外部密钥（docs/10 B4）：凭证解密后物化 {{ $secrets.KEY }} 引用。
   // provider 可选 env 变量 / Vault（NOMOPS_SECRETS_PROVIDER）；测试注入 opts.secretsProvider。
@@ -510,6 +558,8 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     waitTracker,
     executionPruner,
     mcp,
+    encryptionKeys,
+    authRateLimit,
   };
 
   // 重载已安装社区节点（main/worker 都需要，执行时才能解析到）。尽力而为，失败不崩启动。

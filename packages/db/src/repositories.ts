@@ -178,6 +178,14 @@ export class UserRepository extends BaseRepository {
     await this.db.update(this.schema.users).set({ passwordHash }).where(eq(this.schema.users.id, id));
   }
 
+  /** 改密后递增 tokenVersion，使该用户所有既有会话立即失效。 */
+  async setPasswordAndRevokeSessions(id: string, passwordHash: string): Promise<void> {
+    await this.db
+      .update(this.schema.users)
+      .set({ passwordHash, tokenVersion: sql`${this.schema.users.tokenVersion} + 1` })
+      .where(eq(this.schema.users.id, id));
+  }
+
   /**
    * 删除用户（实例 admin 移除成员）。先清引用 users.id 的子行（FK 强制开启），
    * 再删用户本身。invitedBy 置空（该用户曾发出的邀请保留、发起人匿名化）。
@@ -192,6 +200,24 @@ export class UserRepository extends BaseRepository {
       .set({ invitedBy: null })
       .where(eq(this.schema.invitations.invitedBy, id));
     await this.db.delete(this.schema.users).where(eq(this.schema.users.id, id));
+  }
+}
+
+export class AuthRateLimitRepository extends BaseRepository {
+  async get(key: string): Promise<{ failures: number; windowStart: Date; blockedUntil: Date | null } | null> {
+    const rows = await this.db.select().from(this.schema.authRateLimits).where(eq(this.schema.authRateLimits.key, key)).limit(1);
+    return rows[0] ?? null;
+  }
+
+  async set(key: string, value: { failures: number; windowStart: Date; blockedUntil: Date | null }): Promise<void> {
+    await this.db
+      .insert(this.schema.authRateLimits)
+      .values({ key, ...value })
+      .onConflictDoUpdate({ target: this.schema.authRateLimits.key, set: value });
+  }
+
+  async delete(key: string): Promise<void> {
+    await this.db.delete(this.schema.authRateLimits).where(eq(this.schema.authRateLimits.key, key));
   }
 }
 
@@ -1426,6 +1452,10 @@ export class SettingsRepository extends BaseRepository {
       .insert(this.schema.settings)
       .values({ key, value, loadOnStartup })
       .onConflictDoUpdate({ target: this.schema.settings.key, set: { value, loadOnStartup } });
+  }
+
+  async delete(key: string): Promise<void> {
+    await this.db.delete(this.schema.settings).where(eq(this.schema.settings.key, key));
   }
 }
 
@@ -3825,6 +3855,7 @@ export class InstanceAiRepository extends BaseRepository {
 
 export interface Repositories {
   users: UserRepository;
+  authRateLimits: AuthRateLimitRepository;
   apiKeys: ApiKeyRepository;
   passwordResets: PasswordResetRepository;
   invitations: InvitationRepository;
@@ -3867,6 +3898,7 @@ export function createRepositories(handle: DatabaseHandle): Repositories {
   const { db, schema } = handle;
   return {
     users: new UserRepository(db, schema),
+    authRateLimits: new AuthRateLimitRepository(db, schema),
     apiKeys: new ApiKeyRepository(db, schema),
     passwordResets: new PasswordResetRepository(db, schema),
     invitations: new InvitationRepository(db, schema),

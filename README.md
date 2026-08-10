@@ -84,8 +84,9 @@ npm install -g nomops && nomops  # install the `nomops` CLI globally
 Zero configuration — it creates `./nomops.db` (SQLite) on first run and serves the UI +
 API at **http://localhost:5678**. Set `DB_TYPE=postgres` + `DB_POSTGRES_URL` for PostgreSQL.
 
-> **First run**: the encryption key and JWT signing secret are generated automatically
-> and stored in the database — you do **not** need to set any secrets to get started.
+> **First run**: zero-configuration development keeps the legacy database key. For production,
+> set `NOMOPS_ENCRYPTION_KEY` (or its file variant) before the first start so only wrapped
+> data-encryption keys are stored in the database.
 
 ---
 
@@ -109,10 +110,18 @@ required for a basic SQLite install.
 | `NOMOPS_SMTP_FROM` | `NOMOPS_SMTP_USER` | Sender address, optionally with a display name. |
 | `NOMOPS_SMTP_REJECT_UNAUTHORIZED` | `true` | Verify the SMTP TLS certificate. Keep enabled in production; set `false` only for explicitly trusted local/self-signed mail servers. |
 | `NOMOPS_STATIC_DIR` | *(auto)* | Frontend build dir to serve. Auto-detected next to the server; override to disable/relocate. |
+| `NOMOPS_ENCRYPTION_KEY` | — | 32-byte external envelope master key (64 hex chars or base64). Enabling it migrates the legacy DB key into a wrapped DEK keyring. |
+| `NOMOPS_ENCRYPTION_KEY_FILE` | — | Read the external envelope master key from a mounted secret file; mutually exclusive with the inline variable. |
+| `NOMOPS_COMMUNITY_NODE_INTEGRITIES` | `{}` | JSON map of exact `package@version` to npm `sha512-…` integrity. Required for community node installation by default. |
+| `NOMOPS_COMMUNITY_NODE_ALLOWED_IMPORTS` | — | Comma-separated additional imports permitted by the community-node static policy. |
+| `NOMOPS_ALLOW_UNVERIFIED_COMMUNITY_NODES` | `false` | Emergency provenance bypass. Static dangerous-API/import scanning still applies. |
 | `LICENSE_KEY` | — | Unlocks enterprise features (see below). Community edition is free. |
 
-Secrets (`encryptionKey`, `jwtSecret`) are auto-generated on first run and persisted in
-the database — keep the database safe and they persist across restarts.
+With `NOMOPS_ENCRYPTION_KEY` configured, the database contains only AES-GCM-wrapped DEKs
+and ciphertext carries a `keyId`. An instance admin can rotate the active DEK through
+`POST /api/security/encryption-key/rotate`; retained DEKs continue to decrypt old data.
+Removing or changing the external key makes startup fail closed. `jwtSecret` remains an
+auto-generated instance setting.
 
 ---
 

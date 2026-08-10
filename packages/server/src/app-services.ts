@@ -42,6 +42,8 @@ import type { IMailer } from './services/mailer.js';
 import type { SharingService } from './ee/services/sharing-service.js';
 import type { McpService } from './services/mcp-service.js';
 import type { DynamicNodeParametersService } from './services/dynamic-node-parameters-service.js';
+import type { EncryptionKeyService } from './services/encryption-key-service.js';
+import type { AuthRateLimitService } from './services/auth-rate-limit-service.js';
 
 /** 服务容器：构造函数注入（docs/05），app 层只见接口不见组装细节。 */
 export interface AppServices {
@@ -89,4 +91,6 @@ export interface AppServices {
   waitTracker: WaitTracker;
   executionPruner: ExecutionPruner;
   mcp: McpService;
+  encryptionKeys: EncryptionKeyService | null;
+  authRateLimit: AuthRateLimitService;
 }

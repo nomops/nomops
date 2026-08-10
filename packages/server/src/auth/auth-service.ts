@@ -8,6 +8,7 @@ import type { MfaService } from '../services/mfa-service.js';
 export interface IAuthTokenPayload {
   sub: string; // userId
   projectId: string; // 当前 project（安装版 = 注册时建的 personal project）
+  tokenVersion: number;
 }
 
 export interface IAuthResult {
@@ -186,7 +187,7 @@ export class AuthService {
     if (!ticket || ticket.expiresAt.getTime() < now) {
       throw new OperationalError('Reset link is invalid or has expired', { status: 400 });
     }
-    await this.repos.users.setPassword(ticket.userId, await argon2.hash(newPassword));
+    await this.repos.users.setPasswordAndRevokeSessions(ticket.userId, await argon2.hash(newPassword));
     await this.repos.passwordResets.delete(tokenHash);
   }
 
@@ -196,7 +197,7 @@ export class AuthService {
     if (!user) throw new OperationalError('User not found', { status: 404 });
     const ok = await argon2.verify(user.passwordHash, currentPassword).catch(() => false);
     if (!ok) throw new OperationalError('Current password is incorrect', { status: 403 });
-    await this.repos.users.setPassword(userId, await argon2.hash(newPassword));
+    await this.repos.users.setPasswordAndRevokeSessions(userId, await argon2.hash(newPassword));
   }
 
   /**
@@ -322,11 +323,15 @@ export class AuthService {
 
   verify(token: string): IAuthTokenPayload {
     try {
-      const payload = jwt.verify(token, this.jwtSecret) as jwt.JwtPayload;
+      const payload = jwt.verify(token, this.jwtSecret, { algorithms: ['HS256'] }) as jwt.JwtPayload;
       if (typeof payload.sub !== 'string' || typeof payload['projectId'] !== 'string') {
         throw new Error('Token payload is missing fields');
       }
-      return { sub: payload.sub, projectId: payload['projectId'] };
+      return {
+        sub: payload.sub,
+        projectId: payload['projectId'],
+        tokenVersion: typeof payload['tokenVersion'] === 'number' ? payload['tokenVersion'] : 0,
+      };
     } catch {
       throw new OperationalError('Invalid or expired token');
     }
@@ -346,7 +351,8 @@ export class AuthService {
   private issueToken(user: User, projectId: string): IAuthResult {
     // jti 唯一化：否则同一秒为同一用户签发的两个 token 完全相同（iat 秒级），
     // 登出黑名单按 token 哈希拉黑时会误伤同秒重签的新 token（#37）。
-    const token = jwt.sign({ sub: user.id, projectId }, this.jwtSecret, {
+    const token = jwt.sign({ sub: user.id, projectId, tokenVersion: user.tokenVersion }, this.jwtSecret, {
+      algorithm: 'HS256',
       expiresIn: TOKEN_TTL,
       jwtid: randomBytes(9).toString('hex'),
     });

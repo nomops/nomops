@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { fileURLToPath } from 'node:url';
+import { dirname } from 'node:path';
 import request from 'supertest';
 import type { Express } from 'express';
 import { NodeLoader, WorkflowExecute } from '@nomops/core';
@@ -19,17 +20,19 @@ const fixture = (dir: string) => fileURLToPath(new URL(`./fixtures/${dir}/index.
 
 const GREET_PKG = 'nomops-node-greet';
 const BAD_PKG = 'nomops-node-bad';
+const DANGER_PKG = 'nomops-node-danger';
 
 /** 假安装器：包名 → fixture 入口路径。install/resolveEntry 都查这张表。 */
 class FakeInstaller implements INodeInstaller {
   private readonly map: Record<string, string> = {
     [GREET_PKG]: fixture('community-node-greet'),
     [BAD_PKG]: fixture('community-node-bad'),
+    [DANGER_PKG]: fixture('community-node-danger'),
   };
   async install(pkg: string) {
     const entryPath = this.map[pkg];
     if (!entryPath) throw new Error(`no fixture for ${pkg}`);
-    return { version: '1.0.0', entryPath };
+    return { version: '1.0.0', entryPath, packageDir: dirname(entryPath), integrity: 'sha512-fixture' };
   }
   async uninstall() {
     /* fixture 无需真正删除 */
@@ -38,6 +41,10 @@ class FakeInstaller implements INodeInstaller {
     const entryPath = this.map[pkg];
     if (!entryPath) throw new Error(`not resolvable: ${pkg}`);
     return entryPath;
+  }
+  async inspect(pkg: string) {
+    const entryPath = await this.resolveEntry(pkg);
+    return { version: '1.0.0', entryPath, packageDir: dirname(entryPath), integrity: 'sha512-fixture' };
   }
 }
 
@@ -58,7 +65,11 @@ const node = (name: string, type: string, extra: Record<string, unknown> = {}) =
 });
 
 beforeAll(async () => {
-  boot = await bootstrap({ dbConfig: { type: 'sqlite' }, nodeInstaller: new FakeInstaller() });
+  boot = await bootstrap({
+    dbConfig: { type: 'sqlite' },
+    nodeInstaller: new FakeInstaller(),
+    communityNodePolicy: { allowUnverified: true },
+  });
   app = createApp(boot.services);
   ownerToken = (await setupOwner(app, 'owner@cn.dev')).token;
   memberToken = (await inviteUser(app, ownerToken, 'member@cn.dev')).token;
@@ -158,5 +169,23 @@ describe('错误处理', () => {
     // 装失败不留痕
     const list = await request(app).get('/api/community-nodes').set(bearer(ownerToken)).expect(200);
     expect(list.body.map((p: { packageName: string }) => p.packageName)).not.toContain(BAD_PKG);
+  });
+
+  it('即使允许 unverified，静态策略仍拒绝 child_process 并回滚安装', async () => {
+    await request(app).post('/api/community-nodes').set(bearer(ownerToken)).send({ name: DANGER_PKG }).expect(400);
+    const list = await request(app).get('/api/community-nodes').set(bearer(ownerToken)).expect(200);
+    expect(list.body.map((p: { packageName: string }) => p.packageName)).not.toContain(DANGER_PKG);
+  });
+
+  it('默认策略拒绝没有精确 checksum 信任配置的包', async () => {
+    const secureBoot = await bootstrap({ dbConfig: { type: 'sqlite' }, nodeInstaller: new FakeInstaller() });
+    try {
+      await expect(secureBoot.services.communityNodes.install(GREET_PKG, '1.0.0', null)).rejects.toThrow(
+        /integrity is not trusted/i,
+      );
+      expect(await secureBoot.services.communityNodes.list()).toHaveLength(0);
+    } finally {
+      await secureBoot.shutdown();
+    }
   });
 });

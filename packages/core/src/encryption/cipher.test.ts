@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { Cipher } from './cipher.js';
 import { StaticKeyProvider } from './key-provider.js';
+import type { IEncryptionKeyProvider } from './key-provider.js';
 import { Credentials } from '../credentials.js';
 
 const cipherWith = (key: Buffer) => new Cipher(new StaticKeyProvider(key));
@@ -37,6 +38,31 @@ describe('Cipher（AES-256-GCM）', () => {
 
   it('非 32 字节密钥被 StaticKeyProvider 拒绝', () => {
     expect(() => new StaticKeyProvider(randomBytes(16))).toThrow(/32 字节/);
+  });
+
+  it('keyring v2 写入 keyId，轮换后旧密文仍按历史 key 解密', async () => {
+    const keys = new Map([
+      ['old', randomBytes(32)],
+      ['new', randomBytes(32)],
+    ]);
+    let active = 'old';
+    const provider: IEncryptionKeyProvider = {
+      getKey: async () => keys.get('old')!,
+      getActiveKey: async () => ({ id: active, key: keys.get(active)! }),
+      getKeyById: async (id) => {
+        const key = keys.get(id);
+        if (!key) throw new Error('unknown key');
+        return key;
+      },
+    };
+    const cipher = new Cipher(provider);
+    const before = await cipher.encrypt('before rotation');
+    expect(before).toMatch(/^v2:old:/);
+    active = 'new';
+    const after = await cipher.encrypt('after rotation');
+    expect(after).toMatch(/^v2:new:/);
+    expect(await cipher.decrypt(before)).toBe('before rotation');
+    expect(await cipher.decrypt(after)).toBe('after rotation');
   });
 });
 

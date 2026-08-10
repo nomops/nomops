@@ -143,6 +143,40 @@ describe('自定义角色（backlog #29）', () => {
       .expect(400);
   });
 
+  it('精确 scope：credential:delete 不得被层级折算成 workflow:update', async () => {
+    await request(app)
+      .post('/api/custom-roles')
+      .set(as('owner'))
+      .send({ name: 'credential-cleaner', scopes: ['credential:read', 'credential:delete'] })
+      .expect(201);
+    await request(app)
+      .post(`/api/projects/${teamProjectId}/members`)
+      .set(as('owner'))
+      .send({ email: 'member@roles.dev', role: 'credential-cleaner' })
+      .expect(201);
+
+    const workflow = await request(app)
+      .post('/api/workflows')
+      .set(as('owner', teamProjectId))
+      .send(sampleWorkflow('scope-boundary'))
+      .expect(201);
+    const credential = await request(app)
+      .post('/api/credentials')
+      .set(as('owner', teamProjectId))
+      .send({ name: 'disposable', type: 'httpHeaderAuth', data: { name: 'X-Key', value: 'secret' } })
+      .expect(201);
+
+    await request(app)
+      .patch(`/api/workflows/${workflow.body.id}`)
+      .set(as('member', teamProjectId))
+      .send({ name: 'must-not-change' })
+      .expect(403);
+    await request(app)
+      .delete(`/api/credentials/${credential.body.id}`)
+      .set(as('member', teamProjectId))
+      .expect(204);
+  });
+
   it('删除自定义角色', async () => {
     const list = await request(app).get('/api/custom-roles').set(as('owner')).expect(200);
     const role = (list.body.roles as Array<{ id: string; name: string }>).find((r) => r.name === 'read-only');

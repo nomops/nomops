@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import { Router, type NextFunction, type Request, type Response } from 'express';
+import jwt from 'jsonwebtoken';
 import type { ZodTypeAny, z } from 'zod';
 import type {
   INode,
@@ -22,7 +23,7 @@ import {
   recordAudit,
 } from '../http/route-helpers.js';
 import { registerEeRoutes } from '../ee/routes.js';
-import { requireRole } from '../auth/middleware.js';
+import { requireProjectScope, requireRole } from '../auth/middleware.js';
 import { API_SCOPES } from '../auth/api-scopes.js';
 import { verifyHandoff } from '../auth/handoff.js';
 import { requireFeature } from '../ee/license/license-service.js';
@@ -178,12 +179,21 @@ export function createAuthRouter(services: AppServices): Router {
     '/login',
     h(async (req, res) => {
       const body = parseBody(loginSchema, req);
-      const result = await services.auth.login(body.email, body.password, body.mfaCode);
+      const ip = req.ip ?? 'unknown';
+      await services.authRateLimit.assertAllowed(body.email, ip);
+      let result;
+      try {
+        result = await services.auth.login(body.email, body.password, body.mfaCode);
+      } catch (error) {
+        await services.authRateLimit.recordFailure(body.email, ip);
+        throw error;
+      }
       // 口令通过但需第二因素：回中间态，客户端补 mfaCode 再提交
       if ('mfaRequired' in result) {
         res.json({ mfaRequired: true });
         return;
       }
+      await services.authRateLimit.clear(body.email, ip);
       services.audit.log({
         userId: result.user.id,
         action: 'auth.login',
@@ -333,8 +343,43 @@ export function createAuthRouter(services: AppServices): Router {
 export function createApiRouter(services: AppServices): Router {
   const router = Router();
   const editor = requireRole('project:editor');
+  const workflowCreate = requireProjectScope('workflow:create');
+  const workflowUpdate = requireProjectScope('workflow:update');
+  const workflowDelete = requireProjectScope('workflow:delete');
+  const workflowExecute = requireProjectScope('execution:execute');
+  const credentialCreate = requireProjectScope('credential:create');
+  const credentialUpdate = requireProjectScope('credential:update');
+  const credentialDelete = requireProjectScope('credential:delete');
   const rbacFeature = requireFeature(services.license, 'rbac');
   const auditFeature = requireFeature(services.license, 'auditLogs');
+
+  // 自定义角色按资源逐 scope 守门。内建角色沿用既有矩阵；未知路径继续由具体路由
+  // 的 exact-scope/requireRole/assertOwner 守卫处理，绝不把 tier 当成隐式授权。
+  router.use((req, res, next) => {
+    if (!req.auth || isProjectRole(req.auth.roleName)) return next();
+    const path = req.path;
+    let required: (typeof PROJECT_SCOPES)[number] | null = null;
+    if (path === '/workflows' && req.method === 'POST') required = 'workflow:create';
+    else if (path.startsWith('/workflows')) {
+      if (req.method === 'GET') required = 'workflow:read';
+      else if (req.method === 'DELETE') required = 'workflow:delete';
+      else if (/\/(?:run|chat|test-runs)$/.test(path)) required = 'execution:execute';
+      else required = 'workflow:update';
+    } else if (path.startsWith('/executions')) {
+      if (req.method === 'GET') required = 'execution:read';
+      else if (/\/(?:retry|stop|resume)$/.test(path)) required = 'execution:execute';
+    } else if (path === '/credentials' && req.method === 'POST') required = 'credential:create';
+    else if (path.startsWith('/credentials')) {
+      if (req.method === 'GET') required = 'credential:read';
+      else if (req.method === 'DELETE') required = 'credential:delete';
+      else required = 'credential:update';
+    }
+    if (required && !req.auth.scopes.includes(required)) {
+      res.status(403).json({ error: `Requires ${required} scope`, role: req.auth.roleName });
+      return;
+    }
+    next();
+  });
 
   /** 受保护(生产)实例：源码同步开了 Protected 时，工作流只读——拦编辑操作（对标基线）。 */
   const assertEditable = async (): Promise<void> => {
@@ -373,7 +418,7 @@ export function createApiRouter(services: AppServices): Router {
   /* ── 收藏 / 归档（对标基线卡片菜单 Favorite / Archive；Delete 仅对 archived 开放） ── */
   router.post(
     '/workflows/:id/favorite',
-    editor,
+    workflowUpdate,
     h(async (req, res) => {
       const row = await services.workflows.getById(param(req, 'id'), auth(req).projectId);
       const favorite = Boolean((req.body as { favorite?: boolean })?.favorite);
@@ -387,7 +432,7 @@ export function createApiRouter(services: AppServices): Router {
 
   router.post(
     '/workflows/:id/archive',
-    editor,
+    workflowUpdate,
     h(async (req, res) => {
       const row = await services.workflows.getById(param(req, 'id'), auth(req).projectId);
       // 归档即下线：触发器注销 + active=false（基线语义）
@@ -403,7 +448,7 @@ export function createApiRouter(services: AppServices): Router {
 
   router.post(
     '/workflows/:id/unarchive',
-    editor,
+    workflowUpdate,
     h(async (req, res) => {
       const row = await services.workflows.getById(param(req, 'id'), auth(req).projectId);
       const updated = await services.repos.workflows.setFlags(row.id, { archived: false });
@@ -414,7 +459,7 @@ export function createApiRouter(services: AppServices): Router {
 
   router.post(
     '/workflows',
-    editor,
+    workflowCreate,
     h(async (req, res) => {
       await assertEditable();
       const body = parseBody(workflowBodySchema, req);
@@ -436,7 +481,7 @@ export function createApiRouter(services: AppServices): Router {
   /* ── 发布（生产触发跑已发布版本；保存只改草稿） ── */
   router.post(
     '/workflows/:id/publish',
-    editor,
+    workflowUpdate,
     h(async (req, res) => {
       await assertEditable();
       const row = await services.workflows.publish(param(req, 'id'), auth(req).projectId, auth(req).userId);
@@ -452,7 +497,7 @@ export function createApiRouter(services: AppServices): Router {
 
   router.patch(
     '/workflows/:id',
-    editor,
+    workflowUpdate,
     h(async (req, res) => {
       await assertEditable();
       const body = parseBody(workflowPatchSchema, req);
@@ -464,7 +509,7 @@ export function createApiRouter(services: AppServices): Router {
 
   router.delete(
     '/workflows/:id',
-    editor,
+    workflowDelete,
     h(async (req, res) => {
       await assertEditable();
       await services.workflows.delete(param(req, 'id'), auth(req).projectId);
@@ -496,7 +541,7 @@ export function createApiRouter(services: AppServices): Router {
 
   router.post(
     '/workflows/:id/versions/:versionId/restore',
-    editor,
+    workflowUpdate,
     h(async (req, res) => {
       const restored = await services.workflows.restoreVersion(
         param(req, 'id'),
@@ -606,7 +651,7 @@ export function createApiRouter(services: AppServices): Router {
   /* 画布/API 聊天（Chat Trigger 起点，对标基线 Chat 面板） */
   router.post(
     '/workflows/:id/chat',
-    editor,
+    workflowExecute,
     h(async (req, res) => {
       const body = parseBody(chatBodySchema, req);
       res.json(
@@ -649,7 +694,7 @@ export function createApiRouter(services: AppServices): Router {
 
   router.post(
     '/workflows/:id/run',
-    editor,
+    workflowExecute,
     h(async (req, res) => {
       const body = parseBody(runBodySchema, req);
       // #46 M2：动态凭证运行上下文 = 本次 subject + 触发者 userId(user_entry 回退)
@@ -666,7 +711,7 @@ export function createApiRouter(services: AppServices): Router {
   /* ── 评测/测试（backlog #31）：Evaluation Trigger + data table 逐行跑 ── */
   router.post(
     '/workflows/:id/test-runs',
-    editor,
+    workflowExecute,
     h(async (req, res) => {
       const body = parseBody(testRunBodySchema, req);
       const run = await services.evaluations.createTestRun(param(req, 'id'), auth(req).projectId, body);
@@ -698,7 +743,7 @@ export function createApiRouter(services: AppServices): Router {
   /* ── activate / deactivate ── */
   router.post(
     '/workflows/:id/activate',
-    editor,
+    workflowUpdate,
     h(async (req, res) => {
       const body = parseBody(activateBodySchema, req);
       let row = await services.workflows.getById(param(req, 'id'), auth(req).projectId);
@@ -876,7 +921,7 @@ export function createApiRouter(services: AppServices): Router {
   /* 重试（B5）：useOriginal=true 用执行时的定义快照，否则用当前保存的草稿 */
   router.post(
     '/executions/:id/retry',
-    editor,
+    workflowExecute,
     h(async (req, res) => {
       const useOriginal = Boolean((req.body as { useOriginal?: boolean })?.useOriginal);
       const summary = await services.executions.retry(param(req, 'id'), auth(req).projectId, useOriginal);
@@ -888,7 +933,7 @@ export function createApiRouter(services: AppServices): Router {
   // 停止执行（running/waiting/排队 → canceled；已结束 409）
   router.post(
     '/executions/:id/stop',
-    editor,
+    workflowExecute,
     h(async (req, res) => {
       const summary = await services.executions.stop(param(req, 'id'), auth(req).projectId);
       recordAudit(services, req, 'execution.stop', { type: 'execution', id: param(req, 'id') });
@@ -899,7 +944,7 @@ export function createApiRouter(services: AppServices): Router {
   // 唤醒 waiting 执行（Wait 节点的外部信号模式；到点唤醒由 wait-tracker 负责）
   router.post(
     '/executions/:id/resume',
-    editor,
+    workflowExecute,
     h(async (req, res) => {
       const summary = await services.executions.resume(param(req, 'id'), auth(req).projectId);
       recordAudit(services, req, 'execution.resume', { type: 'execution', id: param(req, 'id') });
@@ -917,7 +962,7 @@ export function createApiRouter(services: AppServices): Router {
 
   router.post(
     '/credentials',
-    editor,
+    credentialCreate,
     h(async (req, res) => {
       const body = parseBody(credentialBodySchema, req);
       const created = await services.credentials.create(body, auth(req).projectId);
@@ -929,7 +974,7 @@ export function createApiRouter(services: AppServices): Router {
 
   router.post(
     '/credentials/:id/test',
-    editor, // viewer 只读：test 会触发解密（docs/06）
+    credentialUpdate, // test 会触发解密，需凭证写权限
     h(async (req, res) => {
       res.json(await services.credentials.test(param(req, 'id'), auth(req).projectId));
     }),
@@ -969,7 +1014,7 @@ export function createApiRouter(services: AppServices): Router {
   /* 编辑凭证（对标基线卡片 Open）：改名 + 覆写填写的字段（留空 = 保持不变） */
   router.patch(
     '/credentials/:id',
-    editor,
+    credentialUpdate,
     h(async (req, res) => {
       const body = parseBody(credentialPatchSchema, req);
       const view = await services.credentials.update(param(req, 'id'), auth(req).projectId, {
@@ -997,7 +1042,7 @@ export function createApiRouter(services: AppServices): Router {
 
   router.delete(
     '/credentials/:id',
-    editor,
+    credentialDelete,
     h(async (req, res) => {
       await services.credentials.delete(param(req, 'id'), auth(req).projectId);
       recordAudit(services, req, 'credential.delete', { type: 'credential', id: param(req, 'id') });
@@ -2899,6 +2944,34 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
+  router.get(
+    '/security/encryption-key',
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      res.json(
+        services.encryptionKeys
+          ? await services.encryptionKeys.status()
+          : { mode: 'legacy-database', activeKeyId: null, retainedKeys: 1 },
+      );
+    }),
+  );
+
+  router.post(
+    '/security/encryption-key/rotate',
+    h(async (req, res) => {
+      await assertInstanceAdmin(req);
+      if (!services.encryptionKeys) {
+        throw new OperationalError('External encryption master key is not configured', { status: 409 });
+      }
+      const result = await services.encryptionKeys.rotate();
+      recordAudit(services, req, 'security.encryption-key.rotate', { type: 'setting', id: 'encryptionKeyring' }, {
+        activeKeyId: result.activeKeyId,
+        retainedKeys: result.retainedKeys,
+      });
+      res.json(result);
+    }),
+  );
+
   return router;
 }
 
@@ -2908,6 +2981,57 @@ export function createApiRouter(services: AppServices): Router {
  */
 export function createWebhookRouter(services: AppServices): Router {
   const router = Router();
+  const BOT_USER_AGENT = /(?:\bbot\b|crawler|spider|linkpreview|link-preview|slackbot|discordbot|whatsapp|skypeuripreview|safelinks|microsoft office existence discovery)/i;
+  const safeEqual = (actual: string, expected: string): boolean => {
+    const a = Buffer.from(actual);
+    const b = Buffer.from(expected);
+    return a.length === b.length && timingSafeEqual(a, b);
+  };
+  const authenticateWebhook = async (req: Request, node: INode, projectId: string): Promise<boolean> => {
+    const mode = String(node.parameters['authentication'] ?? 'none');
+    if (mode === 'none') return true;
+    const type =
+      mode === 'basic' ? 'httpBasicAuth' : mode === 'header' ? 'httpHeaderAuth' : mode === 'jwt' ? 'webhookJwtAuth' : '';
+    const reference = type ? node.credentials?.[type] : undefined;
+    if (!reference) return false;
+    const credential = await services.credentials.getDecryptedData(reference.id, projectId).catch(() => null);
+    if (!credential) return false;
+
+    if (mode === 'basic') {
+      const authorization = req.headers.authorization ?? '';
+      if (!authorization.startsWith('Basic ')) return false;
+      let decoded = '';
+      try {
+        decoded = Buffer.from(authorization.slice(6), 'base64').toString('utf8');
+      } catch {
+        return false;
+      }
+      return safeEqual(decoded, `${String(credential['user'] ?? '')}:${String(credential['password'] ?? '')}`);
+    }
+    if (mode === 'header') {
+      const name = String(credential['name'] ?? '').toLowerCase();
+      const expected = String(credential['value'] ?? '');
+      const value = name ? req.headers[name] : undefined;
+      return typeof value === 'string' && expected.length > 0 && safeEqual(value, expected);
+    }
+    if (mode === 'jwt') {
+      const authorization = req.headers.authorization ?? '';
+      if (!authorization.startsWith('Bearer ')) return false;
+      const secret = String(credential['secret'] ?? '');
+      if (!secret) return false;
+      try {
+        jwt.verify(authorization.slice(7), secret, {
+          algorithms: ['HS256'],
+          ...(credential['issuer'] ? { issuer: String(credential['issuer']) } : {}),
+          ...(credential['audience'] ? { audience: String(credential['audience']) } : {}),
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  };
   const requestOf = (req: Request, path: string): IWebhookRequest => ({
     method: req.method.toUpperCase(),
     path,
@@ -2993,6 +3117,16 @@ export function createWebhookRouter(services: AppServices): Router {
       );
       const node = (row.nodes as INode[]).find((candidate) => candidate.name === entity.node);
       if (!node) throw new OperationalError('Webhook node not found in published workflow', { node: entity.node });
+      if (node.parameters['ignoreBots'] === true && BOT_USER_AGENT.test(req.headers['user-agent'] ?? '')) {
+        res.setHeader('X-Nomops-Webhook-Ignored', 'bot');
+        res.status(204).end();
+        return;
+      }
+      if (!(await authenticateWebhook(req, node, projectId))) {
+        res.setHeader('WWW-Authenticate', 'Bearer realm="nomops-webhook", Basic realm="nomops-webhook"');
+        res.status(401).json({ error: 'Webhook authentication failed' });
+        return;
+      }
       const nodeType = await services.nodeLoader.getByNameAndVersion(node.type, node.typeVersion);
       if (nodeType.webhook) {
         const result = await nodeType.webhook.call(webhookContext('trigger', node, req, path, {}));
@@ -3028,6 +3162,15 @@ export function createWebhookRouter(services: AppServices): Router {
         sendResponse(res, nodeResponse);
         return;
       }
+      if (node.parameters['responseMode'] === 'lastNode' && summary.status !== 'queued') {
+        const data = (await services.repos.executions.getData(summary.executionId)) as IRunExecutionData | null;
+        const lastNode = data?.resultData?.lastNodeExecuted;
+        const runs = lastNode ? data?.resultData?.runData[lastNode] : undefined;
+        const items = runs?.at(-1)?.data?.['main']?.[0] ?? [];
+        const output = items.map((item) => item.json);
+        res.json(output.length === 1 ? output[0] : output);
+        return;
+      }
       res.json(summary);
     }),
   );
@@ -3056,6 +3199,17 @@ export function createWebhookRouter(services: AppServices): Router {
       const b = Buffer.from(token);
       if (a.length !== b.length || !timingSafeEqual(a, b)) return notFound();
 
+      if (req.method === 'HEAD') {
+        res.setHeader('Cache-Control', 'no-store');
+        res.status(200).end();
+        return;
+      }
+      if (req.method !== 'GET' && req.method !== 'POST') {
+        res.setHeader('Allow', 'GET, HEAD, POST');
+        res.status(405).json({ error: 'Use POST to resume this execution' });
+        return;
+      }
+
       let resumeData: INodeExecutionData[] | undefined;
       let nodeResponse: IWebhookResponseData | undefined;
       const state = data as IRunExecutionData;
@@ -3080,6 +3234,24 @@ export function createWebhookRouter(services: AppServices): Router {
             resumeData = result.workflowData;
           }
         }
+      }
+
+      // Waiting nodes such as Form may render their own safe GET page above. A GET that
+      // produced workflow data is still preview-only: discard it and require explicit POST.
+      if (req.method === 'GET') {
+        res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('Referrer-Policy', 'no-referrer');
+        res.setHeader(
+          'Content-Security-Policy',
+          "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'",
+        );
+        res.type('html').send(
+          '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">' +
+            '<title>Resume workflow</title><style>body{font-family:system-ui;max-width:36rem;margin:5rem auto;padding:0 1rem;color:#242424}button{padding:.7rem 1rem}</style></head>' +
+            '<body><h1>Resume workflow?</h1><p>This action will continue the paused execution.</p>' +
+            '<form method="post"><button type="submit">Continue</button></form></body></html>',
+        );
+        return;
       }
 
       const projectId = await services.repos.workflows.getOwnerProjectId(record.workflowId);

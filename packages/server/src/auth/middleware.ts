@@ -3,7 +3,14 @@ import type { NextFunction, Request, Response } from 'express';
 import type { Repositories } from '@nomops/db';
 import type { AuthService } from './auth-service.js';
 import type { ApiKeyService } from '../services/api-key-service.js';
-import { isProjectRole, roleAtLeast, tierForScopes, type ProjectRole } from './rbac.js';
+import {
+  BUILTIN_ROLE_SCOPES,
+  isProjectRole,
+  roleAtLeast,
+  tierForScopes,
+  type ProjectRole,
+  type ProjectScope,
+} from './rbac.js';
 import { requiredScope, scopesAllow } from './api-scopes.js';
 
 /** 公共 API 令牌头。 */
@@ -17,6 +24,8 @@ export interface IRequestAuth {
   role: ProjectRole;
   /** 原始角色名（内建时同 role;自定义角色时为其名字，供审计/展示）。 */
   roleName: string;
+  /** Exact effective permissions; custom roles are never widened through their derived tier. */
+  scopes: ProjectScope[];
 }
 
 declare module 'express-serve-static-core' {
@@ -45,13 +54,20 @@ function attachAuth(
       }
       // 自定义角色（#29）：非内建 → 查其 scopes 解析为有效层级;未知角色 → 最小权限 viewer
       let effective: ProjectRole = 'project:viewer';
+      let effectiveScopes: ProjectScope[] = [];
       if (isProjectRole(role)) {
         effective = role;
+        effectiveScopes = BUILTIN_ROLE_SCOPES[role];
       } else {
         const scopes = await repos.customRoles.scopesForName(role).catch(() => null);
-        if (scopes) effective = tierForScopes(scopes);
+        if (scopes) {
+          effective = tierForScopes(scopes);
+          effectiveScopes = scopes.filter((scope): scope is ProjectScope =>
+            (BUILTIN_ROLE_SCOPES['project:owner'] as string[]).includes(scope),
+          );
+        }
       }
-      req.auth = { userId, projectId, role: effective, roleName: role };
+      req.auth = { userId, projectId, role: effective, roleName: role, scopes: effectiveScopes };
       void repos.users.touchLastActive(userId).catch(() => undefined); // D146:活跃打点,失败不阻塞
       next();
     })
@@ -117,8 +133,13 @@ export function createAuthMiddleware(authService: AuthService, repos: Repositori
     // 登出黑名单（#37）：验签通过后再查是否已被登出拉黑（内存缓存,热路径不打库）
     void repos.authTokenBlacklist
       .isBlacklisted(createHash('sha256').update(token).digest('hex'))
-      .then((revoked) => {
+      .then(async (revoked) => {
         if (revoked) {
+          res.status(401).json({ error: 'Token has been revoked' });
+          return;
+        }
+        const user = await repos.users.findById(payload.sub);
+        if (!user || user.disabled || user.tokenVersion !== payload.tokenVersion) {
           res.status(401).json({ error: 'Token has been revoked' });
           return;
         }
@@ -131,8 +152,22 @@ export function createAuthMiddleware(authService: AuthService, repos: Repositori
 /** 路由级角色门：低于 minRole → 403。挂在 authMiddleware 之后。 */
 export function requireRole(minRole: ProjectRole) {
   return (req: Request, res: Response, next: NextFunction): void => {
-    if (!req.auth || !roleAtLeast(req.auth.role, minRole)) {
+    // Custom-role tiers are display hints only. Mutating routes must use requireProjectScope;
+    // leaving an old tier gate in place therefore fails closed instead of widening a narrow role.
+    const customWrite = req.auth && !isProjectRole(req.auth.roleName) && minRole !== 'project:viewer';
+    if (!req.auth || customWrite || !roleAtLeast(req.auth.role, minRole)) {
       res.status(403).json({ error: `Requires ${minRole} role or higher`, role: req.auth?.role });
+      return;
+    }
+    next();
+  };
+}
+
+/** Exact project permission gate. Use this for resource mutations; derived role tiers are display-only for custom roles. */
+export function requireProjectScope(scope: ProjectScope) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (!req.auth?.scopes.includes(scope)) {
+      res.status(403).json({ error: `Requires ${scope} scope`, role: req.auth?.roleName });
       return;
     }
     next();

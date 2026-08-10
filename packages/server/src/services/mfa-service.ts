@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { OperationalError } from '@nomops/workflow';
 import type { Repositories, User } from '@nomops/db';
 import { generateTotp, verifyTotpCode } from '@nomops/nodes';
+import type { Cipher } from '@nomops/core';
 
 /**
  * 两步验证（TOTP，RFC 6238 / RFC 4648 base32）——零外部依赖，node:crypto 自实现。
@@ -65,8 +66,19 @@ export interface MfaSetupResult {
 export class MfaService {
   constructor(
     private readonly repos: Repositories,
+    private readonly cipher: Cipher,
     private readonly issuer = 'nomops',
   ) {}
+
+  private async secretOf(user: User): Promise<string | null> {
+    if (!user.mfaSecret) return null;
+    if (user.mfaSecret.startsWith('v1:') || user.mfaSecret.startsWith('v2:')) {
+      return this.cipher.decrypt(user.mfaSecret);
+    }
+    // 旧版本明文 secret：首次使用时原地迁成密文，保持无停机升级。
+    await this.repos.users.setMfaState(user.id, { mfaSecret: await this.cipher.encrypt(user.mfaSecret) });
+    return user.mfaSecret;
+  }
 
   /** 发起设置：生成 secret + 备份码（存 secret + 备份码哈希，enabled 保持 false）。 */
   async setup(userId: string): Promise<MfaSetupResult> {
@@ -75,7 +87,7 @@ export class MfaService {
     const secret = base32Encode(randomBytes(20));
     const backupCodes = generateBackupCodes();
     await this.repos.users.setMfaState(userId, {
-      mfaSecret: secret,
+      mfaSecret: await this.cipher.encrypt(secret),
       mfaBackupCodes: backupCodes.map(hashCode),
       mfaEnabled: false,
     });
@@ -89,7 +101,8 @@ export class MfaService {
     const user = await this.repos.users.findById(userId);
     if (!user?.mfaSecret) throw new OperationalError('Run two-factor setup first', { status: 400 });
     if (user.mfaEnabled) throw new OperationalError('Two-factor is already enabled', { status: 400 });
-    if (!verifyTotp(user.mfaSecret, code)) throw new OperationalError('Invalid two-factor code', { status: 400 });
+    const secret = await this.secretOf(user);
+    if (!secret || !verifyTotp(secret, code)) throw new OperationalError('Invalid two-factor code', { status: 400 });
     await this.repos.users.setMfaState(userId, { mfaEnabled: true });
   }
 
@@ -108,9 +121,10 @@ export class MfaService {
    * 供 AuthService 在 mfaEnabled 用户登录时调用。
    */
   async verifyCode(user: User, code: string): Promise<boolean> {
-    if (!user.mfaSecret) return false;
+    const secret = await this.secretOf(user);
+    if (!secret) return false;
     const normalized = code.replace(/\s/g, '');
-    if (verifyTotp(user.mfaSecret, normalized)) return true;
+    if (verifyTotp(secret, normalized)) return true;
     const codes = user.mfaBackupCodes ?? [];
     const idx = codes.indexOf(hashCode(normalized));
     if (idx === -1) return false;
