@@ -176,17 +176,17 @@
 
 - [x] **61. 节点面板/控件元数据驱动（清前端特判）** `M` ✅ 2026-07-31（workflow 节点描述新增 `categories/subcategories/aliases/hidden` 与真 `filter`/`assignmentCollection` 参数类型；NodePanel 移除类型名分类/隐藏特判，按 description 元数据分组、别名搜索并自动上架；ParamInput 仅按参数 type 分发条件构建器与赋值集合，普通 collection 回落 JSON；全量内建节点补齐分类元数据，Sticky Note 声明隐藏；新增 2 NodePanel + 3 ParamInput + 2 节点元数据测试，workflow 29/core 101/nodes 67/db 26/frontend 92/server 605、全量 920 测通过；真实 API 回环确认 Filter/Set/Switch 类型与分类，生产构建 UI 验证分类抽屉、`edit fields` 别名、两类控件，基线 v2.31.0 同视口截图并排比对且 nomops 控制台零报错；commit `68d0f4c`）
 
-- [ ] **62. 声明式 routing DSL 增强（分页 + 收发变换）** `M/L`（🟠 A2）
+- [x] **62. 声明式 routing DSL 增强（分页 + 收发变换）** `M/L`（🟠 A2）✅ 2026-08-10（routing 契约新增 cursor/offset 分页、100 页默认/1000 页硬上限与重复 cursor 防环，preSend `set/remove`、postReceive `extract/map` 纯数据变换；HTTP helper 新增 text/binary 响应模式，binary 经既有 store 生命周期落 `item.binary`；Slack `listChannels` 作为真实声明式分页节点；core 覆盖翻页聚合、收发变换、二进制回归，真实 API 运行 Hacker News routing 成功取得 500 条；commit `d200d24`）
   缺能力：`packages/workflow/src/interfaces.ts:159 IHttpRequestDeclaration` 仅 method/url/qs/body/headers；`routing-executor.ts` 无分页/postReceive/preSend/二进制 → SaaS 节点凡翻页/响应转换都退回写 `execute()`，拿不到声明式的规模化红利。
   → DSL 扩 `pagination` 描述符 + `postReceive`/`preSend` 变换钩子 + 二进制下载。
   验收：一个声明式节点能翻页聚合、能变换响应体、能下载二进制。
 
-- [ ] **63. 凭证注入 DSL 完善** `M`（🟠 A3）
+- [x] **63. 凭证注入 DSL 完善** `M`（🟠 A3）✅ 2026-08-10（7 类集成凭证认证集中为凭证类型级单一声明，节点只引用 credential name；通用执行器补 header/query/path/body/basic 多桶与运行期 custom `authenticate` 扩展，保留旧社区节点 `credentialInjection` 兼容并递归打码错误中的凭证明文；OAuth2 token endpoint 真实支持 client Basic/body 两档；从 UI 移除未实现的 PKCE/clientCredentials/digest/oauth1/ignoreSSL 悬空选项；相关 core/nodes/frontend/server 回归通过；commit `d200d24`）
   缺能力/踩坑：`routing-executor.ts:97` 仅 header/query/path 桶；`integrations.ts:20` credentialInjection 绑**节点**非**凭证类型**（每节点各写一遍）；无函数式 authenticate；前端 `credential-types.ts:108` 声明的 PKCE/clientCredentials/digest/oauth1 后端不兑现（悬空能力，误导用户建不工作的凭证）。
   → 注入模板上移到凭证类型（一次声明处处复用）+ 补 body/basic 桶 + 可选函数式 authenticate；未实现选项要么实现要么从 UI 摘除。
   验收：digest 或 clientCredentials 凭证可真实工作，或 UI 不再暴露不可用选项；同类凭证注入声明只写一处。
 
-- [ ] **75. usableAsTool 自动派生工厂** `M`（🟢 G1，低垂高杠杆）
+- [x] **75. usableAsTool 自动派生工厂** `M`（🟢 G1，低垂高杠杆）✅ 2026-08-10（`INodeTypeDescription.usableAsTool` + loader 层 `convertNodeToAiTool` 自动生成 `*Tool` 描述和 `supplyData`，复用原节点 execute/routing/凭证/二进制边界并从 `$fromAI` 生成工具 schema；8 个声明式集成 + HTTP Request 一次性派生 9 个 Agent Tool，服务端节点目录与 SlackTool 分页调用端到端回归；真实实例 `/api/node-types` 核验 9 个工具全部可见；全量构建 6/6、全仓串行测试 10/10 Turbo 任务共 1134 项通过；commit `d200d24`）
   抢跑机会：ai_tool 端口 + `$fromAI`（#19）原语已就位（`AiAgent.node.ts:45`、`from-ai.ts`），但无自动派生机制，仅 `HttpTool` 手写单点。基线靠 `usableAsTool` 把 260 个存量节点免费变 Agent 工具——竞品最难复制的护城河。
   → `INodeTypeDescription` 加 `usableAsTool?: boolean`，loader/manifest 层 `convertNodeToAiTool` 克隆节点描述为输出 ai_tool 的 `*Tool` 变体（复用现有 supplyData 通道）。
   验收：置位的存量节点（8 集成 + HttpRequest）在 AiAgent Tool 端口可挂载并被调用。
