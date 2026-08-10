@@ -193,12 +193,12 @@
 
 ## P14 · 引擎/运行时健壮性（来源同上）
 
-- [ ] **64. OAuth2 多实例 + 刷新并发锁** `M`（🟠 A4）
+- [x] **64. OAuth2 多实例 + 刷新并发锁** `M`（🟠 A4）✅ 2026-08-10（OAuth state 仅以 SHA-256 摘要落 DB、TTL + `DELETE … RETURNING` 跨实例一次性消费；refresh 进程内 Promise 合并 + DB 到期租约，双实例回调/并发刷新验收只换一次 token；commit `0aed831`）
   踩坑：`packages/server/src/services/oauth2-service.ts:29,75` 进程内 pending Map（queue/多实例下 auth 与 callback 落不同进程→连接失败）；`:130` 刷新无 dedup/锁（多 worker 同刷一 token，轮换型 provider 双刷竞态互相作废 refresh_token）。nomops 已有 BullMQ queue = 真实生产隐患。
   → pending state 落 Redis/DB（TTL 读即销毁）+ 刷新进程内合并 + Redis/DB 租约锁。
   验收：queue 模式下 Connect 与刷新不因进程亲和性失败、不双刷作废。
 
-- [ ] **65. AbortSignal 贯通取消/超时** `M`（🟠 A5）
+- [x] **65. AbortSignal 贯通取消/超时** `M`（🟠 A5）✅ 2026-08-10（`IHttpRequestOptions.signal` 贯通节点 helper、`defaultHttpRequest` 与安全重定向 fetch；`cancel()`/执行 deadline 立即 abort 在飞 HTTP，取消与超时行为测试通过；commit `0aed831`）
   踩坑：全域无 AbortController，`packages/core/src/execution-engine/workflow-execute.ts:438` 注释自陈「被抛下的 promise 仍在后台跑」——取消/超时只让引擎不再等，节点内在飞 HTTP 仍跑完，侵蚀实际并发余量。
   → AbortSignal 经 `additionalData.httpRequest` 贯通到 `defaultHttpRequest` 的 fetch，cancel()/超时即 abort 网络 I/O。
   验收：取消卡在慢 HTTP 的执行时底层请求被中断。
@@ -208,12 +208,12 @@
   → 工具调用打包成引擎请求、由 workflow-execute 主循环调度工具节点、Agent 以 resume 恢复，画布/助手统一一套引擎化循环。
   验收：画布 AiAgent 工具调用可被取消/挂 HITL/在执行详情逐调用观测。
 
-- [ ] **72. 发布 outbox + waitTill 索引 + WaitTracker 门控** `M`（🟠 A12，承接 #40）
+- [x] **72. 发布 outbox + waitTill 索引 + WaitTracker 门控** `M`（🟠 A12，承接 #40）✅ 2026-08-10（生产指针与 publication outbox 双方言同事务提交，leader worker 以租约领取/退避重放；PG partial + SQLite `(status,wait_till)` 索引；WaitTracker leader 定时门控 + DB CAS 领取，双 worker/tracker 均只处理一次；commit `0aed831`）
   踩坑：无 `workflow_publication_outbox`（#40 明注 deferred）→ 多实例发布/激活事件最终一致无兜底；`packages/db/src/schema/pg.ts:734` executions 仅 `(workflow_id,created_at)` 索引，`wait-tracker.ts` 每 10s `findDueWaiting` 全表顺扫；WaitTracker 未 leader 门控（`bootstrap.ts:340` 对所有 main start），与 resume `409` 状态守卫间有 TOCTOU 双唤醒窗口。
   → 补 outbox 表 + 收尾投递 worker；加 `(status,wait_till)` 部分索引；WaitTracker 加 leader 门控或 DB compare-and-set。
   验收：多实例发布不丢激活；大执行表唤醒不全表顺扫；同一 waiting 不被双恢复。
 
-- [ ] **73. License 吊销 + 配额原子化** `M`（🟠 A13）
+- [x] **73. License 吊销 + 配额原子化** `M`（🟠 A13）✅ 2026-08-10（鉴权 `/internal/license/revocations` 持久化 cert-id 黑名单并即时令 `activeCert()` 降级；有限配额改为条件 UPSERT 原子检查自增，20 路并发在上限 3 时仅放行 3；全量构建 6/6、全仓串行测试 10/10 Turbo 任务共 1141 项通过，补充双方言仓储 28 项通过，真实实例 publish/run/internal API 与 outbox/index 迁移核验通过；commit `0aed831`）
   缺能力/踩坑：`packages/server/src/ee/license/license-service.ts:108` `activeCert()` 只查时间窗，`payload.id` 标注「吊销用」却无消费 → 退款/泄露只能等过期或轮换公钥（废所有证书）；`quota-service.ts:78` 执行配额 check-increment 有竞态，queue 多 worker 稳定超发。
   → cert-id 黑名单经 `/internal` 桥从控制平面下发、`activeCert()` 增查；执行配额原子自增（`ON CONFLICT … RETURNING` 后比对上限 / Redis 原子计数）。
   验收：吊销的证书立即失效；queue 多 worker 不超发配额。
