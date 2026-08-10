@@ -148,22 +148,22 @@
 
 - [x] **56. HTTP 出站 SSRF 防护（连接期真实 IP 校验）** `M`（🔴 R2）✅ 2026-08-01（workflow 新增用户可控/固定目标信任标记；core 基于 Undici 自定义 `lookup` 在预解析与真实连接期双重校验 IP，拦截 RFC1918、回环、`169.254`、IPv6 ULA/映射地址，并对每次重定向重新建连复验、跨源移除认证头，HTTP/SSE 共用安全传输；6 个用户 URL 节点显式启用严格策略，固定内部调用保持兼容；新增 7 项 core 安全回归 + 1 项节点标记测试，全量 999 测、`pnpm build` 6/6 通过；真实 API 往返验证 metadata 与公网重定向内网均被拒、公网请求成功，`pnpm dev` + `/healthz` 通过；commit `b3ac25a`）
 
-- [ ] **57. 社区节点安装加固（供应链）** `M`（🔴 R3）
+- [x] **57. 社区节点安装加固（供应链）** `M`（🔴 R3）✅ 2026-08-10（npm 安装固定 `--ignore-scripts --save-exact`；默认只允许精确 `package@version` + lockfile integrity 信任映射，未验证包需显式开关且不能绕过静态策略；安装/重载均扫描符号链接、`eval`/`Function`/`child_process`/动态 import 与导入白名单，失败自动卸载回滚；新增危险社区包、默认拒绝未验证包回归；commit `825e526`）
   踩坑·高危：`packages/server/src/services/community-node-service.ts:49` `npm install` **无 `--ignore-scripts`** → 恶意/抢注包 pre/postinstall 安装期即宿主 RCE；且 `:130` 动态 import 进程内注册。
   → 安装加 `--ignore-scripts`；补包名/版本/checksum 预检 + 静态扫描（禁 `eval`/`Function`/`child_process`、import 白名单）+ 未验证包开关；长期把社区节点执行移出主进程。
   验收：含 postinstall 的恶意包安装不执行脚本；静态扫描命中禁用 API 拒绝安装。
 
-- [ ] **58. 加密密钥外置 + 信封轮换** `M`（🔴 R4）
+- [x] **58. 加密密钥外置 + 信封轮换** `M`（🔴 R4）✅ 2026-08-10（支持 `NOMOPS_ENCRYPTION_KEY`/文件外部 32-byte KEK，首次启用把旧 DB 明文 key 包裹为 AES-GCM DEK keyring 后删除；Cipher 新增带 keyId + AAD 的 `v2` 密文并兼容 `v1`，实例 admin 可经安全端点轮换 DEK，历史 key 保留解旧密文；缺/错外部主钥启动 fail-closed；SQLite/PG 0050 迁移与轮换回归、真实 DB/API 验证通过；commit `825e526`）
   踩坑·高危：`packages/server/src/bootstrap.ts:84` 密钥存 DB settings 表（无 env 覆盖），`packages/core/src/encryption/cipher.ts:7` 单 DEK 无 keyId → 密钥与密文同库，DB dump 同泄；换密钥即全量密文不可解。基线明言「第一天就按信封设计」。
   → 加 `NOMOPS_ENCRYPTION_KEY` env/文件来源（与库内不一致时报错，把密钥挪出库）；密文加 `keyId:` 前缀 + DEK 信封包裹，打开轮换路径。
   验收：密钥不在 DB；轮换后旧密文仍可解、新密文用新钥。
 
-- [ ] **59. 恢复 URL GET 预览防误触** `S/M`（🔴 R5，#15 安全加固）
+- [x] **59. 恢复 URL GET 预览防误触** `S/M`（🔴 R5，#15 安全加固）✅ 2026-08-10（并入 #71：HEAD 空 200，普通 GET 仅确认页；Form 等 waiting 节点仍可安全渲染 GET，但 GET 产生的 workflowData 一律丢弃；仅 POST 执行 resume，其他方法 405；补 GET/HEAD/PUT 不消费令牌与 POST 恢复回归；commit `825e526`）
   踩坑·高危：`packages/server/src/controllers/index.ts:2933` `router.all('/webhook-waiting/...')` 对 GET/HEAD 立即 `executions.resume()`，无 isbot/UA 过滤。#15 场景就是把 `$execution.resumeUrl` 发进邮件/IM，链接预览/SafeLinks 扫描器一次 GET 即「批准」挂起流并耗尽一次性令牌 → 真人再点得 404。
   → webhook-waiting 只对 POST 执行副作用；GET 返回仅渲染「确认恢复」按钮的空 200 页（不触发 resume）；HEAD/已知 bot UA 直接空 200 短路。（与 #71 的 Webhook 深化可合并交付）
   验收：预览 bot GET 不触发 resume、不耗令牌；人点确认按钮 POST 才恢复。
 
-- [ ] **67. 账户/会话安全四项** `M`（🟠 A7）
+- [x] **67. 账户/会话安全四项** `M`（🟠 A7）✅ 2026-08-10（users.tokenVersion + JWT HS256 固定算法，改密/重置递增版本使全部旧 JWT 401；DB 持久化的账号+IP HMAC 双桶限流，第 6 次失败 429；MFA secret 经 Cipher 加密且旧明文惰性迁移；自定义角色保留 exact scopes，workflow/execution/credential 逐资源守门，旧 tier 写门对 custom role fail-closed；新增会话、限流、MFA 密文与单 scope 反越权回归；commit `825e526`）
   中危集合：①`auth-service.ts:194` 改密/重置口令不吊销存量会话（被盗 JWT 存活至 7d TTL，§1 头号对标点）；②全仓无登录/MFA 限流（口令与 6 位 TOTP 可无限猜）；③`mfa-service.ts:104` `mfaSecret` 明文入库（DB 泄露即可复算有效码）；④`rbac.ts:49` `tierForScopes` 把自定义角色 scope 集塌缩成 viewer/editor/owner 三档 → 勾单 scope 越权到同档全部动作。
   → tokenVersion 吊销会话（改密/重置递增）；登录/MFA IP+账号双层限流；MFA secret 加密落库；自定义角色改逐 scope 校验。
   验收：改密后旧 token 401；暴破被限流；DB 里 mfa_secret 密文；勾单 scope 不越权到同档其他动作。
@@ -289,7 +289,7 @@
   → 接 Luxon（$now/$today 改 DateTime）+ 首批高频扩展方法（AST 改写把 `x.method()` 路由到 `extend()`）+ `.doc` 元数据；把 `resolveParameterValue` 接进 NDV 做实时预览、补全按运行数据解析真实字段/方法、高亮加 pending 三态。
   验收：`$now.plus({days:1})`/`.isEmail()` 可用；NDV 表达式实时出真值预览。
 
-- [ ] **71. Webhook 节点安全深化** `M`（🟠 A11，含 #59 恢复 URL 加固）
+- [x] **71. Webhook 节点安全深化** `M`（🟠 A11，含 #59 恢复 URL 加固）✅ 2026-08-10（Webhook 声明补 none/basic/header/JWT(HS256) 四档鉴权，秘密只从项目加密凭证读取；支持 ignoreBots 无执行 204、`responseMode=lastNode`，RespondToWebhook 保持优先；#59 POST-only 恢复一并交付；动态 `:param` 与 streaming 按条目约定延后；10 项 companion + 恢复/Form 回归、真实 401/Basic/lastNode 验证通过；commit `825e526`）
   缺能力：`packages/nodes/src/nodes/Webhook` 仅 path+method → 生产 webhook 仅靠路径保密即可被任意触发；响应模式 2/6（缺 lastNode/streaming）；无动态 `:param` 路径段。
   → 补 Webhook 鉴权四档（none/basic/header/jwt）+ `ignoreBots` + responseMode=lastNode；`/webhook-waiting` 只对 POST 执行副作用（#59 合并）；动态 `:param` 与 streaming 可延后。
   验收：无鉴权 webhook 可加 header/basic 保护；预览 bot GET 不触发 resume；末节点答生效。
