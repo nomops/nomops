@@ -28,7 +28,7 @@ describe.each(dialects)('执行历史清理 @ %s', (type) => {
     const project = await repos.projects.create({ name: 'prune-proj' });
     const wf = await repos.workflows.create({ name: 'wf', nodes: [], connections: {} }, project.id);
     workflowId = wf.id;
-  });
+  }, 30_000);
 
   afterAll(async () => {
     await handle.close();

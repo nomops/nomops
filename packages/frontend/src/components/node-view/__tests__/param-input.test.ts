@@ -272,6 +272,25 @@ describe('ParamInput（schema 驱动控件分发）', () => {
     expect(w.text()).not.toContain('Days Between Triggers');
   });
 
+  it('fixedCollection 可把可选字段收进 Add Attributes 菜单', async () => {
+    const w = make({
+      type: 'fixedCollection', default: { values: [] },
+      typeOptions: { multipleValues: true, hideOptionalFields: true, addOptionalFieldButtonText: 'Add Attributes' },
+      options: [{ name: 'values', value: 'values', values: [
+        { displayName: 'Label', name: 'label', type: 'string', default: '', required: true },
+        { displayName: 'Multiple Files', name: 'multipleFiles', type: 'boolean', default: true },
+      ] }],
+    }, { values: [] });
+    await w.find('[data-test-add-fixed="values"]').trigger('click');
+    expect(w.emitted('change')![0]).toEqual([{ values: [{ label: '' }] }]);
+    await w.setProps({ value: { values: [{ label: '' }] } });
+    expect(w.text()).not.toContain('Multiple Files');
+    await w.find('[data-test="add-fixed-attribute"]').trigger('click');
+    expect(w.text()).toContain('Multiple Files');
+    await w.find('[data-test="fixed-attribute-menu"] button').trigger('click');
+    expect(w.emitted('change')!.at(-1)).toEqual([{ values: [{ label: '', multipleFiles: true }] }]);
+  });
+
   it('resourceLocator 可切 list、URL、ID 三模式并搜索资源', async () => {
     vi.spyOn(api.dynamicNodeParameters, 'resourceLocatorResults').mockResolvedValue({
       results: [{ name: 'Product', value: 'C2' }],

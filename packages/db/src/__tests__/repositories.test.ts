@@ -15,7 +15,7 @@ describe.each(dialects)('仓储 @ %s', (type) => {
     handle = await createDatabase({ type });
     await runMigrations(handle);
     repos = createRepositories(handle);
-  });
+  }, 30_000);
 
   afterAll(async () => {
     await handle.close();

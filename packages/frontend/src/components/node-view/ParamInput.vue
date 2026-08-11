@@ -266,13 +266,28 @@ function fixedRows(group: INodePropertyOption): Record<string, unknown>[] {
   return [raw !== null && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {}];
 }
 function visibleFixedFields(group: INodePropertyOption, row: Record<string, unknown>) {
-  return (group.values ?? []).filter((property) => isPropertyVisible(property, row, group.values ?? []));
+  return (group.values ?? []).filter((property) =>
+    isPropertyVisible(property, row, group.values ?? [])
+    && (!props.prop.typeOptions?.hideOptionalFields || property.required || Object.prototype.hasOwnProperty.call(row, property.name)),
+  );
+}
+const fixedOptionalMenu = ref<string | null>(null);
+function availableFixedOptionalFields(group: INodePropertyOption, row: Record<string, unknown>) {
+  if (!props.prop.typeOptions?.hideOptionalFields) return [];
+  return (group.values ?? []).filter((property) =>
+    !property.required
+    && !Object.prototype.hasOwnProperty.call(row, property.name)
+    && isPropertyVisible(property, row, group.values ?? []),
+  );
 }
 function setFixedRows(group: INodePropertyOption, rows: Record<string, unknown>[]) {
   emit('change', { ...fixedValue.value, [group.name]: props.prop.typeOptions?.multipleValues ? rows : (rows[0] ?? {}) });
 }
 function addFixedRow(group: INodePropertyOption) {
-  const row = Object.fromEntries((group.values ?? []).map((property) => [property.name, property.default]));
+  const fields = props.prop.typeOptions?.hideOptionalFields
+    ? (group.values ?? []).filter((property) => property.required)
+    : (group.values ?? []);
+  const row = Object.fromEntries(fields.map((property) => [property.name, property.default]));
   setFixedRows(group, [...fixedRows(group), row]);
 }
 function updateFixedRow(group: INodePropertyOption, index: number, name: string, value: unknown) {
@@ -280,6 +295,10 @@ function updateFixedRow(group: INodePropertyOption, index: number, name: string,
 }
 function removeFixedRow(group: INodePropertyOption, index: number) {
   setFixedRows(group, fixedRows(group).filter((_row, rowIndex) => rowIndex !== index));
+}
+function addFixedOptionalField(group: INodePropertyOption, index: number, property: INodeProperties) {
+  updateFixedRow(group, index, property.name, property.default);
+  fixedOptionalMenu.value = null;
 }
 
 /* 基线 collection：一个 Add Option 菜单，选择后把可选字段加入当前参数组。 */
@@ -305,7 +324,8 @@ function addCollectionOption(option: INodePropertyOption) {
     if (!Object.prototype.hasOwnProperty.call(collectionValue.value, field.name)) patch[field.name] = field.default;
   }
   emit('change', { ...collectionValue.value, ...patch });
-  collectionOpen.value = false;
+    collectionOpen.value = false;
+    fixedOptionalMenu.value = null;
 }
 function updateCollectionField(name: string, value: unknown) {
   emit('change', { ...collectionValue.value, [name]: value });
@@ -739,6 +759,22 @@ function convertAssignment(value: unknown, type: string): unknown {
                 @change="updateFixedRow(group, rowIndex, child.name, $event)"
               />
             </div>
+            <div v-if="availableFixedOptionalFields(group, row).length" class="fixed-optional">
+              <button
+                type="button"
+                class="add-btn"
+                data-test="add-fixed-attribute"
+                @click.stop="fixedOptionalMenu = fixedOptionalMenu === `${group.name}:${rowIndex}` ? null : `${group.name}:${rowIndex}`"
+              >{{ prop.typeOptions?.addOptionalFieldButtonText ?? 'Add Attributes' }}</button>
+              <div v-if="fixedOptionalMenu === `${group.name}:${rowIndex}`" class="option-add-menu" data-test="fixed-attribute-menu">
+                <button
+                  v-for="field in availableFixedOptionalFields(group, row)"
+                  :key="field.name"
+                  type="button"
+                  @click.stop="addFixedOptionalField(group, rowIndex, field)"
+                >{{ field.displayName }}</button>
+              </div>
+            </div>
           </div>
           <button v-if="prop.typeOptions?.multipleValues" class="add-btn" type="button" :data-test-add-fixed="group.name" @click="addFixedRow(group)">
             + {{ prop.typeOptions?.fixedCollection?.addButtonLabel ?? `Add ${group.name}` }}
@@ -913,6 +949,7 @@ function convertAssignment(value: unknown, type: string): unknown {
 .add-btn:hover { background: var(--button--color--background--secondary--hover); color: var(--button--color--text--secondary--hover-active-focus); }
 .dynamic-status { margin: 5px 0 0; font-size: 11px; }
 .fixed-collection { display: flex; flex-direction: column; gap: 10px; }
+.fixed-optional { position: relative; width: max-content; }
 .fixed-group, .fixed-row { display: flex; flex-direction: column; gap: 8px; }
 .fixed-row {
   padding: 10px; border: var(--border-width) var(--border-style) var(--border-color);

@@ -86,6 +86,39 @@ afterAll(async () => {
 });
 
 describe('触发器补全五件套端到端', () => {
+  it('Form Trigger multipart 上传把文件元数据和 binary 引用一起送入执行', async () => {
+    const workflowId = await createWorkflow({
+      name: 'public-upload-flow',
+      nodes: [{
+        id: 'a', name: 'Upload Form', type: 'nomops.formTrigger', typeVersion: 1, position: [0, 0],
+        parameters: {
+          path: 'public-upload-live', formTitle: 'Upload', formDescription: '',
+          formFields: { values: [{
+            fieldLabel: 'Document', fieldName: 'document', fieldType: 'file', requiredField: true,
+            acceptFileTypes: 'text/plain', multipleFiles: false,
+          }] },
+        },
+      }],
+      connections: {},
+    });
+    await request(app).post(`/api/workflows/${workflowId}/activate`).set(auth()).send({ active: true }).expect(200);
+    const page = await request(app).get('/webhook/public-upload-live').expect(200);
+    expect(page.text).toContain('enctype="multipart/form-data"');
+
+    await request(app)
+      .post('/webhook/public-upload-live')
+      .attach('document', Buffer.from('UPLOAD-BYTES'), { filename: 'note.txt', contentType: 'text/plain' })
+      .expect(200);
+    const executions = await executionsFor(workflowId);
+    expect(executions).toHaveLength(1);
+    const detail = await request(app).get(`/api/executions/${executions[0]!.id}`).set(auth()).expect(200);
+    const item = detail.body.data.resultData.runData['Upload Form'][0].data.main[0][0];
+    expect(item.json.document).toEqual({ filename: 'note.txt', mimetype: 'text/plain', size: 12 });
+    expect(item.binary.document).toMatchObject({ mimeType: 'text/plain', fileName: 'note.txt', fileSize: 12 });
+    expect(Buffer.from(await boot.services.executions.getBinaryStore()!.get(item.binary.document.id)).toString()).toBe('UPLOAD-BYTES');
+    await request(app).post(`/api/workflows/${workflowId}/activate`).set(auth()).send({ active: false }).expect(200);
+  });
+
   it('Form Trigger GET 公开页不执行，POST 提交启动工作流并携带类型化数据', async () => {
     const workflowId = await createWorkflow({
       name: 'public-form-flow',

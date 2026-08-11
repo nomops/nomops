@@ -6,6 +6,7 @@ allowBuilds:
   better-sqlite3: true
   cpu-features: false
   esbuild: true
+  isolated-vm: true
   msgpackr-extract: false
   sharp: true
   ssh2: true

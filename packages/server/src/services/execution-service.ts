@@ -13,6 +13,7 @@ import type {
   IBinaryData,
   IConnections,
   IHttpRequestOptions,
+  IInlineWorkflowDefinition,
   INode,
   INodeExecutionData,
   IRun,
@@ -651,7 +652,7 @@ export class ExecutionService {
    * 像函数调用一样内联执行：不建执行行、不重复计配额（父执行已计）。
    */
   private async runSubWorkflow(
-    workflowId: string,
+    target: string | IInlineWorkflowDefinition,
     projectId: string,
     seedItems: INodeExecutionData[],
     depth: number,
@@ -660,12 +661,29 @@ export class ExecutionService {
   ): Promise<INodeExecutionData[]> {
     if (depth >= MAX_SUBWORKFLOW_DEPTH) {
       throw new OperationalError(`Sub-workflow nesting exceeds ${MAX_SUBWORKFLOW_DEPTH} levels (possible recursion)`, {
-        workflowId,
+        workflowId: typeof target === 'string' ? target : 'inline',
       });
     }
-    let row = await this.workflowService.getById(workflowId, projectId); // 跨项目 404
-    if (production) row = await this.workflowService.productionRow(row); // 生产父执行 → 子流也跑已发布版
-    const workflow = this.toWorkflow(row);
+    let workflow: Workflow;
+    let workflowName: string;
+    if (typeof target === 'string') {
+      let row = await this.workflowService.getById(target, projectId); // 跨项目 404
+      if (production) row = await this.workflowService.productionRow(row); // 生产父执行 → 子流也跑已发布版
+      workflow = this.toWorkflow(row);
+      workflowName = row.name;
+    } else {
+      if (!Array.isArray(target.nodes) || !target.connections || typeof target.connections !== 'object') {
+        throw new OperationalError('Inline sub-workflow must contain nodes and connections', { status: 400 });
+      }
+      await this.workflowService.validateStructure(target);
+      workflow = new Workflow({
+        name: target.name ?? 'Inline workflow',
+        nodes: target.nodes,
+        connections: target.connections,
+        ...(target.settings ? { settings: target.settings } : {}),
+      });
+      workflowName = target.name ?? 'Inline workflow';
+    }
     const engine = new WorkflowExecute(this.nodeLoader, {
       additionalData: await this.buildAdditionalData(projectId, depth + 1, production, runContext), // #46 M2：子流继承运行上下文
     });
@@ -676,8 +694,8 @@ export class ExecutionService {
     const run = await engine.run(workflow, startNode, undefined, seedItems);
     if (run.status !== 'success') {
       throw new OperationalError(
-        `Sub-workflow ${row.name} failed: ${run.data.resultData.error?.message ?? run.status}`,
-        { workflowId },
+        `Sub-workflow ${workflowName} failed: ${run.data.resultData.error?.message ?? run.status}`,
+        { workflowId: typeof target === 'string' ? target : 'inline' },
       );
     }
     const lastNode = run.data.resultData.lastNodeExecuted;
@@ -700,8 +718,8 @@ export class ExecutionService {
         // #46 M2：动态凭证按运行上下文的 subject(+userId 回退)解析;非 resolvable 忽略
         return this.credentialService.getDecryptedData(ref.id, projectId, runContext?.subject, runContext?.userId);
       },
-      executeSubWorkflow: (workflowId: string, items: INodeExecutionData[]) =>
-        this.runSubWorkflow(workflowId, projectId, items, depth, production, runContext),
+      executeSubWorkflow: (workflow: string | IInlineWorkflowDefinition, items: INodeExecutionData[]) =>
+        this.runSubWorkflow(workflow, projectId, items, depth, production, runContext),
       ...(this.binaryStore ? { binaryStore: this.binaryStore } : {}),
       ...(this.httpRequestImpl ? { httpRequest: this.httpRequestImpl } : {}), // 测试注入假 provider（#44 M2）
     };

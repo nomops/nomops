@@ -30,6 +30,11 @@ export class Loop implements INodeType {
   async execute(this: IExecuteContext): Promise<INodeExecutionData[][]> {
     const items = this.getInputData();
     const ctx = this.getContext();
+    const options = this.getNodeParameter('options', 0, {}) as JsonObject;
+    if (options['reset'] === true) {
+      delete ctx['queue'];
+      delete ctx['processed'];
+    }
 
     if (ctx['queue'] === undefined) {
       // 首帧：入队（只存 json,保序列化安全）

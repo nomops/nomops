@@ -36,6 +36,7 @@
     "bullmq": "^5.79.3",
     "cron-parser": "^5.0.0",
     "express": "^5.1.0",
+    "formidable": "3.5.4",
     "ioredis": "^5.11.1",
     "jose": "^6.2.3",
     "jsonwebtoken": "^9.0.2",
@@ -46,6 +47,7 @@
   },
   "devDependencies": {
     "@types/express-serve-static-core": "^5.1.2",
+    "@types/formidable": "3.4.5",
     "@types/jsonwebtoken": "^9.0.7",
     "@types/ws": "^8.5.13",
     "xml-crypto": "^6.1.2"

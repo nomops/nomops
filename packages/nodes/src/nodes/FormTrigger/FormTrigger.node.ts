@@ -10,10 +10,12 @@ export class FormTrigger implements INodeType {
   }
 
   async webhook(this: IWebhookContext): Promise<IWebhookResult> {
-    const definition = formDefinitionFrom(this.getNodeParameter('fields'), {
+    const definition = formDefinitionFrom(
+      this.getNodeParameter('formFields', this.getNodeParameter('fields', { values: [] })), {
       title: this.getNodeParameter('formTitle', 'Form'),
       description: this.getNodeParameter('formDescription', ''),
-      submitLabel: this.getNodeParameter('submitLabel', 'Submit'),
+      submitLabel: (this.getNodeParameter('options', {}) as Record<string, unknown>)['buttonLabel']
+        ?? this.getNodeParameter('submitLabel', 'Submit'),
     });
     return handleFormRequest(this.getRequest(), definition);
   }

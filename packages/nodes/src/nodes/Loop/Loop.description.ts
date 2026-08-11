@@ -6,7 +6,7 @@ export const loopDescription: INodeTypeDescription = {
   group: ['transform'],
   categories: ['flow'],
   version: 1,
-  description: 'Process items in batches — wire the loop branch back into this node to iterate',
+  description: 'Split data into batches and iterate over each batch',
   defaults: { name: 'Loop Over Items' },
   inputs: ['main'],
   outputs: ['main', 'main'], // 输出0 = done（全部批次完成后的汇总），输出1 = loop（当前批次）
@@ -18,6 +18,23 @@ export const loopDescription: INodeTypeDescription = {
       type: 'number',
       default: 1,
       description: 'How many items to send down the loop branch per iteration',
+    },
+    {
+      displayName: 'Options',
+      name: 'options',
+      type: 'collection',
+      default: {},
+      options: [{
+        name: 'Reset',
+        value: 'reset',
+        values: [{
+          displayName: 'Reset',
+          name: 'reset',
+          type: 'boolean',
+          default: false,
+          description: 'Whether to treat the current input as a new loop',
+        }],
+      }],
     },
   ],
 };

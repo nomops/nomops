@@ -31,6 +31,7 @@ import { isProjectRole, tierForScopes, PROJECT_SCOPES } from '../auth/rbac.js';
 import { CHAT_PROVIDERS } from '../services/assistant-service.js';
 import { AUDIT_RESOURCE } from '../ee/services/dynamic-credential-service.js';
 import { getTemplate, templateSummaries } from '../services/template-registry.js';
+import { parseMultipartForm } from '../http/multipart.js';
 import {
   acceptInviteSchema,
   activateBodySchema,
@@ -3086,20 +3087,27 @@ export function createWebhookRouter(services: AppServices): Router {
     }
     return false;
   };
-  const requestOf = (req: Request, path: string): IWebhookRequest => ({
-    method: req.method.toUpperCase(),
-    path,
-    headers: Object.fromEntries(
-      Object.entries(req.headers).filter((entry): entry is [string, string | string[]] => entry[1] !== undefined),
-    ),
-    query: Object.fromEntries(
-      Object.entries(req.query).map(([key, value]) => [
-        key,
-        Array.isArray(value) ? value.map(String) : String(value ?? ''),
-      ]),
-    ),
-    body: req.body ?? {},
-  });
+  const requestOf = async (req: Request, path: string): Promise<IWebhookRequest> => {
+    const contentType = req.headers['content-type'] ?? '';
+    const multipart = contentType.toLowerCase().startsWith('multipart/form-data')
+      ? await parseMultipartForm(req, services.executions.getBinaryStore())
+      : undefined;
+    return {
+      method: req.method.toUpperCase(),
+      path,
+      headers: Object.fromEntries(
+        Object.entries(req.headers).filter((entry): entry is [string, string | string[]] => entry[1] !== undefined),
+      ),
+      query: Object.fromEntries(
+        Object.entries(req.query).map(([key, value]) => [
+          key,
+          Array.isArray(value) ? value.map(String) : String(value ?? ''),
+        ]),
+      ),
+      body: multipart?.fields ?? req.body ?? {},
+      ...(multipart && Object.keys(multipart.files).length > 0 ? { files: multipart.files } : {}),
+    };
+  };
   const sendResponse = (res: Response, response: IWebhookResponseData): void => {
     res.status(response.statusCode ?? 200);
     for (const [name, value] of Object.entries(response.headers ?? {})) res.setHeader(name, value);
@@ -3112,13 +3120,16 @@ export function createWebhookRouter(services: AppServices): Router {
       res.send(String(response.body));
       return;
     }
+    if (response.body instanceof Uint8Array) {
+      res.send(Buffer.from(response.body));
+      return;
+    }
     res.json(response.body);
   };
   const webhookContext = (
     mode: IWebhookContext['mode'],
     node: INode,
-    req: Request,
-    path: string,
+    request: IWebhookRequest,
     context: JsonObject,
   ): IWebhookContext => ({
     mode,
@@ -3126,7 +3137,7 @@ export function createWebhookRouter(services: AppServices): Router {
       return name in node.parameters ? node.parameters[name] : fallback;
     },
     getContext: () => context,
-    getRequest: () => requestOf(req, path),
+    getRequest: () => request,
   });
   // Agent 外部渠道入口（backlog #44 M5,先于通配路由注册）：路径带随机 secret,校验在服务层。
   router.post(
@@ -3183,7 +3194,8 @@ export function createWebhookRouter(services: AppServices): Router {
       let nodeResponse: IWebhookResponseData | undefined;
       const nodeType = await services.nodeLoader.getByNameAndVersion(node.type, node.typeVersion);
       if (nodeType.webhook) {
-        const result = await nodeType.webhook.call(webhookContext('trigger', node, req, path, {}));
+        const webhookRequest = await requestOf(req, path);
+        const result = await nodeType.webhook.call(webhookContext('trigger', node, webhookRequest, {}));
         nodeResponse = result.response;
         if (!result.workflowData) {
           sendResponse(res, nodeResponse ?? { statusCode: 204 });
@@ -3265,7 +3277,8 @@ export function createWebhookRouter(services: AppServices): Router {
       }
       const nodeType = await services.nodeLoader.getByNameAndVersion(node.type, node.typeVersion);
       if (nodeType.webhook) {
-        const result = await nodeType.webhook.call(webhookContext('trigger', node, req, path, {}));
+        const webhookRequest = await requestOf(req, path);
+        const result = await nodeType.webhook.call(webhookContext('trigger', node, webhookRequest, {}));
         nodeResponse = result.response;
         if (!result.workflowData) {
           sendResponse(res, nodeResponse ?? { statusCode: 204 });
@@ -3359,8 +3372,9 @@ export function createWebhookRouter(services: AppServices): Router {
           const nodeType = await services.nodeLoader.getByNameAndVersion(node.type, node.typeVersion);
           if (nodeType.webhook) {
             const context = state.contextData?.[node.name] ?? {};
+            const webhookRequest = await requestOf(req, `webhook-waiting/${executionId}`);
             const result = await nodeType.webhook.call(
-              webhookContext('waiting', node, req, `webhook-waiting/${executionId}`, context),
+              webhookContext('waiting', node, webhookRequest, context),
             );
             nodeResponse = result.response;
             if (!result.workflowData) {

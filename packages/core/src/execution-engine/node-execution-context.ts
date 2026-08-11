@@ -6,6 +6,7 @@ import type {
   IHttpRequestOptions,
   INode,
   INodeExecutionData,
+  IInlineWorkflowDefinition,
   INodeType,
   IRunData,
   ISupplyDataContext,
@@ -181,7 +182,10 @@ export interface IWorkflowExecuteAdditionalData {
   /** HTTP 工具实现（默认用全局 fetch）。 */
   httpRequest?: (options: IHttpRequestOptions) => Promise<unknown>;
   /** 子工作流执行回调（服务层实现：归属校验 + 深度限制）。 */
-  executeSubWorkflow?: (workflowId: string, items: INodeExecutionData[]) => Promise<INodeExecutionData[]>;
+  executeSubWorkflow?: (
+    workflow: string | IInlineWorkflowDefinition,
+    items: INodeExecutionData[],
+  ) => Promise<INodeExecutionData[]>;
   /** 二进制存储（server 注入文件系统/S3 实现；缺省内联 base64 退化模式）。 */
   binaryStore?: IBinaryDataStore;
   /** webhook 自定义响应回调（webhook 路由注入;RespondToWebhook 节点经 helpers 调用）。 */

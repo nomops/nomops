@@ -24,6 +24,15 @@ Nomops 前端是 n8n 的**高完成度 1:1 复刻**：路由 IA、Overview 五 T
 - 验证：生产构建 6/6、全量 1173 项测试通过；隔离实例完成 Webhook、Schedule、HTTP cURL、Python NDV 的同视口浏览器复验，交互期间未出现页面报错。
 - 仍需明确的边界：测试 Webhook listener 当前为单进程内存态，多 main/负载均衡部署需要共享 registry 或 sticky routing；cURL importer 不覆盖 multipart 文件、客户端证书、代理等冷门 flag；Python 为安全的自托管子集，不等同 n8n task-runner 的任意包环境。
 
+### 2026-08-11 节点级复核（第四、五批）
+
+- 已对齐参数面：Merge、Loop Over Items、Wait、Execute Workflow、Respond to Webhook、Form/Form Trigger 均按本地 n8n 的主模式、字段顺序、条件显隐和 Options 结构声明，继续复用统一 Input / Parameters|Settings / Output 三栏。
+- 已补运行时：Merge matching/position/all/choose-branch，Loop reset，Wait specified-time 与有限期外部等待，Execute Workflow resource locator + per-item，Respond all-items/binary/JWT/redirect/headers，Form Ending 与扩展表单元素；旧 `combineByPosition`、`afterDelay`、`onSignal`、字符串 workflowId 和旧 `fields` 继续可执行。
+- 浏览器验收：新工作流先显示触发器策展页；选择 Manual Trigger 后才出现普通节点；Merge 切 Combine 即出现 Fields to Match/Join/Output Data From；Wait 切 On Webhook Call 即出现 Authentication/HTTP Method/Response Code/Respond/Limit Wait Time；三栏结构和空态正常。
+- 第五批已关闭三条运行时缺口：Merge SQL Query 在固定堆/超时的无网络无文件 AlaSQL isolate 中执行；Execute Workflow Define Below 经节点类型/连接结构校验后内联执行，不持久化且不放松项目凭证/递归边界；Form File 通过有界 multipart parser 写入现有 binary store，同时产出 `{ filename, mimetype, size }` JSON 元数据。
+- Form Elements 的可选属性已按本地 n8n 收进 `Add Attributes` 菜单，File 下动态提供 Multiple Files / Accepted File Types / Required Field；公开表单有文件字段时自动输出 `enctype="multipart/form-data"`。
+- 仍需明确的边界：SQL 沙箱与本地 n8n 同为 AlaSQL 4.4.0，但 Nomops 目前最多 10 个 Merge 输入；Define Below 只接受 Nomops 可识别的导出节点类型，不自动翻译 `n8n-nodes-base.*` 节点；上传总量上限是 Nomops 的安全部署默认值，不等同所有 n8n 实例的环境变量配置。
+
 ---
 
 ## P0 —— （已清空）

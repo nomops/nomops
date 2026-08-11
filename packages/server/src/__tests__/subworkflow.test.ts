@@ -30,6 +30,35 @@ afterAll(async () => {
 });
 
 describe('子工作流（ExecuteWorkflow 节点）', () => {
+  it('Define Below 以内联工作流 JSON 执行且不创建子工作流记录', async () => {
+    const inline = {
+      name: 'inline-child',
+      nodes: [
+        { id: 'a', name: 'In', type: 'nomops.executeWorkflowTrigger', typeVersion: 1, position: [0, 0], parameters: {} },
+        { id: 'b', name: 'Mark', type: 'nomops.set', typeVersion: 1, position: [200, 0], parameters: { fields: { inline: true } } },
+      ],
+      connections: { In: { main: [[{ node: 'Mark', type: 'main', index: 0 }]] } },
+    };
+    const parentId = await createWorkflow({
+      name: 'inline-parent',
+      nodes: [
+        { id: 'a', name: 'Start', type: 'nomops.manualTrigger', typeVersion: 1, position: [0, 0], parameters: {} },
+        { id: 'b', name: 'Seed', type: 'nomops.set', typeVersion: 1, position: [200, 0], parameters: { fields: { order: 7 } } },
+        { id: 'c', name: 'Sub', type: 'nomops.executeWorkflow', typeVersion: 1, position: [400, 0], parameters: { source: 'parameter', workflowJson: JSON.stringify(inline), mode: 'once' } },
+      ],
+      connections: {
+        Start: { main: [[{ node: 'Seed', type: 'main', index: 0 }]] },
+        Seed: { main: [[{ node: 'Sub', type: 'main', index: 0 }]] },
+      },
+    });
+    const run = await request(app).post(`/api/workflows/${parentId}/run`).set(authed()).send({}).expect(200);
+    expect(run.body.status).toBe('success');
+    const detail = await request(app).get(`/api/executions/${run.body.executionId}`).set(authed()).expect(200);
+    expect(detail.body.data.resultData.runData['Sub'][0].data.main[0][0].json).toEqual({ order: 7, inline: true });
+    const workflows = await request(app).get('/api/workflows').set(authed()).expect(200);
+    expect(workflows.body.filter((workflow: { name: string }) => workflow.name === 'inline-child')).toHaveLength(0);
+  });
+
   it('父流把 items 交给子流，拿回子流末节点输出', async () => {
     const childId = await createWorkflow({
       name: 'child',

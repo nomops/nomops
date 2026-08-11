@@ -6,6 +6,7 @@ const UNIT_MS: Record<string, number> = {
   seconds: 1000,
   minutes: 60_000,
   hours: 3_600_000,
+  days: 86_400_000,
 };
 
 /**
@@ -20,9 +21,19 @@ export class Wait implements INodeType {
       return [this.getInputData()];
     }
 
-    const resume = this.getNodeParameter('resume', 0, 'afterDelay') as string;
-    if (resume === 'onSignal') {
-      throw new ExecutionPause(); // 无限期等待 resume API
+    const resume = String(this.getNodeParameter('resume', 0, 'timeInterval'));
+    if (['onSignal', 'webhook', 'form'].includes(resume)) {
+      const limited = this.getNodeParameter('limitWaitTime', 0, false) === true;
+      if (!limited) throw new ExecutionPause();
+      const maxAmount = Math.max(0, Number(this.getNodeParameter('maxWaitTime', 0, 1)) || 1);
+      const maxUnit = String(this.getNodeParameter('maxWaitTimeUnit', 0, 'hours'));
+      throw new ExecutionPause({ waitTill: Date.now() + maxAmount * (UNIT_MS[maxUnit] ?? UNIT_MS['hours']!) });
+    }
+    if (resume === 'specificTime') {
+      const value = this.getNodeParameter('dateTime', 0, '');
+      const waitTill = new Date(String(value)).getTime();
+      if (!Number.isFinite(waitTill)) throw new Error('Wait: Date and Time is invalid');
+      throw new ExecutionPause({ waitTill: Math.max(Date.now(), waitTill) });
     }
 
     const amount = Number(this.getNodeParameter('amount', 0, 5));

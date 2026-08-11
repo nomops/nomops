@@ -151,12 +151,15 @@ export type NodePropertyType =
 
 /** 声明式控件微调（对标基线 typeOptions 子集）：多行文本 rows。 */
 export interface INodePropertyTypeOptions {
+  /** Numeric input bounds. */
+  minValue?: number;
+  maxValue?: number;
   /** Generate a UUID when a new node is created instead of reusing the static default. */
   generateUuid?: boolean;
   /** string 字段渲染为多行 textarea 的行数（>1 生效）。 */
   rows?: number;
   /** Rich editor chrome for multiline text fields. */
-  editor?: 'code';
+  editor?: 'code' | 'sql';
   /** Notice color treatment used by n8n-like inline alerts. */
   noticeStyle?: 'info' | 'warning' | 'neutral';
   /** 动态下拉：调用节点 methods.loadOptions 中的同名方法。 */
@@ -174,6 +177,9 @@ export interface INodePropertyTypeOptions {
     addButtonLabel?: string;
     layout?: 'horizontal' | 'vertical';
   };
+  /** n8n dynamic fixedCollection: keep non-required row fields behind an Add Attributes menu. */
+  hideOptionalFields?: boolean;
+  addOptionalFieldButtonText?: string;
   /** filter 条件编辑器的节点级文案和附加字段。 */
   filter?: {
     itemTitle?: string;
@@ -408,7 +414,10 @@ export interface INodeExecutionHelpers {
    * 返回子流末节点输出。由服务层注入（归属校验 + 递归深度限制），
    * 纯引擎环境（无 DB）下不可用。
    */
-  executeSubWorkflow?(workflowId: string, items: INodeExecutionData[]): Promise<INodeExecutionData[]>;
+  executeSubWorkflow?(
+    workflow: string | IInlineWorkflowDefinition,
+    items: INodeExecutionData[],
+  ): Promise<INodeExecutionData[]>;
   /**
    * 设置本次 webhook 触发的自定义 HTTP 响应（RespondToWebhook 节点用）。
    * 仅 webhook 路由注入（单进程模式）；手动运行/队列模式下缺省为 no-op。
@@ -418,6 +427,14 @@ export interface INodeExecutionHelpers {
   binaryToBuffer(binary: IBinaryData): Promise<Uint8Array>;
   /** 字节 → 二进制引用（有 store 落 store；无 store 退化为内联 base64）。 */
   bufferToBinary(buffer: Uint8Array, meta: { mimeType: string; fileName?: string }): Promise<IBinaryData>;
+}
+
+/** Execute Workflow 的 Define Below 载荷；只在父执行内存中运行，不持久化。 */
+export interface IInlineWorkflowDefinition {
+  name?: string;
+  nodes: INode[];
+  connections: IConnections;
+  settings?: IWorkflowSettings;
 }
 
 /** execute 函数里的 `this`。getNodeParameter 会自动求值 `{{ }}` 表达式（Phase 2）。 */
@@ -475,6 +492,8 @@ export interface IWebhookRequest {
   headers: Record<string, string | string[]>;
   query: Record<string, string | string[]>;
   body: unknown;
+  /** multipart/form-data 的文件字段；已转成 binary store 引用或内联二进制。 */
+  files?: Record<string, IBinaryData | IBinaryData[]>;
 }
 
 export interface IWebhookResponseData {
