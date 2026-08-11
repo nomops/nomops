@@ -5,6 +5,7 @@ export const emailTriggerDescription: INodeTypeDescription = {
   name: 'emailTrigger',
   group: ['trigger'],
   categories: ['trigger', 'core'],
+  subcategories: ['App Events'],
   aliases: ['email', 'imap', 'inbox', 'mail trigger'],
   version: 1,
   description: 'Trigger the workflow when a new email is received',

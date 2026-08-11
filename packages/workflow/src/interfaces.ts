@@ -151,8 +151,14 @@ export type NodePropertyType =
 
 /** 声明式控件微调（对标基线 typeOptions 子集）：多行文本 rows。 */
 export interface INodePropertyTypeOptions {
+  /** Generate a UUID when a new node is created instead of reusing the static default. */
+  generateUuid?: boolean;
   /** string 字段渲染为多行 textarea 的行数（>1 生效）。 */
   rows?: number;
+  /** Rich editor chrome for multiline text fields. */
+  editor?: 'code';
+  /** Notice color treatment used by n8n-like inline alerts. */
+  noticeStyle?: 'info' | 'warning' | 'neutral';
   /** 动态下拉：调用节点 methods.loadOptions 中的同名方法。 */
   loadOptionsMethod?: string;
   /** 动态下拉依赖的参数路径；任一值变化时前端重新加载。 */
@@ -165,7 +171,15 @@ export interface INodePropertyTypeOptions {
   sortable?: boolean;
   fixedCollection?: {
     itemTitle?: string;
+    addButtonLabel?: string;
     layout?: 'horizontal' | 'vertical';
+  };
+  /** filter 条件编辑器的节点级文案和附加字段。 */
+  filter?: {
+    itemTitle?: string;
+    addButtonLabel?: string;
+    maxConditions?: number;
+    showRenameOutput?: boolean;
   };
 }
 

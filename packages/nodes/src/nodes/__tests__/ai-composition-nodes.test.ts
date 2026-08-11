@@ -61,6 +61,14 @@ function supplyContext(args: {
 }
 
 describe('AI Agent — 组合模式', () => {
+  it('描述不绑定任何固定模型厂商，模型能力必须从底部 Chat Model 端口接入', () => {
+    const description = new AiAgent().description;
+    expect(description.credentials ?? []).toEqual([]);
+    expect(description.inputs).toEqual(['main', 'ai_languageModel', 'ai_memory', 'ai_tool']);
+    expect(description.properties.map((property) => property.name)).not.toContain('model');
+    expect(description.properties.map((property) => property.name)).not.toContain('maxTokens');
+  });
+
   it('模型请求工具 → 执行 → 结果回喂 → 收敛；记忆保存会话', async () => {
     const chatLog: IAiMessage[][] = [];
     const model: IAiLanguageModel = {

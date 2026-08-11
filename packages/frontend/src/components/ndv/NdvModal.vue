@@ -15,6 +15,7 @@ import { useEditorStore } from '../../stores/editor.js';
 import { useExecutionStore } from '../../stores/execution.js';
 import { useNodeTypesStore } from '../../stores/node-types.js';
 import { isPropertyVisible } from '../../lib/display-options.js';
+import { parseCurlCommand } from '../../lib/parse-curl.js';
 import { inputItemsFor, lastRunOf, outputPorts } from '../../lib/run-data.js';
 import ParamInput from '../node-view/ParamInput.vue';
 import DataPane from './DataPane.vue';
@@ -41,6 +42,10 @@ function focusableElements() {
 function onNdvKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
     event.preventDefault();
+    if (curlImportOpen.value) {
+      curlImportOpen.value = false;
+      return;
+    }
     close();
     return;
   }
@@ -165,6 +170,98 @@ const inputItems = computed(() =>
   node.value ? inputItemsFor(editor.connections, runData.value, node.value.name) : [],
 );
 const hasInputPort = computed(() => (desc.value?.inputs.length ?? 0) > 0);
+const isTriggerNode = computed(() => (desc.value?.group ?? []).includes('trigger'));
+const isManualTrigger = computed(() => desc.value?.name === 'manualTrigger');
+const isWebhook = computed(() => desc.value?.name === 'webhook');
+const isHttpRequest = computed(() => desc.value?.name === 'httpRequest');
+const curlImportOpen = ref(false);
+const curlDraft = ref('');
+const curlImportError = ref('');
+
+function openCurlImport() {
+  curlDraft.value = '';
+  curlImportError.value = '';
+  curlImportOpen.value = true;
+}
+
+function importCurl() {
+  if (!node.value) return;
+  try {
+    editor.replaceNodeParameters(node.value.name, parseCurlCommand(curlDraft.value));
+    curlImportOpen.value = false;
+    curlImportError.value = '';
+  } catch (error) {
+    curlImportError.value = (error as Error).message;
+  }
+}
+const webhookMethod = computed(() => String(node.value?.parameters?.['method'] ?? 'GET'));
+const webhookPath = computed(() => String(node.value?.parameters?.['path'] ?? ''));
+const webhookBaseUrl = computed(() => typeof window === 'undefined' ? '' : window.location.origin);
+const webhookTestUrl = computed(() => `${webhookBaseUrl.value}/webhook-test/${webhookPath.value}`);
+const webhookProductionUrl = computed(() => `${webhookBaseUrl.value}/webhook/${webhookPath.value}`);
+const webhookUrlMode = ref<'test' | 'production'>('test');
+const selectedWebhookUrl = computed(() => webhookUrlMode.value === 'test' ? webhookTestUrl.value : webhookProductionUrl.value);
+const webhookListening = ref(false);
+const webhookListeningNode = ref('');
+const webhookListenError = ref('');
+let webhookExpiryTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearWebhookListening() {
+  webhookListening.value = false;
+  webhookListeningNode.value = '';
+  if (webhookExpiryTimer) clearTimeout(webhookExpiryTimer);
+  webhookExpiryTimer = null;
+}
+
+async function startWebhookTest() {
+  if (!editor.id || !node.value || !isWebhook.value) return;
+  webhookListenError.value = '';
+  await editor.save();
+  try {
+    const result = await api.workflows.startWebhookTest(editor.id, node.value.name);
+    webhookListening.value = true;
+    webhookListeningNode.value = node.value.name;
+    const delay = Math.max(0, new Date(result.expiresAt).getTime() - Date.now());
+    if (webhookExpiryTimer) clearTimeout(webhookExpiryTimer);
+    webhookExpiryTimer = setTimeout(clearWebhookListening, delay);
+  } catch (error) {
+    webhookListenError.value = (error as Error).message;
+  }
+}
+
+async function stopWebhookTest() {
+  const workflowId = editor.id;
+  const nodeName = webhookListeningNode.value || node.value?.name;
+  clearWebhookListening();
+  if (workflowId && nodeName) await api.workflows.stopWebhookTest(workflowId, nodeName).catch(() => undefined);
+}
+
+async function toggleWebhookTest() {
+  if (webhookListening.value) await stopWebhookTest();
+  else await startWebhookTest();
+}
+
+watch(() => execution.lastExecutionId, (executionId) => {
+  if (executionId && webhookListening.value) clearWebhookListening();
+});
+onBeforeUnmount(() => {
+  if (webhookListening.value) void stopWebhookTest();
+});
+const aiCapabilities = computed(() => {
+  const inputs = desc.value?.inputs ?? [];
+  const ordered = ['ai_languageModel', 'ai_memory', 'ai_tool'];
+  const labels: Record<string, string> = {
+    ai_languageModel: 'Chat Model',
+    ai_memory: 'Memory',
+    ai_tool: 'Tool',
+  };
+  return ordered
+    .filter((type) => inputs.includes(type))
+    .map((type) => ({ type, label: labels[type] ?? type, required: type === 'ai_languageModel' }));
+});
+function addAiCapability(type: string) {
+  if (node.value) editor.openAiNodePicker(node.value.name, type);
+}
 /** AI 工具节点（输出 ai_tool）：参数支持 $fromAI「让模型填」（#19 D096）。 */
 const isAiTool = computed(() => (desc.value?.outputs ?? []).includes('ai_tool'));
 
@@ -214,6 +311,7 @@ function createCred() {
 }
 
 function close() {
+  if (webhookListening.value) void stopWebhookTest();
   editor.ndvOpen = false;
 }
 
@@ -234,6 +332,11 @@ async function executeStep() {
   if (!editor.id || !node.value) return;
   await editor.save();
   await execution.run(editor.id, { destinationNode: node.value.name });
+}
+
+async function executeNodeAction() {
+  if (isWebhook.value) await toggleWebhookTest();
+  else await executeStep();
 }
 </script>
 
@@ -295,6 +398,20 @@ async function executeStep() {
           <!-- D093 三栏可拖拽分隔条(覆在中栏两侧边上) -->
           <div v-if="hasInputPort" class="col-drag left" data-test="ndv-drag-left" @mousedown="startDrag('left', $event)" />
           <div class="col-drag right" data-test="ndv-drag-right" @mousedown="startDrag('right', $event)" />
+          <div v-if="isWebhook" class="webhook-listen" :class="{ active: webhookListening }" data-test="webhook-listen">
+            <template v-if="webhookListening">
+              <strong>Listening for test event</strong>
+              <span>Make a {{ webhookMethod }} request to:</span>
+              <code>{{ webhookTestUrl }}</code>
+              <button type="button" @click="stopWebhookTest">Stop Listening</button>
+            </template>
+            <template v-else>
+              <strong>Pull in events from Webhook</strong>
+              <button type="button" @click="startWebhookTest">Listen for test event</button>
+              <span>Once you've finished building your workflow, use the production webhook URL without clicking this button.</span>
+            </template>
+            <span v-if="webhookListenError" class="webhook-listen-error">{{ webhookListenError }}</span>
+          </div>
           <!-- Parameters | Settings 双 tab + Execute step -->
           <div class="param-tabs">
             <button class="ptab" :class="{ active: tab === 'parameters' }" data-test="ndv-tab-params" @click="tab = 'parameters'">
@@ -307,17 +424,28 @@ async function executeStep() {
             <button
               class="execute-step"
               data-test="ndv-execute-step"
-              :disabled="execution.running"
-              @click="executeStep"
+              :disabled="execution.running && !isWebhook"
+              @click="executeNodeAction"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="i15">
                 <path d="M10 2v6.5L4.6 18a2 2 0 0 0 1.8 3h11.2a2 2 0 0 0 1.8-3L14 8.5V2M8.5 2h7M7 15h10" />
               </svg>
-              Execute step
+              {{ isWebhook ? (webhookListening ? 'Stop Listening' : 'Listen for test event') : 'Execute step' }}
             </button>
           </div>
 
           <div v-show="tab === 'parameters'" class="params-body" data-test="ndv-params">
+            <button v-if="isHttpRequest" type="button" class="curl-import-open" data-test="http-import-curl" @click="openCurlImport">
+              Import cURL
+            </button>
+            <section v-if="isWebhook" class="webhook-urls" data-test="webhook-urls">
+              <strong>Webhook URLs</strong>
+              <div class="webhook-url-tabs">
+                <button type="button" :class="{ active: webhookUrlMode === 'test' }" @click="webhookUrlMode = 'test'">Test URL</button>
+                <button type="button" :class="{ active: webhookUrlMode === 'production' }" @click="webhookUrlMode = 'production'">Production URL</button>
+              </div>
+              <code><b>{{ webhookMethod }}</b> {{ selectedWebhookUrl }}</code>
+            </section>
             <!-- 凭证选择器(节点声明 credentials 时) -->
             <div v-if="nodeCredTypes.length" class="cred-section" data-test="ndv-credentials">
               <div v-for="ct in nodeCredTypes" :key="ct.name" class="cred-field">
@@ -332,9 +460,15 @@ async function executeStep() {
               </div>
             </div>
 
-            <p v-if="visibleProps.length === 0 && !nodeCredTypes.length" class="dim">This node has no parameters to configure.</p>
+            <template v-if="visibleProps.length === 0 && !nodeCredTypes.length">
+              <div v-if="isManualTrigger" class="manual-trigger-notice">
+                This node is where the workflow execution starts (when you click the test button on the canvas). Explore other ways to trigger your workflow, for example on a schedule or with a webhook.
+              </div>
+              <p class="dim">This node does not have any parameters</p>
+            </template>
             <div v-for="prop in visibleProps" :key="prop.name" class="param-pin-row">
               <button
+                v-if="prop.type !== 'notice'"
                 class="param-pin"
                 :class="{ pinned: editor.isParamPinned(node.name, prop.name) }"
                 :title="editor.isParamPinned(node.name, prop.name) ? 'Unpin from focus panel' : 'Pin to focus panel'"
@@ -410,16 +544,31 @@ async function executeStep() {
               This node is version {{ node.typeVersion }} (Latest version: {{ latestVersion }})
             </p>
           </div>
+
+          <div v-if="aiCapabilities.length" class="ai-capabilities" data-test="ndv-ai-capabilities">
+            <div v-for="capability in aiCapabilities" :key="capability.type" class="ai-capability">
+              <span class="ai-capability-label">
+                {{ capability.label }}<span v-if="capability.required" class="ai-capability-required"> *</span>
+              </span>
+              <button
+                type="button"
+                class="ai-capability-add"
+                :aria-label="`Add ${capability.label}`"
+                :data-test-ai-add="capability.type"
+                @click="addAiCapability(capability.type)"
+              >+</button>
+            </div>
+          </div>
         </section>
 
         <section class="ndv-col side">
           <DataPane
             title="Output"
             :items="outputItems"
-            :empty-title="isOutputPinned ? 'Pinned data is empty' : 'No output data'"
-            empty-action="Execute step"
-            empty-caption="to view output data"
-            @empty-action="executeStep"
+            :empty-title="isOutputPinned ? 'Pinned data is empty' : isTriggerNode ? 'No trigger output' : 'No output data'"
+            :empty-action="isWebhook && webhookListening ? 'Stop Listening' : isTriggerNode ? 'Test this trigger' : 'Execute step'"
+            :empty-caption="isTriggerNode ? 'or set mock data' : 'to view output data'"
+            @empty-action="executeNodeAction"
           >
             <template #head-action>
               <button
@@ -437,6 +586,24 @@ async function executeStep() {
           </DataPane>
         </section>
       </div>
+
+      <div v-if="curlImportOpen" class="curl-import-overlay" @click.self="curlImportOpen = false">
+        <section class="curl-import-dialog" role="dialog" aria-modal="true" aria-label="Import cURL command">
+          <header>
+            <h2>Import cURL command</h2>
+            <button type="button" aria-label="Close cURL import" @click="curlImportOpen = false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6l-12 12" /></svg>
+            </button>
+          </header>
+          <label for="curl-command">cURL Command</label>
+          <textarea id="curl-command" v-model="curlDraft" rows="8" placeholder="Paste the cURL command here" spellcheck="false" data-test="http-import-curl-input" />
+          <p class="curl-import-warning">This will overwrite any changes you have already made to the current node</p>
+          <p v-if="curlImportError" class="curl-import-error" data-test="http-import-curl-error">{{ curlImportError }}</p>
+          <footer>
+            <button type="button" class="curl-import-submit" :disabled="!curlDraft.trim()" data-test="http-import-curl-submit" @click="importCurl">Import</button>
+          </footer>
+        </section>
+      </div>
     </div>
   </div>
 </template>
@@ -452,7 +619,7 @@ async function executeStep() {
 }
 .ndv {
   flex: 1; min-height: 0; margin: 0 25px 25px;
-  display: flex; flex-direction: column; overflow: hidden;
+  position: relative; display: flex; flex-direction: column; overflow: hidden;
 }
 .ndv:focus { outline: none; }
 .ndv-head {
@@ -537,6 +704,90 @@ async function executeStep() {
 }
 .execute-step:hover { background: var(--button--color--background--primary--hover-active-focus); }
 .params-body { flex: 1; overflow-y: auto; padding: 12px var(--spacing--sm); }
+.curl-import-open {
+  height: 28px; margin-bottom: 14px; padding: 0 10px; border: 1px solid var(--border-color);
+  border-radius: var(--radius); background: var(--color--background--light-2);
+  color: var(--color--text--shade-1); font-size: var(--font-size--2xs); cursor: pointer;
+}
+.curl-import-open:hover { border-color: var(--color--primary); color: var(--color--primary); }
+.curl-import-overlay {
+  position: absolute; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.58);
+}
+.curl-import-dialog {
+  width: min(620px, calc(100% - 48px)); display: grid; gap: 12px; padding: 18px;
+  border: 1px solid var(--border-color); border-radius: var(--radius--lg);
+  background: var(--color--background--light-1); color: var(--color--text--shade-1);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+}
+.curl-import-dialog header { display: flex; align-items: center; justify-content: space-between; }
+.curl-import-dialog h2 { margin: 0; font-size: var(--font-size--md); }
+.curl-import-dialog header button { width: 28px; height: 28px; padding: 5px; border: 0; background: transparent; color: var(--color--text--tint-1); cursor: pointer; }
+.curl-import-dialog header button svg { width: 100%; height: 100%; }
+.curl-import-dialog label { font-size: var(--font-size--2xs); font-weight: var(--font-weight--medium); }
+.curl-import-dialog textarea {
+  width: 100%; resize: vertical; box-sizing: border-box; padding: 10px; border: 1px solid var(--border-color);
+  border-radius: var(--radius); background: var(--color--background--light-2); color: var(--color--text--shade-1);
+  font: 12px/1.5 var(--font-family--monospace, ui-monospace, monospace);
+}
+.curl-import-dialog textarea:focus { outline: none; border-color: var(--color--primary); }
+.curl-import-warning { margin: 0; padding: 8px 10px; border: 1px solid #a88651; border-radius: var(--radius); color: #dfc396; font-size: var(--font-size--3xs); }
+.curl-import-error { margin: 0; color: var(--color--danger); font-size: var(--font-size--2xs); }
+.curl-import-dialog footer { display: flex; justify-content: flex-end; }
+.curl-import-submit {
+  height: 30px; padding: 0 14px; border: 1px solid var(--button--border-color--primary); border-radius: var(--radius);
+  background: var(--button--color--background--primary); color: var(--button--color--text--primary); cursor: pointer;
+}
+.curl-import-submit:disabled { opacity: 0.5; cursor: default; }
+.manual-trigger-notice {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  color: var(--color--text--shade-1);
+  background: var(--color--background--light-1);
+  font-size: var(--font-size--2xs);
+  line-height: 1.45;
+}
+.webhook-urls { display: grid; gap: 8px; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--border-color); color: var(--color--text--shade-1); font-size: var(--font-size--2xs); }
+.webhook-url-tabs { display: flex; gap: 14px; }
+.webhook-url-tabs button { padding: 0 0 3px; border: 0; background: transparent; color: var(--color--text--tint-1); cursor: pointer; }
+.webhook-url-tabs button.active { color: var(--color--primary); border-bottom: 2px solid var(--color--primary); }
+.webhook-urls code { display: block; padding: 8px; overflow-wrap: anywhere; border: 1px solid var(--border-color); border-radius: var(--radius); background: var(--color--background--light-2); color: var(--color--text--shade-1); }
+.webhook-urls b { color: var(--color--primary); }
+.webhook-listen {
+  display: grid; gap: 7px; margin: 8px var(--spacing--sm) 2px; padding: 10px 12px;
+  border: 1px solid var(--border-color); border-radius: var(--radius);
+  background: var(--color--background--light-1); color: var(--color--text--tint-1);
+  font-size: var(--font-size--3xs); line-height: 1.4;
+}
+.webhook-listen strong { color: var(--color--text--shade-1); font-size: var(--font-size--2xs); }
+.webhook-listen code {
+  padding: 6px 8px; overflow-wrap: anywhere; border: 1px solid var(--border-color);
+  border-radius: var(--radius); background: var(--color--background--light-2);
+  color: var(--color--text--shade-1);
+}
+.webhook-listen button {
+  justify-self: start; min-height: 28px; padding: 0 10px; border: 1px solid var(--button--border-color--primary);
+  border-radius: var(--radius); background: var(--button--color--background--primary);
+  color: var(--button--color--text--primary); cursor: pointer;
+}
+.webhook-listen.active { border-color: var(--color--primary); }
+.webhook-listen-error { color: var(--color--danger); }
+.ai-capabilities {
+  flex-shrink: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-height: 94px; padding: 16px 22px 0; border-top: 1px solid var(--border-color);
+  background: var(--ndv--header--color);
+}
+.ai-capability { display: flex; flex-direction: column; align-items: center; gap: 14px; min-width: 0; }
+.ai-capability-label { color: var(--color--text--shade-1); font-size: var(--font-size--2xs); white-space: nowrap; }
+.ai-capability-required { color: var(--color--danger); }
+.ai-capability-add {
+  width: 42px; height: 34px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border-color); border-radius: var(--radius); background: var(--color--background--light-2);
+  color: var(--color--text--shade-1); font-size: 24px; line-height: 1; cursor: pointer;
+}
+.ai-capability-add:hover { border-color: var(--color--primary); color: var(--color--primary); }
 .setting-row { display: flex; align-items: center; gap: 6px; margin: 0; }
 
 /* 凭证选择器 */

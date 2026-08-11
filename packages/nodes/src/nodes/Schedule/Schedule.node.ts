@@ -1,4 +1,5 @@
 import { CronExpressionParser } from 'cron-parser';
+import { DateTime } from 'luxon';
 import type {
   IExecuteContext,
   INodeExecutionData,
@@ -8,6 +9,7 @@ import type {
 } from '@nomops/workflow';
 import { OperationalError } from '@nomops/workflow';
 import { scheduleDescription } from './Schedule.description.js';
+import { scheduleConfigFromParameters } from '../../lib/schedule-config.js';
 
 /**
  * Schedule 触发节点：trigger() 起定时器，触发时 emit 时间戳 item。
@@ -18,13 +20,20 @@ export class Schedule implements INodeType {
   description = scheduleDescription;
 
   async trigger(this: ITriggerContext): Promise<ITriggerResponse> {
-    const mode = (this.getNodeParameter('mode') ?? 'interval') as string;
+    const rule = this.getNodeParameter('rule');
+    const mode = this.getNodeParameter('mode') ?? 'interval';
+    const config = scheduleConfigFromParameters({
+      rule,
+      mode,
+      intervalSeconds: this.getNodeParameter('intervalSeconds') ?? 60,
+      cronExpression: this.getNodeParameter('cronExpression') ?? '*/5 * * * *',
+    });
     const fire = () => {
       this.emit([[{ json: { timestamp: new Date().toISOString() } }]]);
     };
 
-    if (mode === 'cron') {
-      const expression = String(this.getNodeParameter('cronExpression') ?? '');
+    if (config.mode === 'cron') {
+      const expression = config.cron;
       let interval;
       try {
         interval = CronExpressionParser.parse(expression);
@@ -52,7 +61,7 @@ export class Schedule implements INodeType {
       };
     }
 
-    const seconds = Number(this.getNodeParameter('intervalSeconds') ?? 60);
+    const seconds = config.everySeconds;
     if (!(seconds > 0)) {
       throw new OperationalError(`Interval must be a positive number, got ${seconds}`);
     }
@@ -64,6 +73,19 @@ export class Schedule implements INodeType {
 
   /** 手动运行调试：播一个当前时间 item。 */
   async execute(this: IExecuteContext): Promise<INodeExecutionData[][]> {
-    return [[{ json: { timestamp: new Date().toISOString(), note: 'Manual run' } }]];
+    const now = DateTime.local();
+    return [[{ json: {
+      timestamp: now.toISO(),
+      'Readable date': now.toFormat('MMMM d yyyy, h:mm:ss a').toLowerCase(),
+      'Readable time': now.toFormat('h:mm:ss a').toLowerCase(),
+      'Day of week': now.toFormat('cccc'),
+      Year: now.toFormat('yyyy'),
+      Month: now.toFormat('LLLL'),
+      'Day of month': now.toFormat('dd'),
+      Hour: now.toFormat('HH'),
+      Minute: now.toFormat('mm'),
+      Second: now.toFormat('ss'),
+      Timezone: now.zoneName,
+    } }]];
   }
 }

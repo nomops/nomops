@@ -46,6 +46,7 @@ import { WaitTracker } from './services/wait-tracker.js';
 import { ExecutionPruner, prunerOptionsFromEnv } from './services/execution-pruner.js';
 import { SchedulerService } from './services/scheduler-service.js';
 import type { SchedulerOptions } from './services/scheduler-service.js';
+import { WebhookTestListenerService } from './services/webhook-test-listener-service.js';
 import { InsightsService } from './services/insights-service.js';
 import { AgentRunService } from './services/agent-run-service.js';
 import { AgentChannelService } from './services/agent-channel-service.js';
@@ -177,6 +178,8 @@ export interface BootstrapOptions {
   pruner?: IExecutionPrunerOptions;
   /** DB 调度器配置（#38；测试注入短轮询/固定时钟/instanceId）。 */
   scheduler?: SchedulerOptions;
+  /** Webhook 测试监听过期时间；仅测试注入，生产缺省 120 秒。 */
+  webhookTestTtlMs?: number;
   /** 引擎 httpRequest 覆盖（#44 M2；测试注入假 AI provider，避免打真实网络）。 */
   httpRequest?: (options: IHttpRequestOptions) => Promise<unknown>;
   /** SSE 连接覆盖（测试注入本地协议夹具；生产缺省走 SSRF 防护实现）。 */
@@ -526,6 +529,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   const sharing = new SharingService(repos, workflows, credentialService);
   const mailerConfig = mailerConfigFromEnv(process.env);
   const mailer: IMailer = opts.mailer ?? (mailerConfig ? new SmtpMailer(mailerConfig) : new NullMailer());
+  const webhookTests = new WebhookTestListenerService(opts.webhookTestTtlMs);
 
   const services: AppServices = {
     repos,
@@ -575,6 +579,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     mcp,
     encryptionKeys,
     authRateLimit,
+    webhookTests,
   };
 
   // 重载已安装社区节点（main/worker 都需要，执行时才能解析到）。尽力而为，失败不崩启动。
@@ -610,6 +615,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
       publicationOutbox.stop();
       executionPruner.stop();
       scheduler.stop();
+      webhookTests.stopAll();
       await activeWorkflows.shutdown();
       await leader.stop();
       await queue?.close();

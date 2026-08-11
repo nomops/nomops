@@ -77,4 +77,39 @@ describe('Schedule Trigger → DB 调度器（backlog #38b）', () => {
     const r = await boot.scheduler.tick();
     expect(r.fired).toBe(0);
   });
+
+  it('同一 Schedule 节点的多条 Trigger Rule 各自持久化并可独立到期', async () => {
+    const id = (await request(app).post('/api/workflows').set(authed()).send({
+      ...scheduleWf,
+      name: 'multi-rule-schedule',
+      nodes: [
+        {
+          ...scheduleWf.nodes[0],
+          parameters: {
+            rule: { interval: [
+              { field: 'seconds', secondsInterval: 30 },
+              { field: 'minutes', minutesInterval: 2 },
+            ] },
+          },
+        },
+        scheduleWf.nodes[1],
+      ],
+    }).expect(201)).body.id as string;
+    await request(app).post(`/api/workflows/${id}/activate`).set(authed()).send({ active: true }).expect(200);
+
+    const jobs = await boot.services.repos.scheduler.findJobsByNode(id, 'Schedule');
+    expect(jobs).toHaveLength(2);
+    expect(jobs.map((job) => job.config)).toEqual(expect.arrayContaining([
+      { mode: 'interval', everySeconds: 30 },
+      { mode: 'interval', everySeconds: 120 },
+    ]));
+    for (const job of jobs) await boot.services.repos.scheduler.updateJob(job.id, { nextRunAt: new Date(Date.now() - 1000) });
+    const before = ((await request(app).get('/api/executions').set(authed()).expect(200)).body as Array<{ workflowId: string }>).filter((row) => row.workflowId === id).length;
+    expect((await boot.scheduler.tick()).fired).toBe(2);
+    const after = ((await request(app).get('/api/executions').set(authed()).expect(200)).body as Array<{ workflowId: string }>).filter((row) => row.workflowId === id).length;
+    expect(after - before).toBe(2);
+
+    await request(app).post(`/api/workflows/${id}/activate`).set(authed()).send({ active: false }).expect(200);
+    expect((await boot.services.repos.scheduler.findJobsByNode(id, 'Schedule')).every((job) => !job.active)).toBe(true);
+  });
 });

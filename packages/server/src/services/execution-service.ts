@@ -320,8 +320,35 @@ export class ExecutionService {
     if (!projectId) throw new OperationalError('Workflow has no owning project', { workflowId });
     // 生产触发一律跑已发布版本（未发布退回当前定义）；草稿编辑不影响生产
     const row = await this.workflowService.productionRow(await this.workflowService.getById(workflowId, projectId));
+    return this.runTriggeredRow(row, projectId, mode, seedData, startNodeName, extras);
+  }
+
+  /**
+   * Webhook 的 “Listen for test event” 必须运行当前草稿，而不能读取已发布快照。
+   * 监听本身已由 projectId 归属校验；执行仍经过配额、并发、队列和完整落库路径。
+   */
+  async runTestWebhook(
+    workflowId: string,
+    projectId: string,
+    seedData: INodeExecutionData[],
+    startNodeName: string,
+    extras?: { onWebhookResponse?: (response: JsonObject) => void },
+  ): Promise<IRunSummary> {
+    const row = await this.workflowService.getById(workflowId, projectId);
+    return this.runTriggeredRow(row, projectId, 'webhook', seedData, startNodeName, extras);
+  }
+
+  private async runTriggeredRow(
+    row: WorkflowRow,
+    projectId: string,
+    mode: TriggerMode,
+    seedData: INodeExecutionData[],
+    startNodeName: string,
+    extras?: { onWebhookResponse?: (response: JsonObject) => void },
+  ): Promise<IRunSummary> {
     const workflow = this.toWorkflow(row);
     const startNode = workflow.getNode(startNodeName);
+    if (!startNode) throw new OperationalError(`Start node not found: ${startNodeName}`, { status: 400 });
 
     // 触发器节点的输出 = 外部事件数据（不执行其 execute），下游按连接入栈
     const state = createRunExecutionData();

@@ -51,6 +51,14 @@ describe('ParamInput（schema 驱动控件分发）', () => {
     expect(w.find('.pt-seg').exists()).toBe(false);
   });
 
+  it('Code 多行字段渲染语言标题、行号和等宽编辑区', () => {
+    const w = make({ displayName: 'Python', type: 'string', noDataExpression: true, typeOptions: { rows: 8, editor: 'code' } }, 'return [\n  { json: {} },\n];');
+    expect(w.find('[data-test="code-editor"]').exists()).toBe(true);
+    expect(w.find('.code-language').text()).toBe('Python');
+    expect(w.findAll('[role="tab"]')).toHaveLength(0);
+    expect(w.findAll('.code-gutter span')).toHaveLength(3);
+  });
+
   it('number → number 输入，emits 数值', async () => {
     const w = make({ type: 'number', default: 0 }, 5);
     await w.find('input[type="number"]').setValue('42');
@@ -59,6 +67,7 @@ describe('ParamInput（schema 驱动控件分发）', () => {
 
   it('boolean → 基线式开关(role=switch)', async () => {
     const w = make({ type: 'boolean', default: false }, false);
+    expect(w.findAll('.pt-seg-btn').map((button) => button.text())).toEqual(['Fixed', 'Expression']);
     await w.find('[role="switch"]').trigger('click');
     expect(w.emitted('change')![0]).toEqual([true]);
   });
@@ -132,6 +141,17 @@ describe('ParamInput（schema 驱动控件分发）', () => {
     expect(w.emitted('change')![0]).toEqual([[{ left: '', op: 'eq', right: '' }]]);
   });
 
+  it('Switch filter 显示 Routing Rule 标题、Rename Output 并限制规则数', async () => {
+    const w = make({
+      type: 'filter', default: [{ left: 'a', op: 'eq', right: 'b' }],
+      typeOptions: { filter: { itemTitle: 'Routing Rule', addButtonLabel: 'Add Routing Rule', maxConditions: 1, showRenameOutput: true } },
+    }, [{ left: 'a', op: 'eq', right: 'b' }]);
+    expect(w.text()).toContain('Routing Rule 1');
+    expect(w.text()).toContain('Rename Output');
+    expect(w.find('[data-test="add-condition"]').text()).toContain('Add Routing Rule');
+    expect(w.find('[data-test="add-condition"]').attributes('disabled')).toBeDefined();
+  });
+
   it('assignmentCollection 只按类型渲染赋值编辑器，参数名无需叫 fields', async () => {
     const w = make({ type: 'assignmentCollection', name: 'metadata', default: {} }, {});
     expect(w.find('[data-test="fields-editor"]').exists()).toBe(true);
@@ -139,13 +159,26 @@ describe('ParamInput（schema 驱动控件分发）', () => {
 
     await w.find('[data-test="add-field"]').trigger('click');
     expect(w.findAll('[data-test="field-row"]')).toHaveLength(1);
+    expect(w.find('[aria-label="Field type"]').exists()).toBe(true);
   });
 
-  it('普通 collection 使用通用 JSON 编辑器，不再按值形态猜控件', () => {
-    const w = make({ type: 'collection', name: 'arbitrary', default: {} }, {});
-    expect(w.find('textarea').exists()).toBe(true);
-    expect(w.find('[data-test="conditions-editor"]').exists()).toBe(false);
-    expect(w.find('[data-test="fields-editor"]').exists()).toBe(false);
+  it('collection 使用 Add Option 菜单按声明添加和移除可选字段', async () => {
+    const w = make({
+      type: 'collection', name: 'options', default: {}, placeholder: 'Add Option',
+      options: [{
+        name: 'System Message', value: 'systemMessage',
+        values: [{ displayName: 'System Message', name: 'systemMessage', type: 'string', default: '' }],
+      }],
+    }, {});
+    expect(w.find('[data-test="option-collection"]').exists()).toBe(true);
+    await w.find('[data-test="add-option"]').trigger('click');
+    await w.find('[data-test="add-option-menu"] button').trigger('click');
+    expect(w.emitted('change')![0]).toEqual([{ systemMessage: '' }]);
+
+    await w.setProps({ value: { systemMessage: '' } });
+    expect(w.find('[data-test-param="systemMessage"]').exists()).toBe(true);
+    await w.find('.option-remove').trigger('click');
+    expect(w.emitted('change')!.at(-1)).toEqual([{}]);
   });
 
   it('From AI 芯片（#19 D096）:仅 aiTool 且可切表达式的字段显示,点击插入 $fromAI 模板', async () => {
@@ -221,6 +254,22 @@ describe('ParamInput（schema 驱动控件分发）', () => {
     const inputs = w.findAll('.fixed-row input');
     await inputs[1]!.setValue('secret-ref');
     expect(w.emitted('change')!.at(-1)).toEqual([{ headers: [{ name: 'x-api-key', value: 'secret-ref' }] }]);
+  });
+
+  it('fixedCollection 子字段按当前行 displayOptions 显隐', async () => {
+    const w = make({
+      type: 'fixedCollection', default: { interval: [{ field: 'hours', hoursInterval: 6 }] },
+      typeOptions: { multipleValues: true },
+      options: [{ name: 'interval', value: 'interval', values: [
+        { displayName: 'Trigger Interval', name: 'field', type: 'options', default: 'hours', options: [
+          { name: 'Hours', value: 'hours' }, { name: 'Days', value: 'days' },
+        ] },
+        { displayName: 'Hours Between Triggers', name: 'hoursInterval', type: 'number', default: 1, displayOptions: { show: { field: ['hours'] } } },
+        { displayName: 'Days Between Triggers', name: 'daysInterval', type: 'number', default: 1, displayOptions: { show: { field: ['days'] } } },
+      ] }],
+    }, { interval: [{ field: 'hours', hoursInterval: 6 }] });
+    expect(w.text()).toContain('Hours Between Triggers');
+    expect(w.text()).not.toContain('Days Between Triggers');
   });
 
   it('resourceLocator 可切 list、URL、ID 三模式并搜索资源', async () => {

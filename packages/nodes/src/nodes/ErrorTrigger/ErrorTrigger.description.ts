@@ -5,6 +5,7 @@ export const errorTriggerDescription: INodeTypeDescription = {
   name: 'errorTrigger',
   group: ['trigger'],
   categories: ['trigger'],
+  subcategories: ['Other Triggers'],
   version: 1,
   description: 'Start this workflow when another workflow (whose settings point here) fails',
   defaults: { name: 'Error Trigger' },

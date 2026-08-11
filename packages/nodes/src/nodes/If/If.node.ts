@@ -14,8 +14,10 @@ export class If implements INodeType {
     for (const [i, item] of items.entries()) {
       // getNodeParameter 已对条件里的表达式（如 left: "={{ $json.amount }}"）求值
       const conditions = (this.getNodeParameter('conditions', i, []) ?? []) as ICondition[];
-      const combine = (this.getNodeParameter('combine', i, 'and') ?? 'and') as 'and' | 'or';
-      (conditionsPass(conditions, combine) ? trueItems : falseItems).push({
+      const options = (this.getNodeParameter('options', i, {}) ?? {}) as Record<string, unknown>;
+      const combine = (options['combine'] ?? this.getNodeParameter('combine', i, 'and') ?? 'and') as 'and' | 'or';
+      const convertTypes = Boolean(this.getNodeParameter('convertTypes', i, false));
+      (conditionsPass(conditions, combine, convertTypes) ? trueItems : falseItems).push({
         json: item.json,
         pairedItem: { item: i },
       });

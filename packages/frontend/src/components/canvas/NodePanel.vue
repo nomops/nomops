@@ -10,7 +10,7 @@ import UiState from '../ui/UiState.vue';
 
 /**
  * 节点创建面板(对标基线):
- * - 空画布 → "What triggers this workflow?" + 8 张策展触发器卡(D070)
+ * - 尚无触发器 → "What triggers this workflow?" + 9 张策展触发器卡(D070)
  * - 有触发器 → "What happens next?" + 7 张语义分类卡(D069),点卡下钻该类节点列表
  * - 输入搜索 → 回退平铺过滤列表(跨所有节点)
  * 说明:分类/触发器标题与描述均为基线 live 逐字取证(2026-07-19 经 N 键打开节点创建器读取),
@@ -22,38 +22,53 @@ const editor = useEditorStore();
 const search = ref('');
 const drill = ref<string | null>(null); // 下钻中的分类/触发器 key
 
-const isTriggerRoot = computed(() => editor.nodes.length === 0);
+const hasTrigger = computed(() => editor.nodes.some((node) => {
+  const description = nodeTypes.byType.get(node.type);
+  return description?.categories?.includes('trigger');
+}));
+const isTriggerRoot = computed(() => !hasTrigger.value);
+const pendingAi = computed(() => editor.pendingAiConnection);
 const searching = computed(() => search.value.trim().length > 0);
 
-/** 8 张策展触发器(D070)。addType 有值=直接加该节点;否则下钻触发器全表。 */
-const CURATED_TRIGGERS: Array<{ key: string; title: string; desc: string; addType?: string }> = [
-  { key: 'manual', title: 'Trigger manually', desc: 'Runs the flow on clicking a button in nomops. Good for getting started quickly', addType: 'nomops.manualTrigger' },
-  { key: 'app', title: 'On app event', desc: 'Runs the flow when something happens in an app like Telegram, Notion or Airtable', addType: 'nomops.pollingTrigger' },
-  { key: 'schedule', title: 'On a schedule', desc: 'Runs the flow every day, hour, or custom interval', addType: 'nomops.schedule' },
-  { key: 'webhook', title: 'On webhook call', desc: 'Runs the flow on receiving an HTTP request', addType: 'nomops.webhook' },
-  { key: 'form', title: 'On form submission', desc: 'Generate webforms in nomops and pass their responses to the workflow', addType: 'nomops.webhook' },
-  { key: 'subflow', title: 'When executed by another workflow', desc: 'Runs the flow when called by the Execute Workflow node from a different workflow', addType: 'nomops.executeWorkflow' },
-  { key: 'chat', title: 'On chat message', desc: 'Runs the flow when a user sends a chat message. For use with AI nodes', addType: 'nomops.chatTrigger' },
-  { key: 'other', title: 'Other ways...', desc: 'Runs the flow on workflow errors, file changes, etc.' },
+/** 9 张策展触发器(D070)。addType 有值=直接加该节点;否则下钻触发器全表。 */
+const CURATED_TRIGGERS: Array<{ key: string; title: string; desc: string; icon: string; addType?: string; drillKey?: string }> = [
+  { key: 'manual', title: 'Trigger manually', desc: 'Runs the flow on clicking a button in nomops. Good for getting started quickly', icon: 'nomops.manualTrigger', addType: 'nomops.manualTrigger' },
+  { key: 'app', title: 'On app event', desc: 'Runs the flow when something happens in an app like Telegram, Notion or Airtable', icon: 'nomops.pollingTrigger', drillKey: 'trigger-app' },
+  { key: 'schedule', title: 'On a schedule', desc: 'Runs the flow every day, hour, or custom interval', icon: 'nomops.schedule', addType: 'nomops.schedule' },
+  { key: 'webhook', title: 'On webhook call', desc: 'Runs the flow on receiving an HTTP request', icon: 'nomops.webhook', addType: 'nomops.webhook' },
+  { key: 'form', title: 'On form submission', desc: 'Generate webforms in nomops and pass their responses to the workflow', icon: 'nomops.formTrigger', addType: 'nomops.formTrigger' },
+  { key: 'subflow', title: 'When executed by another workflow', desc: 'Runs the flow when called by the Execute Workflow node from a different workflow', icon: 'nomops.executeWorkflowTrigger', addType: 'nomops.executeWorkflowTrigger' },
+  { key: 'chat', title: 'On chat message', desc: 'Runs the flow when a user sends a chat message. For use with AI nodes', icon: 'nomops.chatTrigger', addType: 'nomops.chatTrigger' },
+  { key: 'evaluation', title: 'When running evaluation', desc: 'Run a dataset through your workflow to test performance', icon: 'nomops.evaluationTrigger', addType: 'nomops.evaluationTrigger' },
+  { key: 'other', title: 'Other ways...', desc: 'Runs the flow on workflow errors, file changes, etc.', icon: 'nomops.errorTrigger', drillKey: 'trigger-other' },
 ];
 
 /** 7 张语义分类(D069)。成员完全由 description.categories 声明。 */
-const CATEGORIES: Array<{ key: string; category: NodeCategory; title: string; desc: string }> = [
-  { key: 'ai', category: 'ai', title: 'AI', desc: 'Build autonomous agents, summarize or search documents, etc.' },
-  { key: 'app', category: 'app', title: 'Action in an app', desc: 'Do something in an app or service like Google Sheets, Telegram or Notion' },
-  { key: 'transform', category: 'dataTransformation', title: 'Data transformation', desc: 'Manipulate, filter or convert data' },
-  { key: 'flow', category: 'flow', title: 'Flow', desc: 'Branch, merge or loop the flow, etc.' },
-  { key: 'core', category: 'core', title: 'Core', desc: 'Run code, make HTTP requests, set webhooks, etc.' },
-  { key: 'human', category: 'humanReview', title: 'Human review', desc: 'Request approval via services like Slack and Telegram before making tool calls' },
-  { key: 'trigger', category: 'trigger', title: 'Add another trigger', desc: 'Triggers start your workflow. Workflows can have multiple triggers.' },
+const CATEGORIES: Array<{ key: string; category: NodeCategory; title: string; desc: string; icon: string }> = [
+  { key: 'ai', category: 'ai', title: 'AI', desc: 'Build autonomous agents, summarize or search documents, etc.', icon: 'nomops.aiAgent' },
+  { key: 'app', category: 'app', title: 'Action in an app', desc: 'Do something in an app or service like Google Sheets, Telegram or Notion', icon: 'nomops.httpRequest' },
+  { key: 'transform', category: 'dataTransformation', title: 'Data transformation', desc: 'Manipulate, filter or convert data', icon: 'nomops.set' },
+  { key: 'flow', category: 'flow', title: 'Flow', desc: 'Branch, merge or loop the flow, etc.', icon: 'nomops.if' },
+  { key: 'core', category: 'core', title: 'Core', desc: 'Run code, make HTTP requests, set webhooks, etc.', icon: 'nomops.code' },
+  { key: 'human', category: 'humanReview', title: 'Human review', desc: 'Request approval via services like Slack and Telegram before making tool calls', icon: 'nomops.wait' },
+  { key: 'trigger', category: 'trigger', title: 'Add another trigger', desc: 'Triggers start your workflow. Workflows can have multiple triggers.', icon: 'nomops.manualTrigger' },
 ];
 
 const allNodes = computed(() => nodeTypes.descriptions.filter((description) => !description.hidden));
+const eligibleNodes = computed(() => {
+  if (pendingAi.value) {
+    return allNodes.value.filter((description) => description.outputs.includes(pendingAi.value!.type));
+  }
+  if (isTriggerRoot.value) {
+    return allNodes.value.filter((description) => description.categories?.includes('trigger'));
+  }
+  return allNodes.value;
+});
 
 /** 搜索结果(平铺,跨所有节点)。 */
 const searchResults = computed(() => {
   const q = search.value.trim().toLowerCase();
-  return allNodes.value.filter((description) =>
+  return eligibleNodes.value.filter((description) =>
     [description.displayName, description.name, ...(description.aliases ?? [])]
       .some((value) => value.toLowerCase().includes(q)),
   );
@@ -62,11 +77,26 @@ const searchResults = computed(() => {
 /** 下钻列表:分类 → match 命中的节点;触发器 "other" → 全部触发器。 */
 const drillNodes = computed<NodeTypeInfo[]>(() => {
   if (!drill.value) return [];
+  if (drill.value === 'trigger-app') {
+    return allNodes.value.filter((description) => description.subcategories?.includes('App Events'));
+  }
+  if (drill.value === 'trigger-other') {
+    return allNodes.value.filter((description) => description.subcategories?.includes('Other Triggers'));
+  }
   const cat = CATEGORIES.find((c) => c.key === drill.value);
   if (cat) return allNodes.value.filter((description) => description.categories?.includes(cat.category));
   return allNodes.value.filter((description) => description.categories?.includes('trigger')); // 触发器下钻
 });
-const drillTitle = computed(() => CATEGORIES.find((c) => c.key === drill.value)?.title ?? 'Triggers');
+const drillTitle = computed(() => {
+  if (drill.value === 'trigger-app') return 'On app event';
+  if (drill.value === 'trigger-other') return 'Other ways';
+  return CATEGORIES.find((c) => c.key === drill.value)?.title ?? 'Triggers';
+});
+const aiPickerTitle = computed(() => ({
+  ai_languageModel: 'Choose a Chat Model',
+  ai_memory: 'Choose Memory',
+  ai_tool: 'Choose a Tool',
+}[pendingAi.value?.type ?? ''] ?? 'Choose an AI node'));
 
 function addNode(desc: NodeTypeInfo) {
   editor.addNode(desc);
@@ -75,13 +105,14 @@ function addNode(desc: NodeTypeInfo) {
 function pickCurated(t: (typeof CURATED_TRIGGERS)[number]) {
   const desc = t.addType ? nodeTypes.byType.get(t.addType) : undefined;
   if (desc) addNode(desc);
-  else drill.value = 'other'; // "Other ways" → 下钻触发器全表
+  else drill.value = t.drillKey ?? 'trigger-other';
 }
 function openCategory(key: string) {
   drill.value = key;
 }
 function close() {
   editor.nodePickerOpen = false;
+  editor.pendingAiConnection = null;
   search.value = '';
   drill.value = null;
 }
@@ -149,10 +180,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
         <button v-if="drill" class="picker-back" type="button" aria-label="Back to node categories" data-test="picker-back" @click="drill = null">‹</button>
         <div>
           <div id="node-picker-title" class="picker-title">
-            {{ drill ? drillTitle : isTriggerRoot ? 'What triggers this workflow?' : 'What happens next?' }}
+            {{ pendingAi ? aiPickerTitle : drill ? drillTitle : isTriggerRoot ? 'What triggers this workflow?' : 'What happens next?' }}
           </div>
           <div class="picker-sub">
-            {{ drill ? 'Select a node to add' : isTriggerRoot ? 'A trigger is a step that starts your workflow' : 'Add a node to transform data or call a service' }}
+            {{ pendingAi ? 'Select a node to connect to the AI Agent' : drill ? 'Select a node to add' : isTriggerRoot ? 'A trigger is a step that starts your workflow' : 'Add a node to transform data or call a service' }}
           </div>
         </div>
         <button class="picker-close" type="button" aria-label="Close node panel" data-test="picker-close" @click="close">
@@ -195,9 +226,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
         </template>
 
         <!-- 下钻态:该分类/触发器下的节点 -->
-        <template v-else-if="drill">
+        <template v-else-if="drill || pendingAi">
           <button
-            v-for="desc in drillNodes"
+            v-for="desc in pendingAi ? eligibleNodes : drillNodes"
             :key="desc.name"
             class="node-item"
             draggable="true"
@@ -212,10 +243,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
             </span>
             <span class="node-item-arrow">›</span>
           </button>
-          <p v-if="drillNodes.length === 0" class="dim empty">No nodes in this category yet</p>
+          <p v-if="(pendingAi ? eligibleNodes : drillNodes).length === 0" class="dim empty">No nodes in this category yet</p>
         </template>
 
-        <!-- 根:空画布 → 8 触发器卡 -->
+        <!-- 根:尚无触发器 → 9 触发器卡 -->
         <template v-else-if="isTriggerRoot">
           <button
             v-for="t in CURATED_TRIGGERS"
@@ -224,11 +255,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
             :data-test-trigger="t.key"
             @click="pickCurated(t)"
           >
+            <span class="cat-icon"><IconSvg v-bind="nodeIcon(t.icon)" :size="22" /></span>
             <span class="cat-body">
               <span class="cat-name">{{ t.title }}</span>
               <span class="cat-desc">{{ t.desc }}</span>
             </span>
-            <span class="cat-arrow">›</span>
+            <span v-if="!t.addType" class="cat-arrow">›</span>
           </button>
         </template>
 
@@ -241,6 +273,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
             :data-test-category="c.key"
             @click="openCategory(c.key)"
           >
+            <span class="cat-icon"><IconSvg v-bind="nodeIcon(c.icon)" :size="22" /></span>
             <span class="cat-body">
               <span class="cat-name">{{ c.title }}</span>
               <span class="cat-desc">{{ c.desc }}</span>
@@ -284,6 +317,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
   border: none; background: none; border-radius: var(--radius); cursor: pointer;
 }
 .cat-item:hover { background: var(--color--background--light-1); }
+.cat-icon { width: 34px; height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: var(--color--text--shade-1); }
 .cat-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .cat-name { font-size: var(--font-size--sm); font-weight: var(--font-weight--medium); color: var(--color--text--shade-1); }
 .cat-desc { font-size: var(--font-size--2xs); color: var(--color--text); line-height: var(--line-height--md); }

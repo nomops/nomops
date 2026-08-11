@@ -46,6 +46,22 @@ describe('canvas editor UI', () => {
     expect(ndv).toContain('.ndv-col.params { min-width: 360px; }');
   });
 
+  it('puts AI capability add controls at the bottom of the node editor', () => {
+    expect(ndv).toContain('data-test="ndv-ai-capabilities"');
+    expect(ndv).toContain("['ai_languageModel', 'ai_memory', 'ai_tool']");
+    expect(ndv).toContain("editor.openAiNodePicker(node.value.name, type)");
+    expect(ndv).toContain(':data-test-ai-add="capability.type"');
+  });
+
+  it('implements real Webhook test listening and HTTP cURL import controls', () => {
+    expect(ndv).toContain("api.workflows.startWebhookTest(editor.id, node.value.name)");
+    expect(ndv).toContain('Listening for test event');
+    expect(ndv).toContain('Stop Listening');
+    expect(ndv).toContain('data-test="http-import-curl"');
+    expect(ndv).toContain('parseCurlCommand(curlDraft.value)');
+    expect(ndv).toContain('This will overwrite any changes you have already made to the current node');
+  });
+
   it('keeps context-menu execution capability aligned with the node toolbar', () => {
     expect(workflowCanvas).toContain('const ctxCanExecute = computed(');
     expect(workflowCanvas).toContain('v-if="ctxCanExecute" class="ctx-item" data-test="ctx-execute"');

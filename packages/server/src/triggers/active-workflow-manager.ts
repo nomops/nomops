@@ -13,6 +13,7 @@ import type {
   JsonObject,
 } from '@nomops/workflow';
 import { OperationalError } from '@nomops/workflow';
+import { scheduleConfigsFromParameters } from '@nomops/nodes';
 import { computeNextRun } from '../services/scheduler-service.js';
 import type { ExecutionService } from '../services/execution-service.js';
 import type { AuditService } from '../services/audit-service.js';
@@ -121,7 +122,7 @@ export class ActiveWorkflowManager {
       // 不判 leader——job 落库幂等,触发去重交给调度器的 unique + 租约乐观锁。
       if (node.type === 'nomops.schedule') {
         try {
-          await this.upsertScheduleJob(row.id, node);
+          await this.upsertScheduleJobs(row.id, node);
           await this.repos.publishPipeline.setTriggerStatus(row.id, node.name, 'schedule', 'active', null); // #40
         } catch (e) {
           await this.repos.publishPipeline.setTriggerStatus(row.id, node.name, 'schedule', 'error', (e as Error).message);
@@ -173,33 +174,37 @@ export class ActiveWorkflowManager {
     for (const poll of this.pollFns.get(workflowId) ?? []) await poll();
   }
 
-  /** Schedule 节点 → DB 调度作业（#38）：幂等 upsert,计算初始 nextRunAt。 */
-  private async upsertScheduleJob(workflowId: string, node: INode): Promise<void> {
-    const mode = node.parameters['mode'] === 'cron' ? 'cron' : 'interval';
-    const config =
-      mode === 'cron'
-        ? { mode: 'cron', cron: String(node.parameters['cronExpression'] ?? '*/5 * * * *') }
-        : { mode: 'interval', everySeconds: Math.max(1, Number(node.parameters['intervalSeconds'] ?? 60)) };
-    let nextRunAt: Date;
+  /** Schedule 节点 → 每条 Trigger Rule 一条 DB 作业；按规则顺序幂等 upsert。 */
+  private async upsertScheduleJobs(workflowId: string, node: INode): Promise<void> {
+    const configs = scheduleConfigsFromParameters(node.parameters);
+    const now = new Date();
+    let nextRuns: Date[];
     try {
-      nextRunAt = computeNextRun(config, 'UTC', new Date()) ?? new Date();
+      nextRuns = configs.map((config) => computeNextRun(config, 'UTC', now) ?? now);
     } catch (e) {
-      // 无效 cron 表达式 → 激活失败（activationError,与旧行为一致）
+      // 先完整校验再写库，避免多规则中途失败留下半套激活作业。
       throw new OperationalError(`Invalid cron expression: ${(e as Error).message}`, { node: node.name });
     }
-    const existing = await this.repos.scheduler.findJobByNode(workflowId, node.name);
-    if (existing) {
-      await this.repos.scheduler.updateJob(existing.id, { config, timezone: 'UTC', active: true, nextRunAt });
-    } else {
-      await this.repos.scheduler.createJob({
-        kind: 'workflow-schedule',
-        workflowId,
-        nodeName: node.name,
-        config,
-        timezone: 'UTC',
-        nextRunAt,
-        maxAttempts: 1,
-      });
+    const existing = await this.repos.scheduler.findJobsByNode(workflowId, node.name);
+    for (const [index, config] of configs.entries()) {
+      const job = existing[index];
+      const nextRunAt = nextRuns[index]!;
+      if (job) {
+        await this.repos.scheduler.updateJob(job.id, { config, timezone: 'UTC', active: true, nextRunAt });
+      } else {
+        await this.repos.scheduler.createJob({
+          kind: 'workflow-schedule',
+          workflowId,
+          nodeName: node.name,
+          config,
+          timezone: 'UTC',
+          nextRunAt,
+          maxAttempts: 1,
+        });
+      }
+    }
+    for (const stale of existing.slice(configs.length)) {
+      await this.repos.scheduler.updateJob(stale.id, { active: false, nextRunAt: null });
     }
   }
 

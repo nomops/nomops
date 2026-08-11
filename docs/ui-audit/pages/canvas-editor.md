@@ -54,12 +54,16 @@ Fit-to-view / Zoom in / Zoom out / Undo / Tidy-up（⇧⌥T）——Nomops 五�
 - Nomops：仅 `Logs`（无 Chat tab）。→ 与 B4 的 Open chat 缺失同源：**缺失 画布内嵌 Chat 测试面板**。
 
 ### B6. 节点创建面板（Node Creator）—— 已核实 ✅
-- n8n 触发器面板「What triggers this workflow?」：搜索 + 8 分类。
-- Nomops `NodePanel.vue:27-47` **已 1:1 复刻**「What triggers this workflow?」+ 8 张策展触发器卡（逐字对齐 n8n 文案）：Trigger manually / On app event / On a schedule / On webhook call / On form submission / **When executed by another workflow** / On chat message / Add another trigger（+ 下钻 all triggers）。空态标题/副标题一致（`What triggers this workflow?` / `A trigger is a step that starts your workflow`；非空 `What happens next?`）。**一致**。
+- n8n 触发器面板「What triggers this workflow?」：搜索 + 9 个策展入口。
+- Nomops `NodePanel.vue` **已 1:1 复刻**「What triggers this workflow?」+ 9 张策展触发器卡（逐字对齐 n8n 文案）：Trigger manually / On app event / On a schedule / On webhook call / On form submission / **When executed by another workflow** / On chat message / When running evaluation / Other ways。空白态搜索同样只返回触发器，选定触发器后才进入 `What happens next?`。**一致**。
 
 ### B7. NDV（节点详情视图）
 三栏：INPUT（Schema/Table/JSON + N ITEMS + 「Execute previous nodes」空态）| 中央（Parameters/Settings Tab + 「Execute step」按钮 + 字段/表达式 + 「I wish this node would…」反馈）| OUTPUT（Schema/Table/JSON + 「Execute step」空态）。
 **Nomops `NdvModal.vue` 已 1:1 复刻三栏结构**（见 nomops/ndv-node-detail.png）。差异：
+
+2026-08-10 节点级复核补充：第二批已完成 Manual Trigger / Schedule Trigger / Webhook / HTTP Request / Edit Fields / IF / Switch / Code 的字段结构和组合控件对齐，包括 Webhook URLs、Trigger Rules、Fields to Set、Routing Rule + Rename Output、Code 行号编辑区。
+
+2026-08-11 第三批补充：Webhook test-listener（一次性、超时、草稿执行）、Schedule 多 Rule DB 调度、HTTP Request Import cURL、Code Python 受限运行时均已完成并通过真实浏览器/API 验收。当前本地 n8n 的 Code 节点无 Ask AI 控件，Nomops 已移除禁用占位，避免把假控件当成功能。多实例 Webhook listener、cURL 冷门 flag 与 Python 任意包环境保留为明确边界，详见 `90-gap-list.md`。
 | 元素 | n8n | Nomops | 差异 |
 |---|---|---|---|
 | INPUT/OUTPUT 三视图 | Schema/Table/JSON | 同 | 一致 |
@@ -78,4 +82,4 @@ Fit-to-view / Zoom in / Zoom out / Undo / Tidy-up（⇧⌥T）——Nomops 五�
 2. ~~执行按钮缺 from 标签 + 下拉~~ **误报，已存在**（gated on `triggerNodes.length>1`）✅
 3. ~~NDV 缺 Pin data（钉住节点输出）UI~~ **P1-2 已修（2026-07-21）**：NDV OUTPUT「Pin/Pinned」按钮 + 画布节点角标 + editor store pinData + autosave 落库；引擎手动执行用冻结数据。见 `90-gap-list.md`。
 4. **顶栏 `⋯` 菜单项需补齐核对**（Settings、Push to git 等）（P2-8）。
-5. **已核实一致**：Node Creator（8 触发器）、NDV 三栏 + Parameters/Settings + Fixed/Expression + 参数钉 Focus、Open chat/Chat 面板、多触发器执行下拉。
+5. **已核实一致**：Node Creator（9 触发器）、NDV 三栏 + Parameters/Settings + Fixed/Expression + 参数钉 Focus、AI Agent 底部 Chat Model/Memory/Tool 能力入口、Open chat/Chat 面板、多触发器执行下拉。

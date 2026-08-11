@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';
 import type { IConnections, INode, JsonObject } from '@nomops/workflow';
 import type { DatabaseHandle, NomopsSchema } from './client.js';
 import type {
@@ -2559,8 +2559,8 @@ export class SchedulerRepository extends BaseRepository {
     return row as ScheduledJob;
   }
 
-  /** 某工作流某节点的作业（激活时 upsert 用；一个 Schedule 节点一条）。 */
-  async findJobByNode(workflowId: string, nodeName: string): Promise<ScheduledJob | null> {
+  /** 某工作流某节点的全部规则作业（一个 Schedule 节点可有多条 Trigger Rule）。 */
+  async findJobsByNode(workflowId: string, nodeName: string): Promise<ScheduledJob[]> {
     const rows = await this.db
       .select()
       .from(this.schema.scheduledJobs)
@@ -2570,8 +2570,13 @@ export class SchedulerRepository extends BaseRepository {
           eq(this.schema.scheduledJobs.nodeName, nodeName),
         ),
       )
-      .limit(1);
-    return (rows[0] as ScheduledJob | undefined) ?? null;
+      .orderBy(asc(this.schema.scheduledJobs.createdAt), asc(this.schema.scheduledJobs.id));
+    return rows as ScheduledJob[];
+  }
+
+  /** 兼容旧调用：返回该节点第一条规则作业。 */
+  async findJobByNode(workflowId: string, nodeName: string): Promise<ScheduledJob | null> {
+    return (await this.findJobsByNode(workflowId, nodeName))[0] ?? null;
   }
 
   async updateJob(

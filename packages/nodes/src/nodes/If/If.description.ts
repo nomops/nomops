@@ -6,7 +6,7 @@ export const ifDescription: INodeTypeDescription = {
   group: ['transform'],
   categories: ['flow'],
   version: 1,
-  description: 'Route items to the true / false output by condition',
+  description: 'Route items to the true or false output based on conditions',
   defaults: { name: 'IF' },
   inputs: ['main'],
   outputs: ['main', 'main'], // 输出0 = true，输出1 = false
@@ -16,18 +16,19 @@ export const ifDescription: INodeTypeDescription = {
       displayName: 'Conditions',
       name: 'conditions',
       type: 'filter',
-      default: [],
-      description: 'List of conditions [{ left, op, right }]; left/right support expressions',
+      default: [{ left: '', op: 'eq', right: '' }],
+      typeOptions: { filter: { addButtonLabel: 'Add condition' } },
     },
     {
-      displayName: 'Combine',
-      name: 'combine',
-      type: 'options',
-      default: 'and',
-      options: [
-        { name: 'AND (all match)', value: 'and' },
-        { name: 'OR (any match)', value: 'or' },
-      ],
+      displayName: 'Convert types where required',
+      name: 'convertTypes',
+      type: 'boolean',
+      default: false,
     },
+    { displayName: 'Options', name: 'options', type: 'collection', default: {}, options: [{
+      name: 'Combine Conditions', value: 'combine', values: [{ displayName: 'Combine Conditions', name: 'combine', type: 'options', default: 'and', options: [
+        { name: 'AND (All Conditions)', value: 'and' }, { name: 'OR (Any Condition)', value: 'or' },
+      ] }],
+    }] },
   ],
 };

@@ -5,6 +5,7 @@ export const sseTriggerDescription: INodeTypeDescription = {
   name: 'sseTrigger',
   group: ['trigger'],
   categories: ['trigger'],
+  subcategories: ['App Events'],
   aliases: ['server sent events', 'event stream'],
   version: 1,
   description: 'Start the workflow for events received from an SSE stream',

@@ -7,7 +7,22 @@
 > - 红线：源码仅参考交互逻辑，Nomops 自有组件重写；monochrome 配色差异不计 gap。
 
 ## 总体判断
-Nomops 前端是 n8n 的**高完成度 1:1 复刻**：路由 IA、Overview 五 Tab、画布三段式、NDV 三栏（含 Parameters/Settings + Fixed/Expression 分段 + 参数钉 Focus）、Node Creator 八触发器、凭证/设置弹窗、Settings 15 项菜单 + Personal/Users/API/Community 逐字段——**均已对齐**。真正缺口集中在 **chat-trigger 画布测试闭环** 与 **执行标注/调试** 两簇，外加若干自托管化的简化实现。
+Nomops 前端是 n8n 的**高完成度 1:1 复刻**：路由 IA、Overview 五 Tab、画布三段式、NDV 三栏（含 Parameters/Settings + Fixed/Expression 分段 + 参数钉 Focus）、Node Creator 九触发器、凭证/设置弹窗、Settings 15 项菜单 + Personal/Users/API/Community 逐字段——**均已对齐**。真正缺口集中在 **chat-trigger 画布测试闭环** 与 **执行标注/调试** 两簇，外加若干自托管化的简化实现。
+
+### 2026-08-10 节点级复核（第二批）
+
+- 已对齐：Manual Trigger、Schedule Trigger、Webhook、HTTP Request、Edit Fields、IF、Switch、Code 的 NDV 三栏空态、字段名/顺序、条件显隐、Options/Add Option 和关键组合控件。
+- 已补运行时：Schedule Trigger Rules 归一化（兼容旧参数）、HTTP Query/Auth/Body/Binary、Edit Fields Manual/JSON/Include Others/Dot Notation、IF 类型转换、Switch Rules/Expression/Options、Code `$input` + per-item。
+- 第二批当时仍待：Webhook `/webhook-test` 短期监听与超时注销；Schedule 同节点多 Rule 的 DB 调度；HTTP Request Import cURL；Code Python 安全沙箱。以上四项已在第三批完成。
+
+### 2026-08-11 节点级复核（第三批）
+
+- Webhook：补齐认证态启动/停止测试监听、公开 `/webhook-test/*` 一次性接收、超时注销、使用当前草稿执行，以及 n8n 形态的 `headers/params/query/body/webhookUrl/executionMode=test` 输出。浏览器真实 GET 首次 200 并回填 1 item，第二次 404，验证一次性消费。
+- Schedule Trigger：同一节点的每条 Trigger Rule 分别持久化为 DB scheduler job；更新时复用对应 job 并停用多余旧规则。集成测试验证两条规则分别到期触发。
+- HTTP Request：补齐 n8n `Import cURL` modal 和单次 undo 的整组参数替换；支持 HTTP(S) URL、method、query、headers、basic auth，以及 JSON/form/raw data。对照 n8n 的 POST 示例实测还原 URL、`limit=5`、Authorization 和 JSON body。
+- Code：补齐 Python 的 all-items/per-item 两种运行模式和受限子进程沙箱（CPU/内存/文件/超时/输出上限，禁 import、文件、网络入口和动态执行）；NDV 显示 Language=Python、行号编辑器与警告提示。当前本地 n8n 对照版本的 Code 节点没有 Ask AI 控件，因此删除 Nomops 先前的禁用假标签，不把不存在的控件计为 gap。
+- 验证：生产构建 6/6、全量 1173 项测试通过；隔离实例完成 Webhook、Schedule、HTTP cURL、Python NDV 的同视口浏览器复验，交互期间未出现页面报错。
+- 仍需明确的边界：测试 Webhook listener 当前为单进程内存态，多 main/负载均衡部署需要共享 registry 或 sticky routing；cURL importer 不覆盖 multipart 文件、客户端证书、代理等冷门 flag；Python 为安全的自托管子集，不等同 n8n task-runner 的任意包环境。
 
 ---
 
@@ -46,7 +61,7 @@ Nomops 前端是 n8n 的**高完成度 1:1 复刻**：路由 IA、Overview 五 T
 ---
 
 ## ✅ 已核实一致（原 ⏳ 已清，无需改造）
-- **Node Creator**：`What triggers this workflow?` + 8 策展触发器（逐字对齐）。
+- **Node Creator**：`What triggers this workflow?` + 9 策展触发器（含 evaluation，逐字对齐）。
 - **NDV**：三栏 + Parameters/Settings Tab + Fixed/Expression 分段（覆盖 6 类型）+ 参数钉 Focus 面板 + Docs 链接 + Execute step/previous 空态。
 - **执行**：列表（Auto refresh/多选/红错行）+ 详情（列表 + 只读画布 + Copy to editor + 「Which executions saving?」）+ 重试两变体（措辞对齐）。
 - **Settings 壳 + Personal/Users/API/Community nodes**：菜单项/顺序/徽章 + 逐字段对齐。

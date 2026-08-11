@@ -23,10 +23,10 @@ async function collectImages(ctx: IExecuteContext, item: INodeExecutionData): Pr
   return out;
 }
 
-const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
-const ANTHROPIC_VERSION = '2023-06-01';
+const LEGACY_ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
+const LEGACY_ANTHROPIC_VERSION = '2023-06-01';
 
-interface IAnthropicResponse {
+interface ILegacyAnthropicResponse {
   content?: Array<{ type: string; text?: string }>;
   model?: string;
   usage?: JsonObject;
@@ -34,16 +34,19 @@ interface IAnthropicResponse {
 }
 
 /**
- * AI Agent 节点，两种形态：
- * - 组合模式（挂了 ai_languageModel 子节点）：模型/工具/记忆可插拔，跑「模型→工具→模型」循环；
- * - 旧直连模式（未挂模型）：沿用原有单轮 Claude 调用（凭证直连），保持既有工作流不破。
+ * AI Agent 节点：模型/工具/记忆均由能力子节点提供，Agent 本身不绑定任何模型厂商凭证。
  */
 export class AiAgent implements INodeType {
   description = aiAgentDescription;
 
   async execute(this: IExecuteContext): Promise<INodeExecutionData[][]> {
     const models = (await this.getInputConnectionData('ai_languageModel')) as IAiLanguageModel[];
-    if (models.length === 0) return legacyDirectCall.call(this);
+    if (models.length === 0) {
+      // 仅迁移兼容：旧工作流保存过显式 model 参数时继续执行；新节点描述不再暴露这些字段。
+      const legacyModel = this.getNodeParameter('model', 0, undefined);
+      if (legacyModel) return legacyDirectCall.call(this);
+      throw new OperationalError('AI Agent requires a Chat Model. Connect one using the Chat Model + button.');
+    }
 
     const model = models[0]!;
     const tools = (await this.getInputConnectionData('ai_tool')) as IAiTool[];
@@ -55,11 +58,13 @@ export class AiAgent implements INodeType {
     const returnData: INodeExecutionData[] = [];
 
     for (let i = 0; i < items.length; i++) {
-      const prompt = String(this.getNodeParameter('prompt', i) ?? '');
+      const legacyPrompt = this.getNodeParameter('prompt', i, '');
+      const prompt = String(this.getNodeParameter('text', i, legacyPrompt) ?? '');
       if (!prompt) throw new OperationalError(`AI Agent: prompt is empty (item ${i})`, { itemIndex: i });
-      const system = String(this.getNodeParameter('system', i, '') ?? '');
-      const maxIterations = Math.max(1, Number(this.getNodeParameter('maxIterations', i, 5)));
-      const sessionId = String(this.getNodeParameter('sessionId', i, 'default') ?? 'default');
+      const options = (this.getNodeParameter('options', i, {}) ?? {}) as Record<string, unknown>;
+      const system = String(options['systemMessage'] ?? this.getNodeParameter('system', i, '') ?? '');
+      const maxIterations = Math.max(1, Number(options['maxIterations'] ?? this.getNodeParameter('maxIterations', i, 10)));
+      const sessionId = String(options['sessionId'] ?? this.getNodeParameter('sessionId', i, 'default') ?? 'default');
 
       // 会话组装：system + 记忆里的历史 + 本轮用户输入（含图片附件）
       const history = memory ? await memory.load(sessionId) : [];
@@ -111,30 +116,27 @@ export class AiAgent implements INodeType {
   }
 }
 
-/** 旧直连模式：逐 item 单轮调 Claude（历史行为原样保留）。 */
+/** 迁移兼容旧工作流；当前节点描述不会再创建或展示这些厂商直连字段。 */
 async function legacyDirectCall(this: IExecuteContext): Promise<INodeExecutionData[][]> {
   const credentials = await this.getCredentials('anthropicApi');
   const apiKey = String(credentials['apiKey'] ?? '');
-  if (!apiKey) throw new OperationalError('The anthropicApi credential is missing the apiKey field');
+  if (!apiKey) throw new OperationalError('The legacy anthropicApi credential is missing the apiKey field');
 
   const items = this.getInputData();
   const returnData: INodeExecutionData[] = [];
-
   for (let i = 0; i < items.length; i++) {
-    const model = (this.getNodeParameter('model', i, 'claude-sonnet-5') ?? 'claude-sonnet-5') as string;
-    const prompt = (this.getNodeParameter('prompt', i) ?? '') as string;
-    const system = (this.getNodeParameter('system', i, '') ?? '') as string;
-    const maxTokens = Number(this.getNodeParameter('maxTokens', i, 1024) ?? 1024);
-    if (!prompt) {
-      throw new OperationalError(`AI Agent: prompt is empty (item ${i})`, { itemIndex: i });
-    }
+    const model = String(this.getNodeParameter('model', i, 'claude-sonnet-5'));
+    const prompt = String(this.getNodeParameter('prompt', i, ''));
+    const system = String(this.getNodeParameter('system', i, ''));
+    const maxTokens = Number(this.getNodeParameter('maxTokens', i, 1024));
+    if (!prompt) throw new OperationalError(`AI Agent: prompt is empty (item ${i})`, { itemIndex: i });
 
     const response = (await this.helpers.httpRequest({
-      url: ANTHROPIC_URL,
+      url: LEGACY_ANTHROPIC_URL,
       method: 'POST',
       headers: {
         'x-api-key': apiKey,
-        'anthropic-version': ANTHROPIC_VERSION,
+        'anthropic-version': LEGACY_ANTHROPIC_VERSION,
       },
       body: {
         model,
@@ -142,11 +144,11 @@ async function legacyDirectCall(this: IExecuteContext): Promise<INodeExecutionDa
         ...(system ? { system } : {}),
         messages: [{ role: 'user', content: prompt }],
       },
-    })) as IAnthropicResponse;
+    })) as ILegacyAnthropicResponse;
 
     const text = (response.content ?? [])
-      .filter((c) => c.type === 'text')
-      .map((c) => c.text ?? '')
+      .filter((block) => block.type === 'text')
+      .map((block) => block.text ?? '')
       .join('');
     returnData.push({
       json: {
@@ -158,6 +160,5 @@ async function legacyDirectCall(this: IExecuteContext): Promise<INodeExecutionDa
       pairedItem: { item: i },
     });
   }
-
   return [returnData];
 }

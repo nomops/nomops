@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { IExecuteContext, INodeExecutionData, JsonObject } from '@nomops/workflow';
+import type { IAiLanguageModel, IExecuteContext, INodeExecutionData, JsonObject } from '@nomops/workflow';
 import { AiAgent } from '../AiAgent/AiAgent.node.js';
 import { ExecuteWorkflow } from '../ExecuteWorkflow/ExecuteWorkflow.node.js';
 
@@ -25,64 +25,44 @@ function stubContext(
 }
 
 describe('AI Agent 节点', () => {
-  it('逐 item 调 Claude API：请求形状正确、输出映射 text/usage（凭证注入）', async () => {
+  it('旧工作流若保存过显式 model 参数仍可迁移执行，但新描述不再暴露该参数', async () => {
     const calls: Array<Record<string, unknown>> = [];
     const output = await new AiAgent().execute!.call(
       stubContext(
-        [{ json: { topic: '猫' } }, { json: { topic: '狗' } }],
+        [{ json: {} }],
+        { model: 'claude-sonnet-5', prompt: 'legacy prompt', maxTokens: 200 },
         {
-          model: 'claude-sonnet-5',
-          prompt: (i: number) => `写一句关于${i === 0 ? '猫' : '狗'}的话`,
-          system: '你是诗人',
-          maxTokens: 200,
-        },
-        {
-          getCredentials: async () => ({ apiKey: 'sk-test-123' }),
+          getCredentials: async () => ({ apiKey: 'legacy-key' }),
           helpers: {
-            httpRequest: async (opts) => {
-              calls.push(opts as unknown as Record<string, unknown>);
-              return {
-                content: [{ type: 'text', text: '好句子' }],
-                model: 'claude-sonnet-5',
-                usage: { input_tokens: 10, output_tokens: 5 },
-                stop_reason: 'end_turn',
-              };
+            httpRequest: async (options) => {
+              calls.push(options as unknown as Record<string, unknown>);
+              return { content: [{ type: 'text', text: 'legacy ok' }], model: 'claude-sonnet-5' };
             },
           },
         },
       ),
     );
-
-    expect(calls).toHaveLength(2);
-    const first = calls[0]! as {
-      url: string;
-      headers: Record<string, string>;
-      body: { model: string; system?: string; max_tokens: number; messages: Array<{ content: string }> };
-    };
-    expect(first.url).toBe('https://api.anthropic.com/v1/messages');
-    expect(first.headers['x-api-key']).toBe('sk-test-123');
-    expect(first.headers['anthropic-version']).toBeTruthy();
-    expect(first.body.model).toBe('claude-sonnet-5');
-    expect(first.body.system).toBe('你是诗人');
-    expect(first.body.max_tokens).toBe(200);
-    expect(first.body.messages[0]!.content).toBe('写一句关于猫的话');
-
-    expect(output[0]![0]!.json).toMatchObject({ text: '好句子', model: 'claude-sonnet-5' });
-    expect(output[0]![1]!.pairedItem).toEqual({ item: 1 });
+    expect(calls).toHaveLength(1);
+    expect(output[0]?.[0]?.json).toMatchObject({ text: 'legacy ok', model: 'claude-sonnet-5' });
   });
 
-  it('凭证缺 apiKey → 可读错误', async () => {
+  it('未连接 Chat Model → 引导使用节点底部的 Chat Model +', async () => {
     await expect(
       new AiAgent().execute!.call(
-        stubContext([{ json: {} }], { prompt: 'hi' }, { getCredentials: async () => ({}) }),
+        stubContext([{ json: {} }], { text: 'hi' }),
       ),
-    ).rejects.toThrow(/missing the apiKey/);
+    ).rejects.toThrow(/requires a Chat Model.*Chat Model \+ button/);
   });
 
   it('prompt 为空 → 带 item 定位的错误', async () => {
+    const model: IAiLanguageModel = { chat: async () => ({ content: 'unused' }) };
     await expect(
       new AiAgent().execute!.call(
-        stubContext([{ json: {} }], { prompt: '' }, { getCredentials: async () => ({ apiKey: 'k' }) }),
+        stubContext(
+          [{ json: {} }],
+          { text: '' },
+          { getInputConnectionData: async (type) => type === 'ai_languageModel' ? [model] : [] },
+        ),
       ),
     ).rejects.toThrow(/prompt is empty/);
   });

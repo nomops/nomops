@@ -614,6 +614,13 @@ export const api = {
     remove: (id: string) => http<void>('DELETE', `/api/workflows/${id}`),
     run: (id: string, opts: { destinationNode?: string; startNode?: string } = {}) =>
       http<RunSummary>('POST', `/api/workflows/${id}/run`, opts),
+    startWebhookTest: (id: string, nodeName: string) =>
+      http<{ listening: true; method: string; testUrl: string; expiresAt: string }>(
+        'POST',
+        `/api/workflows/${id}/webhook-test/${encodeURIComponent(nodeName)}`,
+      ),
+    stopWebhookTest: (id: string, nodeName: string) =>
+      http<void>('DELETE', `/api/workflows/${id}/webhook-test/${encodeURIComponent(nodeName)}`),
     /* 画布聊天（Chat Trigger）：消息(+多模态附件)进工作流，回最后节点的文本输出 */
     chat: (
       id: string,

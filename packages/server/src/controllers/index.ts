@@ -380,7 +380,7 @@ export function createApiRouter(services: AppServices): Router {
     else if (path.startsWith('/workflows')) {
       if (req.method === 'GET') required = 'workflow:read';
       else if (req.method === 'DELETE') required = 'workflow:delete';
-      else if (/\/(?:run|chat|test-runs)$/.test(path)) required = 'execution:execute';
+      else if (/\/(?:run|chat|test-runs)$/.test(path) || /\/webhook-test\//.test(path)) required = 'execution:execute';
       else required = 'workflow:update';
     } else if (path.startsWith('/executions')) {
       if (req.method === 'GET') required = 'execution:read';
@@ -722,6 +722,43 @@ export function createApiRouter(services: AppServices): Router {
       });
       recordAudit(services, req, 'workflow.run', { type: 'workflow', id: param(req, 'id') }, { mode: 'manual', executionId: summary.executionId });
       res.json(summary);
+    }),
+  );
+
+  /* Webhook 编辑期单次监听：注册草稿节点，不触碰生产 webhook_entities。 */
+  router.post(
+    '/workflows/:id/webhook-test/:nodeName',
+    workflowExecute,
+    h(async (req, res) => {
+      const workflowId = param(req, 'id');
+      const projectId = auth(req).projectId;
+      const row = await services.workflows.getById(workflowId, projectId);
+      const nodeName = param(req, 'nodeName');
+      const node = (row.nodes as INode[]).find((candidate) => candidate.name === nodeName);
+      if (!node || node.type !== 'nomops.webhook') {
+        throw new OperationalError('Webhook node not found in workflow draft', { status: 404, node: nodeName });
+      }
+      const path = String(node.parameters['path'] ?? '').trim();
+      const method = String(node.parameters['method'] ?? 'GET').toUpperCase();
+      if (!path) throw new OperationalError('Webhook path is required', { status: 400, node: nodeName });
+      const listener = services.webhookTests.register({ workflowId, projectId, nodeName, method, path });
+      const proto = String(req.headers['x-forwarded-proto'] ?? req.protocol ?? 'http').split(',')[0]!.trim();
+      const origin = `${proto}://${req.headers.host ?? 'localhost'}`;
+      res.json({
+        listening: true,
+        method,
+        testUrl: `${origin}/webhook-test/${path}`,
+        expiresAt: listener.expiresAt.toISOString(),
+      });
+    }),
+  );
+  router.delete(
+    '/workflows/:id/webhook-test/:nodeName',
+    workflowExecute,
+    h(async (req, res) => {
+      await services.workflows.getById(param(req, 'id'), auth(req).projectId);
+      services.webhookTests.stop(param(req, 'id'), param(req, 'nodeName'), auth(req).projectId);
+      res.status(204).end();
     }),
   );
 
@@ -3105,6 +3142,84 @@ export function createWebhookRouter(services: AppServices): Router {
     }),
   );
   router.all(
+    '/webhook-test/*path',
+    h(async (req, res) => {
+      const path = String(req.params['path'] ?? '').split(',').join('/');
+      const listener = services.webhookTests.peek(path, req.method);
+      if (!listener) {
+        res.status(404).json({ error: `No webhook is listening: ${req.method} /webhook-test/${path}` });
+        return;
+      }
+
+      const row = await services.workflows.getById(listener.workflowId, listener.projectId);
+      const node = (row.nodes as INode[]).find((candidate) => candidate.name === listener.nodeName);
+      if (!node || node.type !== 'nomops.webhook') {
+        services.webhookTests.consume(path, req.method, listener.id);
+        res.status(404).json({ error: 'Webhook node no longer exists in the workflow draft' });
+        return;
+      }
+      if (!(await authenticateWebhook(req, node, listener.projectId))) {
+        res.setHeader('WWW-Authenticate', 'Bearer realm="nomops-webhook", Basic realm="nomops-webhook"');
+        res.status(401).json({ error: 'Webhook authentication failed' });
+        return;
+      }
+      if (!services.webhookTests.consume(path, req.method, listener.id)) {
+        res.status(404).json({ error: 'Webhook test listener was already consumed' });
+        return;
+      }
+
+      const proto = String(req.headers['x-forwarded-proto'] ?? req.protocol ?? 'http').split(',')[0]!.trim();
+      const webhookUrl = `${proto}://${req.headers.host ?? 'localhost'}/webhook-test/${path}`;
+      let seed: INodeExecutionData[] = [{
+        json: {
+          headers: req.headers as Record<string, unknown>,
+          params: {},
+          query: req.query as Record<string, unknown>,
+          body: (req.body ?? {}) as Record<string, unknown>,
+          webhookUrl,
+          executionMode: 'test',
+        },
+      }];
+      let nodeResponse: IWebhookResponseData | undefined;
+      const nodeType = await services.nodeLoader.getByNameAndVersion(node.type, node.typeVersion);
+      if (nodeType.webhook) {
+        const result = await nodeType.webhook.call(webhookContext('trigger', node, req, path, {}));
+        nodeResponse = result.response;
+        if (!result.workflowData) {
+          sendResponse(res, nodeResponse ?? { statusCode: 204 });
+          return;
+        }
+        seed = result.workflowData;
+      }
+
+      let custom: IWebhookResponseData | null = null;
+      const summary = await services.executions.runTestWebhook(
+        listener.workflowId,
+        listener.projectId,
+        seed,
+        listener.nodeName,
+        { onWebhookResponse: (response) => { custom = response as IWebhookResponseData; } },
+      );
+      services.audit.log({
+        projectId: listener.projectId,
+        action: 'workflow.run',
+        resourceType: 'workflow',
+        resourceId: listener.workflowId,
+        details: { mode: 'webhook-test', executionId: summary.executionId },
+        ip: req.ip ?? null,
+      });
+      if (custom) {
+        sendResponse(res, custom);
+        return;
+      }
+      if (nodeResponse) {
+        sendResponse(res, nodeResponse);
+        return;
+      }
+      res.json({ message: 'Workflow was started' });
+    }),
+  );
+  router.all(
     '/webhook/*path',
     h(async (req, res) => {
       const path = String(req.params['path'] ?? '')
@@ -3134,7 +3249,11 @@ export function createWebhookRouter(services: AppServices): Router {
       );
       const node = (row.nodes as INode[]).find((candidate) => candidate.name === entity.node);
       if (!node) throw new OperationalError('Webhook node not found in published workflow', { node: entity.node });
-      if (node.parameters['ignoreBots'] === true && BOT_USER_AGENT.test(req.headers['user-agent'] ?? '')) {
+      const webhookOptions = node.parameters['options'];
+      const ignoreBots = node.parameters['ignoreBots'] === true
+        || (webhookOptions && typeof webhookOptions === 'object' && !Array.isArray(webhookOptions)
+          && (webhookOptions as Record<string, unknown>)['ignoreBots'] === true);
+      if (ignoreBots && BOT_USER_AGENT.test(req.headers['user-agent'] ?? '')) {
         res.setHeader('X-Nomops-Webhook-Ignored', 'bot');
         res.status(204).end();
         return;

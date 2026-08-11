@@ -205,7 +205,7 @@ describe('RespondToWebhook', () => {
           type: 'nomops.webhook',
           typeVersion: 1,
           position: [0, 0],
-          parameters: { path: 'ignore-preview-bot', method: 'POST', ignoreBots: true },
+          parameters: { path: 'ignore-preview-bot', method: 'POST', options: { ignoreBots: true } },
         },
         { id: 'b', name: 'Set', type: 'nomops.set', typeVersion: 1, position: [200, 0], parameters: { fields: { ran: true } } },
       ],

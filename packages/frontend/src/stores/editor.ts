@@ -38,6 +38,10 @@ export const useEditorStore = defineStore('editor', {
     pendingInsert: null as
       | { source: string; sourceIndex: number; target: string; targetIndex: number; type: string }
       | null,
+    /** AI Agent NDV 底部“+”：下一次新增的能力节点要反向接入哪个宿主能力口。 */
+    pendingAiConnection: null as
+      | { target: string; type: string; targetIndex: number }
+      | null,
     /** NDV 模态开关（双击节点打开）。 */
     ndvOpen: false,
     /** 节点选择器抽屉开关（右侧，点「+」或空态打开）。 */
@@ -178,17 +182,40 @@ export const useEditorStore = defineStore('editor', {
       // D079 对标基线:创建时填入各属性的 default(如便签默认 markdown 内容)
       const parameters: Record<string, unknown> = {};
       for (const p of desc.properties ?? []) {
-        if (p.default !== undefined) parameters[p.name] = p.default;
+        if (p.typeOptions?.generateUuid) parameters[p.name] = crypto.randomUUID();
+        else if (p.default !== undefined) parameters[p.name] = JSON.parse(JSON.stringify(p.default)) as unknown;
       }
+      const pendingAi = this.pendingAiConnection;
+      const aiTarget = pendingAi ? this.nodes.find((n) => n.name === pendingAi.target) : undefined;
       const node: INode = {
         id: crypto.randomUUID(),
         name,
         type: desc.type,
         typeVersion: Array.isArray(desc.version) ? desc.version[desc.version.length - 1]! : desc.version,
-        position: position ?? [80 + this.nodes.length * 220, 120 + (this.nodes.length % 3) * 40],
+        position: position ?? (aiTarget
+          ? [aiTarget.position[0], aiTarget.position[1] + 220]
+          : [80 + this.nodes.length * 220, 120 + (this.nodes.length % 3) * 40]),
         parameters,
       };
       this.nodes.push(node);
+      // AI 能力子节点的方向与普通主线相反：能力节点(output ai_*) → Agent(input ai_*)。
+      if (pendingAi) {
+        this.pendingAiConnection = null;
+        const sourceIndex = desc.outputs.includes(pendingAi.type) ? 0 : -1;
+        if (sourceIndex >= 0 && aiTarget) {
+          this.connections = addConnection(this.connections, {
+            source: name,
+            sourceIndex,
+            target: pendingAi.target,
+            targetIndex: pendingAi.targetIndex,
+            type: pendingAi.type,
+          });
+        }
+        this.selectedNodeName = name;
+        this.selectedNames = [name];
+        this.dirty = true;
+        return node;
+      }
       // D076：从连线 + 插入 —— 断开原连线，改接 source→新节点→target
       const ins = this.pendingInsert;
       if (ins) {
@@ -345,6 +372,15 @@ export const useEditorStore = defineStore('editor', {
       this.dirty = true;
     },
 
+    /** Import cURL 等整组替换：一次历史快照，避免每个导入字段各占一次 undo。 */
+    replaceNodeParameters(nodeName: string, parameters: Record<string, unknown>) {
+      const node = this.nodes.find((candidate) => candidate.name === nodeName);
+      if (!node) return;
+      this.pushHistory();
+      node.parameters = JSON.parse(JSON.stringify(parameters)) as Record<string, unknown>;
+      this.dirty = true;
+    },
+
     /** NDV 凭证选择器:设置/清除节点某凭证类型的绑定(node.credentials[type])。 */
     setNodeCredential(nodeName: string, credType: string, value: { id: string; name: string } | null) {
       const node = this.nodes.find((n) => n.name === nodeName);
@@ -477,6 +513,14 @@ export const useEditorStore = defineStore('editor', {
     openNdv(name: string) {
       this.selectedNodeName = name;
       this.ndvOpen = true;
+    },
+
+    /** 从 AI Agent NDV 的 Chat Model / Memory / Tool “+”打开受类型约束的节点选择器。 */
+    openAiNodePicker(target: string, type: string, targetIndex = 0) {
+      this.pendingAiConnection = { target, type, targetIndex };
+      this.selectedNodeName = target;
+      this.ndvOpen = false;
+      this.nodePickerOpen = true;
     },
 
     /**

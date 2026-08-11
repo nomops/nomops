@@ -7,6 +7,7 @@ import { useEditorStore } from '../../stores/editor.js';
 import { t } from '../../lib/i18n.js';
 import { LINKS } from '../../lib/links.js';
 import { api } from '../../api/client.js';
+import { isPropertyVisible } from '../../lib/display-options.js';
 
 /**
  * schema 驱动的单参数控件：按 INodeProperties.type 分发。
@@ -191,6 +192,7 @@ function onDocClick(event: MouseEvent) {
   if (!rootEl.value?.contains(event.target as Node)) {
     optOpen.value = false;
     menuOpen.value = false;
+    collectionOpen.value = false;
   }
 }
 onMounted(() => document.addEventListener('click', onDocClick, true));
@@ -215,7 +217,7 @@ function insertFromAI() {
 }
 
 /* D109 对标基线:几乎所有标量字段都可切 Fixed|Expression(原仅 string)。 */
-const EXPRESSIONABLE = ['string', 'number', 'options', 'multiOptions', 'dateTime', 'color'];
+const EXPRESSIONABLE = ['string', 'number', 'boolean', 'options', 'multiOptions', 'dateTime', 'color'];
 const canExpression = computed(() => EXPRESSIONABLE.includes(props.prop.type) && !props.prop.noDataExpression);
 
 /* D111 对标基线:string 带 typeOptions.rows 渲染多行 textarea(如 System Message)。 */
@@ -224,6 +226,7 @@ const textRows = computed(() => {
   return typeof rows === 'number' && rows > 1 ? rows : 0;
 });
 const isMultiline = computed(() => props.prop.type === 'string' && textRows.value > 0);
+const codeLineNumbers = computed(() => Array.from({ length: Math.max(1, String(current.value ?? '').split('\n').length) }, (_value, index) => index + 1));
 
 /* D117 对标基线:上游输入首 item 的 $json 成员路径,喂给表达式编辑器做 `$json.` 变量树补全。 */
 const jsonFields = computed<string[]>(() => {
@@ -262,6 +265,9 @@ function fixedRows(group: INodePropertyOption): Record<string, unknown>[] {
   if (props.prop.typeOptions?.multipleValues) return Array.isArray(raw) ? raw as Record<string, unknown>[] : [];
   return [raw !== null && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {}];
 }
+function visibleFixedFields(group: INodePropertyOption, row: Record<string, unknown>) {
+  return (group.values ?? []).filter((property) => isPropertyVisible(property, row, group.values ?? []));
+}
 function setFixedRows(group: INodePropertyOption, rows: Record<string, unknown>[]) {
   emit('change', { ...fixedValue.value, [group.name]: props.prop.typeOptions?.multipleValues ? rows : (rows[0] ?? {}) });
 }
@@ -274,6 +280,40 @@ function updateFixedRow(group: INodePropertyOption, index: number, name: string,
 }
 function removeFixedRow(group: INodePropertyOption, index: number) {
   setFixedRows(group, fixedRows(group).filter((_row, rowIndex) => rowIndex !== index));
+}
+
+/* 基线 collection：一个 Add Option 菜单，选择后把可选字段加入当前参数组。 */
+const collectionOpen = ref(false);
+const collectionValue = computed<Record<string, unknown>>(() =>
+  current.value !== null && typeof current.value === 'object' && !Array.isArray(current.value)
+    ? current.value as Record<string, unknown>
+    : {},
+);
+const collectionFields = computed(() =>
+  (props.prop.options ?? [])
+    .flatMap((option) => option.values ?? [])
+    .filter((field) => Object.prototype.hasOwnProperty.call(collectionValue.value, field.name)),
+);
+const availableCollectionOptions = computed(() =>
+  (props.prop.options ?? []).filter((option) =>
+    (option.values ?? []).some((field) => !Object.prototype.hasOwnProperty.call(collectionValue.value, field.name)),
+  ),
+);
+function addCollectionOption(option: INodePropertyOption) {
+  const patch: Record<string, unknown> = {};
+  for (const field of option.values ?? []) {
+    if (!Object.prototype.hasOwnProperty.call(collectionValue.value, field.name)) patch[field.name] = field.default;
+  }
+  emit('change', { ...collectionValue.value, ...patch });
+  collectionOpen.value = false;
+}
+function updateCollectionField(name: string, value: unknown) {
+  emit('change', { ...collectionValue.value, [name]: value });
+}
+function removeCollectionField(name: string) {
+  const next = { ...collectionValue.value };
+  delete next[name];
+  emit('change', next);
 }
 function moveFixedRow(group: INodePropertyOption, index: number, offset: number) {
   const rows = fixedRows(group).slice();
@@ -351,12 +391,14 @@ const OPERATORS = [
 ] as const;
 const UNARY_OPS = ['isEmpty', 'isNotEmpty'];
 
-interface Cond { left?: unknown; op: string; right?: unknown }
+interface Cond { left?: unknown; op: string; right?: unknown; outputName?: string }
 const conditions = computed<Cond[]>(() => (Array.isArray(current.value) ? (current.value as Cond[]) : []));
 function addCondition() {
+  const max = props.prop.typeOptions?.filter?.maxConditions;
+  if (typeof max === 'number' && conditions.value.length >= max) return;
   emit('change', [...conditions.value, { left: '', op: 'eq', right: '' }]);
 }
-function updateCondition(i: number, key: 'left' | 'op' | 'right', v: unknown) {
+function updateCondition(i: number, key: 'left' | 'op' | 'right' | 'outputName', v: unknown) {
   emit('change', conditions.value.map((c, idx) => (idx === i ? { ...c, [key]: v } : c)));
 }
 function removeCondition(i: number) {
@@ -392,20 +434,34 @@ function removeField(i: number) {
   fieldRows.value = fieldRows.value.filter((_, idx) => idx !== i);
   emit('change', localToObj(fieldRows.value));
 }
+function assignmentType(value: unknown): 'string' | 'number' | 'boolean' | 'object' | 'array' {
+  if (Array.isArray(value)) return 'array';
+  if (value !== null && typeof value === 'object') return 'object';
+  if (typeof value === 'number') return 'number';
+  if (typeof value === 'boolean') return 'boolean';
+  return 'string';
+}
+function convertAssignment(value: unknown, type: string): unknown {
+  if (type === 'number') return Number(value) || 0;
+  if (type === 'boolean') return value === true || value === 'true';
+  if (type === 'object') return value !== null && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  if (type === 'array') return Array.isArray(value) ? value : [];
+  return typeof value === 'string' ? value : JSON.stringify(value);
+}
 </script>
 
 <template>
   <div ref="rootEl" class="param" :data-test-param="prop.name">
     <!-- D112 对标基线:notice 渲染为紫色 Tip 提示条(非灰文本) -->
     <template v-if="prop.type === 'notice'">
-      <div class="param-notice" data-test="param-notice">
+      <div class="param-notice" :class="prop.typeOptions?.noticeStyle" data-test="param-notice">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="pn-icon"><circle cx="12" cy="12" r="9" /><path d="M12 8h.01M11 12h1v4h1" /></svg>
         <span class="pn-text">{{ prop.description ?? prop.displayName }}</span>
       </div>
     </template>
 
     <template v-else>
-      <label>
+      <label v-if="prop.type !== 'boolean'">
         {{ prop.displayName }}
         <span v-if="prop.required" style="color: var(--err)">*</span>
         <!-- D116 live 实测基线字段悬浮工具条:ⓘ(circle-help) + ⋮(Reset Value) + Fixed|Expression 分段 -->
@@ -506,8 +562,22 @@ function removeField(i: number) {
           @dragover="onDragOverExpr"
           @dragleave="dragOver = false"
         >
+          <div v-if="isMultiline && prop.typeOptions?.editor === 'code'" class="code-editor" data-test="code-editor">
+            <div class="code-language">{{ prop.displayName }}</div>
+            <div class="code-surface">
+              <div class="code-gutter" aria-hidden="true"><span v-for="line in codeLineNumbers" :key="line">{{ line }}</span></div>
+              <textarea
+                :value="String(current ?? '')"
+                :placeholder="prop.placeholder"
+                :rows="textRows"
+                spellcheck="false"
+                data-test="param-textarea"
+                @input="emit('change', ($event.target as HTMLTextAreaElement).value)"
+              />
+            </div>
+          </div>
           <textarea
-            v-if="isMultiline"
+            v-else-if="isMultiline"
             :value="String(current ?? '')"
             :placeholder="prop.placeholder"
             :rows="textRows"
@@ -531,17 +601,24 @@ function removeField(i: number) {
       />
 
       <!-- 基线实测开关：轨 32×16 圆胶囊 / off=light-2+1px neutral-700 边 / knob 12 白 / on=green-500 -->
-      <button
-        v-else-if="prop.type === 'boolean'"
-        type="button"
-        class="pswitch"
-        :class="{ on: Boolean(current) }"
-        role="switch"
-        :aria-checked="Boolean(current)"
-        @click="emit('change', !current)"
-      >
-        <span class="pswitch-knob" />
-      </button>
+      <div v-else-if="prop.type === 'boolean'" class="boolean-row">
+        <button
+          type="button"
+          class="pswitch"
+          :class="{ on: Boolean(current) }"
+          role="switch"
+          :aria-checked="Boolean(current)"
+          :aria-label="prop.displayName"
+          @click="emit('change', !current)"
+        >
+          <span class="pswitch-knob" />
+        </button>
+        <span class="boolean-label">{{ prop.displayName }}<span v-if="prop.required" class="boolean-required"> *</span></span>
+        <span v-if="canExpression" class="pt-seg boolean-seg" data-test="param-fx">
+          <button type="button" class="pt-seg-btn active">{{ t('Fixed') }}</button>
+          <button type="button" class="pt-seg-btn" @click="toggleExpression()">{{ t('Expression') }}</button>
+        </span>
+      </div>
 
       <!-- D114 对标基线:options 自定义下拉(选项带描述副行;键盘 ↑↓/Enter/Esc;点击外关闭) -->
       <div v-else-if="prop.type === 'options'" class="opt-dd" data-test="options-dropdown" @keydown="onOptKeydown">
@@ -592,22 +669,41 @@ function removeField(i: number) {
       <!-- IF 条件组(对标基线 filter):左值 + 操作符下拉 + 右值 + Add condition -->
       <div v-else-if="prop.type === 'filter'" class="cond-editor" data-test="conditions-editor">
         <div v-for="(c, i) in conditions" :key="i" class="cond-row" data-test="condition-row">
+          <strong v-if="prop.typeOptions?.filter?.itemTitle" class="cond-title">{{ prop.typeOptions.filter.itemTitle }} {{ i + 1 }}</strong>
           <input class="cond-left" :value="String(c.left ?? '')" placeholder="value1" @input="updateCondition(i, 'left', ($event.target as HTMLInputElement).value)" />
           <select class="cond-op" :value="c.op" @change="updateCondition(i, 'op', ($event.target as HTMLSelectElement).value)">
             <option v-for="o in OPERATORS" :key="o.value" :value="o.value">{{ o.label }}</option>
           </select>
           <input v-if="!UNARY_OPS.includes(c.op)" class="cond-right" :value="String(c.right ?? '')" placeholder="value2" @input="updateCondition(i, 'right', ($event.target as HTMLInputElement).value)" />
           <span v-else class="cond-right-fill" />
+          <label v-if="prop.typeOptions?.filter?.showRenameOutput" class="cond-rename">
+            <span>Rename Output</span>
+            <input :value="c.outputName ?? ''" placeholder="Output name" @input="updateCondition(i, 'outputName', ($event.target as HTMLInputElement).value)" />
+          </label>
           <button class="row-del" type="button" title="Remove" @click="removeCondition(i)">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M21 6a1 1 0 1 1 0 2h-1v12.1c0 1.6-1.3 2.9-2.9 2.9H7c-1.6 0-2.9-1.3-2.9-2.9V8H3a1 1 0 0 1 0-2zm-7-5a3 3 0 0 1 3 3H7a3 3 0 0 1 3-3z" /></svg>
           </button>
         </div>
-        <button class="add-btn" type="button" data-test="add-condition" @click="addCondition">+ Add condition</button>
+        <button
+          class="add-btn"
+          type="button"
+          data-test="add-condition"
+          :disabled="typeof prop.typeOptions?.filter?.maxConditions === 'number' && conditions.length >= prop.typeOptions.filter.maxConditions"
+          @click="addCondition"
+        >+ {{ prop.typeOptions?.filter?.addButtonLabel ?? 'Add condition' }}</button>
       </div>
 
       <!-- Set 赋值区(对标基线 Set assignments):名/值行 + Add Field -->
       <div v-else-if="prop.type === 'assignmentCollection'" class="kv-editor" data-test="fields-editor">
+        <p v-if="fieldRows.length === 0" class="assignment-empty">Drag input fields here<br><span>or</span></p>
         <div v-for="(r, i) in fieldRows" :key="i" class="kv-row" data-test="field-row">
+          <select class="kv-type" :value="assignmentType(r.v)" aria-label="Field type" @change="updateField(i, { v: convertAssignment(r.v, ($event.target as HTMLSelectElement).value) })">
+            <option value="string">String</option>
+            <option value="number">Number</option>
+            <option value="boolean">Boolean</option>
+            <option value="object">Object</option>
+            <option value="array">Array</option>
+          </select>
           <input class="kv-k" :value="r.k" placeholder="Name" @input="updateField(i, { k: ($event.target as HTMLInputElement).value })" />
           <input class="kv-v" :value="String(r.v ?? '')" placeholder="Value" @input="updateField(i, { v: ($event.target as HTMLInputElement).value })" />
           <button class="row-del" type="button" title="Remove" @click="removeField(i)">
@@ -632,11 +728,11 @@ function removeField(i: number) {
             </div>
             <div class="fixed-values" :class="prop.typeOptions?.fixedCollection?.layout">
               <ParamInput
-                v-for="child in group.values ?? []"
+                v-for="child in visibleFixedFields(group, row)"
                 :key="child.name"
                 :prop="child"
                 :value="row[child.name]"
-                :node-parameters="nodeParameters"
+                :node-parameters="{ ...nodeParameters, ...row }"
                 :node-type="nodeType"
                 :node-type-version="nodeTypeVersion"
                 :credentials="credentials"
@@ -645,7 +741,7 @@ function removeField(i: number) {
             </div>
           </div>
           <button v-if="prop.typeOptions?.multipleValues" class="add-btn" type="button" :data-test-add-fixed="group.name" @click="addFixedRow(group)">
-            + Add {{ group.name }}
+            + {{ prop.typeOptions?.fixedCollection?.addButtonLabel ?? `Add ${group.name}` }}
           </button>
         </section>
       </div>
@@ -682,7 +778,40 @@ function removeField(i: number) {
         <p v-if="locatorError" class="error-text dynamic-status">{{ locatorError }}</p>
       </div>
 
-      <template v-else-if="prop.type === 'json' || prop.type === 'collection'">
+      <div v-else-if="prop.type === 'collection'" class="option-collection" data-test="option-collection">
+        <div v-for="field in collectionFields" :key="field.name" class="option-collection-field">
+          <ParamInput
+            :prop="field"
+            :value="collectionValue[field.name]"
+            :preview-items="previewItems"
+            :node-parameters="nodeParameters"
+            :node-name="nodeName"
+            :ai-tool="aiTool"
+            :node-type="nodeType"
+            :node-type-version="nodeTypeVersion"
+            :credentials="credentials"
+            @change="updateCollectionField(field.name, $event)"
+          />
+          <button type="button" class="option-remove" :aria-label="`Remove ${field.displayName}`" @click="removeCollectionField(field.name)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
+        <div v-if="availableCollectionOptions.length" class="option-add-wrap">
+          <button type="button" class="add-btn" data-test="add-option" @click.stop="collectionOpen = !collectionOpen">
+            + {{ prop.placeholder ?? 'Add Option' }}
+          </button>
+          <div v-if="collectionOpen" class="option-add-menu" data-test="add-option-menu">
+            <button
+              v-for="option in availableCollectionOptions"
+              :key="String(option.value)"
+              type="button"
+              @click="addCollectionOption(option)"
+            >{{ option.name }}</button>
+          </div>
+        </div>
+      </div>
+
+      <template v-else-if="prop.type === 'json'">
         <textarea v-model="jsonDraft" rows="5" spellcheck="false" @blur="commitJson" />
         <p v-if="jsonError" class="error-text">{{ jsonError }}</p>
       </template>
@@ -723,12 +852,45 @@ function removeField(i: number) {
   font-size: var(--font-size--sm); padding: 0 var(--spacing--xs);
 }
 .param :deep(input[type='text']), .param :deep(input:not([type])), .param :deep(input[type='number']) { height: 32px; }
+.boolean-row { display: flex; align-items: center; gap: 10px; min-height: 24px; }
+.boolean-seg { margin-left: auto; }
+.boolean-label { color: var(--color--text--shade-1); font-size: var(--font-size--2xs); }
+.boolean-required { color: var(--color--danger); }
 .param :deep(textarea) { padding: 8px var(--spacing--xs); }
+.code-editor { overflow: hidden; border: 1px solid var(--border-color); border-radius: var(--radius); background: #151515; }
+.code-language { padding: 6px 0; background: var(--color--background--light-1); color: var(--color--text--shade-1); font-size: var(--font-size--2xs); }
+.code-surface { display: grid; grid-template-columns: 34px minmax(0, 1fr); }
+.code-gutter { display: flex; flex-direction: column; align-items: flex-end; gap: 0; padding: 8px 7px 8px 0; border-right: 1px solid var(--border-color); color: var(--color--text--tint-2); font: 12px/19px ui-monospace, SFMono-Regular, Menlo, monospace; user-select: none; }
+.code-editor textarea { width: 100%; resize: vertical; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; background: #151515 !important; color: #e6e6e6 !important; font: 12px/19px ui-monospace, SFMono-Regular, Menlo, monospace !important; tab-size: 2; }
 .param :deep(input:focus), .param :deep(textarea:focus) { outline: none; box-shadow: inset 0 0 0 1px var(--color--primary); }
 
 /* collection 富控件:IF 条件行 / Set 键值行 */
 .cond-editor, .kv-editor { display: flex; flex-direction: column; gap: 8px; }
+.option-collection { display: flex; flex-direction: column; gap: 8px; }
+.option-collection-field { position: relative; padding-right: 26px; }
+.option-collection-field :deep(.param) { margin-bottom: 0; }
+.option-remove {
+  position: absolute; top: 0; right: 0; width: 22px; height: 22px; padding: 0;
+  border: none; background: transparent; color: var(--color--text--tint-1); font-size: 18px; cursor: pointer;
+}
+.option-remove:hover { color: var(--color--danger); }
+.option-remove svg { width: 13px; height: 13px; }
+.option-add-wrap { position: relative; align-self: flex-start; }
+.option-add-menu {
+  position: absolute; left: 0; bottom: calc(100% + 4px); z-index: 20; min-width: 190px; padding: 4px;
+  display: flex; flex-direction: column; background: var(--color--background--light-2);
+  border: 1px solid var(--border-color); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0, 0, 0, .28);
+}
+.option-add-menu button { justify-content: flex-start; border: none; background: transparent; color: var(--color--text--shade-1); }
+.option-add-menu button:hover { background: var(--color--background--light-1); }
 .cond-row, .kv-row { display: flex; align-items: center; gap: 6px; }
+.cond-row { flex-wrap: wrap; padding: 10px; border: var(--border-width) var(--border-style) var(--border-color); border-radius: var(--radius); background: var(--color--background--light-1); }
+.cond-title { flex: 0 0 100%; color: var(--color--text--shade-1); font-size: var(--font-size--2xs); }
+.cond-rename { flex: 0 0 100%; display: grid; gap: 4px; font-size: var(--font-size--3xs); color: var(--color--text--tint-1); }
+.cond-rename input { width: 100%; }
+.assignment-empty { margin: 2px 0; padding: 14px; text-align: center; color: var(--color--text--tint-1); border: 1px dashed var(--border-color); border-radius: var(--radius); font-size: var(--font-size--2xs); line-height: 1.6; }
+.assignment-empty span { font-size: var(--font-size--3xs); }
+.kv-type { width: 82px; height: 32px; background: var(--color--background--light-2); border: none; box-shadow: inset 0 0 0 1px var(--border-color); border-radius: var(--radius); color: var(--color--text--shade-1); font-size: var(--font-size--2xs); padding: 0 6px; }
 .cond-left, .cond-right, .kv-k, .kv-v { flex: 1; min-width: 0; height: 32px; }
 .cond-op {
   flex: 1.2; min-width: 0; height: 32px; background: var(--color--background--light-2);
@@ -918,4 +1080,10 @@ textarea { font-family: ui-monospace, monospace; }
 }
 .pn-icon { width: 15px; height: 15px; flex-shrink: 0; margin-top: 1px; color: var(--color--purple-500, #8b5cf6); }
 .pn-text :deep(a), .pn-text a { color: var(--color--purple-500, #8b5cf6); }
+.param-notice.warning {
+  background: rgba(173, 125, 58, 0.13); border-color: rgba(211, 168, 103, 0.65); color: #dfc396;
+}
+.param-notice.warning .pn-icon { color: #d3a867; }
+.param-notice.neutral { background: var(--color--background--light-1); border-color: var(--border-color); }
+.param-notice.neutral .pn-icon { color: var(--color--text--tint-1); }
 </style>

@@ -5,6 +5,7 @@ export const rssFeedReadTriggerDescription: INodeTypeDescription = {
   name: 'rssFeedReadTrigger',
   group: ['trigger'],
   categories: ['trigger'],
+  subcategories: ['App Events'],
   aliases: ['rss poll', 'atom trigger'],
   version: 1,
   description: 'Start the workflow when a feed publishes new entries',

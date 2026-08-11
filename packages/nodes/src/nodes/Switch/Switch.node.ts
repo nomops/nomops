@@ -14,15 +14,26 @@ export class Switch implements INodeType {
     const outputs: INodeExecutionData[][] = Array.from({ length: OUTPUT_COUNT }, () => []);
 
     for (const [i, item] of items.entries()) {
+      const mode = String(this.getNodeParameter('mode', i, 'rules') ?? 'rules');
+      if (mode === 'expression') {
+        const output = Number(this.getNodeParameter('output', i, 0));
+        if (!Number.isInteger(output) || output < 0 || output >= OUTPUT_COUNT) {
+          throw new OperationalError(`Switch: output index must be between 0 and ${OUTPUT_COUNT - 1}`, { output });
+        }
+        outputs[output]!.push({ json: item.json, pairedItem: { item: i } });
+        continue;
+      }
       const rules = (this.getNodeParameter('rules', i, []) ?? []) as ICondition[];
       if (rules.length > OUTPUT_COUNT) {
         throw new OperationalError(`Switch supports at most ${OUTPUT_COUNT} rules (one per output)`, {
           rules: rules.length,
         });
       }
-      const fallback = String(this.getNodeParameter('fallbackOutput', i, 'none') ?? 'none');
+      const options = (this.getNodeParameter('options', i, {}) ?? {}) as Record<string, unknown>;
+      const fallback = String(options['fallbackOutput'] ?? this.getNodeParameter('fallbackOutput', i, 'none') ?? 'none');
+      const convertTypes = Boolean(this.getNodeParameter('convertTypes', i, false));
 
-      const hit = rules.findIndex(compareCondition);
+      const hit = rules.findIndex((rule) => compareCondition(rule, convertTypes));
       if (hit >= 0) {
         outputs[hit]!.push({ json: item.json, pairedItem: { item: i } });
       } else if (fallback !== 'none') {
