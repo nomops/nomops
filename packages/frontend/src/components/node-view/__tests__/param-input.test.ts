@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
-import type { INodeProperties } from '@nomops/workflow';
+import type { INodeProperties, IRunData } from '@nomops/workflow';
 import ParamInput from '../ParamInput.vue';
 import { api } from '../../../api/client.js';
 
@@ -10,8 +10,13 @@ beforeEach(() => {
   setActivePinia(createPinia());
   vi.restoreAllMocks();
 });
+afterEach(() => vi.useRealTimers());
 
-const make = (prop: Partial<INodeProperties>, value: unknown = undefined) =>
+const make = (
+  prop: Partial<INodeProperties>,
+  value: unknown = undefined,
+  nodeParameters: Record<string, unknown> | undefined = undefined,
+) =>
   mount(ParamInput, {
     props: {
       prop: {
@@ -22,6 +27,7 @@ const make = (prop: Partial<INodeProperties>, value: unknown = undefined) =>
         ...prop,
       } as INodeProperties,
       value,
+      nodeParameters,
     },
   });
 
@@ -44,6 +50,58 @@ describe('ParamInput（schema 驱动控件分发）', () => {
   it('值以 = 开头时渲染 ExpressionInput', () => {
     const w = make({ type: 'string' }, '={{ $json.x }}');
     expect(w.find('[data-test="expression-input"]').exists()).toBe(true);
+  });
+
+  it('表达式预览先 pending，再用同构引擎解析扩展方法', async () => {
+    vi.useFakeTimers();
+    const w = mount(ParamInput, {
+      props: {
+        prop: { displayName: 'Email', name: 'email', type: 'string', default: '' } as INodeProperties,
+        value: '={{ $json.email.isEmail() }}',
+        previewItems: [{ json: { email: 'dev@example.com' } }],
+      },
+    });
+    expect(w.find('[data-preview-state="pending"]').text()).toBe('Evaluating…');
+    await vi.advanceTimersByTimeAsync(130);
+    expect(w.find('[data-preview-state="success"]').text()).toBe('true');
+    vi.useRealTimers();
+  });
+
+  it('表达式预览注入最近 runData，$node 与真实执行一致', async () => {
+    vi.useFakeTimers();
+    const runData = {
+      Source: [{
+        startTime: 0,
+        executionTime: 1,
+        source: [],
+        data: { main: [[{ json: { total: 42 } }]] },
+      }],
+    } as IRunData;
+    const w = mount(ParamInput, {
+      props: {
+        prop: { displayName: 'Total', name: 'total', type: 'string', default: '' } as INodeProperties,
+        value: '={{ $node["Source"].json.total }}',
+        previewItems: [{ json: {} }],
+        previewRunData: runData,
+      },
+    });
+    await vi.advanceTimersByTimeAsync(130);
+    expect(w.find('[data-preview-state="success"]').text()).toBe('42');
+    vi.useRealTimers();
+  });
+
+  it('表达式错误进入 error 态并显示安全沙箱错误', async () => {
+    vi.useFakeTimers();
+    const w = mount(ParamInput, {
+      props: {
+        prop: { displayName: 'Email', name: 'email', type: 'string', default: '' } as INodeProperties,
+        value: '={{ $json.missing.isEmail() }}',
+        previewItems: [{ json: {} }],
+      },
+    });
+    await vi.advanceTimersByTimeAsync(130);
+    expect(w.find('[data-preview-state="error"]').text()).toContain('cannot be called on undefined');
+    vi.useRealTimers();
   });
 
   it('noDataExpression 的 string 不显示 Fixed|Expression 分段', () => {
@@ -152,6 +210,29 @@ describe('ParamInput（schema 驱动控件分发）', () => {
     expect(w.find('[data-test="add-condition"]').attributes('disabled')).toBeDefined();
   });
 
+  it('Filter 结构化条件保留 combinator 并输出 leftValue/operator/rightValue', async () => {
+    const value = {
+      combinator: 'and', options: { caseSensitive: true },
+      conditions: [
+        { leftValue: 'Ada', rightValue: 'ada', operator: { type: 'string', operation: 'equals' } },
+        { leftValue: 2, rightValue: 1, operator: { type: 'number', operation: 'gt' } },
+      ],
+    };
+    const w = make({
+      type: 'filter', default: { combinator: 'and', conditions: [] },
+      typeOptions: { filter: { valueShape: 'structured', showCombinator: true } },
+    }, value);
+    expect(w.findAll('[data-test="condition-row"]')).toHaveLength(2);
+    await w.find('[aria-label="Combine conditions"]').setValue('or');
+    expect(w.emitted('change')![0]![0]).toMatchObject({ combinator: 'or', conditions: value.conditions });
+    await w.findAll('.cond-left')[0]!.setValue('Bo');
+    const changed = w.emitted('change')![1]![0] as { combinator: string; conditions: unknown[] };
+    expect(changed.combinator).toBe('and');
+    expect(changed.conditions[0]).toEqual({
+      leftValue: 'Bo', rightValue: 'ada', operator: { type: 'string', operation: 'equals' },
+    });
+  });
+
   it('assignmentCollection 只按类型渲染赋值编辑器，参数名无需叫 fields', async () => {
     const w = make({ type: 'assignmentCollection', name: 'metadata', default: {} }, {});
     expect(w.find('[data-test="fields-editor"]').exists()).toBe(true);
@@ -160,6 +241,40 @@ describe('ParamInput（schema 驱动控件分发）', () => {
     await w.find('[data-test="add-field"]').trigger('click');
     expect(w.findAll('[data-test="field-row"]')).toHaveLength(1);
     expect(w.find('[aria-label="Field type"]').exists()).toBe(true);
+  });
+
+  it('resourceMapper 动态加载表 schema，并支持自动映射与逐列映射', async () => {
+    vi.spyOn(api.dynamicNodeParameters, 'resourceMapperFields').mockResolvedValue({
+      fields: [
+        { id: 'email', displayName: 'email', type: 'string' },
+        { id: 'amount', displayName: 'amount', type: 'number' },
+      ],
+    });
+    const w = mount(ParamInput, {
+      props: {
+        prop: {
+          displayName: 'Columns', name: 'columns', type: 'resourceMapper',
+          default: { mappingMode: 'defineBelow', value: {}, schema: [] },
+          typeOptions: {
+            loadOptionsDependsOn: ['dataTableId.value'],
+            resourceMapper: { resourceMapperMethod: 'getDataTables', valuesLabel: 'Values to insert' },
+          },
+        } as INodeProperties,
+        value: { mappingMode: 'defineBelow', value: {}, schema: [] },
+        nodeType: 'nomops.dataTable',
+        nodeTypeVersion: 1.1,
+        nodeParameters: { dataTableId: { mode: 'id', value: 'table-1' } },
+      },
+    });
+    await flushPromises();
+    expect(api.dynamicNodeParameters.resourceMapperFields).toHaveBeenCalledWith(expect.objectContaining({
+      nodeType: 'nomops.dataTable', propertyName: 'columns',
+      currentNodeParameters: { dataTableId: { mode: 'id', value: 'table-1' } },
+    }));
+    expect(w.find('[data-test="resource-mapper"]').exists()).toBe(true);
+    expect(w.findAll('[data-test="resource-mapper-fields"] [data-test-param]')).toHaveLength(2);
+    await w.find('[data-test="resource-mapper-mode"]').setValue('autoMapInputData');
+    expect(w.emitted('change')!.at(-1)).toEqual([expect.objectContaining({ mappingMode: 'autoMapInputData' })]);
   });
 
   it('collection 使用 Add Option 菜单按声明添加和移除可选字段', async () => {
@@ -179,6 +294,33 @@ describe('ParamInput（schema 驱动控件分发）', () => {
     expect(w.find('[data-test-param="systemMessage"]').exists()).toBe(true);
     await w.find('.option-remove').trigger('click');
     expect(w.emitted('change')!.at(-1)).toEqual([{}]);
+  });
+
+  it('collection 子字段支持 /root displayOptions 动态显隐', async () => {
+    const w = make({
+      type: 'collection', name: 'options', default: {}, options: [{
+        name: 'Only For History', value: 'history', values: [{
+          displayName: 'History Size', name: 'historySize', type: 'number', default: 10000,
+          displayOptions: { show: { '/operation': ['history'] } },
+        }],
+      }],
+    }, {}, { operation: 'current' });
+    expect(w.find('[data-test="add-option"]').exists()).toBe(false);
+  });
+
+  it('collection 子字段把 nodeTypeVersion 传给 @version 门控', () => {
+    const prop = {
+      displayName: 'Options', type: 'collection', name: 'options', default: {}, options: [{
+        name: 'Modern Option', value: 'modern', values: [{
+          displayName: 'Modern Option', name: 'modern', type: 'string', default: '',
+          displayOptions: { show: { '@version': [{ _cnd: { gte: 2 } }] } },
+        }],
+      }],
+    } as INodeProperties;
+    const v1 = mount(ParamInput, { props: { prop, value: {}, nodeTypeVersion: 1 } });
+    const v2 = mount(ParamInput, { props: { prop, value: {}, nodeTypeVersion: 2 } });
+    expect(v1.find('[data-test="add-option"]').exists()).toBe(false);
+    expect(v2.find('[data-test="add-option"]').exists()).toBe(true);
   });
 
   it('From AI 芯片（#19 D096）:仅 aiTool 且可切表达式的字段显示,点击插入 $fromAI 模板', async () => {

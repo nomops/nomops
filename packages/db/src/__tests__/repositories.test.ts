@@ -54,6 +54,19 @@ describe.each(dialects)('仓储 @ %s', (type) => {
     expect((await repos.workflows.findAllByProject(projA.id)).map((w) => w.name)).toContain('secret');
   });
 
+  it('workflow 乐观锁只让同一内容版本成功一次', async () => {
+    const project = await repos.projects.create({ name: `lock-${type}` });
+    const workflow = await repos.workflows.create({ name: 'draft-v1', nodes: [], connections: {} }, project.id);
+    expect(workflow.version).toBe(1);
+
+    const winner = await repos.workflows.updateVersioned(workflow.id, { name: 'draft-v2' }, 1);
+    expect(winner).toMatchObject({ name: 'draft-v2', version: 2 });
+
+    const stale = await repos.workflows.updateVersioned(workflow.id, { name: 'stale overwrite' }, 1);
+    expect(stale).toBeNull();
+    expect(await repos.workflows.findById(workflow.id, project.id)).toMatchObject({ name: 'draft-v2', version: 2 });
+  });
+
   it('凭证也按 project 归属隔离', async () => {
     const projA = await repos.projects.create({ name: 'CA' });
     const projB = await repos.projects.create({ name: 'CB' });

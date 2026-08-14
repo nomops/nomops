@@ -31,6 +31,13 @@ export const httpToolDescription: INodeTypeDescription = {
       description: 'Tell the model what this tool does and when to use it',
     },
     {
+      displayName: 'Require Human Approval',
+      name: 'requireApproval',
+      type: 'boolean',
+      default: false,
+      description: 'Pause the workflow before every call so a person can approve or reject it',
+    },
+    {
       displayName: 'URL',
       name: 'url',
       type: 'string',

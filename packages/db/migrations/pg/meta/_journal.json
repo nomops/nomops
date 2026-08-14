@@ -365,6 +365,20 @@
       "when": 1786346191589,
       "tag": "0051_cultured_magneto",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1786615312559,
+      "tag": "0052_flowery_yellowjacket",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1786671754423,
+      "tag": "0053_nervous_quicksilver",
+      "breakpoints": true
     }
   ]
 }

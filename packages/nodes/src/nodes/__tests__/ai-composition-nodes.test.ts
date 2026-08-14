@@ -10,6 +10,7 @@ import type {
   ISupplyDataContext,
   JsonObject,
 } from '@nomops/workflow';
+import { AI_TOOL_RESULTS_CONTEXT_KEY, ExecutionAiToolRequest } from '@nomops/workflow';
 import { AiAgent } from '../AiAgent/AiAgent.node.js';
 import { ChatModel } from '../ChatModel/ChatModel.node.js';
 import { HttpTool } from '../HttpTool/HttpTool.node.js';
@@ -21,13 +22,17 @@ function execContext(args: {
   inputs: INodeExecutionData[];
   params: Record<string, unknown>;
   connections: Record<string, unknown[]>;
+  context?: JsonObject;
 }): IExecuteContext {
+  const context: JsonObject = args.context ?? {};
   return {
+    getNode: () => ({ id: 'agent', name: 'Agent', type: 'nomops.aiAgent', typeVersion: 1, position: [0, 0], parameters: {} }),
     getInputData: () => args.inputs,
     getNodeParameter: (name: string, _i: number, fallback?: unknown) =>
       name in args.params ? args.params[name] : fallback,
     getCredentials: async () => ({}),
     getWorkflowStaticData: () => ({}),
+    getContext: () => context,
     isResumed: () => false,
     getInputConnectionData: async (type: string) => args.connections[type] ?? [],
     helpers: {
@@ -111,6 +116,49 @@ describe('AI Agent — 组合模式', () => {
     expect(saved['s1']!.some((m) => m.role === 'user' && m.content === 'find 42')).toBe(true);
   });
 
+  it('V3：有来源节点的工具调用交给引擎，恢复后从可序列化状态继续而不重跑首轮模型', async () => {
+    let chats = 0;
+    const model: IAiLanguageModel = {
+      chat: async (messages) => {
+        chats++;
+        if (!messages.some((message) => message.role === 'tool')) {
+          return { content: '', toolCalls: [{ id: 'engine-call-1', name: 'lookup', arguments: { id: 42 } }] };
+        }
+        return { content: `done:${messages.find((message) => message.role === 'tool')!.content}` };
+      },
+    };
+    const tool: IAiTool = {
+      spec: { name: 'lookup', description: 'lookup' },
+      sourceNodeName: 'Lookup Tool',
+      invoke: async () => {
+        throw new Error('must be run by WorkflowExecute');
+      },
+    };
+    const context: JsonObject = {};
+    const ctx = execContext({
+      inputs: [{ json: {} }],
+      params: { prompt: 'find it', maxIterations: 3 },
+      connections: { ai_languageModel: [model], ai_tool: [tool] },
+      context,
+    });
+
+    await expect(new AiAgent().execute!.call(ctx)).rejects.toMatchObject({
+      request: {
+        parentNodeName: 'Agent',
+        sourceNodeName: 'Lookup Tool',
+        toolName: 'lookup',
+        toolCallId: 'engine-call-1',
+        args: { id: 42 },
+      },
+    } satisfies Partial<ExecutionAiToolRequest>);
+    expect(JSON.parse(JSON.stringify(context))).toBeTruthy();
+
+    context[AI_TOOL_RESULTS_CONTEXT_KEY] = { 'engine-call-1': 'engine-result' };
+    const output = await new AiAgent().execute!.call(ctx);
+    expect(output[0]?.[0]?.json).toMatchObject({ output: 'done:engine-result', toolRounds: 1 });
+    expect(chats).toBe(2);
+  });
+
   it('token 用量跨轮累加 → _nmUsage（成本核算，#44 M2）', async () => {
     let round = 0;
     const model: IAiLanguageModel = {
@@ -157,6 +205,7 @@ describe('AI Agent — 组合模式', () => {
     };
     const b64 = Buffer.from('PNGBYTES').toString('base64');
     const ctx = {
+      getNode: () => ({ id: 'agent', name: 'Agent', type: 'nomops.aiAgent', typeVersion: 1, position: [0, 0], parameters: {} }),
       getInputData: () => [
         {
           json: {},
@@ -170,6 +219,7 @@ describe('AI Agent — 组合模式', () => {
         ({ prompt: 'describe', system: '', maxIterations: 5, sessionId: 'default' } as Record<string, unknown>)[name] ?? fallback,
       getCredentials: async () => ({}),
       getWorkflowStaticData: () => ({}),
+      getContext: () => ({}),
       isResumed: () => false,
       getInputConnectionData: async (type: string) => (type === 'ai_languageModel' ? [model] : []),
       helpers: {

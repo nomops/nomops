@@ -1,6 +1,8 @@
 import type {
   IExecuteData,
+  IExecutionAiToolRequest,
   IExecutionError,
+  IAiTool,
   INode,
   INodeExecutionData,
   IPairedItemData,
@@ -14,6 +16,8 @@ import type {
   Workflow,
 } from '@nomops/workflow';
 import {
+  AI_TOOL_RESULTS_CONTEXT_KEY,
+  ExecutionAiToolRequest,
   ExecutionPause,
   OperationalError,
   createRunExecutionData,
@@ -24,7 +28,7 @@ import {
 } from '@nomops/workflow';
 import type { INodeLoader } from '../nodes-loader/node-loader.js';
 import type { IWorkflowExecuteAdditionalData } from './node-execution-context.js';
-import { createExecuteContext, defaultHttpRequest } from './node-execution-context.js';
+import { createExecuteContext, createSupplyContext, defaultHttpRequest } from './node-execution-context.js';
 import { executeRoutingNode, hasRoutingDeclarations } from './routing-executor.js';
 
 /** 引擎 hooks：server 层挂 WS 推送/落库；引擎只调，不知其用途。 */
@@ -235,16 +239,16 @@ export class WorkflowExecute {
       const node = exec.node;
 
       // 部分执行：不在白名单内的节点跳过（不执行也不扩散）
-      if (filter && !filter.includes(node.name)) continue;
+      if (!exec.aiToolAction && filter && !filter.includes(node.name)) continue;
 
       // 禁用节点：input 0 直通到 output 0
-      if (node.disabled) {
+      if (!exec.aiToolAction && node.disabled) {
         this.routeOutput(workflow, state, node, [exec.data['main']?.[0] ?? []]);
         continue;
       }
 
       // 钉住数据：直接采用冻结输出，不执行节点（Workflow 是否携带 pin 由调用方决定）
-      const pinned = workflow.getPinData(node.name);
+      const pinned = exec.aiToolAction ? undefined : workflow.getPinData(node.name);
       if (pinned !== undefined) {
         await this.options.hooks?.nodeExecuteBefore?.(node.name);
         const pinnedTask: ITaskData = {
@@ -287,11 +291,25 @@ export class WorkflowExecute {
         taskData = {
           startTime,
           executionTime: Date.now() - startTime,
-          data: this.toConnections(output),
+          data: this.toConnections(output, exec.aiToolAction ? 'ai_tool' : 'main'),
           source: nodeExec.source?.['main'] ?? [],
           ...(attempt.tryCount > 1 ? { tryCount: attempt.tryCount } : {}),
+          ...(exec.aiToolAction ? { metadata: this.aiToolMetadata(exec.aiToolAction) } : {}),
         };
       } catch (error) {
+        // Agent V3 控制流：Agent 只产出可序列化请求；真实工具节点由主循环调度。
+        if (error instanceof ExecutionAiToolRequest) {
+          const toolNode = this.resolveRequestedToolNode(workflow, node, error.request);
+          stack.push({ ...exec, resumed: true });
+          stack.push({
+            node: toolNode,
+            data: { main: [[{ json: error.request.args as JsonObject }]] },
+            source: { main: [{ previousNode: node.name, previousNodeOutput: 0 }] },
+            aiToolAction: error.request,
+          });
+          continue;
+        }
+
         // 暂停信号（控制流）：当前帧带 resumed 标记压回栈，状态整体可序列化落库等唤醒
         if (error instanceof ExecutionPause) {
           stack.push({ ...exec, resumed: true });
@@ -315,7 +333,22 @@ export class WorkflowExecute {
           executionTime: Date.now() - startTime,
           error: execError,
           source: nodeExec.source?.['main'] ?? [],
+          ...(exec.aiToolAction ? { metadata: this.aiToolMetadata(exec.aiToolAction) } : {}),
         };
+
+        // 工具失败是 Agent 的 observation，而不是整条工作流的致命错误。重试仍由
+        // runNodeWithRetry 完整执行，耗尽后把错误交回模型继续推理。
+        if (exec.aiToolAction && !this.canceled) {
+          const result = `Tool error: ${execError.message}`;
+          output = [[{ json: { result }, pairedItem: { item: 0 } }]];
+          taskData.data = this.toConnections(output, 'ai_tool');
+          this.recordAiToolResult(state, exec.aiToolAction, result);
+          state.resultData.runData[node.name] ??= [];
+          state.resultData.runData[node.name]!.push(taskData);
+          state.resultData.lastNodeExecuted = node.name;
+          await this.options.hooks?.nodeExecuteAfter?.(node.name, taskData);
+          continue;
+        }
 
         // 重试等待期间被取消：如实记录这次失败，但整体收束为 canceled 而非 error
         if (this.canceled) {
@@ -344,6 +377,11 @@ export class WorkflowExecute {
 
       this.assignPairedItems(nodeExec.data['main']?.[0] ?? [], output);
 
+      if (exec.aiToolAction) {
+        const result = String(output?.[0]?.[0]?.json['result'] ?? '');
+        this.recordAiToolResult(state, exec.aiToolAction, result);
+      }
+
       state.resultData.runData[node.name] ??= [];
       state.resultData.runData[node.name]!.push(taskData);
       state.resultData.lastNodeExecuted = node.name;
@@ -352,7 +390,7 @@ export class WorkflowExecute {
       // 到达 destinationNode 即停（其结果已记录）
       if (state.startData?.destinationNode === node.name) continue;
 
-      this.routeOutput(workflow, state, node, output);
+      if (!exec.aiToolAction) this.routeOutput(workflow, state, node, output);
     }
 
     if (status === 'error') {
@@ -419,7 +457,11 @@ export class WorkflowExecute {
         const output = await this.runNodeWithDeadline(workflow, state, exec, deadline);
         return { output, tryCount };
       } catch (error) {
-        if (error instanceof ExecutionPause || error instanceof ExecutionTimeout) throw error;
+        if (
+          error instanceof ExecutionAiToolRequest ||
+          error instanceof ExecutionPause ||
+          error instanceof ExecutionTimeout
+        ) throw error;
         lastError = error;
         if (tryCount >= retry.maxTries || this.canceled) break;
         // 等待会跨过时限时就别等了——直接以超时收束，免得白白挂住到期后才发现
@@ -501,6 +543,9 @@ export class WorkflowExecute {
   ): Promise<INodeExecutionData[][]> {
     const node = exec.node;
     const nodeType = await this.nodeLoader.getByNameAndVersion(node.type, node.typeVersion);
+    if (exec.aiToolAction) {
+      return this.runAiToolAction(workflow, state, exec, nodeType);
+    }
     const declarative = !nodeType.execute && hasRoutingDeclarations(nodeType.description);
     if (!nodeType.execute && !declarative) {
       throw new OperationalError(`节点 ${node.name}（${node.type}）没有 execute 实现`, {
@@ -528,6 +573,116 @@ export class WorkflowExecute {
       );
     }
     return nodeType.execute!.call(context);
+  }
+
+  /** 执行一个由 Agent 请求的真实 ai_tool 子节点。 */
+  private async runAiToolAction(
+    workflow: Workflow,
+    state: IRunExecutionData,
+    exec: IExecuteData,
+    nodeType: Awaited<ReturnType<INodeLoader['getByNameAndVersion']>>,
+  ): Promise<INodeExecutionData[][]> {
+    const action = exec.aiToolAction!;
+    const node = exec.node;
+    if (!nodeType.supplyData) {
+      throw new OperationalError(`工具节点 ${node.name}（${node.type}）不提供 supplyData`, {
+        node: node.name,
+      });
+    }
+
+    // 任意工具节点都可声明审批门控。首次运行挂起；resume 时无 decision 视为批准，
+    // decision=reject/denied 则只把拒绝 observation 回喂模型，不执行副作用。
+    if (node.parameters['requireApproval'] === true) {
+      if (!exec.resumed) throw new ExecutionPause();
+      const table = (state.contextData ??= {});
+      const nodeContext = (table[node.name] ??= {});
+      const resumeData = nodeContext['resumeData'];
+      delete nodeContext['resumeData'];
+      const first = Array.isArray(resumeData) ? resumeData[0] : undefined;
+      const decision =
+        first && typeof first === 'object' && 'json' in first
+          ? String((first as { json?: JsonObject }).json?.['decision'] ?? '').toLowerCase()
+          : '';
+      if (decision === 'reject' || decision === 'rejected' || decision === 'deny' || decision === 'denied') {
+        return [[{ json: { result: 'Tool call rejected by human' }, pairedItem: { item: 0 } }]];
+      }
+    }
+
+    const supplied = await nodeType.supplyData.call(
+      createSupplyContext({
+        workflow,
+        node,
+        staticData: this.options.staticData ?? {},
+        additionalData: this.additionalDataWithSignal(),
+        resolver: this.nodeLoader,
+      }),
+    );
+    if (
+      supplied === null ||
+      typeof supplied !== 'object' ||
+      !('spec' in supplied) ||
+      !('invoke' in supplied)
+    ) {
+      throw new OperationalError(`工具节点 ${node.name} 没有返回 IAiTool`, { node: node.name });
+    }
+    const tool = supplied as IAiTool;
+    if (tool.spec.name !== action.toolName) {
+      throw new OperationalError(
+        `工具节点 ${node.name} 提供 ${tool.spec.name}，与模型请求 ${action.toolName} 不匹配`,
+        { node: node.name },
+      );
+    }
+    const result = await tool.invoke(action.args as JsonObject);
+    return [[{ json: { result }, pairedItem: { item: 0 } }]];
+  }
+
+  /** 只允许 Agent 调度真实连到自己 ai_tool 输入的节点，防止伪造状态越图执行。 */
+  private resolveRequestedToolNode(
+    workflow: Workflow,
+    parentNode: INode,
+    request: IExecutionAiToolRequest,
+  ): INode {
+    if (request.parentNodeName !== parentNode.name) {
+      throw new OperationalError('Agent 工具请求的父节点不匹配', { node: parentNode.name });
+    }
+    const connected = workflow
+      .getIncomingConnections(parentNode.name, 'ai_tool')
+      .some((connection) => connection.sourceNode === request.sourceNodeName);
+    if (!connected) {
+      throw new OperationalError(
+        `工具节点 ${request.sourceNodeName} 未连接到 ${parentNode.name} 的 Tool 输入`,
+        { node: parentNode.name },
+      );
+    }
+    return workflow.getNode(request.sourceNodeName);
+  }
+
+  private aiToolMetadata(request: IExecutionAiToolRequest): JsonObject {
+    return {
+      agentToolCall: {
+        callId: request.toolCallId,
+        toolName: request.toolName,
+        parentNodeName: request.parentNodeName,
+        itemIndex: request.itemIndex,
+      },
+    };
+  }
+
+  /** 把工具 observation 写回父 Agent 的可序列化 context，下一次 Agent resume 消费。 */
+  private recordAiToolResult(
+    state: IRunExecutionData,
+    request: IExecutionAiToolRequest,
+    result: string,
+  ): void {
+    const table = (state.contextData ??= {});
+    const parent = (table[request.parentNodeName] ??= {});
+    const results =
+      parent[AI_TOOL_RESULTS_CONTEXT_KEY] &&
+      typeof parent[AI_TOOL_RESULTS_CONTEXT_KEY] === 'object' &&
+      !Array.isArray(parent[AI_TOOL_RESULTS_CONTEXT_KEY])
+        ? (parent[AI_TOOL_RESULTS_CONTEXT_KEY] as JsonObject)
+        : ((parent[AI_TOOL_RESULTS_CONTEXT_KEY] = {}) as JsonObject);
+    results[request.toolCallId] = result;
   }
 
   private additionalDataWithSignal(): IWorkflowExecuteAdditionalData {
@@ -568,7 +723,7 @@ export class WorkflowExecute {
     }
   }
 
-  private toConnections(output: INodeExecutionData[][]): ITaskDataConnections {
-    return { main: output.map((port) => port ?? null) };
+  private toConnections(output: INodeExecutionData[][], type = 'main'): ITaskDataConnections {
+    return { [type]: output.map((port) => port ?? null) };
   }
 }

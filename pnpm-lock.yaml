@@ -270,15 +270,25 @@ importers:
 
   packages/workflow:
     dependencies:
+      '@babel/parser':
+        specifier: ^7.29.7
+        version: 7.29.7
       '@jitl/quickjs-singlefile-browser-release-sync':
         specifier: ^0.32.0
         version: 0.32.0
       '@jitl/quickjs-wasmfile-release-sync':
         specifier: ^0.32.0
         version: 0.32.0
+      luxon:
+        specifier: ^3.7.2
+        version: 3.7.2
       quickjs-emscripten-core:
         specifier: ^0.32.0
         version: 0.32.0
+    devDependencies:
+      '@types/luxon':
+        specifier: ^3.7.2
+        version: 3.7.2
 
 packages:
 

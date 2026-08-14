@@ -40,9 +40,18 @@ async function useTemplate(id: string) {
   error.value = '';
   importing.value = id;
   try {
+    const template = templates.value.find((entry) => entry.id === id);
     const wf = await api.templates.import(id);
     ui.notify({ kind: 'success', title: 'Template imported', message: wf.name });
-    void router.push(`/workflow/${wf.id}`); // 导入即进画布
+    if (template?.credentialRequirements.length) {
+      void router.push({
+        name: 'templateSetup',
+        params: { id },
+        query: { workflow: wf.id },
+      });
+    } else {
+      void router.push({ name: 'canvas', params: { id: wf.id } });
+    }
   } catch (e) {
     error.value = (e as Error).message;
   } finally {

@@ -11,6 +11,7 @@
 ## 2. Templates（模板）
 - 路由：n8n `/templates`（无自定义 host 时 `window.location.href` 跳 **n8n.io 外部网站**）；Nomops `/templates`（`TemplatesView.vue`）
 - **设计分歧（非 gap）**：Nomops 是**自托管本地模板库**（4 个策展模板：New order notification / Daily metrics report / AI content summary / Branch & merge starter，含分类 All/Sales/IT Ops/AI/Advanced + 搜索 + 节点标签 + setup 步骤 + Use template）。n8n 依赖外部网站。Nomops 自托管优先、零外部依赖，**是刻意取舍**。
+- 2026-08-13：模板摘要新增结构化 `credentialRequirements`。有凭证要求的导入进入 `/templates/:id/setup?workflow=...`，按类型聚合卡片，支持无歧义自动选择、向导内新建凭证、应用或跳过；服务端复核项目归属和凭证类型。隔离实例实测 AI content summary 在向导创建 Anthropic 凭证后显示 `1 / 1 ready`，应用后 Chat Model 节点选中该凭证。
 
 ## 3. Projects（项目）
 - 路由：n8n `/projects` → **重定向到 Overview**（无独立项目列表页，项目在侧栏 + 各自 Overview）；Nomops `/projects`（`ProjectsView.vue`）

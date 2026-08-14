@@ -54,6 +54,13 @@ function toolDescription(base: INodeTypeDescription): INodeTypeDescription {
         default: base.description,
         description: 'Tell the model when it should call this tool',
       },
+      {
+        displayName: 'Require Human Approval',
+        name: 'requireApproval',
+        type: 'boolean',
+        default: false,
+        description: 'Pause the workflow before every call so a person can approve or reject it',
+      },
       ...base.properties,
     ],
   };
@@ -99,6 +106,14 @@ function createToolExecuteContext(
   const contextData: JsonObject = {};
 
   return {
+    getNode: () => ({
+      id: `tool:${base.name}`,
+      name: base.defaults.name,
+      type: base.name,
+      typeVersion: Array.isArray(base.version) ? Math.max(...base.version) : base.version,
+      position: [0, 0],
+      parameters,
+    }),
     getInputData: () => [{ json: args }],
     getNodeParameter(name: string, _itemIndex: number, fallback?: unknown): unknown {
       return name in parameters ? parameters[name] : fallback;

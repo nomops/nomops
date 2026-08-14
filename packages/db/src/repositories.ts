@@ -580,6 +580,33 @@ export class WorkflowRepository extends BaseRepository {
     return row as Workflow;
   }
 
+  /**
+   * 草稿内容原子更新。expectedVersion 给定时只允许更新调用方读到的那一版；
+   * 未命中返回 null，由服务层转成 409。无 expectedVersion 的内部内容更新仍递增版本。
+   */
+  async updateVersioned(
+    id: string,
+    patch: Partial<CreateWorkflowInput>,
+    expectedVersion?: number,
+  ): Promise<Workflow | null> {
+    const predicate = expectedVersion === undefined
+      ? eq(this.schema.workflows.id, id)
+      : and(
+          eq(this.schema.workflows.id, id),
+          eq(this.schema.workflows.version, expectedVersion),
+        );
+    const [row] = await this.db
+      .update(this.schema.workflows)
+      .set({
+        ...patch,
+        version: sql`${this.schema.workflows.version} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(predicate)
+      .returning();
+    return (row as Workflow | undefined) ?? null;
+  }
+
   /** 实例级列表（仅 MCP 管理页等系统路径；admin 已由路由把关）：id/name/项目名/是否已发布。 */
   async listAllUnscoped(): Promise<
     Array<{ id: string; name: string; description: string | null; projectName: string; published: boolean }>
@@ -1748,7 +1775,7 @@ export class DataTableRepository extends BaseRepository {
   }
 
   async updateTable(id: string, patch: { name?: string; columns?: Array<{ name: string; type: string }> }): Promise<void> {
-    await this.db.update(this.schema.dataTables).set(patch).where(eq(this.schema.dataTables.id, id));
+    await this.db.update(this.schema.dataTables).set({ ...patch, updatedAt: new Date() }).where(eq(this.schema.dataTables.id, id));
   }
 
   async deleteTable(id: string): Promise<void> {
@@ -1764,6 +1791,15 @@ export class DataTableRepository extends BaseRepository {
     return rows as DataTableRow[];
   }
 
+  async clearRows(tableId: string): Promise<number> {
+    const rows = await this.db
+      .delete(this.schema.dataTableRows)
+      .where(eq(this.schema.dataTableRows.dataTableId, tableId))
+      .returning({ id: this.schema.dataTableRows.id });
+    await this.db.update(this.schema.dataTables).set({ updatedAt: new Date() }).where(eq(this.schema.dataTables.id, tableId));
+    return rows.length;
+  }
+
   async findRow(id: string, tableId: string): Promise<DataTableRow | null> {
     const rows = await this.db
       .select()
@@ -1775,18 +1811,27 @@ export class DataTableRepository extends BaseRepository {
 
   async insertRow(tableId: string, data: JsonObject): Promise<DataTableRow> {
     const [row] = await this.db.insert(this.schema.dataTableRows).values({ dataTableId: tableId, data }).returning();
+    await this.db.update(this.schema.dataTables).set({ updatedAt: new Date() }).where(eq(this.schema.dataTables.id, tableId));
     return row as DataTableRow;
   }
 
   async updateRow(id: string, data: JsonObject): Promise<void> {
+    const existing = await this.db.select({ tableId: this.schema.dataTableRows.dataTableId })
+      .from(this.schema.dataTableRows).where(eq(this.schema.dataTableRows.id, id)).limit(1);
     await this.db
       .update(this.schema.dataTableRows)
       .set({ data, updatedAt: new Date() })
       .where(eq(this.schema.dataTableRows.id, id));
+    if (existing[0]) await this.db.update(this.schema.dataTables).set({ updatedAt: new Date() })
+      .where(eq(this.schema.dataTables.id, existing[0].tableId));
   }
 
   async deleteRow(id: string): Promise<void> {
+    const existing = await this.db.select({ tableId: this.schema.dataTableRows.dataTableId })
+      .from(this.schema.dataTableRows).where(eq(this.schema.dataTableRows.id, id)).limit(1);
     await this.db.delete(this.schema.dataTableRows).where(eq(this.schema.dataTableRows.id, id));
+    if (existing[0]) await this.db.update(this.schema.dataTables).set({ updatedAt: new Date() })
+      .where(eq(this.schema.dataTables.id, existing[0].tableId));
   }
 }
 

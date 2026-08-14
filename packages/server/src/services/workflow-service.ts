@@ -200,7 +200,7 @@ export class WorkflowService {
     await this.validateStructure(input);
     const existing = await this.repos.workflows.findById(id, projectId);
     if (existing) {
-      await this.repos.workflows.update(id, {
+      await this.repos.workflows.updateVersioned(id, {
         name: input.name,
         nodes: input.nodes,
         connections: input.connections,
@@ -227,6 +227,7 @@ export class WorkflowService {
     patch: Partial<IWorkflowInput>,
     projectId: string,
     authorId: string | null = null,
+    expectedVersion?: number,
   ): Promise<WorkflowRow> {
     await this.getById(id, projectId); // 归属检查
     const existing = await this.repos.workflows.findById(id, projectId);
@@ -235,7 +236,16 @@ export class WorkflowService {
     await this.validateStructure({ nodes, connections });
     if ('pinData' in patch) this.assertPinTargets(patch.pinData, nodes);
     if ('folderId' in patch) await this.assertFolderInProject(patch.folderId, projectId);
-    const updated = await this.repos.workflows.update(id, { ...patch });
+    const updated = await this.repos.workflows.updateVersioned(id, { ...patch }, expectedVersion);
+    if (!updated) {
+      const current = await this.repos.workflows.findById(id, projectId);
+      throw new OperationalError('Workflow was changed in another session', {
+        status: 409,
+        workflowId: id,
+        expectedVersion,
+        currentVersion: current?.version,
+      });
+    }
     // 只有定义变更（nodes/connections）才快照；纯文件夹移动/改名不算一个版本。
     if ('nodes' in patch || 'connections' in patch) {
       await this.snapshot(updated, projectId, authorId);

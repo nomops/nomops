@@ -21,10 +21,14 @@ function coercePair(left: unknown, right: unknown): [unknown, unknown] {
   return [String(left), String(right)];
 }
 
-export function compareCondition(c: ICondition, convertTypes = false): boolean {
+export function compareCondition(c: ICondition, convertTypes = false, ignoreCase = false): boolean {
   let { left, right } = c;
   const { op } = c;
   if (convertTypes && op !== 'isEmpty' && op !== 'isNotEmpty') [left, right] = coercePair(left, right);
+  if (ignoreCase) {
+    if (typeof left === 'string') left = left.toLocaleLowerCase();
+    if (typeof right === 'string') right = right.toLocaleLowerCase();
+  }
   switch (op) {
     case 'eq':
       return left === right;
@@ -50,8 +54,13 @@ export function compareCondition(c: ICondition, convertTypes = false): boolean {
 }
 
 /** 条件组判定：空条件组 = 通过（与 If 既有语义一致）。 */
-export function conditionsPass(conditions: ICondition[], combine: 'and' | 'or', convertTypes = false): boolean {
+export function conditionsPass(
+  conditions: ICondition[],
+  combine: 'and' | 'or',
+  convertTypes = false,
+  ignoreCase = false,
+): boolean {
   if (conditions.length === 0) return true;
-  const results = conditions.map((condition) => compareCondition(condition, convertTypes));
+  const results = conditions.map((condition) => compareCondition(condition, convertTypes, ignoreCase));
   return combine === 'and' ? results.every(Boolean) : results.some(Boolean);
 }

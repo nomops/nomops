@@ -8,7 +8,9 @@ function stubContext(
   params: Record<string, unknown | ((i: number) => unknown)>,
   overrides: Partial<IExecuteContext> & { helpers?: Partial<IExecuteContext['helpers']> } = {},
 ): IExecuteContext {
+  const context: JsonObject = {};
   return {
+    getNode: () => ({ id: 'node', name: 'Node', type: 'test', typeVersion: 1, position: [0, 0], parameters: {} }),
     getInputData: () => inputs,
     getNodeParameter: (name: string, itemIndex: number, fallback?: unknown) => {
       if (!(name in params)) return fallback;
@@ -17,6 +19,7 @@ function stubContext(
     },
     getCredentials: overrides.getCredentials ?? (async () => ({})),
     getWorkflowStaticData: () => ({}),
+    getContext: () => context,
     isResumed: () => false,
     // 缺省不挂能力子节点（AiAgent 走旧直连路径）；组合测试可覆盖
     getInputConnectionData: overrides.getInputConnectionData ?? (async () => []),

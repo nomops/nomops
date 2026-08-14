@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import type { IConnections, INode, IRunExecutionData } from '@nomops/workflow';
+import type { IConnections, INode, IRunExecutionData, IWorkflowSettings } from '@nomops/workflow';
 import {
   api,
   type ExecutionRow,
@@ -60,8 +60,8 @@ async function openWfSettings() {
   wfSettingsError.value = '';
   wfSettingsOpen.value = true;
   try {
-    const [wf, all] = await Promise.all([api.workflows.get(editor.id!), api.workflows.list()]);
-    const s = (wf.settings ?? {}) as Record<string, unknown>;
+    const all = await api.workflows.list();
+    const s = (editor.settings ?? {}) as Record<string, unknown>;
     wfErrorWorkflow.value = typeof s['errorWorkflow'] === 'string' ? (s['errorWorkflow'] as string) : '';
     wfSaveFailed.value = s['saveFailedExecutions'] !== false;
     wfSaveSuccess.value = s['saveSuccessfulExecutions'] !== false;
@@ -87,7 +87,8 @@ async function saveWfSettings() {
     if (wfExecutionOrder.value !== 'v1') settings['executionOrder'] = wfExecutionOrder.value;
     if (wfTimezone.value) settings['timezone'] = wfTimezone.value;
     if (wfSaveProgress.value) settings['saveExecutionProgress'] = true;
-    await api.workflows.update(editor.id!, { settings } as never);
+    editor.setSettings(settings as IWorkflowSettings);
+    await editor.save();
     wfSettingsOpen.value = false;
     ui.notify({ kind: 'success', title: 'Workflow settings saved' });
   } catch (e) {
@@ -133,11 +134,7 @@ async function onImportFile(event: Event) {
   try {
     const parsed = JSON.parse(await file.text()) as { name?: string; nodes?: INode[]; connections?: IConnections };
     if (!Array.isArray(parsed.nodes)) throw new Error('missing nodes');
-    if (parsed.name) editor.name = parsed.name;
-    editor.nodes = parsed.nodes;
-    editor.connections = parsed.connections ?? {};
-    editor.selectedNodeName = null;
-    editor.dirty = true;
+    editor.replaceWorkflowDefinition({ name: parsed.name, nodes: parsed.nodes, connections: parsed.connections ?? {} });
     activateError.value = '';
   } catch {
     activateError.value = 'Import failed — not a valid workflow JSON file';
@@ -232,15 +229,15 @@ const descSaving = ref(false);
 async function openEditDescription() {
   closeMenu();
   if (!editor.id) return;
-  const wf = await api.workflows.get(editor.id).catch(() => null);
-  descDraft.value = wf?.description ?? '';
+  descDraft.value = editor.description ?? '';
   descModalOpen.value = true;
 }
 async function saveDescription() {
   if (!editor.id) return;
   descSaving.value = true;
   try {
-    await api.workflows.update(editor.id, { description: descDraft.value.trim() || null });
+    editor.setDescription(descDraft.value.trim() || null);
+    await editor.save();
     descModalOpen.value = false;
     ui.notify({ kind: 'success', title: 'Workflow description saved' });
   } finally {
@@ -284,11 +281,7 @@ async function submitImportFromUrl() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const parsed = (await res.json()) as { name?: string; nodes?: INode[]; connections?: IConnections };
     if (!Array.isArray(parsed.nodes)) throw new Error('missing nodes');
-    if (parsed.name) editor.name = parsed.name;
-    editor.nodes = parsed.nodes;
-    editor.connections = parsed.connections ?? {};
-    editor.selectedNodeName = null;
-    editor.dirty = true;
+    editor.replaceWorkflowDefinition({ name: parsed.name, nodes: parsed.nodes, connections: parsed.connections ?? {} });
     importUrlOpen.value = false;
     ui.notify({ kind: 'success', title: 'Workflow imported from URL' });
   } catch (e) {
@@ -457,8 +450,8 @@ function onKeydown(event: KeyboardEvent) {
 onMounted(async () => {
   // 节点目录失败由 NodePanel 独立展示并可重试，不应阻断工作流本体加载。
   await Promise.all([nodeTypes.fetch(), projects.fetch().catch(() => undefined)]);
-  execution.connectWs();
   execution.reset();
+  execution.connectWs(String(route.params['id']));
   await editor.load(String(route.params['id']));
   window.addEventListener('click', closeMenu);
   window.addEventListener('click', closePublishMenu);
@@ -472,6 +465,7 @@ onMounted(async () => {
   );
 });
 onUnmounted(() => {
+  execution.disconnectWs();
   window.removeEventListener('click', closeMenu);
   window.removeEventListener('click', closePublishMenu);
   window.removeEventListener('keydown', onKeydown);
@@ -623,22 +617,43 @@ const triggerCount = computed(
 /* 自动保存：编辑落定 1.5s 后静默保存（基线无 Save 按钮）；保存后短暂显示 Saved */
 const savedFlash = ref(false);
 let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
+async function autosave() {
+  try {
+    await editor.save();
+    if (!editor.dirty) {
+      savedFlash.value = true;
+      setTimeout(() => (savedFlash.value = false), 1600);
+    }
+  } catch {
+    // store 暴露 saveConflict/saveError；自动保存不产生未处理 Promise。
+  }
+}
 watch(
   () => editor.dirty,
   (dirty) => {
     if (!dirty || !editor.id) return;
     if (autosaveTimer) clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(() => {
-      void editor.save().then(() => {
-        savedFlash.value = true;
-        setTimeout(() => (savedFlash.value = false), 1600);
-      });
+      void autosave();
     }, 1500);
   },
 );
 onUnmounted(() => {
   if (autosaveTimer) clearTimeout(autosaveTimer);
 });
+
+async function reloadAfterConflict() {
+  if (!editor.id || !editor.saveConflict) return;
+  const confirmed = await ui.requestConfirm({
+    title: 'Reload latest workflow?',
+    message: 'Your unsaved local changes will be discarded. The newer saved version will be loaded from the server.',
+    confirmLabel: 'Reload latest',
+    tone: 'danger',
+  });
+  if (!confirmed) return;
+  await editor.load(editor.id);
+  ui.notify({ kind: 'success', title: 'Latest workflow loaded' });
+}
 
 /* Publish 分裂按钮：主钮 = 保存草稿 → 发布 →（有触发器且未激活则激活）；下拉 = Activate/Deactivate */
 const publishMenuOpen = ref(false);
@@ -854,18 +869,26 @@ const execDataSize = computed<string | null>(() => {
   return fmtBytes(new TextEncoder().encode(JSON.stringify(d)).length);
 });
 
-/** 选中执行的逐节点结果（名称/耗时/错误/输出 items）。 */
+/** 选中执行的逐调用结果；循环/Agent 工具节点的每个 run 都单独展示。 */
 const execNodeRows = computed(() => {
   const runData = execDetail.value?.data?.resultData?.runData ?? {};
-  return Object.entries(runData).map(([name, runs]) => {
-    const last = runs[runs.length - 1];
-    return {
-      name,
-      time: last?.executionTime ?? 0,
-      error: last?.error?.message as string | undefined,
-      output: (last?.data?.['main']?.[0] ?? []) as unknown[],
-    };
-  });
+  return Object.entries(runData).flatMap(([name, runs]) =>
+    runs.map((run, runIndex) => {
+      const toolCall = run.metadata?.['agentToolCall'] as
+        | { callId?: string; toolName?: string; parentNodeName?: string }
+        | undefined;
+      return {
+        key: `${name}:${runIndex}`,
+        name,
+        runIndex,
+        runCount: runs.length,
+        time: run.executionTime ?? 0,
+        error: run.error?.message as string | undefined,
+        output: (run.data?.['main']?.[0] ?? run.data?.['ai_tool']?.[0] ?? []) as unknown[],
+        toolCall,
+      };
+    }),
+  );
 });
 
 /* 只读画布的每节点执行态：run 里有报错→error,否则→ok;未跑到的节点无态。
@@ -963,7 +986,7 @@ async function loadSavePolicy() {
           {{ projects.currentName }}
         </span>
         <span class="crumb-sep">/</span>
-        <input v-model="editor.name" data-test="workflow-name" class="name-input" @input="editor.dirty = true" />
+        <input :value="editor.name" data-test="workflow-name" class="name-input" @input="editor.setName(($event.target as HTMLInputElement).value)" />
       </div>
 
       <!-- C3：内联 tag 区（对标基线："+ Add tag" / 胶囊；点击展开 Choose or create a tag） -->
@@ -1012,6 +1035,8 @@ async function loadSavePolicy() {
       <!-- 自动保存指示（基线无 Save 按钮）：Saving… → Saved 短暂闪现；从不阻塞编辑 -->
       <span v-if="editor.saving" class="dim save-hint" data-test="autosave-saving">Saving…</span>
       <span v-else-if="savedFlash" class="dim save-hint" data-test="autosave-saved">Saved</span>
+      <span v-else-if="editor.saveConflict" class="error-text save-hint" data-test="autosave-conflict">Save conflict</span>
+      <span v-else-if="editor.saveError" class="error-text save-hint" data-test="autosave-error">Save failed</span>
       <span v-else-if="editor.dirty" class="dim save-hint">Unsaved</span>
       <span class="spacer" style="flex: 1" />
 
@@ -1084,6 +1109,18 @@ async function loadSavePolicy() {
       </div>
     </div>
     <input ref="fileInput" type="file" accept="application/json,.json" style="display: none" @change="onImportFile" />
+
+    <div v-if="editor.saveConflict" class="save-conflict" role="alert" data-test="save-conflict-banner">
+      <div>
+        <strong>This workflow changed in another session.</strong>
+        <span>Your local changes were not overwritten. Reload the latest saved version before continuing.</span>
+      </div>
+      <button type="button" data-test="reload-after-conflict" @click="reloadAfterConflict">Reload latest</button>
+    </div>
+    <div v-else-if="editor.saveError" class="save-conflict" role="alert" data-test="save-error-banner">
+      <div><strong>Workflow could not be saved.</strong><span>{{ editor.saveError }}</span></div>
+      <button type="button" @click="autosave">Retry</button>
+    </div>
 
     <p v-if="editor.loadError" class="error-text" style="padding: 16px">{{ editor.loadError }}</p>
 
@@ -1254,14 +1291,17 @@ async function loadSavePolicy() {
               <span>{{ execDataOpen ? '▾' : '▸' }}</span>
             </button>
             <div v-if="execDataOpen" class="exec-nodes">
-              <div v-for="r in execNodeRows" :key="r.name" class="exec-node">
-                <button class="exec-node-row" @click="expandedNode = expandedNode === r.name ? null : r.name">
+              <div v-for="r in execNodeRows" :key="r.key" class="exec-node" :data-test-tool-call="r.toolCall?.callId">
+                <button class="exec-node-row" @click="expandedNode = expandedNode === r.key ? null : r.key">
                   <span class="exec-dot" :style="{ background: r.error ? 'var(--err)' : 'var(--ok)' }" />
-                  <b>{{ r.name }}</b>
+                  <b>{{ r.name }}<template v-if="r.runCount > 1"> · call {{ r.runIndex + 1 }}</template></b>
+                  <span v-if="r.toolCall" class="exec-tool-call dim">
+                    {{ r.toolCall.toolName }} · {{ r.toolCall.callId }}
+                  </span>
                   <span class="dim" style="margin-left: auto">{{ r.time }}ms · {{ r.output.length }} item{{ r.output.length === 1 ? '' : 's' }}</span>
                 </button>
                 <p v-if="r.error" class="error-text" style="margin: 4px 0 8px 22px">{{ r.error }}</p>
-                <pre v-if="expandedNode === r.name" class="exec-json">{{ JSON.stringify(r.output, null, 2) }}</pre>
+                <pre v-if="expandedNode === r.key" class="exec-json">{{ JSON.stringify(r.output, null, 2) }}</pre>
               </div>
               <p v-if="!execNodeRows.length" class="dim" style="font-size: 13px">No node data recorded for this execution.</p>
             </div>
@@ -2064,6 +2104,7 @@ async function loadSavePolicy() {
   background: none; border: none; cursor: pointer; color: var(--text-hi); font-size: 13.5px; text-align: left;
 }
 .exec-node-row:hover { background: var(--bg-input); }
+.exec-tool-call { font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 11px; }
 .exec-json {
   margin: 0 0 12px 22px; padding: 12px; background: var(--bg); border: 1px solid var(--border);
   border-radius: 8px; font-size: 12px; max-height: 320px; overflow: auto;
@@ -2074,6 +2115,14 @@ async function loadSavePolicy() {
 
 /* 自动保存指示 / 触发器计数 / Publish 分裂按钮 */
 .save-hint { font-size: 12px; }
+.save-conflict {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 10px 16px; border-bottom: 1px solid var(--color--danger);
+  background: color-mix(in srgb, var(--color--danger) 10%, var(--color--background));
+  color: var(--color--text--shade-1); font-size: 12px;
+}
+.save-conflict div { display: flex; flex-wrap: wrap; gap: 5px 10px; }
+.save-conflict button { flex: none; border: 1px solid var(--color--danger); border-radius: var(--radius); background: transparent; color: var(--color--danger); padding: 5px 10px; cursor: pointer; }
 .pub-count {
   font-size: 12.5px; color: var(--text-dim); padding: 4px 10px;
   background: var(--bg-input); border: 1px solid var(--border); border-radius: 6px;

@@ -45,3 +45,28 @@ export class ExecutionPause extends Error {
     this.waitTill = options.waitTill;
   }
 }
+
+/**
+ * Agent 节点把一次模型工具请求交还给执行引擎的控制流信号。
+ *
+ * signal 本身只活在当前调用栈；request 会被引擎复制进 IExecuteData，因而必须保持
+ * JSON.stringify 安全，才能像 Wait 一样跨进程暂停/恢复。
+ */
+export interface IExecutionAiToolRequest {
+  parentNodeName: string;
+  sourceNodeName: string;
+  toolName: string;
+  toolCallId: string;
+  args: Record<string, unknown>;
+  itemIndex: number;
+}
+
+export class ExecutionAiToolRequest extends Error {
+  readonly request: IExecutionAiToolRequest;
+
+  constructor(request: IExecutionAiToolRequest) {
+    super(`agent requested tool ${request.toolName}`);
+    this.name = 'ExecutionAiToolRequest';
+    this.request = request;
+  }
+}

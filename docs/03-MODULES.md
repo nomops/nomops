@@ -127,10 +127,12 @@ class WorkflowExecute {
 6. **部分执行**：`destinationNode` 给定时，先算出它的所有父节点集合作为 `runNodeFilter`，只跑集合内节点。前端「运行到此节点」靠这个。
 7. **取消**：`processRunExecutionData` 返回 `PCancelable`，支持中途取消（用户点停止）。
 8. **hooks**：每个节点执行前后触发 hook（`nodeExecuteBefore/After`），server 层挂上去做「WebSocket 推进度」「写 execution 记录」。引擎本身不知道这些，只调 hook。
+9. **Agent V3 工具调度**：AiAgent 不在节点内直接调用工具。模型产生的 tool call 被封装成可序列化 `ExecutionAiToolRequest`，主循环把真实 `ai_tool` 子节点压栈；工具沿用节点 retry、AbortSignal、HITL waiting/resume 与 hooks，并以独立 runData（含 call id/工具名/父 Agent）写入执行详情。Agent 状态保存在 `contextData`，跨暂停或队列 worker 恢复时不会重跑已完成轮次。
 
 **节点执行上下文（execute 函数里的 `this`）**
 ```typescript
 interface IExecuteContext {
+  getNode(): INode;
   getInputData(inputIndex?: number): INodeExecutionData[];
   getNodeParameter(name: string, itemIndex: number): any;  // ★自动求值表达式
   getCredentials(type: string): Promise<object>;           // 解密后的凭证
@@ -143,6 +145,8 @@ interface IExecuteContext {
 ```
 
 **出站 URL 信任边界**：节点参数、表达式或 AI 实参能影响目标 URL 时，调用 `httpRequest` / `openEventStream` 必须传 `urlTrust: 'user-controlled'`。`core` 会在真实连接的 DNS `lookup` 与每次重定向时拒绝回环、RFC1918、链路本地、云 metadata、IPv6 ULA 等非公网地址。只有代码内固定的服务目标可保持默认 `trusted`；不得根据用户参数把请求降级为 trusted。
+
+**项目级 Data Table 边界**：Data Table 节点只通过 `helpers.dataTables` 使用服务端注入的当前项目操作集；节点参数和表达式不得传入或覆盖 `projectId`。动态 Data table locator 与 resource mapper schema 也必须由认证端点按当前项目查询，并在执行时再次校验表归属，不能信任前端返回的表 ID。列映射 schema 由表定义动态生成，NDV 和执行器共享字段名与类型约束。
 
 **验收**：
 - 无 HTTP/DB 环境下，单测能跑通线性、分支（IF）、合并（Merge）、循环、错误续跑五种拓扑。
@@ -191,6 +195,10 @@ POST   /workflows/:id/run           手动运行（body 可带 destinationNode�
 GET    /node-types                  所有节点 description（前端节点面板）
 POST   /credentials                 创建凭证
 POST   /credentials/:id/test        测试连接
+GET    /templates                   内置模板摘要（含凭证要求）
+POST   /templates/:id/import        导入模板为项目工作流
+POST   /templates/:id/setup         按声明安全绑定项目凭证
+POST   /dynamic-node-parameters/resource-mapper-fields  动态列映射 schema（按项目）
 GET    /executions                  执行历史
 GET    /executions/:id              执行详情（含 RunExecutionData）
 POST   /executions/:id/retry        重跑
@@ -203,6 +211,8 @@ WS     /ws                          执行进度实时推送
 - 每个受保护端点走鉴权中间件解析 JWT → 注入当前 user + project。
 - **入参用 Zod 校验**；workflow 保存时校验 JSON 结构（节点引用是否存在、连接是否合法、有无环——除非是合法循环）。
 - WebSocket：执行时引擎 hook → 通过 WS 把每个节点的输入输出推给正在看的前端。
+- 模板凭证向导只接收凭证 ID；服务端重新校验当前项目归属与声明类型，再把凭证引用绑定到模板声明的节点。前端仅在同类型唯一候选或唯一同名候选时自动选择，歧义必须由用户决定，并保留 Skip setup 路径。
+- workflow 内容行维护独立的单调递增 `version`。编辑器保存携带已读取版本，repository 使用 `WHERE id = ? AND version = ?` 原子更新并在成功时 `version + 1`；条件不命中返回 HTTP 409，绝不以末位写静默覆盖另一会话。运行期 `staticData` 等内部写入不改变内容版本，避免制造无关编辑冲突。
 
 **验收**：Postman/curl 能完成「登录 → 建工作流 → 激活 → 触发 → 查执行历史」全流程；未登录访问受保护端点返回 401；跨 project 访问返回 403/404。
 
@@ -212,14 +222,18 @@ WS     /ws                          执行进度实时推送
 
 **职责**：求值节点参数里的 `{{ ... }}`。被引擎在解析节点参数时调用。
 
-**语法**：`{{ $json.field }}`、`{{ $node["Webhook"].json.x }}`、`{{ $now }}`、`{{ items.length }}` 等。表达式里能访问：当前 item（`$json`）、其他节点输出（`$node`/`$(...)`)、内置变量（`$now`/`$workflow`）、JS 表达式子集。
+**语法**：`{{ $json.field }}`、`{{ $node["Webhook"].json.x }}`、`{{ $now.plus({ days: 1 }) }}`、`{{ items.length }}` 等。表达式里能访问：当前 item（`$json`）、其他节点输出（`$node`/`$(...)`）、内置变量（`$now`/`$today`/`$timezone`/`$workflow`）、JS 表达式子集。
+
+**DateTime 与扩展方法**：`$now`/`$today` 按工作流时区构造为 Luxon-compatible DateTime，支持 `plus/minus/startOf/endOf/toISO/toFormat`。String/Array/Object/Number 的首批高频方法（例如 `isEmail/first/sum/compact/isEven`）不修改原型，而由 Babel AST 把 `value.method(args)` 改写为白名单 `__extend(value, method, args)` 后送入同一个 QuickJS 沙箱。扩展的说明、类型、返回值和示例集中在 `EXPRESSION_EXTENSION_DOCS`，前端方法补全直接消费该元数据。
+
+**同构预览**：NDV 的 Result 面板直接调用 workflow 包的 `resolveParameterValue`，输入当前 item、最近一次完整 runData 和工作流元信息，所以 `$node`/`$(...)` 与真正执行同口径。编辑后先进入 `pending`，随后显示 `success` 真值或 `error` 沙箱错误；方法补全与 `$json` 字段树来自真实输入数据和上述扩展元数据。
 
 **关键实现点**
 - **必须沙箱化**：表达式里可能有用户输入，绝不能 `eval` 到全局。用隔离的求值环境（如 `vm` 模块的受限上下文，或专用表达式库），禁止访问 `process`、`require`、文件系统。
 - 建议不要从零写 AST parser（成本极高）。可基于成熟表达式求值库封装，只暴露白名单变量和方法。
 - 求值失败要给出清晰错误（哪个参数、哪个表达式、什么原因），前端能定位。
 
-**验收**：`{{ $json.a + 1 }}` 在 `{a:1}` 上求值为 2；`{{ process.exit() }}` 被沙箱拦截报错；引用不存在的节点给出可读错误。
+**验收**：`{{ $json.a + 1 }}` 在 `{a:1}` 上求值为 2；`{{ $now.plus({ days: 1 }) }}` 与 `{{ 'dev@example.com'.isEmail() }}` 可用；`{{ process.exit() }}` 被沙箱拦截报错；引用不存在的节点给出可读错误；NDV 预览与真实 API 工作流输出一致。
 
 ---
 

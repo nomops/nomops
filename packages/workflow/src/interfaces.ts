@@ -142,6 +142,7 @@ export type NodePropertyType =
   | 'collection'
   | 'filter'
   | 'assignmentCollection'
+  | 'resourceMapper'
   | 'fixedCollection'
   | 'resourceLocator'
   | 'json'
@@ -186,7 +187,32 @@ export interface INodePropertyTypeOptions {
     addButtonLabel?: string;
     maxConditions?: number;
     showRenameOutput?: boolean;
+    /** Structured Filter v2 stores { combinator, conditions, options } instead of a bare row array. */
+    valueShape?: 'array' | 'structured';
+    /** Render the AND/OR selector inside the condition editor. */
+    showCombinator?: boolean;
   };
+  /** n8n resourceMapper: load a resource schema and map input fields automatically or explicitly. */
+  resourceMapper?: {
+    valuesLabel?: string;
+    resourceMapperMethod: string;
+    mode?: 'add' | 'update';
+    addAllFields?: boolean;
+    multiKeyMatch?: boolean;
+  };
+}
+
+export interface IResourceMapperField {
+  id: string;
+  displayName: string;
+  type?: string;
+  required?: boolean;
+  defaultMatch?: boolean;
+  canBeUsedToMatch?: boolean;
+}
+
+export interface IResourceMapperFields {
+  fields: IResourceMapperField[];
 }
 
 /**
@@ -268,7 +294,7 @@ export interface ILoadOptionsDeclaration {
 
 export interface IResourceLocatorMode {
   displayName: string;
-  name: 'list' | 'url' | 'id';
+  name: 'list' | 'url' | 'id' | 'name';
   placeholder?: string;
   /** list 模式调用节点 methods.resourceLocator 中的同名方法。 */
   searchListMethod?: string;
@@ -284,10 +310,27 @@ export interface IResourceLocatorResult {
   paginationToken?: string;
 }
 
-/** 条件显示：仅当其他参数满足条件时才显示本参数。 */
+/** displayOptions 的条件操作符；与 n8n `_cnd` 契约保持一致。 */
+export type DisplayCondition =
+  | { _cnd: { eq: string | number | boolean | null } }
+  | { _cnd: { not: string | number | boolean | null } }
+  | { _cnd: { gte: number | string } }
+  | { _cnd: { lte: number | string } }
+  | { _cnd: { gt: number | string } }
+  | { _cnd: { lt: number | string } }
+  | { _cnd: { between: { from: number | string; to: number | string } } }
+  | { _cnd: { startsWith: string } }
+  | { _cnd: { endsWith: string } }
+  | { _cnd: { includes: string } }
+  | { _cnd: { regex: string } }
+  | { _cnd: { exists: true } };
+
+export type DisplayConditionValue = string | number | boolean | null | DisplayCondition;
+
+/** 条件显示：show 的键全部命中；hide 任一键命中即隐藏。 */
 export interface IDisplayOptions {
-  show?: Record<string, Array<string | number | boolean>>;
-  hide?: Record<string, Array<string | number | boolean>>;
+  show?: Record<string, DisplayConditionValue[] | undefined>;
+  hide?: Record<string, DisplayConditionValue[] | undefined>;
 }
 
 /** 参数定义 —— 前端据此渲染表单控件。 */
@@ -427,6 +470,44 @@ export interface INodeExecutionHelpers {
   binaryToBuffer(binary: IBinaryData): Promise<Uint8Array>;
   /** 字节 → 二进制引用（有 store 落 store；无 store 退化为内联 base64）。 */
   bufferToBinary(buffer: Uint8Array, meta: { mimeType: string; fileName?: string }): Promise<IBinaryData>;
+  /** 当前项目的数据表能力；项目归属由 server 注入的闭包固定，节点不能指定 projectId。 */
+  dataTables?: IDataTableOperations;
+}
+
+export type DataTableColumnType = 'string' | 'number' | 'boolean' | 'date';
+
+export interface IDataTableColumn {
+  name: string;
+  type: DataTableColumnType;
+}
+
+export interface IDataTableView {
+  id: string;
+  name: string;
+  columns: IDataTableColumn[];
+  rowCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IDataTableRow {
+  id: string;
+  createdAt: Date;
+  updatedAt: Date;
+  data: JsonObject;
+}
+
+export interface IDataTableOperations {
+  list(): Promise<IDataTableView[]>;
+  get(id: string): Promise<IDataTableView>;
+  create(input: { name: string; columns?: IDataTableColumn[] }): Promise<IDataTableView>;
+  rename(id: string, name: string): Promise<IDataTableView>;
+  delete(id: string): Promise<void>;
+  clearRows(id: string): Promise<number>;
+  listRows(id: string): Promise<IDataTableRow[]>;
+  insertRow(id: string, data: JsonObject): Promise<IDataTableRow>;
+  updateRow(id: string, rowId: string, data: JsonObject): Promise<IDataTableRow>;
+  deleteRow(id: string, rowId: string): Promise<void>;
 }
 
 /** Execute Workflow 的 Define Below 载荷；只在父执行内存中运行，不持久化。 */
@@ -439,6 +520,8 @@ export interface IInlineWorkflowDefinition {
 
 /** execute 函数里的 `this`。getNodeParameter 会自动求值 `{{ }}` 表达式（Phase 2）。 */
 export interface IExecuteContext {
+  /** 当前正在执行的画布节点。 */
+  getNode(): INode;
   getInputData(inputIndex?: number): INodeExecutionData[];
   getNodeParameter(name: string, itemIndex: number): unknown;
   getNodeParameter(name: string, itemIndex: number, fallback: unknown): unknown;
@@ -520,6 +603,11 @@ export interface IWebhookContext {
 
 /* ────────────────  AI 能力契约（ai_* 连接类型上流动的对象；仅执行期存在，不进执行状态）  ──────────────── */
 
+/** Agent V3 在 contextData 中与引擎交换工具结果的保留键。 */
+export const AI_TOOL_RESULTS_CONTEXT_KEY = '__agentToolResults';
+/** Agent V3 自身可序列化状态的保留键。 */
+export const AI_AGENT_STATE_CONTEXT_KEY = '__agentV3State';
+
 export interface IAiToolCall {
   id: string;
   name: string;
@@ -567,6 +655,8 @@ export interface IAiToolSpec {
 export interface IAiTool {
   spec: IAiToolSpec;
   invoke(args: JsonObject): Promise<string>;
+  /** 供 Agent V3 把调用映射回画布上的真实工具节点；由引擎解析连接时注入。 */
+  sourceNodeName?: string;
 }
 
 /** ai_memory 子节点供给：会话记忆。 */
@@ -627,13 +717,18 @@ export interface INodeType {
   methods?: {
     loadOptions?: Record<string, (this: ILoadOptionsContext) => Promise<INodePropertyOption[]>>;
     resourceLocator?: Record<string, (this: IResourceLocatorContext) => Promise<IResourceLocatorResult>>;
+    resourceMapping?: Record<string, (this: ILoadOptionsContext) => Promise<IResourceMapperFields>>;
   };
 }
 
 export interface ILoadOptionsContext {
   getCredentials(type: string): Promise<JsonObject>;
   getCurrentNodeParameter(name: string): unknown;
-  helpers: { httpRequest(options: IHttpRequestOptions): Promise<unknown> };
+  helpers: {
+    httpRequest(options: IHttpRequestOptions): Promise<unknown>;
+    /** Dynamic parameter methods use the same project-scoped contract as execute(). */
+    dataTables?: Pick<IDataTableOperations, 'list' | 'get'>;
+  };
 }
 
 export interface IResourceLocatorContext extends ILoadOptionsContext {

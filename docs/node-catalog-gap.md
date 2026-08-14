@@ -29,7 +29,7 @@ nomops 现有 **30 个节点**(26 核心 + Slack/GitHub/SendGrid/Stripe 4 个声
 | `compression` | Compression | ❌ 缺 |  |
 | `convertToFile` | Convert to File | ❌ 缺 |  |
 | `crypto` | Crypto | ❌ 缺 |  |
-| `dataTable` | Data table | ❌ 缺 |  |
+| `dataTable` | Data table | ✅ DataTable |  |
 | `dateTime` | Date & Time | ❌ 缺 |  |
 | `editImage` | Edit Image | ❌ 缺 |  |
 | `emailReadImap` | Email Trigger (IMAP) | ❌ 缺 | ⚡ |
@@ -82,7 +82,7 @@ nomops 现有 **30 个节点**(26 核心 + Slack/GitHub/SendGrid/Stripe 4 个声
 - **P0 文件/IO(工作流常用)**:`readWriteFile`、`extractFromFile`、`convertToFile`、`ftp`、`ssh`、`emailSend`、`emailReadImap`
 - **P1 格式解析**:`html`、`xml`、`markdown`、`rssFeedRead`、`rssFeedReadTrigger`
 - **P1 触发器补全**:`formTrigger`、`form`、`sseTrigger`、`n8nTrigger`
-- **P2 流程/工具**:`stopAndError`、`compression`、`editImage`、`executionData`、`git`、`totp`、`dataTable`、`n8n`
+- **P2 流程/工具**:`stopAndError`、`compression`、`editImage`、`executionData`、`git`、`totp`、`n8n`
 - **可不做(n8n 云/自家专属)**:`aiTransform`、`timeSaved`
 
 ## 二、无分类内置节点:8 个

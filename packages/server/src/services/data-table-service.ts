@@ -16,6 +16,7 @@ export interface IDataTableView {
   columns: IDataTableColumn[];
   rowCount: number;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 /** 单行视图：系统字段（id/createdAt/updatedAt）+ 用户列数据。 */
@@ -50,6 +51,7 @@ export class DataTableService {
           columns: (t.columns ?? []) as IDataTableColumn[],
           rowCount: rows.length,
           createdAt: t.createdAt,
+          updatedAt: t.updatedAt,
         };
       }),
     );
@@ -65,6 +67,7 @@ export class DataTableService {
       columns: (table.columns ?? []) as IDataTableColumn[],
       rowCount: rows.length,
       createdAt: table.createdAt,
+      updatedAt: table.updatedAt,
     };
   }
 
@@ -80,7 +83,14 @@ export class DataTableService {
     }
     const columns = this.normalizeColumns(input.columns ?? []);
     const table = await this.repos.dataTables.createTable({ projectId, name, columns });
-    return { id: table.id, name: table.name, columns, rowCount: 0, createdAt: table.createdAt };
+    return {
+      id: table.id,
+      name: table.name,
+      columns,
+      rowCount: 0,
+      createdAt: table.createdAt,
+      updatedAt: table.updatedAt,
+    };
   }
 
   async rename(id: string, name: string, projectId: string): Promise<IDataTableView> {
@@ -98,6 +108,11 @@ export class DataTableService {
   async delete(id: string, projectId: string): Promise<void> {
     await this.requireTable(id, projectId);
     await this.repos.dataTables.deleteTable(id);
+  }
+
+  async clearRows(id: string, projectId: string): Promise<number> {
+    await this.requireTable(id, projectId);
+    return this.repos.dataTables.clearRows(id);
   }
 
   async addColumn(id: string, column: IDataTableColumn, projectId: string): Promise<IDataTableView> {

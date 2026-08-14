@@ -14,7 +14,7 @@ import { CREDENTIAL_TYPES } from '../../lib/credential-types.js';
 import { useEditorStore } from '../../stores/editor.js';
 import { useExecutionStore } from '../../stores/execution.js';
 import { useNodeTypesStore } from '../../stores/node-types.js';
-import { isPropertyVisible } from '../../lib/display-options.js';
+import { isPropertyVisible, matchesDisplayOptions } from '../../lib/display-options.js';
 import { parseCurlCommand } from '../../lib/parse-curl.js';
 import { inputItemsFor, lastRunOf, outputPorts } from '../../lib/run-data.js';
 import ParamInput from '../node-view/ParamInput.vue';
@@ -89,7 +89,10 @@ const docsUrl = computed(() => 'https://github.com/nomops/nomops/tree/main/docs/
 const visibleProps = computed(() => {
   if (!desc.value || !node.value) return [];
   return desc.value.properties.filter((p) =>
-    isPropertyVisible(p, node.value!.parameters, desc.value!.properties),
+    isPropertyVisible(p, node.value!.parameters, desc.value!.properties, {
+      nodeVersion: node.value!.typeVersion,
+      rootParams: node.value!.parameters,
+    }),
   );
 });
 
@@ -278,14 +281,14 @@ watch(
   { immediate: true },
 );
 const nodeCredTypes = computed(() =>
-  (desc.value?.credentials ?? []).filter((ct) => {
-    const show = ct.displayOptions?.show;
-    if (!show) return true;
-    // show 全命中才显示（凭证按所选 provider 条件展示）
-    return Object.entries(show).every(([key, allowed]) =>
-      (allowed as unknown[]).includes(node.value?.parameters?.[key]),
-    );
-  }),
+  (desc.value?.credentials ?? []).filter((credential) =>
+    matchesDisplayOptions(
+      credential.displayOptions,
+      node.value?.parameters ?? {},
+      desc.value?.properties ?? [],
+      { nodeVersion: node.value?.typeVersion, rootParams: node.value?.parameters ?? {} },
+    ),
+  ),
 );
 function credsOfType(type: string): CredentialView[] {
   return allCredentials.value.filter((c) => c.type === type);
@@ -481,6 +484,8 @@ async function executeNodeAction() {
                 :prop="prop"
                 :value="node.parameters[prop.name]"
                 :preview-items="inputItems"
+                :preview-run-data="runData"
+                :preview-workflow="{ id: editor.id ?? undefined, name: editor.name }"
                 :node-parameters="node.parameters"
                 :node-name="node.name"
                 :ai-tool="isAiTool"

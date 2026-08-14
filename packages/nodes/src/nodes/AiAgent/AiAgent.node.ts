@@ -1,15 +1,22 @@
 import type {
+  IAiChatResponse,
   IAiImageAttachment,
   IAiLanguageModel,
   IAiMemory,
   IAiMessage,
   IAiTool,
+  IAiToolCall,
   IExecuteContext,
   INodeExecutionData,
   INodeType,
   JsonObject,
 } from '@nomops/workflow';
-import { OperationalError } from '@nomops/workflow';
+import {
+  AI_AGENT_STATE_CONTEXT_KEY,
+  AI_TOOL_RESULTS_CONTEXT_KEY,
+  ExecutionAiToolRequest,
+  OperationalError,
+} from '@nomops/workflow';
 import { aiAgentDescription } from './AiAgent.description.js';
 
 /** 从 item 的 binary 里挑出图片附件转 base64（多模态，backlog #32）；非图片忽略。 */
@@ -31,6 +38,31 @@ interface ILegacyAnthropicResponse {
   model?: string;
   usage?: JsonObject;
   stop_reason?: string;
+}
+
+interface IAgentItemState {
+  itemIndex: number;
+  messages: IAiMessage[];
+  sessionId: string;
+  maxIterations: number;
+  toolRounds: number;
+  inputTokens: number;
+  outputTokens: number;
+  replyContent: string;
+  pendingCalls: IAiToolCall[];
+  pendingCallIndex: number;
+}
+
+interface IAgentExecutionState {
+  nextItemIndex: number;
+  returnData: INodeExecutionData[];
+  current?: IAgentItemState;
+}
+
+function addUsage(state: IAgentItemState, reply: IAiChatResponse): void {
+  if (!reply.usage) return;
+  state.inputTokens += reply.usage.inputTokens;
+  state.outputTokens += reply.usage.outputTokens;
 }
 
 /**
@@ -55,63 +87,117 @@ export class AiAgent implements INodeType {
     const toolByName = new Map(tools.map((t) => [t.spec.name, t]));
 
     const items = this.getInputData();
-    const returnData: INodeExecutionData[] = [];
+    const context = this.getContext();
+    const stored = context[AI_AGENT_STATE_CONTEXT_KEY] as unknown as IAgentExecutionState | undefined;
+    const state: IAgentExecutionState = stored ?? { nextItemIndex: 0, returnData: [] };
+    if (!stored) context[AI_AGENT_STATE_CONTEXT_KEY] = state as unknown as JsonObject;
+    const toolResults =
+      context[AI_TOOL_RESULTS_CONTEXT_KEY] &&
+      typeof context[AI_TOOL_RESULTS_CONTEXT_KEY] === 'object' &&
+      !Array.isArray(context[AI_TOOL_RESULTS_CONTEXT_KEY])
+        ? (context[AI_TOOL_RESULTS_CONTEXT_KEY] as JsonObject)
+        : ((context[AI_TOOL_RESULTS_CONTEXT_KEY] = {}) as JsonObject);
 
-    for (let i = 0; i < items.length; i++) {
-      const legacyPrompt = this.getNodeParameter('prompt', i, '');
-      const prompt = String(this.getNodeParameter('text', i, legacyPrompt) ?? '');
-      if (!prompt) throw new OperationalError(`AI Agent: prompt is empty (item ${i})`, { itemIndex: i });
-      const options = (this.getNodeParameter('options', i, {}) ?? {}) as Record<string, unknown>;
-      const system = String(options['systemMessage'] ?? this.getNodeParameter('system', i, '') ?? '');
-      const maxIterations = Math.max(1, Number(options['maxIterations'] ?? this.getNodeParameter('maxIterations', i, 10)));
-      const sessionId = String(options['sessionId'] ?? this.getNodeParameter('sessionId', i, 'default') ?? 'default');
-
-      // 会话组装：system + 记忆里的历史 + 本轮用户输入（含图片附件）
-      const history = memory ? await memory.load(sessionId) : [];
-      const images = await collectImages(this, items[i]!);
-      const messages: IAiMessage[] = [
-        ...(system ? [{ role: 'system', content: system } as IAiMessage] : []),
-        ...history,
-        { role: 'user', content: prompt, ...(images.length ? { images } : {}) },
-      ];
-
-      // Agent 循环：模型请求工具 → 逐个执行 → 结果回喂，直到纯文本或到达上限
-      // token 用量跨轮累加（成本核算，backlog #44 M2）
-      let toolRounds = 0;
-      let inputTokens = 0;
-      let outputTokens = 0;
-      const addUsage = (r: typeof reply) => {
-        if (r.usage) {
-          inputTokens += r.usage.inputTokens;
-          outputTokens += r.usage.outputTokens;
+    while (state.nextItemIndex < items.length) {
+      if (!state.current) {
+        const i = state.nextItemIndex;
+        const legacyPrompt = this.getNodeParameter('prompt', i, '');
+        const prompt = String(this.getNodeParameter('text', i, legacyPrompt) ?? '');
+        if (!prompt) throw new OperationalError(`AI Agent: prompt is empty (item ${i})`, { itemIndex: i });
+        const options = (this.getNodeParameter('options', i, {}) ?? {}) as Record<string, unknown>;
+        const system = String(options['systemMessage'] ?? this.getNodeParameter('system', i, '') ?? '');
+        const maxIterations = Math.max(1, Number(options['maxIterations'] ?? this.getNodeParameter('maxIterations', i, 10)));
+        const sessionId = String(options['sessionId'] ?? this.getNodeParameter('sessionId', i, 'default') ?? 'default');
+        const history = memory ? await memory.load(sessionId) : [];
+        const images = await collectImages(this, items[i]!);
+        state.current = {
+          itemIndex: i,
+          messages: [
+            ...(system ? [{ role: 'system', content: system } as IAiMessage] : []),
+            ...history,
+            { role: 'user', content: prompt, ...(images.length ? { images } : {}) },
+          ],
+          sessionId,
+          maxIterations,
+          toolRounds: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          replyContent: '',
+          pendingCalls: [],
+          pendingCallIndex: 0,
+        };
+        const reply = await model.chat(state.current.messages, { tools: tools.map((tool) => tool.spec) });
+        addUsage(state.current, reply);
+        state.current.replyContent = reply.content;
+        if (reply.toolCalls?.length && state.current.toolRounds < state.current.maxIterations) {
+          state.current.toolRounds++;
+          state.current.messages.push({ role: 'assistant', content: reply.content, toolCalls: reply.toolCalls });
+          state.current.pendingCalls = reply.toolCalls;
         }
-      };
-      let reply = await model.chat(messages, { tools: tools.map((t) => t.spec) });
-      addUsage(reply);
-      while (reply.toolCalls?.length && toolRounds < maxIterations) {
-        toolRounds++;
-        messages.push({ role: 'assistant', content: reply.content, toolCalls: reply.toolCalls });
-        for (const call of reply.toolCalls) {
-          const tool = toolByName.get(call.name);
-          const result = tool
-            ? await tool.invoke(call.arguments).catch((e: Error) => `Tool error: ${e.message}`)
-            : `Unknown tool: ${call.name}`;
-          messages.push({ role: 'tool', content: result, toolCallId: call.id });
-        }
-        reply = await model.chat(messages, { tools: tools.map((t) => t.spec) });
-        addUsage(reply);
       }
 
-      messages.push({ role: 'assistant', content: reply.content });
-      if (memory) await memory.save(sessionId, messages);
+      const current = state.current;
+      if (current.pendingCallIndex < current.pendingCalls.length) {
+        const call = current.pendingCalls[current.pendingCallIndex]!;
+        let result = toolResults[call.id];
+        if (typeof result !== 'string') {
+          const tool = toolByName.get(call.name);
+          if (!tool) {
+            result = `Unknown tool: ${call.name}`;
+          } else if (tool.sourceNodeName) {
+            // 关键边界：不在节点内 invoke。把动作交回 WorkflowExecute 主循环，真实工具
+            // 节点会获得 retry/cancel/HITL/runData；Agent 帧随后以 resume 恢复。
+            throw new ExecutionAiToolRequest({
+              parentNodeName: this.getNode().name,
+              sourceNodeName: tool.sourceNodeName,
+              toolName: call.name,
+              toolCallId: call.id,
+              args: call.arguments,
+              itemIndex: current.itemIndex,
+            });
+          } else {
+            // 仅供直接调用节点实现/旧第三方能力对象兼容；画布连接由 core 注入 sourceNodeName。
+            result = await tool.invoke(call.arguments).catch((error: Error) => `Tool error: ${error.message}`);
+          }
+        } else {
+          delete toolResults[call.id];
+        }
+        current.messages.push({ role: 'tool', content: String(result), toolCallId: call.id });
+        current.pendingCallIndex++;
+        continue;
+      }
 
-      returnData.push({
-        // _nmUsage 保留键：AgentRunService 跑完从 runData 提取 → 成本核算（#44 M2）
-        json: { output: reply.content, toolRounds, _nmUsage: { inputTokens, outputTokens } },
-        pairedItem: { item: i },
+      if (current.pendingCalls.length > 0) {
+        current.pendingCalls = [];
+        current.pendingCallIndex = 0;
+        const reply = await model.chat(current.messages, { tools: tools.map((tool) => tool.spec) });
+        addUsage(current, reply);
+        current.replyContent = reply.content;
+        if (reply.toolCalls?.length && current.toolRounds < current.maxIterations) {
+          current.toolRounds++;
+          current.messages.push({ role: 'assistant', content: reply.content, toolCalls: reply.toolCalls });
+          current.pendingCalls = reply.toolCalls;
+          continue;
+        }
+      }
+
+      current.messages.push({ role: 'assistant', content: current.replyContent });
+      if (memory) await memory.save(current.sessionId, current.messages);
+      state.returnData.push({
+        json: {
+          output: current.replyContent,
+          toolRounds: current.toolRounds,
+          _nmUsage: { inputTokens: current.inputTokens, outputTokens: current.outputTokens },
+        },
+        pairedItem: { item: current.itemIndex },
       });
+      state.nextItemIndex++;
+      delete state.current;
     }
 
+    const returnData = state.returnData;
+    delete context[AI_AGENT_STATE_CONTEXT_KEY];
+    delete context[AI_TOOL_RESULTS_CONTEXT_KEY];
     return [returnData];
   }
 }

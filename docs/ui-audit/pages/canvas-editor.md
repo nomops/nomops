@@ -41,6 +41,8 @@ Fit-to-view / Zoom in / Zoom out / Undo / Tidy-up（⇧⌥T）——Nomops 五�
 
 2026-08-01 按本地基线实例重新实测并落地：普通节点为 96×96、图标 48×48、主端口 16×16、标签外置且为 16px/500；触发器轮廓为 `36px 8px 8px 36px`；选中态保留默认 20% 白色边框，并使用 6px/40% 白色外环。隔离生产实例复验计算样式一致，分支标签正常，控制台无 warning/error。
 
+2026-08-13 删除语义补充：删除恰好一条 main 入边和一条 main 出边的中间节点时自动桥接，并保留原输出/输入端口索引；分支、汇合、自环、AI 能力边和多节点删除不猜测。菜单删除与 Delete 键单选路径共用该规则。隔离画布实测删除 `Seed Data` 后出现 `Start:main:0 → Big?:0`。
+
 ### B4. 执行区（底部中央）
 | 元素 | n8n | Nomops 现状 | 差异类型 |
 |---|---|---|---|
@@ -68,6 +70,20 @@ Fit-to-view / Zoom in / Zoom out / Undo / Tidy-up（⇧⌥T）——Nomops 五�
 2026-08-11 第四批补充：Merge、Loop Over Items、Wait、Execute Workflow、Respond to Webhook、Form/Form Trigger 已完成本地 n8n 参数基线采集和声明式动态字段改造。浏览器复验 trigger-first、Merge Combine 与 Wait Webhook Call 时，NDV 三栏、Fixed/Expression、条件显隐和输出空态均正常。
 
 2026-08-11 第五批补充：第四批留下的三条真实运行时边界已闭环。Merge SQL Query 以 `input1..input10` 为表在 64MB/30 秒隔离沙箱执行 AlaSQL，并封禁网络/文件数据源；Execute Workflow Define Below 可校验并以内存工作流执行导出 JSON，不落库且继续继承项目凭证边界与 5 层递归熔断；Form/Form Trigger 公开页按文件字段生成 multipart form，上传受单文件 10MB、单请求 20MB、20 文件限制，输出同时含 n8n 形态 JSON 元数据与 binary 引用。fixedCollection 也补齐 n8n 的 `Add Attributes` 可选字段菜单。浏览器再次核对本地 n8n 的触发器首页、Merge SQL、Workflow JSON 和 File Attributes 动态 UI。
+
+2026-08-11 第六批补充：数据变换节点的 NDV 参数面按本地基线重构。Filter 条件编辑器支持结构化条件与 AND/OR；Split Out、Aggregate、Sort、Remove Duplicates 的 options/fields 动态显隐由 schema 驱动，collection 内部字段也能读取根参数；Filter 与 Remove Duplicates 的主端口显示 Kept，运行数据在基线规定的模式下保留 Discarded 分组。运行时同步覆盖多字段拆分、binary、聚合筛选、随机/代码排序及跨执行去重，旧工作流参数保持兼容。
+
+2026-08-11 执行可视化补充：画布 WebSocket 现在订阅当前 workflow 专属频道，服务端在升级前校验 JWT、项目成员和工作流归属；客户端按 workflowId 与 currentExecutionId 过滤推送。连接使用应用 heartbeat + 协议 ping/pong，断线指数退避重连，并在重连后查询执行详情校准可能漏掉的结束事件，因此并发工作流与短时断网不会再造成跨画布高亮或永久 running。
+
+2026-08-11 版本化参数面补充：displayOptions 对齐本地 n8n 的 `_cnd` 条件集与 `@version`，顶层参数、嵌套 collection/fixedCollection 和凭证槽均使用画布节点自身 typeVersion 判断；表达式控制值不会导致依赖字段被误藏，版本门控仍不可被表达式绕过。Remove Duplicates 的 v1 存量节点隐藏 v2 Operation，v2 新节点正常展示。
+
+2026-08-11 Agent V3 补充：AI Agent 的模型轮次与待调用工具已保存为可序列化状态，工具调用由 WorkflowExecute 调度真实 `ai_tool` 节点，不再在 Agent 内部直调闭包。HTTP Tool 与自动派生 Tool 均可开启 Require Human Approval；执行会进入 waiting，resume 可批准或携带 reject 决策。工具继承节点重试和取消信号，执行详情按每个 call 单独显示工具名、call id、耗时、输出或错误。
+
+2026-08-11 表达式补充：`$now/$today` 已升级为按工作流时区构造的 DateTime，支持 Luxon 风格链式运算；String/Array/Object/Number 高频扩展方法经 AST 白名单改写进入同一 QuickJS 沙箱。NDV Result 不再使用简化占位上下文，而是注入当前 item、最近完整 runData 和工作流信息，实时呈现 pending/success/error 三态；`$json` 字段树和方法补全分别来自真实输入数据与 workflow 共享 `.doc` 元数据。
+
+2026-08-14 Data Table 补充：对照本地源码基线补齐 Row/Table 两资源和全部操作，Data table 选择器提供 From List/By Name/ID 三模式，Columns 使用动态 resource mapper，支持 Map Automatically / Map Each Column Manually，并按所选表即时生成类型化列输入。隔离生产实例中由 Manual Trigger 执行 Insert，NDV 同时显示 Input 1 item、Output 1 item 与 `id/createdAt/updatedAt/email/amount`，数据库回读 `buyer@example.com / 42`，浏览器控制台 0 error。
+
+2026-08-13 协同编辑地基补充：画布保存使用 workflow 内容版本乐观锁，重叠自动保存会串行并继续排空保存期间产生的新修改。另一会话先保存时，本会话收到 409 后保留本地节点、连线、名称和 dirty 状态，并显示 `Save conflict` 横幅；只有用户在二次确认弹窗中选择 `Reload latest` 才丢弃本地草稿。editor 的持久状态动作统一经过 `_applyPersistentChange` 记录 revision、dirty 和 undo 历史，为后续 presence/CRDT/命令式 undo 留出单一接入点。隔离生产实例用三个标签页验证服务端保留先保存版本、冲突草稿不被覆盖、确认重载恢复且控制台零 error。
 | 元素 | n8n | Nomops | 差异 |
 |---|---|---|---|
 | INPUT/OUTPUT 三视图 | Schema/Table/JSON | 同 | 一致 |

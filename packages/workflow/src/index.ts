@@ -8,7 +8,8 @@ export const WORKFLOW_PACKAGE = '@nomops/workflow';
 
 export * from './interfaces.js';
 export * from './execution-interfaces.js';
-export { ExecutionPause, OperationalError, UnexpectedError } from './errors.js';
+export { ExecutionAiToolRequest, ExecutionPause, OperationalError, UnexpectedError } from './errors.js';
+export type { IExecutionAiToolRequest } from './errors.js';
 export type { IErrorContext } from './errors.js';
 export * from './node-settings.js';
 export { Workflow } from './workflow.js';
@@ -17,6 +18,8 @@ export { ExpressionError, evaluateInSandbox } from './expression/sandbox.js';
 export type { IExpressionSandboxOptions } from './expression/sandbox.js';
 export { isExpression, resolveParameterValue } from './expression/evaluator.js';
 export type { IExpressionContext } from './expression/evaluator.js';
+export { EXPRESSION_EXTENSION_DOCS, rewriteExpressionExtensions } from './expression/extensions.js';
+export type { IExpressionExtensionDoc } from './expression/extensions.js';
 export { itemInAncestor, traceLineage } from './expression/paired-item.js';
 export type { ILineageStep } from './expression/paired-item.js';
 export { collectFromAiParams, fromAiSchema, resolveWithAiArgs } from './expression/from-ai.js';

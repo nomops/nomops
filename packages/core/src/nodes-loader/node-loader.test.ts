@@ -69,6 +69,23 @@ describe('NodeLoader', () => {
     expect(v1.load).not.toHaveBeenCalled();
   });
 
+  it('单一节点声明多个兼容版本时，存量 typeVersion 仍能加载', async () => {
+    const multiVersionDescription = { ...description('removeDuplicates'), version: [1, 2] };
+    const load = vi.fn(async () => class implements INodeType {
+      description = multiVersionDescription;
+      async execute(): Promise<INodeExecutionData[][]> { return [[]]; }
+    });
+    const loader = new NodeLoader([{
+      type: 'nomops.removeDuplicates',
+      description: multiVersionDescription,
+      load,
+    }]);
+
+    await expect(loader.getByNameAndVersion('nomops.removeDuplicates', 1)).resolves.toBeDefined();
+    await expect(loader.getByNameAndVersion('nomops.removeDuplicates', 2)).resolves.toBeDefined();
+    await expect(loader.getByNameAndVersion('nomops.removeDuplicates', 3)).rejects.toBeInstanceOf(NodeTypeNotFoundError);
+  });
+
   it('未知节点类型抛 NodeTypeNotFoundError', async () => {
     const loader = new NodeLoader([]);
     await expect(loader.getByNameAndVersion('nomops.missing')).rejects.toBeInstanceOf(

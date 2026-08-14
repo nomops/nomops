@@ -55,6 +55,7 @@ import { rssFeedReadTriggerDescription } from './nodes/RssFeedReadTrigger/RssFee
 import { sseTriggerDescription } from './nodes/SseTrigger/SseTrigger.description.js';
 import { stopAndErrorDescription } from './nodes/StopAndError/StopAndError.description.js';
 import { executionDataDescription } from './nodes/ExecutionData/ExecutionData.description.js';
+import { dataTableDescription } from './nodes/DataTable/DataTable.description.js';
 import { totpDescription } from './nodes/Totp/Totp.description.js';
 import { gitDescription } from './nodes/Git/Git.description.js';
 import { declarative } from './nodes/integrations/declarative.js';
@@ -104,6 +105,11 @@ export const builtinNodeManifest: ILoadableNodeType[] = [
     type: `nomops.${executionDataDescription.name}`,
     description: executionDataDescription,
     load: () => import('./nodes/ExecutionData/ExecutionData.node.js').then((m) => m.ExecutionData),
+  },
+  {
+    type: `nomops.${dataTableDescription.name}`,
+    description: dataTableDescription,
+    load: () => import('./nodes/DataTable/DataTable.node.js').then((m) => m.DataTable),
   },
   {
     type: `nomops.${stopAndErrorDescription.name}`,

@@ -365,6 +365,20 @@
       "when": 1786346189609,
       "tag": "0051_omniscient_newton_destine",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "6",
+      "when": 1786615310836,
+      "tag": "0052_omniscient_squadron_supreme",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "6",
+      "when": 1786671753030,
+      "tag": "0053_boring_blob",
+      "breakpoints": true
     }
   ]
 }

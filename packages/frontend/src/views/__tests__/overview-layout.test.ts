@@ -53,4 +53,12 @@ describe('Overview 资源 Tab 布局契约', () => {
     expect(source).toContain('value="csv" disabled');
     expect(source).toContain("t('Coming soon')");
   });
+
+  it('根目录空态提供免凭证且可直接运行的 starter', () => {
+    expect(source).toContain('data-test="starter-template"');
+    expect(source).toContain("api.templates.import('branch-merge-demo')");
+    expect(source).toContain('v-if="currentFolderId === null"');
+    expect(source).toContain("t('No credentials · ready to run')");
+    expect(source).toContain("name: 'canvas'");
+  });
 });

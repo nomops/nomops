@@ -18,6 +18,7 @@ export const limitDescription: INodeTypeDescription = {
       type: 'number',
       default: 1,
       required: true,
+      typeOptions: { minValue: 1 },
       description: 'Maximum number of items to keep',
     },
     {

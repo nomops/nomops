@@ -8,10 +8,12 @@ import type {
   INodePropertyOption,
   IResourceLocatorContext,
   IResourceLocatorResult,
+  IResourceMapperFields,
   JsonObject,
 } from '@nomops/workflow';
 import { OperationalError } from '@nomops/workflow';
 import type { CredentialService } from './credential-service.js';
+import type { DataTableService } from './data-table-service.js';
 
 export interface IDynamicNodeParametersRequest {
   nodeType: string;
@@ -88,6 +90,7 @@ export class DynamicNodeParametersService {
     private readonly nodeLoader: INodeLoader,
     private readonly credentials: CredentialService,
     private readonly httpRequest: (options: IHttpRequestOptions) => Promise<unknown> = defaultHttpRequest,
+    private readonly dataTables?: DataTableService,
   ) {}
 
   private context(
@@ -106,7 +109,17 @@ export class DynamicNodeParametersService {
         if (!reference) throw new OperationalError('Credential is required for dynamic parameters', { status: 400, type });
         return this.credentials.getDecryptedData(reference.id, projectId, undefined, userId);
       },
-      helpers: { httpRequest: this.httpRequest },
+      helpers: {
+        httpRequest: this.httpRequest,
+        ...(this.dataTables
+          ? {
+              dataTables: {
+                list: () => this.dataTables!.list(projectId),
+                get: (id: string) => this.dataTables!.get(id, projectId),
+              },
+            }
+          : {}),
+      },
       ...(request.filter !== undefined ? { filter: request.filter } : {}),
       ...(request.paginationToken !== undefined ? { paginationToken: request.paginationToken } : {}),
     };
@@ -174,6 +187,28 @@ export class DynamicNodeParametersService {
       return { ...result, results: validateOptions(result.results) };
     } catch {
       throw new OperationalError('Unable to load dynamic node parameters', { status: 502 });
+    }
+  }
+
+  async mapResourceFields(
+    request: IDynamicNodeParametersRequest,
+    projectId: string,
+    userId: string,
+  ): Promise<IResourceMapperFields> {
+    const node = await this.nodeLoader.getByNameAndVersion(request.nodeType, request.nodeVersion);
+    const property = propertyByName(node.description.properties, request.propertyName);
+    if (!property || property.type !== 'resourceMapper') {
+      throw new OperationalError('Resource mapper property not found', { status: 404 });
+    }
+    const methodName = property.typeOptions?.resourceMapper?.resourceMapperMethod;
+    const method = methodName ? node.methods?.resourceMapping?.[methodName] : undefined;
+    if (!method) throw new OperationalError('Resource mapper method not found', { status: 404 });
+    try {
+      const result = await method.call(this.context(request, projectId, userId, node.description.credentials ?? []));
+      if (!Array.isArray(result.fields)) throw new Error('invalid fields');
+      return result;
+    } catch {
+      throw new OperationalError('Unable to load resource mapper fields', { status: 502 });
     }
   }
 }

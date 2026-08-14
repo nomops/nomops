@@ -3,6 +3,7 @@ import type {
   IEventStreamMessage,
   IEventStreamOptions,
   IExecuteContext,
+  IDataTableOperations,
   IHttpRequestOptions,
   INode,
   INodeExecutionData,
@@ -76,7 +77,20 @@ async function resolveInputConnectionData(args: {
       resolver,
       depth: depth + 1,
     });
-    supplied.push(await subType.supplyData.call(subContext));
+    const value = await subType.supplyData.call(subContext);
+    // Agent V3 需要把模型选择的 tool name 映射回真实画布节点。仅给 IAiTool 形状
+    // 注入来源；其他模型/记忆能力保持原样。
+    if (
+      connectionType === 'ai_tool' &&
+      value !== null &&
+      typeof value === 'object' &&
+      'spec' in value &&
+      'invoke' in value
+    ) {
+      supplied.push({ ...value, sourceNodeName: subNode.name });
+    } else {
+      supplied.push(value);
+    }
   }
   return supplied;
 }
@@ -103,6 +117,7 @@ export function createSupplyContext(args: {
           items: [],
           runData: {},
           workflow: { id: workflow.id, name: workflow.name },
+          timezone: workflow.settings?.timezone,
           vars: additionalData.variables ?? {},
         });
       } catch (error) {
@@ -192,6 +207,8 @@ export interface IWorkflowExecuteAdditionalData {
   setWebhookResponse?: (response: JsonObject) => void;
   /** 本次执行元信息（表达式 $execution.id / $execution.resumeUrl;server 注入）。 */
   execution?: { id?: string; resumeUrl?: string };
+  /** 当前项目的数据表操作闭包（server 固定 projectId 后注入）。 */
+  dataTables?: IDataTableOperations;
 }
 
 /**
@@ -303,6 +320,10 @@ export function createExecuteContext(args: {
     : undefined;
 
   const context: IExecuteContext = {
+    getNode(): INode {
+      return node;
+    },
+
     getInputData(inputIndex = 0): INodeExecutionData[] {
       return inputData['main']?.[inputIndex] ?? [];
     },
@@ -316,6 +337,7 @@ export function createExecuteContext(args: {
           items,
           runData,
           workflow: { id: workflow.id, name: workflow.name },
+          timezone: workflow.settings?.timezone,
           vars: additionalData.variables ?? {},
           parameters: node.parameters,
           runIndex,
@@ -390,6 +412,7 @@ export function createExecuteContext(args: {
         items,
         runData,
         workflow: { id: workflow.id, name: workflow.name },
+        timezone: workflow.settings?.timezone,
         vars: additionalData.variables ?? {},
         parameters: node.parameters,
         runIndex,
@@ -406,6 +429,7 @@ export function createExecuteContext(args: {
       ...(additionalData.setWebhookResponse
         ? { setWebhookResponse: additionalData.setWebhookResponse }
         : {}),
+      ...(additionalData.dataTables ? { dataTables: additionalData.dataTables } : {}),
 
       async binaryToBuffer(binary: IBinaryData): Promise<Uint8Array> {
         if (binary.id) {

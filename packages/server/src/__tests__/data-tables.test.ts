@@ -95,4 +95,68 @@ describe('Data tables', () => {
     await request(app).get('/api/data-tables/does-not-exist').set(authed()).expect(404);
     await request(app).delete('/api/data-tables/does-not-exist').set(authed()).expect(404);
   });
+
+  it('Data table 节点动态加载表/列并在真实引擎中持久化和读取行', async () => {
+    const table = (await request(app).post('/api/data-tables').set(authed()).send({
+      name: 'node-orders',
+      columns: [{ name: 'email', type: 'string' }, { name: 'amount', type: 'number' }],
+    }).expect(201)).body;
+
+    const locator = await request(app)
+      .post('/api/dynamic-node-parameters/resource-locator-results')
+      .set(authed())
+      .send({
+        nodeType: 'nomops.dataTable', nodeVersion: 1.1, propertyName: 'dataTableId',
+        currentNodeParameters: {}, credentials: {}, filter: 'node-order',
+      })
+      .expect(200);
+    expect(locator.body.results).toEqual([{ name: 'node-orders', value: table.id, description: '0 rows' }]);
+
+    const mapper = await request(app)
+      .post('/api/dynamic-node-parameters/resource-mapper-fields')
+      .set(authed())
+      .send({
+        nodeType: 'nomops.dataTable', nodeVersion: 1.1, propertyName: 'columns',
+        currentNodeParameters: { dataTableId: { mode: 'id', value: table.id } }, credentials: {},
+      })
+      .expect(200);
+    expect(mapper.body.fields.map((field: { id: string }) => field.id)).toEqual(['email', 'amount']);
+
+    const workflow = (await request(app).post('/api/workflows').set(authed()).send({
+      name: 'Data table node runtime',
+      nodes: [
+        { id: 'trigger', name: 'Start', type: 'nomops.manualTrigger', typeVersion: 1, position: [0, 0], parameters: {} },
+        {
+          id: 'insert', name: 'Insert order', type: 'nomops.dataTable', typeVersion: 1.1, position: [220, 0],
+          parameters: {
+            resource: 'row', operation: 'insert', dataTableId: { mode: 'id', value: table.id },
+            columns: { mappingMode: 'defineBelow', value: { email: 'buyer@example.com', amount: 42 }, schema: mapper.body.fields },
+            options: {},
+          },
+        },
+        {
+          id: 'get', name: 'Read orders', type: 'nomops.dataTable', typeVersion: 1.1, position: [440, 0],
+          parameters: {
+            resource: 'row', operation: 'get', dataTableId: { mode: 'id', value: table.id },
+            filters: { conditions: [{ keyName: 'amount', condition: 'gte', keyValue: 40 }] },
+            matchType: 'allConditions', returnAll: true, orderBy: false,
+          },
+        },
+      ],
+      connections: {
+        Start: { main: [[{ node: 'Insert order', type: 'main', index: 0 }]] },
+        'Insert order': { main: [[{ node: 'Read orders', type: 'main', index: 0 }]] },
+      },
+    }).expect(201)).body;
+
+    const execution = await request(app).post(`/api/workflows/${workflow.id}/run`).set(authed()).send({}).expect(200);
+    expect(execution.body.status).toBe('success');
+    const rows = await request(app).get(`/api/data-tables/${table.id}/rows`).set(authed()).expect(200);
+    expect(rows.body).toHaveLength(1);
+    expect(rows.body[0].data).toEqual({ email: 'buyer@example.com', amount: 42 });
+    const detail = await request(app).get(`/api/executions/${execution.body.executionId}`).set(authed()).expect(200);
+    expect(detail.body.data.resultData.runData['Read orders'][0].data.main[0][0].json).toMatchObject({
+      email: 'buyer@example.com', amount: 42,
+    });
+  });
 });

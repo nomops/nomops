@@ -1,5 +1,6 @@
 import type { INodeExecutionData, JsonObject } from '../interfaces.js';
 import type { IRunData } from '../execution-interfaces.js';
+import { DateTime } from 'luxon';
 import { ExpressionError, evaluateInSandbox } from './sandbox.js';
 import { itemInAncestor } from './paired-item.js';
 
@@ -15,6 +16,8 @@ export interface IExpressionContext {
   runData: IRunData;
   /** 工作流元信息（$workflow.id/name）。 */
   workflow: { id?: string; name?: string };
+  /** 工作流时区；$now/$today 按此时区构造，缺省 UTC。 */
+  timezone?: string;
   /** 项目维度变量（$vars.KEY）。 */
   vars?: Record<string, string>;
   /** 当前节点参数（$parameter.xxx——声明式 routing 的 url/body 里引用参数）。 */
@@ -76,6 +79,10 @@ function buildScope(ctx: IExpressionContext): Record<string, unknown> {
     Object.keys(ctx.runData).map((name) => [name, nodeAccessorData(ctx, name)]),
   );
 
+  const requestedZone = ctx.timezone ?? 'UTC';
+  const zonedNow = DateTime.now().setZone(requestedZone);
+  const now = zonedNow.isValid ? zonedNow : DateTime.utc();
+
   return {
     $json: ctx.json,
     $itemIndex: ctx.itemIndex,
@@ -83,7 +90,9 @@ function buildScope(ctx: IExpressionContext): Record<string, unknown> {
     __nodeData: nodeData,
     $runIndex: ctx.runIndex ?? 0,
     $prevNode: ctx.prevNode ?? {},
-    $now: new Date().toISOString(),
+    $now: now.toISO(),
+    $today: now.startOf('day').toISO(),
+    $timezone: now.zoneName,
     $workflow: { id: ctx.workflow.id, name: ctx.workflow.name },
     $vars: ctx.vars ?? {},
     $parameter: ctx.parameters ?? {},

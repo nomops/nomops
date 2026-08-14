@@ -4,6 +4,7 @@ import type {
   INodePropertyOption,
   INodeTypeDescription,
   IResourceLocatorResult,
+  IResourceMapperFields,
   IRunExecutionData,
   IWorkflowSettings,
   JsonObject,
@@ -46,6 +47,8 @@ export interface ShareRow {
 
 export interface WorkflowRow {
   id: string;
+  /** 草稿内容乐观锁；保存成功后递增。 */
+  version: number;
   name: string;
   description?: string | null;
   active: boolean;
@@ -307,6 +310,23 @@ export interface CredentialView {
   updatedAt: string;
 }
 
+export interface TemplateCredentialRequirement {
+  id: string;
+  credentialType: string;
+  credentialName: string;
+  nodeNames: string[];
+}
+
+export interface TemplateSummary {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  nodeTags: string[];
+  setupHints: string[];
+  credentialRequirements: TemplateCredentialRequirement[];
+}
+
 export interface VariableView {
   id: string;
   key: string;
@@ -327,6 +347,7 @@ export interface DataTableView {
   columns: DataTableColumn[];
   rowCount: number;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface DataTableRowView {
@@ -556,6 +577,8 @@ export const api = {
       http<INodePropertyOption[]>('POST', '/api/dynamic-node-parameters/options', body),
     resourceLocatorResults: (body: DynamicNodeParametersRequest) =>
       http<IResourceLocatorResult>('POST', '/api/dynamic-node-parameters/resource-locator-results', body),
+    resourceMapperFields: (body: DynamicNodeParametersRequest) =>
+      http<IResourceMapperFields>('POST', '/api/dynamic-node-parameters/resource-mapper-fields', body),
   },
 
   communityNodes: {
@@ -601,9 +624,11 @@ export const api = {
       body: Partial<{
         name: string;
         description: string | null;
+        settings: IWorkflowSettings;
         nodes: INode[];
         connections: IConnections;
         pinData: Record<string, Array<{ json: JsonObject }>> | null;
+        version: number;
       }>,
     ) =>
       http<WorkflowRow>('PATCH', `/api/workflows/${id}`, body),
@@ -1274,12 +1299,11 @@ export const api = {
   },
 
   templates: {
-    list: () =>
-      http<Array<{ id: string; name: string; description: string; category: string; nodeTags: string[]; setupHints: string[] }>>(
-        'GET',
-        '/api/templates',
-      ),
+    list: () => http<TemplateSummary[]>('GET', '/api/templates'),
+    get: (id: string) => http<TemplateSummary>('GET', `/api/templates/${id}`),
     import: (id: string) => http<WorkflowRow>('POST', `/api/templates/${id}/import`),
+    setup: (id: string, body: { workflowId: string; selections: Record<string, string> }) =>
+      http<WorkflowRow>('POST', `/api/templates/${id}/setup`, body),
   },
 
   about: () =>

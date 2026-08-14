@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import type { INodeExecutionData, INodeProperties, INodePropertyOption, IResourceLocatorValue } from '@nomops/workflow';
+import type { INodeExecutionData, INodeProperties, INodePropertyOption, IResourceLocatorValue, IResourceMapperField, IRunData } from '@nomops/workflow';
 import { resolveParameterValue } from '@nomops/workflow';
 import ExpressionInput from './ExpressionInput.vue';
 import { useEditorStore } from '../../stores/editor.js';
@@ -21,6 +21,10 @@ const props = defineProps<{
   value: unknown;
   /** 表达式预览与拖拽映射的上下文（NDV 传入上游输入 items）。 */
   previewItems?: INodeExecutionData[];
+  /** 最近一次执行的全部节点数据，使预览里的 $node/$(...) 与真实执行一致。 */
+  previewRunData?: IRunData;
+  previewWorkflow?: { id?: string; name?: string };
+  previewTimezone?: string;
   nodeParameters?: Record<string, unknown>;
   /** 所属节点名（NDV 传入;有值时工具条显示 panel-right → 钉进 Focus Panel）。 */
   nodeName?: string;
@@ -86,30 +90,57 @@ watch(
 /* 字面量 "{{ }}"(不能直接写进模板插值,会被 Vue 当嵌套 mustache)。 */
 const CURLY = '{{ }}';
 
+/* string / expression */
+const isExpression = computed(() => typeof current.value === 'string' && (current.value as string).startsWith('='));
+
 /* D115:Result 预览面板可翻页浏览各输入 item。 */
 const previewIndex = ref(0);
 const previewCount = computed(() => (props.previewItems ?? []).length);
 
-/* ── 表达式实时预览（沙箱与引擎同一实现；$node/$vars 前端没有则留空） ── */
-const preview = computed<{ ok: boolean; text: string } | null>(() => {
-  if (!isExpression.value) return null;
-  const items = props.previewItems ?? [];
-  const idx = Math.min(previewIndex.value, Math.max(0, items.length - 1));
-  try {
-    const resolved = resolveParameterValue(String(current.value), {
-      json: items[idx]?.json ?? {},
-      itemIndex: idx,
-      items,
-      runData: {},
-      workflow: {},
-      vars: {},
-      parameters: props.nodeParameters ?? {},
-    });
-    const text = typeof resolved === 'string' ? resolved : JSON.stringify(resolved);
-    return { ok: true, text: text === undefined ? 'undefined' : text };
-  } catch (error) {
-    return { ok: false, text: (error as Error).message };
+/* ── 表达式实时预览：复用执行沙箱，并注入最近 runData 还原 $node/$(...)。 ── */
+type PreviewState = { status: 'pending' | 'success' | 'error'; text: string };
+const preview = ref<PreviewState | null>(null);
+let previewTimer: ReturnType<typeof setTimeout> | null = null;
+let previewSequence = 0;
+
+function schedulePreview() {
+  if (previewTimer) clearTimeout(previewTimer);
+  if (!isExpression.value) {
+    preview.value = null;
+    return;
   }
+  const sequence = ++previewSequence;
+  preview.value = { status: 'pending', text: 'Evaluating…' };
+  previewTimer = setTimeout(() => {
+    if (sequence !== previewSequence) return;
+    const items = props.previewItems ?? [];
+    const idx = Math.min(previewIndex.value, Math.max(0, items.length - 1));
+    try {
+      const resolved = resolveParameterValue(String(current.value), {
+        json: items[idx]?.json ?? {},
+        itemIndex: idx,
+        items,
+        runData: props.previewRunData ?? {},
+        workflow: props.previewWorkflow ?? {},
+        timezone: props.previewTimezone,
+        vars: {},
+        parameters: props.nodeParameters ?? {},
+      });
+      const text = typeof resolved === 'string' ? resolved : JSON.stringify(resolved);
+      preview.value = { status: 'success', text: text === undefined ? 'undefined' : text };
+    } catch (error) {
+      preview.value = { status: 'error', text: (error as Error).message };
+    }
+  }, 120);
+}
+
+watch(
+  () => [current.value, previewIndex.value, props.previewItems, props.previewRunData, props.previewWorkflow, props.previewTimezone, props.nodeParameters],
+  schedulePreview,
+  { immediate: true, deep: true },
+);
+onBeforeUnmount(() => {
+  if (previewTimer) clearTimeout(previewTimer);
 });
 
 /* ── 拖拽映射：接收数据窗格拖来的 {{ $json.path }} ── */
@@ -134,8 +165,6 @@ function onDragOverExpr(event: DragEvent) {
   }
 }
 
-/* string / expression */
-const isExpression = computed(() => typeof current.value === 'string' && (current.value as string).startsWith('='));
 /* D116:字段 ⋮ 菜单(基线实测仅一项 "Reset Value") */
 const menuOpen = ref(false);
 function resetValue() {
@@ -267,7 +296,10 @@ function fixedRows(group: INodePropertyOption): Record<string, unknown>[] {
 }
 function visibleFixedFields(group: INodePropertyOption, row: Record<string, unknown>) {
   return (group.values ?? []).filter((property) =>
-    isPropertyVisible(property, row, group.values ?? [])
+    isPropertyVisible(property, row, group.values ?? [], {
+      nodeVersion: props.nodeTypeVersion,
+      rootParams: props.nodeParameters ?? {},
+    })
     && (!props.prop.typeOptions?.hideOptionalFields || property.required || Object.prototype.hasOwnProperty.call(row, property.name)),
   );
 }
@@ -277,7 +309,10 @@ function availableFixedOptionalFields(group: INodePropertyOption, row: Record<st
   return (group.values ?? []).filter((property) =>
     !property.required
     && !Object.prototype.hasOwnProperty.call(row, property.name)
-    && isPropertyVisible(property, row, group.values ?? []),
+    && isPropertyVisible(property, row, group.values ?? [], {
+      nodeVersion: props.nodeTypeVersion,
+      rootParams: props.nodeParameters ?? {},
+    }),
   );
 }
 function setFixedRows(group: INodePropertyOption, rows: Record<string, unknown>[]) {
@@ -308,14 +343,27 @@ const collectionValue = computed<Record<string, unknown>>(() =>
     ? current.value as Record<string, unknown>
     : {},
 );
-const collectionFields = computed(() =>
-  (props.prop.options ?? [])
-    .flatMap((option) => option.values ?? [])
-    .filter((field) => Object.prototype.hasOwnProperty.call(collectionValue.value, field.name)),
+const collectionProperties = computed(() => (props.prop.options ?? []).flatMap((option) => option.values ?? []));
+const collectionFields = computed(() => collectionProperties.value
+  .filter((field) => Object.prototype.hasOwnProperty.call(collectionValue.value, field.name))
+  .filter((field) => isPropertyVisible(
+    field,
+    { ...(props.nodeParameters ?? {}), ...collectionValue.value },
+    collectionProperties.value,
+    { nodeVersion: props.nodeTypeVersion, rootParams: props.nodeParameters ?? {} },
+  )),
 );
 const availableCollectionOptions = computed(() =>
   (props.prop.options ?? []).filter((option) =>
-    (option.values ?? []).some((field) => !Object.prototype.hasOwnProperty.call(collectionValue.value, field.name)),
+    (option.values ?? []).some((field) =>
+      !Object.prototype.hasOwnProperty.call(collectionValue.value, field.name)
+      && isPropertyVisible(
+        field,
+        { ...(props.nodeParameters ?? {}), ...collectionValue.value },
+        collectionProperties.value,
+        { nodeVersion: props.nodeTypeVersion, rootParams: props.nodeParameters ?? {} },
+      ),
+    ),
   ),
 );
 function addCollectionOption(option: INodePropertyOption) {
@@ -412,17 +460,68 @@ const OPERATORS = [
 const UNARY_OPS = ['isEmpty', 'isNotEmpty'];
 
 interface Cond { left?: unknown; op: string; right?: unknown; outputName?: string }
-const conditions = computed<Cond[]>(() => (Array.isArray(current.value) ? (current.value as Cond[]) : []));
+interface StructuredCond {
+  leftValue?: unknown;
+  rightValue?: unknown;
+  operator?: { type?: string; operation?: string };
+}
+const structuredFilterShape = computed(() => props.prop.typeOptions?.filter?.valueShape === 'structured');
+const structuredToUiOperator: Record<string, string> = {
+  equals: 'eq', notEquals: 'ne', larger: 'gt', largerEqual: 'gte', smaller: 'lt', smallerEqual: 'lte',
+  empty: 'isEmpty', notEmpty: 'isNotEmpty',
+};
+const uiToStructuredOperator: Record<string, string> = {
+  eq: 'equals', ne: 'notEquals', gt: 'gt', gte: 'gte', lt: 'lt', lte: 'lte',
+  isEmpty: 'empty', isNotEmpty: 'notEmpty', contains: 'contains',
+};
+const conditions = computed<Cond[]>(() => {
+  if (!structuredFilterShape.value) return Array.isArray(current.value) ? (current.value as Cond[]) : [];
+  if (current.value === null || typeof current.value !== 'object' || Array.isArray(current.value)) return [];
+  const rows = (current.value as Record<string, unknown>).conditions;
+  if (!Array.isArray(rows)) return [];
+  return (rows as StructuredCond[]).map((condition) => ({
+    left: condition.leftValue,
+    right: condition.rightValue,
+    op: structuredToUiOperator[String(condition.operator?.operation ?? 'eq')] ?? String(condition.operator?.operation ?? 'eq'),
+  }));
+});
+const filterCombinator = computed(() => {
+  if (!structuredFilterShape.value || current.value === null || typeof current.value !== 'object' || Array.isArray(current.value)) return 'and';
+  return (current.value as Record<string, unknown>).combinator === 'or' ? 'or' : 'and';
+});
+function emitConditions(next: Cond[]) {
+  if (!structuredFilterShape.value) {
+    emit('change', next);
+    return;
+  }
+  const base = current.value !== null && typeof current.value === 'object' && !Array.isArray(current.value)
+    ? current.value as Record<string, unknown>
+    : {};
+  emit('change', {
+    ...base,
+    combinator: filterCombinator.value,
+    options: base.options ?? { caseSensitive: true, leftValue: '', typeValidation: 'strict', version: 3 },
+    conditions: next.map((condition) => ({
+      leftValue: condition.left,
+      rightValue: condition.right,
+      operator: { type: 'string', operation: uiToStructuredOperator[condition.op] ?? condition.op },
+    })),
+  });
+}
 function addCondition() {
   const max = props.prop.typeOptions?.filter?.maxConditions;
   if (typeof max === 'number' && conditions.value.length >= max) return;
-  emit('change', [...conditions.value, { left: '', op: 'eq', right: '' }]);
+  emitConditions([...conditions.value, { left: '', op: 'eq', right: '' }]);
 }
 function updateCondition(i: number, key: 'left' | 'op' | 'right' | 'outputName', v: unknown) {
-  emit('change', conditions.value.map((c, idx) => (idx === i ? { ...c, [key]: v } : c)));
+  emitConditions(conditions.value.map((c, idx) => (idx === i ? { ...c, [key]: v } : c)));
 }
 function removeCondition(i: number) {
-  emit('change', conditions.value.filter((_, idx) => idx !== i));
+  emitConditions(conditions.value.filter((_, idx) => idx !== i));
+}
+function updateFilterCombinator(value: string) {
+  if (!structuredFilterShape.value || current.value === null || typeof current.value !== 'object' || Array.isArray(current.value)) return;
+  emit('change', { ...(current.value as Record<string, unknown>), combinator: value === 'or' ? 'or' : 'and' });
 }
 
 interface KV { k: string; v: unknown }
@@ -454,6 +553,80 @@ function removeField(i: number) {
   fieldRows.value = fieldRows.value.filter((_, idx) => idx !== i);
   emit('change', localToObj(fieldRows.value));
 }
+
+/* resourceMapper：表 schema 动态加载 + 自动映射/逐列映射。 */
+const mapperFields = ref<IResourceMapperField[]>([]);
+const mapperLoading = ref(false);
+const mapperError = ref('');
+let mapperSequence = 0;
+const mapperValue = computed<Record<string, unknown>>(() =>
+  current.value !== null && typeof current.value === 'object' && !Array.isArray(current.value)
+    ? current.value as Record<string, unknown>
+    : { mappingMode: 'defineBelow', value: {}, schema: [] },
+);
+const mapperMode = computed(() => mapperValue.value['mappingMode'] === 'autoMapInputData' ? 'autoMapInputData' : 'defineBelow');
+const mapperExplicitValues = computed<Record<string, unknown>>(() => {
+  const value = mapperValue.value['value'];
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+});
+function mapperProperty(field: IResourceMapperField): INodeProperties {
+  return {
+    displayName: field.displayName,
+    name: field.id,
+    type: field.type === 'number' ? 'number' : field.type === 'boolean' ? 'boolean' : field.type === 'date' ? 'dateTime' : 'string',
+    default: '',
+    required: field.required,
+  };
+}
+function setMapperMode(mode: string) {
+  emit('change', { ...mapperValue.value, mappingMode: mode === 'autoMapInputData' ? mode : 'defineBelow' });
+}
+function updateMapperField(field: IResourceMapperField, value: unknown) {
+  emit('change', {
+    ...mapperValue.value,
+    mappingMode: 'defineBelow',
+    value: { ...mapperExplicitValues.value, [field.id]: value },
+    schema: mapperFields.value,
+  });
+}
+async function loadMapperFields() {
+  if (props.prop.type !== 'resourceMapper' || !props.nodeType || !props.prop.typeOptions?.resourceMapper) return;
+  const sequence = ++mapperSequence;
+  mapperLoading.value = true;
+  mapperError.value = '';
+  try {
+    const response = await api.dynamicNodeParameters.resourceMapperFields({
+      nodeType: props.nodeType,
+      ...(props.nodeTypeVersion ? { nodeVersion: props.nodeTypeVersion } : {}),
+      propertyName: props.prop.name,
+      currentNodeParameters: props.nodeParameters ?? {},
+      credentials: Object.fromEntries(Object.entries(props.credentials ?? {}).map(([key, value]) => [key, { id: value.id }])),
+    });
+    if (sequence !== mapperSequence) return;
+    mapperFields.value = response.fields;
+    const previousSchema = Array.isArray(mapperValue.value['schema']) ? mapperValue.value['schema'] : [];
+    if (JSON.stringify(previousSchema) !== JSON.stringify(response.fields)) {
+      emit('change', { ...mapperValue.value, schema: response.fields });
+    }
+  } catch (error) {
+    if (sequence === mapperSequence) {
+      mapperFields.value = [];
+      mapperError.value = (error as Error).message;
+    }
+  } finally {
+    if (sequence === mapperSequence) mapperLoading.value = false;
+  }
+}
+watch(
+  () => [
+    props.nodeType,
+    props.nodeTypeVersion,
+    props.prop.type,
+    ...(props.prop.typeOptions?.loadOptionsDependsOn ?? []).map((path) => valueAtPath(props.nodeParameters, path)),
+  ],
+  () => void loadMapperFields(),
+  { immediate: true, deep: true },
+);
 function assignmentType(value: unknown): 'string' | 'number' | 'boolean' | 'object' | 'array' {
   if (Array.isArray(value)) return 'array';
   if (value !== null && typeof value === 'object') return 'object';
@@ -564,8 +737,12 @@ function convertAssignment(value: unknown, type: string): unknown {
             </div>
           </div>
           <div class="er-body">
-            <span v-if="previewCount === 0" class="er-hint">[Execute previous nodes for preview]</span>
-            <span v-else class="er-value" :class="{ err: preview && !preview.ok }">{{ preview?.text }}</span>
+            <span
+              v-if="preview"
+              class="er-value"
+              :class="{ err: preview.status === 'error', pending: preview.status === 'pending' }"
+              :data-preview-state="preview.status"
+            >{{ preview.text }}</span>
           </div>
           <div class="er-tip">
             Anything inside <code>{{ CURLY }}</code> is JavaScript. <a class="link" :href="LINKS.docsExpressions" target="_blank" rel="noopener">Learn more</a>
@@ -688,6 +865,16 @@ function convertAssignment(value: unknown, type: string): unknown {
 
       <!-- IF 条件组(对标基线 filter):左值 + 操作符下拉 + 右值 + Add condition -->
       <div v-else-if="prop.type === 'filter'" class="cond-editor" data-test="conditions-editor">
+        <select
+          v-if="prop.typeOptions?.filter?.showCombinator && conditions.length > 1"
+          class="cond-combinator"
+          aria-label="Combine conditions"
+          :value="filterCombinator"
+          @change="updateFilterCombinator(($event.target as HTMLSelectElement).value)"
+        >
+          <option value="and">AND</option>
+          <option value="or">OR</option>
+        </select>
         <div v-for="(c, i) in conditions" :key="i" class="cond-row" data-test="condition-row">
           <strong v-if="prop.typeOptions?.filter?.itemTitle" class="cond-title">{{ prop.typeOptions.filter.itemTitle }} {{ i + 1 }}</strong>
           <input class="cond-left" :value="String(c.left ?? '')" placeholder="value1" @input="updateCondition(i, 'left', ($event.target as HTMLInputElement).value)" />
@@ -733,6 +920,37 @@ function convertAssignment(value: unknown, type: string): unknown {
         <button class="add-btn" type="button" data-test="add-field" @click="addField">+ Add Field</button>
       </div>
 
+      <div v-else-if="prop.type === 'resourceMapper'" class="resource-mapper" data-test="resource-mapper">
+        <label class="mapper-mode-label">
+          <span>Mapping Column Mode</span>
+          <select :value="mapperMode" data-test="resource-mapper-mode" @change="setMapperMode(($event.target as HTMLSelectElement).value)">
+            <option value="autoMapInputData">Map Automatically</option>
+            <option value="defineBelow">Map Each Column Manually</option>
+          </select>
+        </label>
+        <p v-if="mapperLoading" class="dim dynamic-status" data-test="resource-mapper-loading">Loading table columns…</p>
+        <p v-else-if="mapperError" class="error-text dynamic-status" data-test="resource-mapper-error">{{ mapperError }}</p>
+        <p v-else-if="mapperMode === 'autoMapInputData'" class="mapper-hint">Input fields whose names match table columns will be mapped automatically.</p>
+        <div v-else-if="mapperFields.length" class="mapper-fields" data-test="resource-mapper-fields">
+          <ParamInput
+            v-for="field in mapperFields"
+            :key="field.id"
+            :prop="mapperProperty(field)"
+            :value="mapperExplicitValues[field.id]"
+            :preview-items="previewItems"
+            :preview-run-data="previewRunData"
+            :preview-workflow="previewWorkflow"
+            :preview-timezone="previewTimezone"
+            :node-parameters="nodeParameters"
+            :node-type="nodeType"
+            :node-type-version="nodeTypeVersion"
+            :credentials="credentials"
+            @change="updateMapperField(field, $event)"
+          />
+        </div>
+        <p v-else-if="!mapperLoading && !mapperError" class="mapper-hint">The selected data table has no columns.</p>
+      </div>
+
       <div v-else-if="prop.type === 'fixedCollection'" class="fixed-collection" data-test="fixed-collection">
         <section v-for="group in prop.options ?? []" :key="group.name" class="fixed-group" :data-test-fixed-group="group.name">
           <div v-for="(row, rowIndex) in fixedRows(group)" :key="rowIndex" class="fixed-row">
@@ -752,6 +970,10 @@ function convertAssignment(value: unknown, type: string): unknown {
                 :key="child.name"
                 :prop="child"
                 :value="row[child.name]"
+                :preview-items="previewItems"
+                :preview-run-data="previewRunData"
+                :preview-workflow="previewWorkflow"
+                :preview-timezone="previewTimezone"
                 :node-parameters="{ ...nodeParameters, ...row }"
                 :node-type="nodeType"
                 :node-type-version="nodeTypeVersion"
@@ -820,7 +1042,10 @@ function convertAssignment(value: unknown, type: string): unknown {
             :prop="field"
             :value="collectionValue[field.name]"
             :preview-items="previewItems"
-            :node-parameters="nodeParameters"
+            :preview-run-data="previewRunData"
+            :preview-workflow="previewWorkflow"
+            :preview-timezone="previewTimezone"
+            :node-parameters="{ ...nodeParameters, ...collectionValue }"
             :node-name="nodeName"
             :ai-tool="aiTool"
             :node-type="nodeType"
@@ -920,6 +1145,11 @@ function convertAssignment(value: unknown, type: string): unknown {
 .option-add-menu button { justify-content: flex-start; border: none; background: transparent; color: var(--color--text--shade-1); }
 .option-add-menu button:hover { background: var(--color--background--light-1); }
 .cond-row, .kv-row { display: flex; align-items: center; gap: 6px; }
+.cond-combinator {
+  align-self: flex-start; width: 88px; height: 30px; margin-bottom: 2px;
+  background: var(--color--background--light-2); border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--radius); color: var(--color--text--shade-1); padding: 0 8px;
+}
 .cond-row { flex-wrap: wrap; padding: 10px; border: var(--border-width) var(--border-style) var(--border-color); border-radius: var(--radius); background: var(--color--background--light-1); }
 .cond-title { flex: 0 0 100%; color: var(--color--text--shade-1); font-size: var(--font-size--2xs); }
 .cond-rename { flex: 0 0 100%; display: grid; gap: 4px; font-size: var(--font-size--3xs); color: var(--color--text--tint-1); }
@@ -948,6 +1178,12 @@ function convertAssignment(value: unknown, type: string): unknown {
 }
 .add-btn:hover { background: var(--button--color--background--secondary--hover); color: var(--button--color--text--secondary--hover-active-focus); }
 .dynamic-status { margin: 5px 0 0; font-size: 11px; }
+.resource-mapper { display: flex; flex-direction: column; gap: 10px; }
+.mapper-mode-label { display: grid; gap: 5px; color: var(--color--text--shade-1); font-size: var(--font-size--2xs); }
+.mapper-mode-label select { width: 100%; }
+.mapper-hint { margin: 0; padding: 9px 10px; border: 1px dashed var(--border-color); border-radius: var(--radius); color: var(--color--text--tint-1); font-size: var(--font-size--2xs); line-height: 1.45; }
+.mapper-fields { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: var(--border-width) var(--border-style) var(--border-color); border-radius: var(--radius); background: var(--color--background--light-1); }
+.mapper-fields :deep(.param) { margin-bottom: 0; }
 .fixed-collection { display: flex; flex-direction: column; gap: 10px; }
 .fixed-optional { position: relative; width: max-content; }
 .fixed-group, .fixed-row { display: flex; flex-direction: column; gap: 8px; }
@@ -1102,6 +1338,7 @@ textarea { font-family: ui-monospace, monospace; }
   word-break: break-word; white-space: pre-wrap;
 }
 .er-value.err { color: var(--err); }
+.er-value.pending { color: var(--text-faint); font-style: italic; }
 .er-hint { color: var(--text-faint); font-size: 12px; font-style: italic; }
 .er-tip { padding: 6px 10px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-dim); }
 .er-tip code { background: var(--bg-hover); padding: 0 3px; border-radius: 3px; font-size: 10.5px; }

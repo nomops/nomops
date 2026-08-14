@@ -1,6 +1,7 @@
 import { newQuickJSWASMModuleFromVariant } from 'quickjs-emscripten-core';
 import type { QuickJSSyncVariant } from 'quickjs-emscripten-core';
 import { OperationalError } from '../errors.js';
+import { EXPRESSION_GUEST_RUNTIME_SOURCE, rewriteExpressionExtensions } from './extensions.js';
 
 export class ExpressionError extends OperationalError {}
 
@@ -66,6 +67,8 @@ function sandboxSource(expression: string): string {
     });
   }
 
+  ${EXPRESSION_GUEST_RUNTIME_SOURCE}
+
   const $json = __scope.$json ?? {};
   const $itemIndex = __scope.$itemIndex ?? 0;
   const $items = __scope.$items ?? [];
@@ -76,7 +79,9 @@ function sandboxSource(expression: string): string {
   const $runIndex = __scope.$runIndex ?? 0;
   const $prevNode = __scope.$prevNode ?? {};
   const items = __scope.items ?? $items;
-  const $now = __scope.$now ?? new Date().toISOString();
+  const $timezone = __scope.$timezone ?? 'UTC';
+  const $now = DateTime.fromISO(__scope.$now ?? new Date().toISOString(), { zone: $timezone });
+  const $today = DateTime.fromISO(__scope.$today ?? $now.startOf('day').toISO(), { zone: $timezone });
 
   const __nodeData = __scope.__nodeData ?? {};
   const __nodeAccessor = (name) => {
@@ -174,7 +179,8 @@ export function evaluateInSandbox(
     context.setProp(context.global, '__nomopsPayloadJson', payloadHandle);
     payloadHandle.dispose();
 
-    const result = context.evalCode(sandboxSource(expression), 'expression.js');
+    const transformedExpression = rewriteExpressionExtensions(expression);
+    const result = context.evalCode(sandboxSource(transformedExpression), 'expression.js');
     if (result.error) {
       const dumped = context.dump(result.error) as { message?: string } | string;
       result.error.dispose();

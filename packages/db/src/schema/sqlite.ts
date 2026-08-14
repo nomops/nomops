@@ -621,6 +621,8 @@ export const projectRelations = sqliteTable(
 
 export const workflows = sqliteTable('workflows', {
   id: uuidPk('id'),
+  // 草稿内容乐观锁；每次 WorkflowService.update 原子递增，运行时 staticData 更新不触碰。
+  version: integer('version').notNull().default(1),
   name: text('name').notNull(),
   description: text('description'),
   active: integer('active', { mode: 'boolean' }).notNull().default(false),
@@ -840,6 +842,9 @@ export const dataTables = sqliteTable(
       .notNull()
       .$defaultFn(() => []),
     createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
       .notNull()
       .$defaultFn(() => new Date()),
   },

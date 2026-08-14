@@ -4,6 +4,7 @@ import {
   addConnection,
   handleIndex,
   removeConnection,
+  removeNodeAndBridgeMain,
   removeNodeFromConnections,
   toFlowEdges,
   toFlowNodes,
@@ -70,6 +71,45 @@ describe('契约 ↔ Vue Flow 转换', () => {
     const cleaned = removeNodeFromConnections(c, 'X');
     expect(cleaned['X']).toBeUndefined();
     expect(cleaned['A']!['main']![0]).toEqual([{ node: 'B', type: 'main', index: 0 }]);
+  });
+
+  it('删除单入单出 main 中间节点会桥接邻居并保留端口索引', () => {
+    const connections: IConnections = {
+      A: { main: [null, [{ node: 'B', type: 'main', index: 2 }]] },
+      B: { main: [[{ node: 'C', type: 'main', index: 3 }]] },
+    };
+    expect(removeNodeAndBridgeMain(connections, 'B')).toEqual({
+      A: { main: [null, [{ node: 'C', type: 'main', index: 3 }]] },
+    });
+  });
+
+  it('分支、汇合、自环和纯 AI 能力边不猜测桥接', () => {
+    const branch: IConnections = {
+      A: { main: [[{ node: 'B', type: 'main', index: 0 }]] },
+      B: { main: [[
+        { node: 'C', type: 'main', index: 0 },
+        { node: 'D', type: 'main', index: 0 },
+      ]] },
+    };
+    expect(removeNodeAndBridgeMain(branch, 'B')).toEqual({});
+
+    const merge: IConnections = {
+      A: { main: [[{ node: 'B', type: 'main', index: 0 }]] },
+      X: { main: [[{ node: 'B', type: 'main', index: 1 }]] },
+      B: { main: [[{ node: 'C', type: 'main', index: 0 }]] },
+    };
+    expect(removeNodeAndBridgeMain(merge, 'B')).toEqual({});
+
+    const cycle: IConnections = {
+      A: { main: [[{ node: 'B', type: 'main', index: 0 }]] },
+      B: { main: [[{ node: 'A', type: 'main', index: 0 }]] },
+    };
+    expect(removeNodeAndBridgeMain(cycle, 'B')).toEqual({});
+
+    const ai: IConnections = {
+      Model: { ai_languageModel: [[{ node: 'Agent', type: 'ai_languageModel', index: 0 }]] },
+    };
+    expect(removeNodeAndBridgeMain(ai, 'Model')).toEqual({});
   });
 
   it('addConnection 接受 Proxy（Vue reactive）入参不抛错（回归：structuredClone DataCloneError）', () => {

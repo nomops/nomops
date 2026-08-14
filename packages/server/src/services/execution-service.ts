@@ -28,6 +28,7 @@ import type { IUsageGate } from './usage-gate.js';
 import type { PushHub } from '../ws/push-hub.js';
 import type { IExecutionQueue } from '../queue/execution-queue.js';
 import { ConcurrencyGate, UNLIMITED } from './concurrency-gate.js';
+import type { DataTableService } from './data-table-service.js';
 
 export interface IRunSummary {
   executionId: string;
@@ -90,6 +91,8 @@ export class ExecutionService {
     }) => void,
     /** 引擎 httpRequest 覆盖（#44 M2 测试注入假 provider；生产缺省走 defaultHttpRequest）。 */
     private readonly httpRequestImpl?: (options: IHttpRequestOptions) => Promise<unknown>,
+    /** 项目级数据表服务；以 buildAdditionalData 的 projectId 固定归属后再注入节点。 */
+    private readonly dataTableService?: DataTableService,
   ) {}
 
   /** 本进程在跑的引擎实例（executionId → engine）；stop 经此直达 cancel。 */
@@ -720,6 +723,23 @@ export class ExecutionService {
       },
       executeSubWorkflow: (workflow: string | IInlineWorkflowDefinition, items: INodeExecutionData[]) =>
         this.runSubWorkflow(workflow, projectId, items, depth, production, runContext),
+      ...(this.dataTableService
+        ? {
+            dataTables: {
+              list: () => this.dataTableService!.list(projectId),
+              get: (id: string) => this.dataTableService!.get(id, projectId),
+              create: (input: Parameters<DataTableService['create']>[0]) => this.dataTableService!.create(input, projectId),
+              rename: (id: string, name: string) => this.dataTableService!.rename(id, name, projectId),
+              delete: (id: string) => this.dataTableService!.delete(id, projectId),
+              clearRows: (id: string) => this.dataTableService!.clearRows(id, projectId),
+              listRows: (id: string) => this.dataTableService!.listRows(id, projectId),
+              insertRow: (id: string, data: JsonObject) => this.dataTableService!.insertRow(id, data, projectId),
+              updateRow: (id: string, rowId: string, data: JsonObject) =>
+                this.dataTableService!.updateRow(id, rowId, data, projectId),
+              deleteRow: (id: string, rowId: string) => this.dataTableService!.deleteRow(id, rowId, projectId),
+            },
+          }
+        : {}),
       ...(this.binaryStore ? { binaryStore: this.binaryStore } : {}),
       ...(this.httpRequestImpl ? { httpRequest: this.httpRequestImpl } : {}), // 测试注入假 provider（#44 M2）
     };

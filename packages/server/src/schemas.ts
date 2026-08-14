@@ -44,7 +44,7 @@ export const nodeSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   type: z.string().min(1),
-  typeVersion: z.number().int().positive(),
+  typeVersion: z.number().positive(),
   position: z.tuple([z.number(), z.number()]),
   parameters: z.record(z.unknown()),
   credentials: z.record(z.object({ id: z.string(), name: z.string() })).optional(),
@@ -88,7 +88,10 @@ export const folderPatchSchema = z.object({
   parentFolderId: z.string().nullable().optional(),
 });
 
-export const workflowPatchSchema = workflowBodySchema.partial();
+export const workflowPatchSchema = workflowBodySchema.partial().extend({
+  /** 草稿内容乐观锁。旧客户端可省略；编辑器保存必须携带。 */
+  version: z.number().int().positive().optional(),
+});
 
 export const communityNodeInstallSchema = z.object({
   name: z.string().min(1).max(214), // npm 包名（可 scoped），上限同 npm
@@ -329,7 +332,8 @@ export const credentialPatchSchema = z.object({
 /** NDV 动态参数代查：节点类型/属性均由服务端 description 二次校验。 */
 export const dynamicNodeParametersSchema = z.object({
   nodeType: z.string().min(1).max(200),
-  nodeVersion: z.number().int().positive().optional(),
+  // 节点支持 1.1/3.2 等轻量版本号，不能限制为整数。
+  nodeVersion: z.number().positive().optional(),
   propertyName: z.string().min(1).max(200),
   currentNodeParameters: z.record(z.unknown()).default({}),
   credentials: z.record(z.object({ id: z.string().min(1).max(200) })).default({}),

@@ -61,8 +61,9 @@ describe('Filter 节点', () => {
         conditions: (i: number) => [{ left: items[i]!.json['amount'], op: 'gt', right: 100 }],
       }),
     );
-    expect(out).toHaveLength(1); // 单输出
+    expect(out).toHaveLength(2);
     expect(out[0]).toEqual([{ json: { amount: 150 }, pairedItem: { item: 0 } }]);
+    expect(out[1]).toEqual([{ json: { amount: 50 }, pairedItem: { item: 1 } }]);
   });
 
   it('空条件组全部通过（与 If 语义一致）', async () => {
@@ -153,7 +154,7 @@ describe('Aggregate 节点', () => {
   const items = [{ json: { id: 1, u: { name: 'Ada' } } }, { json: { id: 2, u: { name: 'Bo' } } }];
 
   it('allItemData:整包收进目标字段,pairedItem 对齐全部输入', async () => {
-    const out = await new Aggregate().execute!.call(stubContext([items]));
+    const out = await new Aggregate().execute!.call(stubContext([items], { mode: 'allItemData' }));
     expect(out[0]).toEqual([
       {
         json: { data: [{ id: 1, u: { name: 'Ada' } }, { id: 2, u: { name: 'Bo' } }] },
@@ -162,20 +163,20 @@ describe('Aggregate 节点', () => {
     ]);
   });
 
-  it('individualFields:逐字段收列表(深路径取叶名,缺值补 null)', async () => {
+  it('individualFields:逐字段收列表(深路径取叶名,缺值默认跳过)', async () => {
     const out = await new Aggregate().execute!.call(
       stubContext([[...items, { json: { id: 3 } }]], {
         mode: 'individualFields',
         fieldsToAggregate: 'id, u.name',
       }),
     );
-    expect(out[0]![0]!.json).toEqual({ id: [1, 2, 3], name: ['Ada', 'Bo', null] });
+    expect(out[0]![0]!.json).toEqual({ id: [1, 2, 3], name: ['Ada', 'Bo'] });
   });
 
   it('空输入 → 空输出;individualFields 缺字段声明报错', async () => {
     expect((await new Aggregate().execute!.call(stubContext([[]])))[0]).toEqual([]);
     await expect(
       new Aggregate().execute!.call(stubContext([items], { mode: 'individualFields' })),
-    ).rejects.toThrow(/required/);
+    ).rejects.toThrow(/add a field/);
   });
 });

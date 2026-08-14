@@ -1,9 +1,10 @@
 import { defineStore } from 'pinia';
-import type { IConnections, INode, INodeExecutionData, IPinData } from '@nomops/workflow';
-import { api, type NodeTypeInfo } from '../api/client.js';
+import type { IConnections, INode, INodeExecutionData, IPinData, IWorkflowSettings } from '@nomops/workflow';
+import { ApiError, api, type NodeTypeInfo } from '../api/client.js';
 import {
   addConnection,
   removeConnection,
+  removeNodeAndBridgeMain,
   removeNodeFromConnections,
   uniqueNodeName,
 } from '../lib/workflow-convert.js';
@@ -15,6 +16,13 @@ interface IEditorSnapshot {
 }
 
 const MAX_HISTORY = 50;
+const activeSaves = new WeakMap<object, Promise<void>>();
+
+export interface WorkflowSaveConflict {
+  message: string;
+  expectedVersion: number;
+  currentVersion: number | null;
+}
 
 /**
  * 画布编辑器：真源是契约格式（INode[] + IConnections），
@@ -24,7 +32,11 @@ const MAX_HISTORY = 50;
 export const useEditorStore = defineStore('editor', {
   state: () => ({
     id: null as string | null,
+    /** 服务端草稿内容版本；PATCH 成功后使用响应里的递增值。 */
+    version: 0,
     name: 'My workflow',
+    description: null as string | null,
+    settings: null as IWorkflowSettings | null,
     nodes: [] as INode[],
     connections: {} as IConnections,
     /** 钉住的节点输出：手动执行时引擎用此冻结数据代替该节点重跑（生产触发忽略）。落库。 */
@@ -50,6 +62,10 @@ export const useEditorStore = defineStore('editor', {
     favorite: false,
     dirty: false,
     saving: false,
+    saveError: null as string | null,
+    saveConflict: null as WorkflowSaveConflict | null,
+    /** 每次持久化文档变更递增；保存只清除自己开始时已看到的变更。 */
+    localRevision: 0,
     /* 发布/草稿分离：生产跑已发布版本 */
     publishedAt: null as string | null,
     /** 草稿领先于已发布版本（或从未发布）→ 显示 Publish 可用态。 */
@@ -75,7 +91,10 @@ export const useEditorStore = defineStore('editor', {
       try {
         const wf = await api.workflows.get(id);
         this.id = wf.id;
+        this.version = wf.version;
         this.name = wf.name;
+        this.description = wf.description ?? null;
+        this.settings = wf.settings;
         this.nodes = wf.nodes;
         this.connections = wf.connections;
         this.pinData = (wf.pinData as IPinData | null) ?? {};
@@ -87,6 +106,9 @@ export const useEditorStore = defineStore('editor', {
         this.selectedNames = [];
         this.ndvOpen = false;
         this.dirty = false;
+        this.saveError = null;
+        this.saveConflict = null;
+        this.localRevision = 0;
         this.undoStack = [];
         this.redoStack = [];
         this.lastHistoryTag = null;
@@ -97,19 +119,85 @@ export const useEditorStore = defineStore('editor', {
 
     async save() {
       if (!this.id) return;
+      if (this.saveConflict) {
+        throw new ApiError(this.saveConflict.message, 409, this.saveConflict);
+      }
+      const running = activeSaves.get(this);
+      if (running) return running;
+      const task = this._saveUntilCurrent();
+      activeSaves.set(this, task);
+      try { await task; }
+      finally { activeSaves.delete(this); }
+    },
+
+    /** 串行吸收保存期间产生的新改动，避免同一页面的 autosave / Cmd+S 自己制造 409。 */
+    async _saveUntilCurrent() {
+      if (!this.id) return;
       this.saving = true;
+      this.saveError = null;
       try {
-        await api.workflows.update(this.id, {
-          name: this.name,
-          nodes: this.nodes,
-          connections: this.connections,
-          pinData: this.pinData as Record<string, INodeExecutionData[]>,
-        });
-        this.dirty = false;
-        this.publishedDirty = true; // 保存只改草稿；生产要等 Publish
+        while (this.dirty && !this.saveConflict) {
+          const revision = this.localRevision;
+          const updated = await api.workflows.update(this.id, {
+            version: this.version,
+            name: this.name,
+            description: this.description,
+            settings: this.settings ?? undefined,
+            nodes: this.nodes,
+            connections: this.connections,
+            pinData: this.pinData as Record<string, INodeExecutionData[]>,
+          });
+          this.version = updated.version;
+          if (this.localRevision === revision) this.dirty = false;
+          this.publishedDirty = true; // 保存只改草稿；生产要等 Publish
+        }
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 409) {
+          const context = (error.context ?? {}) as { expectedVersion?: number; currentVersion?: number };
+          this.saveConflict = {
+            message: error.message,
+            expectedVersion: context.expectedVersion ?? this.version,
+            currentVersion: context.currentVersion ?? null,
+          };
+        } else {
+          this.saveError = (error as Error).message;
+        }
+        throw error;
       } finally {
         this.saving = false;
       }
+    },
+
+    /** 持久化状态的唯一写入口：可选入 undo 栈，并统一维护 dirty/localRevision。 */
+    _applyPersistentChange(
+      mutate: () => void,
+      options: { history?: boolean; historyTag?: string } = {},
+    ) {
+      if (options.history !== false) this.pushHistory(options.historyTag);
+      mutate();
+      this.localRevision += 1;
+      this.dirty = true;
+    },
+
+    setName(name: string) {
+      if (name === this.name) return;
+      this._applyPersistentChange(() => { this.name = name; }, { history: false });
+    },
+    setDescription(description: string | null) {
+      if (description === this.description) return;
+      this._applyPersistentChange(() => { this.description = description; }, { history: false });
+    },
+    setSettings(settings: IWorkflowSettings) {
+      this._applyPersistentChange(() => { this.settings = settings; }, { history: false });
+    },
+    replaceWorkflowDefinition(input: { name?: string; nodes: INode[]; connections: IConnections }) {
+      this._applyPersistentChange(() => {
+        if (input.name) this.name = input.name;
+        this.nodes = input.nodes;
+        this.connections = input.connections;
+        this.selectedNodeName = null;
+        this.selectedNames = [];
+      });
     },
 
     /** 发布：草稿快照上生产（激活中的工作流同步重注册触发器）。 */
@@ -147,47 +235,50 @@ export const useEditorStore = defineStore('editor', {
       const snapshot = this.undoStack.pop();
       if (!snapshot) return;
       this.lastHistoryTag = null;
-      this.redoStack.push({
-        nodes: JSON.parse(JSON.stringify(this.nodes)) as INode[],
-        connections: JSON.parse(JSON.stringify(this.connections)) as IConnections,
-      });
-      this.nodes = snapshot.nodes;
-      this.connections = snapshot.connections;
-      if (this.selectedNodeName && !this.nodes.some((n) => n.name === this.selectedNodeName)) {
-        this.selectedNodeName = null;
-        this.ndvOpen = false;
-      }
-      // D082:撤销/重做后多选集只保留仍存在的节点
-      this.selectedNames = this.selectedNames.filter((n) => this.nodes.some((x) => x.name === n));
-      this.dirty = true;
+      this._applyPersistentChange(() => {
+        this.redoStack.push({
+          nodes: JSON.parse(JSON.stringify(this.nodes)) as INode[],
+          connections: JSON.parse(JSON.stringify(this.connections)) as IConnections,
+        });
+        this.nodes = snapshot.nodes;
+        this.connections = snapshot.connections;
+        if (this.selectedNodeName && !this.nodes.some((n) => n.name === this.selectedNodeName)) {
+          this.selectedNodeName = null;
+          this.ndvOpen = false;
+        }
+        // D082:撤销/重做后多选集只保留仍存在的节点
+        this.selectedNames = this.selectedNames.filter((n) => this.nodes.some((x) => x.name === n));
+      }, { history: false });
     },
 
     redo() {
       const snapshot = this.redoStack.pop();
       if (!snapshot) return;
       this.lastHistoryTag = null;
-      this.undoStack.push({
-        nodes: JSON.parse(JSON.stringify(this.nodes)) as INode[],
-        connections: JSON.parse(JSON.stringify(this.connections)) as IConnections,
-      });
-      this.nodes = snapshot.nodes;
-      this.connections = snapshot.connections;
-      this.dirty = true;
+      this._applyPersistentChange(() => {
+        this.undoStack.push({
+          nodes: JSON.parse(JSON.stringify(this.nodes)) as INode[],
+          connections: JSON.parse(JSON.stringify(this.connections)) as IConnections,
+        });
+        this.nodes = snapshot.nodes;
+        this.connections = snapshot.connections;
+      }, { history: false });
     },
 
     /** 从节点面板加节点。position 缺省时错落排布，避免重叠。 */
     addNode(desc: NodeTypeInfo, position?: [number, number]) {
-      this.pushHistory();
-      const name = uniqueNodeName(desc.defaults.name, this.nodes.map((n) => n.name));
+      let created!: INode;
+      this._applyPersistentChange(() => {
+        const name = uniqueNodeName(desc.defaults.name, this.nodes.map((n) => n.name));
       // D079 对标基线:创建时填入各属性的 default(如便签默认 markdown 内容)
-      const parameters: Record<string, unknown> = {};
-      for (const p of desc.properties ?? []) {
-        if (p.typeOptions?.generateUuid) parameters[p.name] = crypto.randomUUID();
-        else if (p.default !== undefined) parameters[p.name] = JSON.parse(JSON.stringify(p.default)) as unknown;
-      }
-      const pendingAi = this.pendingAiConnection;
-      const aiTarget = pendingAi ? this.nodes.find((n) => n.name === pendingAi.target) : undefined;
-      const node: INode = {
+        const parameters: Record<string, unknown> = {};
+        for (const p of desc.properties ?? []) {
+          if (p.typeOptions?.generateUuid) parameters[p.name] = crypto.randomUUID();
+          else if (p.default !== undefined) parameters[p.name] = JSON.parse(JSON.stringify(p.default)) as unknown;
+        }
+        const pendingAi = this.pendingAiConnection;
+        const aiTarget = pendingAi ? this.nodes.find((n) => n.name === pendingAi.target) : undefined;
+        const node: INode = {
         id: crypto.randomUUID(),
         name,
         type: desc.type,
@@ -196,8 +287,8 @@ export const useEditorStore = defineStore('editor', {
           ? [aiTarget.position[0], aiTarget.position[1] + 220]
           : [80 + this.nodes.length * 220, 120 + (this.nodes.length % 3) * 40]),
         parameters,
-      };
-      this.nodes.push(node);
+        };
+        this.nodes.push(node);
       // AI 能力子节点的方向与普通主线相反：能力节点(output ai_*) → Agent(input ai_*)。
       if (pendingAi) {
         this.pendingAiConnection = null;
@@ -213,8 +304,8 @@ export const useEditorStore = defineStore('editor', {
         }
         this.selectedNodeName = name;
         this.selectedNames = [name];
-        this.dirty = true;
-        return node;
+          created = node;
+          return;
       }
       // D076：从连线 + 插入 —— 断开原连线，改接 source→新节点→target
       const ins = this.pendingInsert;
@@ -230,8 +321,8 @@ export const useEditorStore = defineStore('editor', {
           });
           this.selectedNodeName = name;
           this.selectedNames = [name];
-          this.dirty = true;
-          return node;
+          created = node;
+          return;
         }
       }
       // 便捷连线：若当前有选中节点且新节点有输入口，自动从选中节点接一条
@@ -242,45 +333,50 @@ export const useEditorStore = defineStore('editor', {
           source: from.name, sourceIndex: 0, target: name, targetIndex: 0,
         });
       }
-      this.selectedNodeName = name;
-      this.dirty = true;
-      return node;
+        this.selectedNodeName = name;
+        created = node;
+      });
+      return created;
     },
 
     removeNode(name: string) {
-      this.pushHistory();
-      this.nodes = this.nodes.filter((n) => n.name !== name);
-      this.connections = removeNodeFromConnections(this.connections, name);
-      if (this.selectedNodeName === name) this.selectedNodeName = null;
-      this.selectedNames = this.selectedNames.filter((n) => n !== name);
-      this.pinnedParams = this.pinnedParams.filter((p) => p.nodeName !== name);
-      this.unpinNodeData(name);
-      this.dirty = true;
+      if (!this.nodes.some((node) => node.name === name)) return;
+      this._applyPersistentChange(() => {
+        this.nodes = this.nodes.filter((n) => n.name !== name);
+        this.connections = removeNodeAndBridgeMain(this.connections, name);
+        if (this.selectedNodeName === name) this.selectedNodeName = null;
+        this.selectedNames = this.selectedNames.filter((n) => n !== name);
+        this.pinnedParams = this.pinnedParams.filter((p) => p.nodeName !== name);
+        if (name in this.pinData) {
+          const next: IPinData = {};
+          for (const [key, value] of Object.entries(this.pinData)) if (key !== name) next[key] = value;
+          this.pinData = next;
+        }
+      });
     },
 
     /** 悬停工具条「⏻ Deactivate/Activate」：切换节点禁用态(引擎跳过 disabled 节点、直通输入)。 */
     toggleDisabled(name: string) {
       const node = this.nodes.find((n) => n.name === name);
       if (!node) return;
-      this.pushHistory();
-      node.disabled = !node.disabled;
-      this.dirty = true;
+      this._applyPersistentChange(() => { node.disabled = !node.disabled; });
     },
 
     /** 悬停工具条「⋯ → Duplicate」：克隆节点(新 id/唯一名/偏移落位、深拷参数、不带连线)。 */
     duplicateNode(name: string) {
       const src = this.nodes.find((n) => n.name === name);
       if (!src) return;
-      this.pushHistory();
-      const copy: INode = {
-        ...JSON.parse(JSON.stringify(src)) as INode,
-        id: crypto.randomUUID(),
-        name: uniqueNodeName(src.name, this.nodes.map((n) => n.name)),
-        position: [src.position[0] + 96 + 32, src.position[1] + 32], // 基线式右下偏移
-      };
-      this.nodes.push(copy);
-      this.selectedNodeName = copy.name;
-      this.dirty = true;
+      let copy: INode | undefined;
+      this._applyPersistentChange(() => {
+        copy = {
+          ...JSON.parse(JSON.stringify(src)) as INode,
+          id: crypto.randomUUID(),
+          name: uniqueNodeName(src.name, this.nodes.map((n) => n.name)),
+          position: [src.position[0] + 96 + 32, src.position[1] + 32], // 基线式右下偏移
+        };
+        this.nodes.push(copy);
+        this.selectedNodeName = copy.name;
+      });
       return copy;
     },
 
@@ -290,26 +386,26 @@ export const useEditorStore = defineStore('editor', {
       const trimmed = newName.trim();
       if (!node || !trimmed || trimmed === oldName) return;
       const unique = uniqueNodeName(trimmed, this.nodes.filter((n) => n.name !== oldName).map((n) => n.name));
-      this.pushHistory();
-      node.name = unique;
-      const next: IConnections = {};
-      for (const [src, byType] of Object.entries(this.connections)) {
-        const rewritten: IConnections[string] = {};
-        for (const [type, outs] of Object.entries(byType)) {
-          rewritten[type] = outs.map((eps) => (eps ? eps.map((e) => (e.node === oldName ? { ...e, node: unique } : e)) : eps));
+      this._applyPersistentChange(() => {
+        node.name = unique;
+        const next: IConnections = {};
+        for (const [src, byType] of Object.entries(this.connections)) {
+          const rewritten: IConnections[string] = {};
+          for (const [type, outs] of Object.entries(byType)) {
+            rewritten[type] = outs.map((eps) => (eps ? eps.map((e) => (e.node === oldName ? { ...e, node: unique } : e)) : eps));
+          }
+          next[src === oldName ? unique : src] = rewritten;
         }
-        next[src === oldName ? unique : src] = rewritten;
-      }
-      this.connections = next;
-      this.pinnedParams = this.pinnedParams.map((p) => (p.nodeName === oldName ? { ...p, nodeName: unique } : p));
-      if (oldName in this.pinData) {
-        const next: IPinData = {};
-        for (const [k, v] of Object.entries(this.pinData)) next[k === oldName ? unique : k] = v;
-        this.pinData = next;
-      }
-      if (this.selectedNodeName === oldName) this.selectedNodeName = unique;
-      this.selectedNames = this.selectedNames.map((n) => (n === oldName ? unique : n));
-      this.dirty = true;
+        this.connections = next;
+        this.pinnedParams = this.pinnedParams.map((p) => (p.nodeName === oldName ? { ...p, nodeName: unique } : p));
+        if (oldName in this.pinData) {
+          const renamedPins: IPinData = {};
+          for (const [k, v] of Object.entries(this.pinData)) renamedPins[k === oldName ? unique : k] = v;
+          this.pinData = renamedPins;
+        }
+        if (this.selectedNodeName === oldName) this.selectedNodeName = unique;
+        this.selectedNames = this.selectedNames.map((n) => (n === oldName ? unique : n));
+      });
     },
 
     /** Focus panel：钉/取钉参数；钉入时自动展开面板。 */
@@ -327,15 +423,18 @@ export const useEditorStore = defineStore('editor', {
 
     /** Pin data：钉住某节点的输出数据（冻结，手动执行时代替重跑）。落库，随保存持久化。 */
     pinNodeData(nodeName: string, items: INodeExecutionData[]) {
-      this.pinData = { ...this.pinData, [nodeName]: items };
-      this.dirty = true;
+      this._applyPersistentChange(
+        () => { this.pinData = { ...this.pinData, [nodeName]: items }; },
+        { history: false },
+      );
     },
     unpinNodeData(nodeName: string) {
       if (!(nodeName in this.pinData)) return;
-      const next: IPinData = {};
-      for (const [k, v] of Object.entries(this.pinData)) if (k !== nodeName) next[k] = v;
-      this.pinData = next;
-      this.dirty = true;
+      this._applyPersistentChange(() => {
+        const next: IPinData = {};
+        for (const [k, v] of Object.entries(this.pinData)) if (k !== nodeName) next[k] = v;
+        this.pinData = next;
+      }, { history: false });
     },
     isNodeDataPinned(nodeName: string): boolean {
       return nodeName in this.pinData;
@@ -347,60 +446,55 @@ export const useEditorStore = defineStore('editor', {
     moveNode(name: string, position: [number, number]) {
       const node = this.nodes.find((n) => n.name === name);
       if (!node) return;
-      this.pushHistory(); // drag-stop 每次一发，无需去抖；每次拖动=一步撤销
-      node.position = position;
-      this.dirty = true;
+      this._applyPersistentChange(() => { node.position = position; }); // drag-stop 每次一发，每次拖动=一步撤销
     },
 
     connect(args: { source: string; sourceIndex: number; target: string; targetIndex: number; type?: string }) {
-      this.pushHistory();
-      this.connections = addConnection(this.connections, args);
-      this.dirty = true;
+      this._applyPersistentChange(() => { this.connections = addConnection(this.connections, args); });
     },
 
     disconnect(args: { source: string; sourceIndex: number; target: string; targetIndex: number; type?: string }) {
-      this.pushHistory();
-      this.connections = removeConnection(this.connections, args);
-      this.dirty = true;
+      this._applyPersistentChange(() => { this.connections = removeConnection(this.connections, args); });
     },
 
     setParam(nodeName: string, key: string, value: unknown) {
       const node = this.nodes.find((n) => n.name === nodeName);
       if (!node) return;
-      this.pushHistory(`param:${nodeName}:${key}`);
-      node.parameters = { ...node.parameters, [key]: value };
-      this.dirty = true;
+      this._applyPersistentChange(
+        () => { node.parameters = { ...node.parameters, [key]: value }; },
+        { historyTag: `param:${nodeName}:${key}` },
+      );
     },
 
     /** Import cURL 等整组替换：一次历史快照，避免每个导入字段各占一次 undo。 */
     replaceNodeParameters(nodeName: string, parameters: Record<string, unknown>) {
       const node = this.nodes.find((candidate) => candidate.name === nodeName);
       if (!node) return;
-      this.pushHistory();
-      node.parameters = JSON.parse(JSON.stringify(parameters)) as Record<string, unknown>;
-      this.dirty = true;
+      this._applyPersistentChange(() => {
+        node.parameters = JSON.parse(JSON.stringify(parameters)) as Record<string, unknown>;
+      });
     },
 
     /** NDV 凭证选择器:设置/清除节点某凭证类型的绑定(node.credentials[type])。 */
     setNodeCredential(nodeName: string, credType: string, value: { id: string; name: string } | null) {
       const node = this.nodes.find((n) => n.name === nodeName);
       if (!node) return;
-      this.pushHistory(`cred:${nodeName}:${credType}`);
-      const creds = { ...(node.credentials ?? {}) };
-      if (value) creds[credType] = value;
-      else delete creds[credType];
-      node.credentials = creds;
-      this.dirty = true;
+      this._applyPersistentChange(() => {
+        const creds = { ...(node.credentials ?? {}) };
+        if (value) creds[credType] = value;
+        else delete creds[credType];
+        node.credentials = creds;
+      }, { historyTag: `cred:${nodeName}:${credType}` });
     },
 
     /** 节点级设置(NDV Settings tab):onError 与引擎消费的 continueOnError 保持同步。 */
     setNodeSetting(nodeName: string, key: keyof INode, value: unknown) {
       const node = this.nodes.find((n) => n.name === nodeName);
       if (!node) return;
-      this.pushHistory(`setting:${nodeName}:${String(key)}`);
-      (node as Record<string, unknown>)[key as string] = value;
-      if (key === 'onError') node.continueOnError = value === 'continueErrorOutput';
-      this.dirty = true;
+      this._applyPersistentChange(() => {
+        (node as Record<string, unknown>)[key as string] = value;
+        if (key === 'onError') node.continueOnError = value === 'continueErrorOutput';
+      }, { historyTag: `setting:${nodeName}:${String(key)}` });
     },
 
     select(name: string | null) {
@@ -426,16 +520,23 @@ export const useEditorStore = defineStore('editor', {
     removeNodes(names: string[]) {
       const existing = names.filter((name) => this.nodes.some((n) => n.name === name));
       if (!existing.length) return;
-      this.pushHistory();
-      for (const name of existing) {
-        this.nodes = this.nodes.filter((n) => n.name !== name);
-        this.connections = removeNodeFromConnections(this.connections, name);
-        if (this.selectedNodeName === name) this.selectedNodeName = null;
-        this.pinnedParams = this.pinnedParams.filter((p) => p.nodeName !== name);
-        this.unpinNodeData(name);
-      }
-      this.selectedNames = this.selectedNames.filter((n) => !existing.includes(n));
-      this.dirty = true;
+      this._applyPersistentChange(() => {
+        const bridgeSingle = existing.length === 1;
+        for (const name of existing) {
+          this.nodes = this.nodes.filter((n) => n.name !== name);
+          this.connections = bridgeSingle
+            ? removeNodeAndBridgeMain(this.connections, name)
+            : removeNodeFromConnections(this.connections, name);
+          if (this.selectedNodeName === name) this.selectedNodeName = null;
+          this.pinnedParams = this.pinnedParams.filter((p) => p.nodeName !== name);
+          if (name in this.pinData) {
+            const next: IPinData = {};
+            for (const [key, value] of Object.entries(this.pinData)) if (key !== name) next[key] = value;
+            this.pinData = next;
+          }
+        }
+        this.selectedNames = this.selectedNames.filter((n) => !existing.includes(n));
+      });
     },
 
     /* ── backlog #3:画布复制/粘贴 ── */
@@ -469,43 +570,43 @@ export const useEditorStore = defineStore('editor', {
         (n) => n && typeof n.name === 'string' && typeof n.type === 'string',
       );
       if (!incoming.length) return 0;
-      this.pushHistory();
-      const nameMap = new Map<string, string>();
-      const taken = this.nodes.map((n) => n.name);
       const pasted: INode[] = [];
-      for (const src of incoming) {
-        const clone = JSON.parse(JSON.stringify(src)) as INode;
-        const name = uniqueNodeName(clone.name, taken);
-        taken.push(name);
-        nameMap.set(src.name, name);
-        clone.id = crypto.randomUUID();
-        clone.name = name;
-        clone.position = [Number(clone.position?.[0] ?? 80) + 48, Number(clone.position?.[1] ?? 120) + 48];
-        pasted.push(clone);
-      }
-      this.nodes.push(...pasted);
-      for (const [source, byType] of Object.entries(payload.connections ?? {})) {
-        const newSource = nameMap.get(source);
-        if (!newSource) continue;
-        for (const [type, ports] of Object.entries(byType ?? {})) {
-          (ports ?? []).forEach((port, sourceIndex) => {
-            for (const c of port ?? []) {
-              const newTarget = nameMap.get(c.node);
-              if (!newTarget) continue;
-              this.connections = addConnection(this.connections, {
-                source: newSource,
-                sourceIndex,
-                target: newTarget,
-                targetIndex: c.index ?? 0,
-                type,
-              });
-            }
-          });
+      this._applyPersistentChange(() => {
+        const nameMap = new Map<string, string>();
+        const taken = this.nodes.map((n) => n.name);
+        for (const src of incoming) {
+          const clone = JSON.parse(JSON.stringify(src)) as INode;
+          const name = uniqueNodeName(clone.name, taken);
+          taken.push(name);
+          nameMap.set(src.name, name);
+          clone.id = crypto.randomUUID();
+          clone.name = name;
+          clone.position = [Number(clone.position?.[0] ?? 80) + 48, Number(clone.position?.[1] ?? 120) + 48];
+          pasted.push(clone);
         }
-      }
-      this.selectedNames = pasted.map((n) => n.name);
-      this.selectedNodeName = pasted[0]?.name ?? null;
-      this.dirty = true;
+        this.nodes.push(...pasted);
+        for (const [source, byType] of Object.entries(payload.connections ?? {})) {
+          const newSource = nameMap.get(source);
+          if (!newSource) continue;
+          for (const [type, ports] of Object.entries(byType ?? {})) {
+            (ports ?? []).forEach((port, sourceIndex) => {
+              for (const c of port ?? []) {
+                const newTarget = nameMap.get(c.node);
+                if (!newTarget) continue;
+                this.connections = addConnection(this.connections, {
+                  source: newSource,
+                  sourceIndex,
+                  target: newTarget,
+                  targetIndex: c.index ?? 0,
+                  type,
+                });
+              }
+            });
+          }
+        }
+        this.selectedNames = pasted.map((n) => n.name);
+        this.selectedNodeName = pasted[0]?.name ?? null;
+      });
       return pasted.length;
     },
 
@@ -530,52 +631,51 @@ export const useEditorStore = defineStore('editor', {
     tidyUp() {
       const layoutNodes = this.nodes.filter((n) => n.type !== 'nomops.stickyNote');
       if (layoutNodes.length === 0) return;
-      this.pushHistory();
-
-      // 邻接表（任意输出类型都算边）
-      const out = new Map<string, string[]>();
-      const indegree = new Map<string, number>(layoutNodes.map((n) => [n.name, 0]));
-      for (const [source, byType] of Object.entries(this.connections)) {
-        if (!indegree.has(source)) continue;
-        for (const branches of Object.values(byType)) {
-          for (const branch of branches) {
-            for (const conn of branch ?? []) {
-              if (!indegree.has(conn.node)) continue;
-              (out.get(source) ?? out.set(source, []).get(source)!).push(conn.node);
-              indegree.set(conn.node, (indegree.get(conn.node) ?? 0) + 1);
+      this._applyPersistentChange(() => {
+        // 邻接表（任意输出类型都算边）
+        const out = new Map<string, string[]>();
+        const indegree = new Map<string, number>(layoutNodes.map((n) => [n.name, 0]));
+        for (const [source, byType] of Object.entries(this.connections)) {
+          if (!indegree.has(source)) continue;
+          for (const branches of Object.values(byType)) {
+            for (const branch of branches) {
+              for (const conn of branch ?? []) {
+                if (!indegree.has(conn.node)) continue;
+                (out.get(source) ?? out.set(source, []).get(source)!).push(conn.node);
+                indegree.set(conn.node, (indegree.get(conn.node) ?? 0) + 1);
+              }
             }
           }
         }
-      }
 
-      // 最长路径深度（Kahn 拓扑；环上节点兜底深度 0，不会死循环）
-      const depth = new Map<string, number>(layoutNodes.map((n) => [n.name, 0]));
-      const queue = layoutNodes.filter((n) => (indegree.get(n.name) ?? 0) === 0).map((n) => n.name);
-      const remaining = new Map(indegree);
-      while (queue.length > 0) {
-        const cur = queue.shift()!;
-        for (const next of out.get(cur) ?? []) {
-          depth.set(next, Math.max(depth.get(next) ?? 0, (depth.get(cur) ?? 0) + 1));
-          const left = (remaining.get(next) ?? 1) - 1;
-          remaining.set(next, left);
-          if (left === 0) queue.push(next);
+        // 最长路径深度（Kahn 拓扑；环上节点兜底深度 0，不会死循环）
+        const depth = new Map<string, number>(layoutNodes.map((n) => [n.name, 0]));
+        const queue = layoutNodes.filter((n) => (indegree.get(n.name) ?? 0) === 0).map((n) => n.name);
+        const remaining = new Map(indegree);
+        while (queue.length > 0) {
+          const cur = queue.shift()!;
+          for (const next of out.get(cur) ?? []) {
+            depth.set(next, Math.max(depth.get(next) ?? 0, (depth.get(cur) ?? 0) + 1));
+            const left = (remaining.get(next) ?? 1) - 1;
+            remaining.set(next, left);
+            if (left === 0) queue.push(next);
+          }
         }
-      }
 
-      // 列内按原 y 序排布，保持用户的分支上下关系
-      const columns = new Map<number, typeof layoutNodes>();
-      for (const node of layoutNodes) {
-        const d = depth.get(node.name) ?? 0;
-        (columns.get(d) ?? columns.set(d, []).get(d)!).push(node);
-      }
-      const X0 = 80, Y0 = 120, DX = 280, DY = 170;
-      for (const [d, nodes] of columns) {
-        nodes.sort((a, b) => a.position[1] - b.position[1]);
-        nodes.forEach((node, i) => {
-          node.position = [X0 + d * DX, Y0 + i * DY];
-        });
-      }
-      this.dirty = true;
+        // 列内按原 y 序排布，保持用户的分支上下关系
+        const columns = new Map<number, typeof layoutNodes>();
+        for (const node of layoutNodes) {
+          const d = depth.get(node.name) ?? 0;
+          (columns.get(d) ?? columns.set(d, []).get(d)!).push(node);
+        }
+        const X0 = 80, Y0 = 120, DX = 280, DY = 170;
+        for (const [d, nodes] of columns) {
+          nodes.sort((a, b) => a.position[1] - b.position[1]);
+          nodes.forEach((node, i) => {
+            node.position = [X0 + d * DX, Y0 + i * DY];
+          });
+        }
+      });
     },
 
     /** 激活/停用（有未存改动才先保存——无脑 save 会把 publishedDirty 误置回 true）。 */

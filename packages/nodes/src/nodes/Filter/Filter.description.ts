@@ -10,23 +10,39 @@ export const filterDescription: INodeTypeDescription = {
   defaults: { name: 'Filter' },
   inputs: ['main'],
   outputs: ['main'],
+  outputNames: ['Kept', 'Discarded'],
   properties: [
     {
       displayName: 'Conditions',
       name: 'conditions',
       type: 'filter',
-      default: [],
-      description: 'List of conditions [{ left, op, right }]; left/right support expressions',
+      default: {
+        combinator: 'and',
+        conditions: [],
+        options: { caseSensitive: true, leftValue: '', typeValidation: 'strict', version: 3 },
+      },
+      placeholder: 'Add Condition',
+      typeOptions: { filter: { valueShape: 'structured', showCombinator: true, addButtonLabel: 'Add condition' } },
     },
     {
-      displayName: 'Combine',
-      name: 'combine',
-      type: 'options',
-      default: 'and',
-      options: [
-        { name: 'AND (all match)', value: 'and' },
-        { name: 'OR (any match)', value: 'or' },
-      ],
+      displayName: 'Convert Types Where Required',
+      name: 'looseTypeValidation',
+      type: 'boolean',
+      default: false,
+      description: 'Whether to try casting value types based on the selected operator',
+    },
+    {
+      displayName: 'Options',
+      name: 'options',
+      type: 'collection',
+      default: {},
+      placeholder: 'Add option',
+      options: [{
+        name: 'Ignore Case', value: 'ignoreCase', values: [{
+          displayName: 'Ignore Case', name: 'ignoreCase', type: 'boolean', default: true,
+          description: 'Whether to ignore letter case when evaluating conditions',
+        }],
+      }],
     },
   ],
 };

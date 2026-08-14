@@ -26,6 +26,8 @@
 | 行内 `⋯` | Open/Share/Duplicate/Archive/Delete… | 待逐项核对 | ⏳ |
 | 分页 | `Total N` + 页码 + `50/page` | 一致 | 一致 |
 
+2026-08-13 空项目补充：根目录空态除 `Start from scratch` 外新增 `Branch & merge starter` 卡；该模板免凭证，点击即导入并进入画布。隔离实例实测 6 个节点全部成功，Merge 输出 2 items。文件夹内仍只显示从空白创建，避免把 starter 误导为当前文件夹导入。
+
 ### B2. Credentials
 列表：搜索、排序、筛选、行（图标+名+类型+`Last updated/Created`+归属+`⋯`）。**Nomops 一致**。详见 `pages/credentials.md`。
 

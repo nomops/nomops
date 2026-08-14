@@ -7,4 +7,4 @@ export { bootstrap } from './bootstrap.js';
 export type { BootstrapResult } from './bootstrap.js';
 export type { AppServices } from './app-services.js';
 export { PushHub } from './ws/push-hub.js';
-export type { IPushEvent } from './ws/push-hub.js';
+export type { IPushEvent, IPushMessage, IHeartbeatEvent } from './ws/push-hub.js';

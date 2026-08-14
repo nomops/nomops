@@ -17,6 +17,15 @@ export interface ITemplate {
   connections: IConnections;
   /** 导入后需要用户补配置的提示（如凭证/URL）。 */
   setupHints?: string[];
+  /** 按凭证类型聚合的 setup 卡；同组节点共享一次选择。 */
+  credentialRequirements?: ITemplateCredentialRequirement[];
+}
+
+export interface ITemplateCredentialRequirement {
+  id: string;
+  credentialType: string;
+  credentialName: string;
+  nodeNames: string[];
 }
 
 const to = (node: string, index = 0) => ({ node, type: 'main', index });
@@ -60,18 +69,28 @@ export const BUILTIN_TEMPLATES: ITemplate[] = [
   {
     id: 'ai-summary',
     name: 'AI content summary',
-    description: 'Receive text → AI Agent (Claude) writes a one-sentence summary → merge it back into the data.',
+    description: 'Receive text → an Anthropic Chat Model powers AI Agent → merge the one-sentence summary back into the data.',
     category: 'AI',
-    nodeTags: ['Webhook', 'AI Agent', 'Set'],
-    setupHints: ['Configure an Anthropic API credential on the AI Agent node', 'Once active, POST /webhook/summarize to trigger'],
+    nodeTags: ['Webhook', 'AI Agent', 'Chat Model', 'Set'],
+    setupHints: ['Select an Anthropic API credential for the Chat Model', 'Once active, POST /webhook/summarize to trigger'],
+    credentialRequirements: [
+      {
+        id: 'anthropic-model',
+        credentialType: 'anthropicApi',
+        credentialName: 'Anthropic API',
+        nodeNames: ['Anthropic Chat Model'],
+      },
+    ],
     nodes: [
       { id: 'a', name: 'Text In', type: 'nomops.webhook', typeVersion: 1, position: [40, 200], parameters: { path: 'summarize', method: 'POST' } },
       { id: 'b', name: 'Summarize', type: 'nomops.aiAgent', typeVersion: 1, position: [280, 200], parameters: { prompt: '={{ "Summarize in one sentence: " + ($json.body.text ?? "") }}', maxTokens: 200 } },
       { id: 'c', name: 'Merge Result', type: 'nomops.set', typeVersion: 1, position: [520, 200], parameters: { fields: { summarized: true } } },
+      { id: 'd', name: 'Anthropic Chat Model', type: 'nomops.chatModel', typeVersion: 1, position: [280, 420], parameters: { provider: 'anthropic', model: 'claude-sonnet-5', maxTokens: 200, temperature: 1 } },
     ],
     connections: {
       'Text In': { main: [[to('Summarize')]] },
       Summarize: { main: [[to('Merge Result')]] },
+      'Anthropic Chat Model': { ai_languageModel: [[{ node: 'Summarize', type: 'ai_languageModel', index: 0 }]] },
     },
   },
   {
@@ -100,14 +119,29 @@ export const BUILTIN_TEMPLATES: ITemplate[] = [
 
 /** 画廊摘要（不含节点 JSON，前端列表用）。 */
 export function templateSummaries() {
-  return BUILTIN_TEMPLATES.map(({ id, name, description, category, nodeTags, setupHints }) => ({
+  return BUILTIN_TEMPLATES.map(({ id, name, description, category, nodeTags, setupHints, credentialRequirements }) => ({
     id,
     name,
     description,
     category,
     nodeTags,
     setupHints: setupHints ?? [],
+    credentialRequirements: credentialRequirements ?? [],
   }));
+}
+
+export function getTemplateSummary(id: string) {
+  const template = getTemplate(id);
+  const { name, description, category, nodeTags, setupHints, credentialRequirements } = template;
+  return {
+    id,
+    name,
+    description,
+    category,
+    nodeTags,
+    setupHints: setupHints ?? [],
+    credentialRequirements: credentialRequirements ?? [],
+  };
 }
 
 export function getTemplate(id: string): ITemplate {

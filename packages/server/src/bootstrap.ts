@@ -343,10 +343,12 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   // #46：动态凭证——resolvable 凭证运行时按 subject 解析实际值（解析在 getDecryptedData 切入）
   const dynamicCredentials = new DynamicCredentialService(repos, credentials, { ...(opts.dynamicCredentialFetch ? { fetchImpl: opts.dynamicCredentialFetch } : {}) });
   const credentialService = new CredentialService(repos, credentials, secrets, opts.credentialTester, dynamicCredentials);
+  const dataTables = new DataTableService(repos);
   const dynamicNodeParameters = new DynamicNodeParametersService(
     nodeLoader,
     credentialService,
     opts.httpRequest,
+    dataTables,
   );
   // 用量:社区无条件计数;企业版在其上加限额检查(ee 实现包住社区实现)
   const usageCounter = new CountingUsageGate(repos);
@@ -382,6 +384,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     baseUrl,
     (trace) => otel.exportExecution(trace),
     opts.httpRequest, // #44 M2：测试注入假 provider
+    dataTables,
   );
 
   // binary GC（#22）：删执行记录（单删/批删/pruner/save-policy）前先清其 binary 引用
@@ -506,7 +509,6 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   // OAuth2 token 临期自动续期（#16）:执行注入前经 refresher 兜一手
   credentialService.setTokenRefresher((id, pid) => oauth2.refreshIfNeeded(id, pid));
   const variables = new VariableService(repos);
-  const dataTables = new DataTableService(repos);
   const evaluations = new EvaluationService(repos, workflows, executions);
   const stt = new SttService(repos, opts.sttFetch);
   // LDAP 登录（docs/10 B5）：opts.ldapAuthenticator 供测试注入假实现；生产用 ldapts

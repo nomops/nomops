@@ -30,6 +30,14 @@ describe('canvas editor UI', () => {
     expect(canvas).toContain("title: 'Workflow archived'");
   });
 
+  it('keeps concurrent save conflicts visible and requires confirmation before discarding local work', () => {
+    expect(canvas).toContain('data-test="save-conflict-banner"');
+    expect(canvas).toContain('data-test="reload-after-conflict"');
+    expect(canvas).toContain("title: 'Reload latest workflow?'");
+    expect(canvas).toContain('Your local changes were not overwritten');
+    expect(canvas).toContain('await editor.load(editor.id)');
+  });
+
   it('makes the node editor a keyboard-contained dialog', () => {
     expect(ndv).toContain('role="dialog"');
     expect(ndv).toContain('aria-modal="true"');
@@ -139,6 +147,12 @@ describe('canvas editor UI', () => {
     expect(canvas).toContain(':aria-pressed="selectedLogNode === row.name"');
     expect(canvas).toContain('role="tablist" aria-label="Node run data"');
     expect(canvas).toContain('role="tabpanel"');
+  });
+
+  it('shows every Agent tool invocation separately in execution details', () => {
+    expect(canvas).toContain("run.data?.['main']?.[0] ?? run.data?.['ai_tool']?.[0]");
+    expect(canvas).toContain(':data-test-tool-call="r.toolCall?.callId"');
+    expect(canvas).toContain('{{ r.toolCall.toolName }} · {{ r.toolCall.callId }}');
   });
 
   it('uses SVG icons for add, execute, and stop instead of character glyphs', () => {

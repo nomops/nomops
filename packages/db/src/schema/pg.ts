@@ -525,6 +525,8 @@ export const projectRelations = pgTable(
 
 export const workflows = pgTable('workflows', {
   id: uuid('id').primaryKey().defaultRandom(),
+  // 草稿内容乐观锁；每次 WorkflowService.update 原子递增，运行时 staticData 更新不触碰。
+  version: integer('version').notNull().default(1),
   name: text('name').notNull(),
   description: text('description'),
   active: boolean('active').notNull().default(false),
@@ -710,6 +712,7 @@ export const dataTables = pgTable(
     name: text('name').notNull(),
     columns: jsonb('columns').$type<Array<{ name: string; type: string }>>().notNull().default([]),
     createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
   (t) => [index('data_tables_project_id_idx').on(t.projectId)],
 );

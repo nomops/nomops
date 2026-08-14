@@ -30,7 +30,7 @@ import { requireFeature } from '../ee/license/license-service.js';
 import { isProjectRole, tierForScopes, PROJECT_SCOPES } from '../auth/rbac.js';
 import { CHAT_PROVIDERS } from '../services/assistant-service.js';
 import { AUDIT_RESOURCE } from '../ee/services/dynamic-credential-service.js';
-import { getTemplate, templateSummaries } from '../services/template-registry.js';
+import { getTemplate, getTemplateSummary, templateSummaries } from '../services/template-registry.js';
 import { parseMultipartForm } from '../http/multipart.js';
 import {
   acceptInviteSchema,
@@ -519,7 +519,14 @@ export function createApiRouter(services: AppServices): Router {
     h(async (req, res) => {
       await assertEditable();
       const body = parseBody(workflowPatchSchema, req);
-      const updated = await services.workflows.update(param(req, 'id'), body, auth(req).projectId, auth(req).userId);
+      const { version, ...patch } = body;
+      const updated = await services.workflows.update(
+        param(req, 'id'),
+        patch,
+        auth(req).projectId,
+        auth(req).userId,
+        version,
+      );
       recordAudit(services, req, 'workflow.update', { type: 'workflow', id: updated.id }, { name: updated.name });
       res.json(updated);
     }),
@@ -1059,6 +1066,21 @@ export function createApiRouter(services: AppServices): Router {
       res.json(
         await services.dynamicNodeParameters.locateResources(
           body as Parameters<typeof services.dynamicNodeParameters.locateResources>[0],
+          auth(req).projectId,
+          auth(req).userId,
+        ),
+      );
+    }),
+  );
+
+  router.post(
+    '/dynamic-node-parameters/resource-mapper-fields',
+    editor,
+    h(async (req, res) => {
+      const body = parseBody(dynamicNodeParametersSchema, req);
+      res.json(
+        await services.dynamicNodeParameters.mapResourceFields(
+          body as Parameters<typeof services.dynamicNodeParameters.mapResourceFields>[0],
           auth(req).projectId,
           auth(req).userId,
         ),
@@ -2576,6 +2598,13 @@ export function createApiRouter(services: AppServices): Router {
     }),
   );
 
+  router.get(
+    '/templates/:id',
+    h(async (req, res) => {
+      res.json(getTemplateSummary(param(req, 'id')));
+    }),
+  );
+
   router.post(
     '/templates/:id/import',
     editor,
@@ -2587,6 +2616,71 @@ export function createApiRouter(services: AppServices): Router {
       );
       recordAudit(services, req, 'workflow.create', { type: 'workflow', id: created.id }, { name: created.name, fromTemplate: template.id });
       res.status(201).json(created);
+    }),
+  );
+
+  router.post(
+    '/templates/:id/setup',
+    editor,
+    workflowUpdate,
+    h(async (req, res) => {
+      const template = getTemplate(param(req, 'id'));
+      const requirements = template.credentialRequirements ?? [];
+      const body = (req.body ?? {}) as { workflowId?: string; selections?: Record<string, string> };
+      if (!body.workflowId || !body.selections || typeof body.selections !== 'object') {
+        throw new OperationalError('workflowId and selections are required', { status: 400 });
+      }
+
+      const workflow = await services.workflows.getById(body.workflowId, auth(req).projectId);
+      const credentials = await services.credentials.list(auth(req).projectId);
+      const credentialById = new Map(credentials.map((credential) => [credential.id, credential]));
+      const nodes = JSON.parse(JSON.stringify(workflow.nodes)) as INode[];
+
+      for (const requirement of requirements) {
+        const credentialId = body.selections[requirement.id];
+        if (!credentialId) {
+          throw new OperationalError(`Credential selection is required for "${requirement.credentialName}"`, {
+            status: 400,
+            requirementId: requirement.id,
+          });
+        }
+        const credential = credentialById.get(credentialId);
+        if (!credential) throw new OperationalError('Credential not found', { status: 404, credentialId });
+        if (credential.type !== requirement.credentialType) {
+          throw new OperationalError(`Credential must be of type "${requirement.credentialType}"`, {
+            status: 400,
+            credentialId,
+          });
+        }
+        for (const nodeName of requirement.nodeNames) {
+          const node = nodes.find((candidate) => candidate.name === nodeName);
+          if (!node) {
+            throw new OperationalError(`Template setup node "${nodeName}" is missing`, {
+              status: 400,
+              workflowId: workflow.id,
+            });
+          }
+          node.credentials = {
+            ...(node.credentials ?? {}),
+            [requirement.credentialType]: { id: credential.id, name: credential.name },
+          };
+        }
+      }
+
+      const updated = await services.workflows.update(
+        workflow.id,
+        { nodes },
+        auth(req).projectId,
+        auth(req).userId,
+      );
+      recordAudit(
+        services,
+        req,
+        'workflow.template-setup',
+        { type: 'workflow', id: updated.id },
+        { templateId: template.id, credentialGroups: requirements.length },
+      );
+      res.json(updated);
     }),
   );
 

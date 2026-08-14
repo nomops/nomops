@@ -30,6 +30,8 @@ describe('内置节点通过加载器可用', () => {
       'compression',
       'convertToFile',
       'crypto',
+      'dataTable',
+      'dataTableTool',
       'dateTime',
       'editImage',
       'emailTrigger',

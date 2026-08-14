@@ -39,6 +39,7 @@ const ui = useUiStore();
 const tab = ref<Tab>((route.query['tab'] as Tab) ?? 'workflows');
 const search = ref('');
 const error = ref('');
+const starterImporting = ref(false);
 
 const workflows = ref<WorkflowRow[]>([]);
 const folders = ref<FolderRow[]>([]);
@@ -604,6 +605,23 @@ async function createWorkflow() {
   void router.push({ name: 'canvas', params: { id: wf.id } });
 }
 
+/** 根目录空态 starter：免凭证模板，导入后直接进入画布并可手动运行。 */
+async function importStarter() {
+  if (starterImporting.value) return;
+  closeMenus();
+  starterImporting.value = true;
+  error.value = '';
+  try {
+    const workflow = await api.templates.import('branch-merge-demo');
+    ui.notify({ kind: 'success', title: t('Starter imported'), message: workflow.name });
+    void router.push({ name: 'canvas', params: { id: workflow.id } });
+  } catch (cause) {
+    error.value = (cause as Error).message;
+  } finally {
+    starterImporting.value = false;
+  }
+}
+
 async function toggleActive(row: WorkflowRow) {
   closeMenus();
   error.value = '';
@@ -1160,7 +1178,19 @@ const fmtRunTime = (row: ExecutionRow): string => {
       <div v-if="sortedWorkflows.length === 0 && subfolders.length === 0" class="empty-state" data-test="workflow-empty">
         <button class="scratch-card" data-test="start-from-scratch" @click="createWorkflow">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="scratch-icon"><path d="M12 5v14M5 12h14" stroke-linecap="round" /></svg>
-          <span>{{ t('Start from scratch') }}</span>
+          <span class="empty-card-title">{{ t('Start from scratch') }}</span>
+          <small>{{ t('Build a workflow from an empty canvas') }}</small>
+        </button>
+        <button
+          v-if="currentFolderId === null"
+          class="scratch-card starter-card"
+          data-test="starter-template"
+          :disabled="starterImporting"
+          @click="importStarter"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="scratch-icon" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2" /><circle cx="18" cy="12" r="2" /><circle cx="6" cy="19" r="2" /><path d="M8 5h2a4 4 0 0 1 4 4v0a3 3 0 0 0 3 3M8 19h2a4 4 0 0 0 4-4v0a3 3 0 0 1 3-3" /></svg>
+          <span class="empty-card-title">{{ starterImporting ? t('Importing starter…') : t('Branch & merge starter') }}</span>
+          <small>{{ t('No credentials · ready to run') }}</small>
         </button>
       </div>
 
@@ -2089,6 +2119,8 @@ const fmtRunTime = (row: ExecutionRow): string => {
 .empty-state {
   display: flex;
   justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--spacing--lg);
   padding: var(--spacing--3xl) var(--spacing--xl);
   background: var(--color--background--light-3);
   border: var(--border-width) var(--border-style) var(--border-color);
@@ -2100,6 +2132,10 @@ const fmtRunTime = (row: ExecutionRow): string => {
   background: transparent; color: var(--text-dim); font-size: 15px; cursor: pointer;
 }
 .scratch-card:hover { border-color: var(--accent); color: var(--text-hi); }
+.scratch-card:disabled { opacity: 0.55; cursor: wait; }
+.starter-card { border-style: solid; }
+.empty-card-title { color: var(--color--text--shade-1); font-weight: var(--font-weight--bold); }
+.scratch-card small { max-width: 175px; color: var(--color--text--tint-1); font-size: var(--font-size--2xs); line-height: 1.4; }
 .scratch-icon { width: 34px; height: 34px; opacity: 0.7; }
 .cred-empty {
   display: flex; flex-direction: column; align-items: center; gap: 10px;

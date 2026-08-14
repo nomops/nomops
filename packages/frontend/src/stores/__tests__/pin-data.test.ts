@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
-import type { INode, INodeExecutionData } from '@nomops/workflow';
+import type { IConnections, INode, INodeExecutionData } from '@nomops/workflow';
 import { useEditorStore } from '../editor.js';
 
 /**
@@ -58,6 +58,38 @@ describe('pin data store', () => {
     editor.removeNode('A');
     expect(editor.isNodeDataPinned('A')).toBe(false);
     expect(editor.isNodeDataPinned('B')).toBe(true);
+  });
+
+  it('removeNode bridges a single main path and undo restores the original graph', () => {
+    editor.nodes = [node('A'), node('Middle'), node('B')];
+    editor.connections = {
+      A: { main: [[{ node: 'Middle', type: 'main', index: 0 }]] },
+      Middle: { main: [[{ node: 'B', type: 'main', index: 0 }]] },
+    } satisfies IConnections;
+
+    editor.removeNode('Middle');
+    expect(editor.nodes.map((entry) => entry.name)).toEqual(['A', 'B']);
+    expect(editor.connections).toEqual({
+      A: { main: [[{ node: 'B', type: 'main', index: 0 }]] },
+    });
+
+    editor.undo();
+    expect(editor.nodes.map((entry) => entry.name)).toEqual(['A', 'Middle', 'B']);
+    expect(editor.connections['A']?.main?.[0]?.[0]?.node).toBe('Middle');
+  });
+
+  it('keyboard deletion through the batch entrypoint also bridges one selected node', () => {
+    editor.nodes = [node('A'), node('Middle'), node('B')];
+    editor.connections = {
+      A: { main: [[{ node: 'Middle', type: 'main', index: 0 }]] },
+      Middle: { main: [[{ node: 'B', type: 'main', index: 0 }]] },
+    } satisfies IConnections;
+
+    editor.removeNodes(['Middle']);
+
+    expect(editor.connections).toEqual({
+      A: { main: [[{ node: 'B', type: 'main', index: 0 }]] },
+    });
   });
 
   it('moves pin data to the new key when its node is renamed', () => {

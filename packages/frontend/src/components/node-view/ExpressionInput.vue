@@ -13,6 +13,7 @@ import {
 } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { autocompletion, type Completion, type CompletionContext } from '@codemirror/autocomplete';
+import { EXPRESSION_EXTENSION_DOCS } from '@nomops/workflow';
 
 const props = defineProps<{
   modelValue: string;
@@ -130,7 +131,9 @@ function makeInfo(title: string, desc: string): Node {
 const DOLLAR_COMPLETIONS: Completion[] = (
   [
     ['$json', 'Returns the JSON input data to the current node, for the current item.'],
-    ['$now', 'The current timestamp as an ISO 8601 string.'],
+    ['$now', 'The current time as a Luxon DateTime.'],
+    ['$today', 'The start of today as a Luxon DateTime.'],
+    ['$timezone', 'The workflow timezone used by $now and $today.'],
     ['$itemIndex', 'The index of the current item within the input items.'],
     ['$items', 'All input items of the current node.'],
     ['$node', 'Output of an executed node: $node["Node Name"].json.'],
@@ -173,6 +176,24 @@ function jsonMemberCompletions(context: CompletionContext) {
   return { from, options };
 }
 
+/** `value.` 方法补全直接消费 workflow 运行时的 .doc 元数据，避免 UI 与执行语义漂移。 */
+function extensionMethodCompletions(context: CompletionContext) {
+  if (!insideExpression(context)) return null;
+  const word = context.matchBefore(/\.\w*/);
+  if (!word) return null;
+  return {
+    from: word.from + 1,
+    options: EXPRESSION_EXTENSION_DOCS.map((doc) => ({
+      label: `${doc.name}()`,
+      apply: `${doc.name}()`,
+      type: 'function',
+      section: 'Methods',
+      detail: `${doc.types.join(' | ')} → ${doc.returnType}`,
+      info: () => makeInfo(`${doc.name}()`, `${doc.description} Example: ${doc.example}`),
+    })),
+  };
+}
+
 onMounted(() => {
   view = new EditorView({
     parent: host.value!,
@@ -182,7 +203,7 @@ onMounted(() => {
         history(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
         placeholder(props.placeholder ?? 'Supports {{ $json.field }} expressions'),
-        autocompletion({ override: [jsonMemberCompletions, dollarCompletions], icons: false }),
+        autocompletion({ override: [jsonMemberCompletions, extensionMethodCompletions, dollarCompletions], icons: false }),
         autocompleteTheme,
         expressionHighlighter,
         EditorView.lineWrapping,

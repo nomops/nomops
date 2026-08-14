@@ -122,6 +122,46 @@ describe('全流程：登录→建工作流→运行→查执行历史（验收�
     expect(setOutput[0].json).toEqual({ greeting: 'hello' });
   });
 
+  it('表达式扩展与 Luxon DateTime 经真实 API 工作流执行', async () => {
+    const token = await registerAndLogin('expression-runtime@test.dev');
+    const created = await request(app)
+      .post('/api/workflows')
+      .set(authed(token))
+      .send({
+        name: 'Expression runtime',
+        settings: { timezone: 'Asia/Shanghai' },
+        nodes: [
+          sampleWorkflow.nodes[0],
+          {
+            ...sampleWorkflow.nodes[1],
+            parameters: {
+              fields: {
+                validEmail: "={{ 'dev@example.com'.isEmail() }}",
+                tomorrow: '={{ $now.plus({ days: 1 }).toISO() }}',
+                first: '={{ [7, 8].first() }}',
+              },
+            },
+          },
+        ],
+        connections: sampleWorkflow.connections,
+      })
+      .expect(201);
+    const run = await request(app)
+      .post(`/api/workflows/${created.body.id as string}/run`)
+      .set(authed(token))
+      .send({})
+      .expect(200);
+    expect(run.body.status).toBe('success');
+    const detail = await request(app)
+      .get(`/api/executions/${run.body.executionId as string}`)
+      .set(authed(token))
+      .expect(200);
+    const output = detail.body.data.resultData.runData.Set[0].data.main[0][0].json as Record<string, unknown>;
+    expect(output.validEmail).toBe(true);
+    expect(output.first).toBe(7);
+    expect(output.tomorrow).toMatch(/\+08:00$/);
+  });
+
   it('结构非法的工作流被拒（未知节点类型 / 连接引用不存在的节点）', async () => {
     const token = await registerAndLogin('invalid@test.dev');
 
@@ -266,6 +306,8 @@ describe('node-types', () => {
       'compression',
       'convertToFile',
       'crypto',
+      'dataTable',
+      'dataTableTool',
       'dateTime',
       'editImage',
       'emailTrigger',

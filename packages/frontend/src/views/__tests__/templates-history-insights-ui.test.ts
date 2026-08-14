@@ -15,6 +15,13 @@ describe('templates, history, and insights UI', () => {
     expect(templates).toContain('>Clear filters</button>');
   });
 
+  it('routes credential-bearing imports through setup and direct imports to canvas', () => {
+    expect(templates).toContain('template?.credentialRequirements.length');
+    expect(templates).toContain("name: 'templateSetup'");
+    expect(templates).toContain("query: { workflow: wf.id }");
+    expect(templates).toContain("name: 'canvas'");
+  });
+
   it('confirms version restoration and reports completed actions', () => {
     expect(history).toContain("title: 'Publish this version?'");
     expect(history).toContain('await ui.requestConfirm({');

@@ -34,6 +34,17 @@ describe('模板库 API', () => {
     expect(res.body).toHaveLength(BUILTIN_TEMPLATES.length);
     expect(res.body[0]).toMatchObject({ id: expect.any(String), name: expect.any(String), category: expect.any(String) });
     expect(res.body[0].nodes).toBeUndefined(); // 摘要不带大 JSON
+    const ai = res.body.find((entry: { id: string }) => entry.id === 'ai-summary');
+    expect(ai.credentialRequirements).toEqual([
+      expect.objectContaining({ id: 'anthropic-model', credentialType: 'anthropicApi' }),
+    ]);
+  });
+
+  it('模板详情只返回 setup 元数据，不泄露节点 JSON', async () => {
+    const res = await request(app).get('/api/templates/ai-summary').set(authed()).expect(200);
+    expect(res.body.id).toBe('ai-summary');
+    expect(res.body.nodes).toBeUndefined();
+    expect(res.body.credentialRequirements[0].nodeNames).toEqual(['Anthropic Chat Model']);
   });
 
   it('导入模板 → 建出结构合法的工作流', async () => {
@@ -56,6 +67,36 @@ describe('模板库 API', () => {
       { amount: 150, size: 'big' },
       { amount: 50, size: 'small' },
     ]);
+  });
+
+  it('凭证向导按声明类型安全绑定到模板节点', async () => {
+    const credential = await request(app)
+      .post('/api/credentials')
+      .set(authed())
+      .send({ name: 'Anthropic production', type: 'anthropicApi', data: { apiKey: 'secret-test-key' } })
+      .expect(201);
+    const imported = await request(app).post('/api/templates/ai-summary/import').set(authed()).expect(201);
+    const configured = await request(app)
+      .post('/api/templates/ai-summary/setup')
+      .set(authed())
+      .send({ workflowId: imported.body.id, selections: { 'anthropic-model': credential.body.id } })
+      .expect(200);
+    const model = configured.body.nodes.find((node: { name: string }) => node.name === 'Anthropic Chat Model');
+    expect(model.credentials.anthropicApi).toEqual({
+      id: credential.body.id,
+      name: 'Anthropic production',
+    });
+
+    const wrongType = await request(app)
+      .post('/api/credentials')
+      .set(authed())
+      .send({ name: 'SMTP', type: 'smtp', data: { host: 'mail.invalid' } })
+      .expect(201);
+    await request(app)
+      .post('/api/templates/ai-summary/setup')
+      .set(authed())
+      .send({ workflowId: imported.body.id, selections: { 'anthropic-model': wrongType.body.id } })
+      .expect(400);
   });
 
   it('全部模板结构合法（每个都能导入）', async () => {

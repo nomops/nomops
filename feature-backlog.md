@@ -137,8 +137,10 @@
 - [x] **53. 流程/工具杂项四件套：Stop and Error / Execution Data / TOTP / Git** `S/M` ✅ 2026-08-01（新增四个声明式节点：Stop and Error 主动抛出受控错误并进入 Error Trigger 工作流，Execution Data 读写当前执行可搜索 KV 元数据，TOTP 与 MFA 服务共享 RFC 6238 SHA1/SHA256/SHA512 实现，Git 在 `NOMOPS_GIT_ROOT` 沙箱内支持 clone/status/commit/pull/push、HTTPS token/SSH 密钥临时注入且禁用 hooks/file 协议；新增 7 节点单测 + 1 前端凭证类型测试，并扩展错误流/执行元数据/API 凭证明文不泄漏覆盖，workflow 29/core 101/nodes 127/db 26/frontend 94/server 614、全量 991 测通过；`pnpm build` 6/6、`pnpm dev` 前后端启动通过，真实 HTTP 完成错误流→handler、元数据详情、标准 TOTP 往返，临时 SSH Git 服务完成 clone→commit→push 且裸库内容一致；生产 UI 验证四节点元数据自动上架，与同镜像基线 2.31.5 在 1280×720 同视口并排比对，干净标签控制台零报错；commit `da59d5f`）
 
 - [ ] **54. 自引用/低价值节点（评估后按需，默认不做）** `S~M`
-  n8n / n8n Trigger（调 n8n 自身 API / 监听实例事件——nomops 等价物应改造为「nomops 自 API 节点」+ 实例事件触发，价值取决于是否需要工作流操作平台自身）、Data table（n8n 的内置数据表功能，需整套 dataTable 后端，属独立特性非单节点）、AI Transform（自然语言生成转换代码，依赖 AI 建流能力 #45）、Track Time Saved（n8n 云运营指标，自托管无意义）。
-  → 逐项在开发前单独裁决；Data table 若做应并入独立特性立项，AI Transform 挂靠 #45，Track Time Saved 直接不做。
+  - [x] **Data Table 节点** ✅ 2026-08-14（复用现有项目级 Data Tables 后端，新增与本地基线一致的 Row/Table 两资源：Row 支持 Delete/Get/If Row Exists/If Row Does Not Exist/Insert/Update/Upsert，Table 支持 Clear/Create/Delete/List/Rename；Data table 使用 From List/By Name/ID resource locator，列映射使用动态 resource mapper，条件/排序/Dry Run/批量优化均由节点 schema 驱动；执行 helper 只注入当前 project 的表和行操作，节点参数不能指定 projectId；补 `data_tables.updatedAt` 双方言迁移、动态列 API、Data Table NDV 映射控件与节点/前端/服务端/DB 回归。全仓 1250 项测试、生产构建 6/6；隔离浏览器真实执行写入并回读 `buyer@example.com / 42`，Input/Parameters|Settings/Output 三栏及 0 console error 验收通过）
+  - [ ] **Nomops 自 API 节点 + 实例事件触发器**：等价于基线的自引用 API/trigger；会允许工作流操作平台自身，价值与权限边界需先由产品裁决，不能默认开放。
+  - [ ] **AI Transform**：自然语言生成转换代码；#45 AI 建流前置已完成，可作为 #54 下一候选单独开发。
+  - [x] **Track Time Saved** ⊘ 2026-08-14 裁决不做（云运营指标，自托管部署无可靠统一口径，伪造该指标没有产品价值）。
 
 ## P12 · 安全加固（来源：2026-07-25 benchmark-gap 对标审查 n8n 2.31.0，详见 `benchmark-gap.md`）
 
@@ -203,7 +205,9 @@
   → AbortSignal 经 `additionalData.httpRequest` 贯通到 `defaultHttpRequest` 的 fetch，cancel()/超时即 abort 网络 I/O。
   验收：取消卡在慢 HTTP 的执行时底层请求被中断。
 
-- [ ] **69. Agent 循环引擎化（V2→V3）** `XL`（🟠 A9，战略）
+> 2026-08-11 Agent V3 引擎化专项：AiAgent 将多轮消息、待处理工具调用、item 进度与 token 用量保存为可序列化恢复状态，模型产出的工具调用改为引擎请求，由 WorkflowExecute 调度真实 `ai_tool` 节点；工具节点继承统一重试、取消/超时 AbortSignal、HITL waiting/resume 与生命周期 hook，每次调用独立写入带 callId/toolName/parentNodeName 的 runData。执行详情按调用展开同一工具的多次运行。新增 core/nodes/server/frontend 四层回归与两次工具调用服务端全链；构建 6/6、全仓 10/10 测试任务共 1216 项通过，独立生产构建页面实测两条调用逐条可见且控制台零错误。
+
+- [x] **69. Agent 循环引擎化（V2→V3）** `XL`（🟠 A9，战略）✅ 2026-08-11
   踩坑·战略：`packages/nodes/src/nodes/AiAgent/AiAgent.node.ts:86-98` 是节点内 `while` 内联循环、`tool.invoke()` 直调，工具非真节点入引擎；且画布 agent 与 `instance-ai-service.ts:146` 两套循环割裂。停在基线 V2，工具调用不白嫖引擎重试/取消/HITL/观测；画布 agent 永远拿不到 HITL。基线全篇最核心情报「跳过 V2 直接 V3」。
   → 工具调用打包成引擎请求、由 workflow-execute 主循环调度工具节点、Agent 以 resume 恢复，画布/助手统一一套引擎化循环。
   验收：画布 AiAgent 工具调用可被取消/挂 HITL/在执行详情逐调用观测。
@@ -284,17 +288,25 @@
 
 > 2026-08-11 UI 节点对标专项第五批（第四批运行时收口）：本地 n8n 容器源码与浏览器双重核对 Merge SQL Query、Execute Workflow Define Below、Form File。Merge 接入与基线一致的 AlaSQL 4.4.0，并用 isolated-vm 设置 64MB 内存、30 秒超时，封禁网络/文件 source，支持 `input1..input10`、JOIN/聚合和 pairedItem；Define Below 将工作流导出 JSON 贯通节点/核心/服务边界，图结构和节点类型先校验，子流只在内存执行、不创建工作流或执行记录，仍受同项目凭证解析和 5 层递归限制；Form webhook/test/waiting 三类入口接入 formidable multipart，限制单文件 10MB/单请求 20MB/20 文件，临时文件必清理，binary 写现有 store，JSON 同步输出文件名/MIME/大小。表单 fixedCollection 新增 n8n 同款 Add Attributes 菜单，File 属性为 Multiple Files、Accepted File Types、Required Field，公开页自动带 multipart enctype。新增节点、前端、服务端专属回归，并以真实上传和内联子流 API 验证。
 
-- [ ] **66. 执行可视化正确性（串台 + 重连 + 频道）** `M`（🟠 A6）
+> 2026-08-11 UI 节点对标专项第六批（Data Transformation 高频节点）：以本地 n8n 浏览器与同版本源码双证据核对 Filter、Split Out、Aggregate、Sort、Limit、Remove Duplicates。Filter 改为结构化 Conditions + 内嵌 AND/OR、Convert Types、Ignore Case，运行结果区分 Kept/Discarded；Split Out 支持多字段按位拆分、Selected Other Fields、Disable Dot Notation、Destination Field Name、Include Binary 与 `$binary`；Aggregate 使用 Individual Fields/All Item Data 两模式，补重命名、字段筛选、Merge Lists、缺值和二进制选项；Sort 补 Simple/Random/Code，Code comparator 在 32MB/5 秒 isolated-vm 中执行；Limit 增加 UI 最小值；Remove Duplicates 补三种 operation、node/workflow 历史范围、value/increment/date 三类跨执行去重和清理，其中当前输入模式只返回 Kept，跨执行模式按基线返回 Kept/Discarded。旧 `mode/sortFields/fields/keep/destinationFieldName` 参数继续兼容读取。
+
+> 2026-08-11 执行可视化专项：WebSocket 升级必须携带 workflowId，并在 JWT、项目成员和工作流归属三重校验后加入 PushHub 的 workflow 专属频道；执行事件只向该频道广播，服务端每 15 秒发送协议 ping 与应用 heartbeat。前端只接受当前 workflow，除 executionStarted 外还必须匹配 currentExecutionId；断线按 500ms 起、最高 15 秒指数退避重连，35 秒静默看门狗主动断开，并在重连成功后通过执行详情校准漏掉的终态。新增服务端频道/拒绝/心跳 4 项和前端隔离/退避/看门狗 5 项回归。
+
+- [x] **66. 执行可视化正确性（串台 + 重连 + 频道）** `M`（🟠 A6）✅ 2026-08-11
   踩坑：`packages/frontend/src/stores/execution.ts:44` handleEvent 不按 executionId 过滤（并发执行/多用户高亮串台）；`packages/server/src/ws/push-hub.ts:27` 广播全连接无 workflow 频道；`execution.ts:38` WS 断线不重连（静默丢实时进度）。三者叠加使执行可视化在任意并发/断网下失真。
   → handleEvent 首行按 executionId 过滤（executionStarted 除外）；push-hub 按 workflowId 分频道；WS 加指数退避重连 + 心跳。
   验收：并发执行/多用户/断网下画布高亮不串台、断线自恢复。
 
-- [ ] **68. displayOptions 版本门控 + 操作符** `M`（🟠 A8）
+> 2026-08-11 displayOptions 专项：按本地 n8n 同版本源码补齐 `_cnd` 的 eq/not/gte/lte/gt/lt/between/includes/startsWith/endsWith/regex/exists 全部操作符，支持根路径、点路径、默认值、resource locator 解包和 `@version`。NDV 顶层、collection/fixedCollection 子字段与凭证槽统一走同一判断器，节点自身 typeVersion 优先参与版本门控；受控值为表达式时保守显示，但不能绕过版本条件。Remove Duplicates 声明为 `[1, 2]`，v1 存量节点继续加载且不显示 v2 Operation。判断器 8 项、ParamInput 24 项与 NodeLoader 6 项专项套件全部覆盖通过。
+
+- [x] **68. displayOptions 版本门控 + 操作符** `M`（🟠 A8）✅ 2026-08-11
   缺能力：`packages/frontend/src/lib/display-options.ts:8-32` 仅 `includes()` 等值，无 `_cnd`（gte/lte/between/regex/exists）；`NdvModal.vue:180` 版本只被动注记不门控 → 无版本化参数面，节点演进即破坏存量工作流；且受控值为表达式时会被误隐藏。
   → `IDisplayOptions` 值支持 `{_cnd:{…}}` + `isPropertyVisible` 加 `@version` 门控 + 「受控值为表达式默认显示」分支。越早加改造面越小。
   验收：节点升版本参数按 typeVersion 正确显隐，存量工作流不破；表达式态字段不被误隐。
 
-- [ ] **70. Luxon + 扩展方法 + 同构预览** `L`（🟠 A10/ 🟢 G2）
+> 2026-08-11 表达式运行时专项：`$now/$today` 按工作流时区构造为 Luxon-compatible DateTime，支持 `plus/minus/startOf/endOf/set/setZone/toISO/toFormat` 等链式方法；String/Array/Object/Number 高频扩展通过 Babel AST 改写为 QuickJS 白名单 `__extend` 调用，不污染原型，方法说明、类型、返回值和示例集中到 workflow 共享元数据。NDV Result 与真实执行统一调用 `resolveParameterValue`，注入当前 item、完整 runData 和 workflow，支持 `$json/$node/$(...)` 真值预览及 pending/success/error 三态，方法补全直接消费共享元数据。真实 API 工作流验证 `toDateTime().plus().toISODate()` 与 Asia/Shanghai 时区输出；隔离生产页面验证 Input/Output 1 item、两个 success 预览、方法补全及控制台零 error。生产构建 6/6，受控全仓 10/10 测试任务共 1225 项通过。
+
+- [x] **70. Luxon + 扩展方法 + 同构预览** `L`（🟠 A10/ 🟢 G2）✅ 2026-08-11
   缺能力：`grep luxon/DateTime/toDateTime` 零命中，`$now` 是字符串，0/108 扩展方法 → `{{ $now.plus({days:1}) }}`/`.isEmail()`/`arr.first()` 全报错，DX 与基线断层；前端 `ExpressionInput.vue` 未 import 引擎，无「预览即真值」（引擎在 workflow 包、天然可跑浏览器=抢跑窗口现成）。
   → 接 Luxon（$now/$today 改 DateTime）+ 首批高频扩展方法（AST 改写把 `x.method()` 路由到 `extend()`）+ `.doc` 元数据；把 `resolveParameterValue` 接进 NDV 做实时预览、补全按运行数据解析真实字段/方法、高亮加 pending 三态。
   验收：`$now.plus({days:1})`/`.isEmail()` 可用；NDV 表达式实时出真值预览。
@@ -304,12 +316,12 @@
   → 补 Webhook 鉴权四档（none/basic/header/jwt）+ `ignoreBots` + responseMode=lastNode；`/webhook-waiting` 只对 POST 执行副作用（#59 合并）；动态 `:param` 与 streaming 可延后。
   验收：无鉴权 webhook 可加 header/basic 保护；预览 bot GET 不触发 resume；末节点答生效。
 
-- [ ] **74. 删除桥接 + 模板凭证向导 + 空态 starter** `M`（🟠 A14）
+- [x] **74. 删除桥接 + 模板凭证向导 + 空态 starter** `M`（🟠 A14）✅ 2026-08-13（单入单出 main 删除保留端口索引自动桥接，分支/汇合/AI 边/批量删除不猜测；新增 `/templates/:id/setup`，按声明分组凭证、无歧义自动选择、向导内创建/应用/跳过，服务端复核项目归属与类型；AI 模板改为 Chat Model 子节点持有 Anthropic 凭证；Overview 根目录新增免凭证 `branch-merge-demo` starter；43 项前端定向、7 项模板 API、全量 1236 项测试、生产构建 6/6 与隔离浏览器三路径验证通过，控制台 0 error）
   缺能力：`packages/frontend/src/stores/editor.ts:223` removeNode 只删+剥连线不桥接（删中间节点断链需手工重连）；`router.ts` 无 `/templates/:id/setup`（模板导入后无「需凭证→向导」分支，`template-registry.ts:19` setupHints 仅静态文字）；`OverviewView.vue:1013` 空态仅「Start from scratch」不露模板。
   → removeNode 单入单出 main 时自动接上游→下游；新增 `/templates/:id/setup` 凭证向导（按类型/名分组卡 + 无歧义自动填充 + 可跳过）；空态推 `branch-merge-demo` starter 卡（免凭证、导入即可手动跑）。
   验收：删中间节点自动重连；模板导入需凭证时进向导；空态一键落地可跑 starter。
 
-- [ ] **76. 协同编辑地基（EPIC）** `XL`（🟢 G3）
+- [x] **76. 协同编辑地基（EPIC）** `XL`（🟢 G3）✅ 2026-08-13（workflow 新增独立内容 `version`，保存携带期望版本并以原子条件更新；陈旧写入返回 409 且不覆盖服务端/本地草稿。editor 持久状态修改收敛到 `_applyPersistentChange`，重叠自动保存串行合并；冲突横幅提供明确的确认后重载路径。定向 72 项并发/版本/编辑器回归、全仓 1244 项测试与生产构建 6/6 通过；隔离生产环境三标签页验证 A 胜出、B 保留草稿、重载恢复且控制台 0 error）
   抢跑窗口：无 presence / 无写锁 / 无 CRDT（基线 Yjs 亦「已建未接」）。但 nomops 现状更靠后——`stores/editor.ts` 各 action 直写非 apply 收敛、undo 全量快照非命令式，直接上 CRDT 成本高；且当前 `save()` 末位写覆盖，并发编辑静默互相覆盖。
   → 分两步：先补保存乐观锁（workflow 加 version 列、save 带版本、后端 409 冲突提示而非覆盖，立即消除并发丢改）；同时把 editor store 重构为「public 方法 → 私有 applyXxx 唯一写入点」，为日后 CRDT/undo 命令化铺路。
   验收：并发编辑不静默互覆盖（409 提示）；状态写入收敛到单入口。

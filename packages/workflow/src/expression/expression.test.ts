@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { IExpressionContext } from './evaluator.js';
 import { resolveParameterValue } from './evaluator.js';
 import { evaluateInSandbox, ExpressionError } from './sandbox.js';
+import { EXPRESSION_EXTENSION_DOCS, rewriteExpressionExtensions } from './extensions.js';
 
 function ctx(json: Record<string, unknown> = {}, runData: IExpressionContext['runData'] = {}): IExpressionContext {
   return {
@@ -210,5 +211,42 @@ describe('$fromAI（#19 AI 工具让模型填参）', () => {
 
   it('AI 上下文之外:$fromAI 安全降级为 undefined（不崩表达式）', () => {
     expect(resolveParameterValue("={{ $fromAI('x') ?? 'fallback' }}", ctx())).toBe('fallback');
+  });
+});
+
+describe('Luxon DateTime 与表达式扩展（#70）', () => {
+  it('$now/$today 是可链式调用的 DateTime，plus 不漂移原值', () => {
+    expect(resolveParameterValue('={{ $now.plus({ days: 1 }).toMillis() - $now.toMillis() }}', ctx())).toBe(86_400_000);
+    expect(resolveParameterValue('={{ $today.hour }}', ctx())).toBe(0);
+    expect(resolveParameterValue('={{ $now.isValid }}', ctx())).toBe(true);
+    expect(resolveParameterValue('={{ $now.plus({ days: 1 }) }}', ctx())).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(resolveParameterValue('={{ $now.toISO() }}', { ...ctx(), timezone: 'Asia/Shanghai' })).toMatch(/\+08:00$/);
+  });
+
+  it('字符串 toDateTime 后可继续调用 Luxon 方法', () => {
+    expect(resolveParameterValue("={{ '2026-08-11'.toDateTime().plus({ days: 1 }).toISODate() }}", ctx()))
+      .toBe('2026-08-12');
+  });
+
+  it('高频 String/Array/Object/Number 方法统一走 extend', () => {
+    expect(resolveParameterValue("={{ 'dev@example.com'.isEmail() }}", ctx())).toBe(true);
+    expect(resolveParameterValue('={{ [1, 2, 2].unique().sum() }}', ctx())).toBe(3);
+    expect(resolveParameterValue("={{ ({ id: 1, empty: '' }).compact().keys() }}", ctx())).toEqual(['id']);
+    expect(resolveParameterValue('={{ (42).isEven() }}', ctx())).toBe(true);
+  });
+
+  it('AST 改写支持嵌套且不改写普通原生方法', () => {
+    expect(rewriteExpressionExtensions('[1, 2].map(x => x * 2).first()')).toBe(
+      '__extend([1, 2].map(x => x * 2),"first",[])',
+    );
+    expect(rewriteExpressionExtensions('[1, 2].map(x => x * 2)')).toBe('[1, 2].map(x => x * 2)');
+  });
+
+  it('扩展元数据供运行时与前端补全共用', () => {
+    expect(EXPRESSION_EXTENSION_DOCS.find((doc) => doc.name === 'isEmail')).toMatchObject({
+      types: ['String'],
+      returnType: 'boolean',
+    });
+    expect(EXPRESSION_EXTENSION_DOCS.find((doc) => doc.name === 'plus')?.example).toContain('$now.plus');
   });
 });

@@ -30,8 +30,21 @@ Nomops 前端是 n8n 的**高完成度 1:1 复刻**：路由 IA、Overview 五 T
 - 已补运行时：Merge matching/position/all/choose-branch，Loop reset，Wait specified-time 与有限期外部等待，Execute Workflow resource locator + per-item，Respond all-items/binary/JWT/redirect/headers，Form Ending 与扩展表单元素；旧 `combineByPosition`、`afterDelay`、`onSignal`、字符串 workflowId 和旧 `fields` 继续可执行。
 - 浏览器验收：新工作流先显示触发器策展页；选择 Manual Trigger 后才出现普通节点；Merge 切 Combine 即出现 Fields to Match/Join/Output Data From；Wait 切 On Webhook Call 即出现 Authentication/HTTP Method/Response Code/Respond/Limit Wait Time；三栏结构和空态正常。
 - 第五批已关闭三条运行时缺口：Merge SQL Query 在固定堆/超时的无网络无文件 AlaSQL isolate 中执行；Execute Workflow Define Below 经节点类型/连接结构校验后内联执行，不持久化且不放松项目凭证/递归边界；Form File 通过有界 multipart parser 写入现有 binary store，同时产出 `{ filename, mimetype, size }` JSON 元数据。
+- 第六批已对齐 Filter、Split Out、Aggregate、Sort、Limit、Remove Duplicates：Filter 运行结果区分 Kept/Discarded，Remove Duplicates 当前输入模式只返回 Kept、跨执行模式返回 Kept/Discarded；Split/Aggregate 补多字段、字段筛选与 binary；Sort 补 Random 和有界隔离 Code；Remove Duplicates 的 value/increment/date 历史按 node/workflow staticData 跨执行持久化并可清理。参数显示仍完全由 schema 的 displayOptions 驱动，collection 子字段支持 `/root` 条件。
+- 执行可视化已由全连接广播改为鉴权后的 workflow 频道：服务端同时使用 WebSocket ping/pong 与应用 heartbeat，前端按 workflowId/executionId 双层过滤，静默 35 秒主动断开并以指数退避重连，重连后拉取当前执行详情修正漏掉的终态；并发工作流不再互相覆盖画布高亮。
+- 参数显隐已支持 n8n `_cnd` 全部条件操作符和 `@version`：NDV 参数、嵌套 collection/fixedCollection 与凭证槽共享同一判断器，读取节点保存的 typeVersion；表达式控制值按不确定处理而保守显示，版本条件仍优先。Remove Duplicates v1/v2 共用运行实现但呈现各自参数面，存量 v1 可继续加载。
+- 表达式运行时已对齐 DateTime 与首批高频扩展：`$now/$today` 支持 `plus/minus/startOf/endOf/toISO/toFormat`，字符串/数组/对象/数字方法通过 AST 改写进入沙箱，不污染原型；共享 `.doc` 元数据同时驱动 NDV 方法补全。Result 预览使用最近 runData 解析真实 `$json/$node`，显示 pending/success/error 三态。
+- Agent 工具循环已升级为 V3 引擎请求：真实 Tool 节点逐调用进入执行栈和 runData，继承 retry/AbortSignal；Require Human Approval 复用 waiting/resume，可批准或拒绝。执行详情不再只显示同名节点最后一次运行，而会逐 call 展示 tool name、call id、耗时与 observation。
+- 删除与模板首跑链路已闭环：单入单出 main 中间节点删除后自动桥接；模板声明凭证分组并进入 setup 向导，候选无歧义才自动选中，服务端复核项目/类型；Overview 根目录空态提供免凭证 `branch-merge-demo` starter。隔离实例验证 starter 6 节点成功、AI 向导绑定 Chat Model、删除后 `Start → Big?`，控制台 0 error。
 - Form Elements 的可选属性已按本地 n8n 收进 `Add Attributes` 菜单，File 下动态提供 Multiple Files / Accepted File Types / Required Field；公开表单有文件字段时自动输出 `enctype="multipart/form-data"`。
 - 仍需明确的边界：SQL 沙箱与本地 n8n 同为 AlaSQL 4.4.0，但 Nomops 目前最多 10 个 Merge 输入；Define Below 只接受 Nomops 可识别的导出节点类型，不自动翻译 `n8n-nodes-base.*` 节点；上传总量上限是 Nomops 的安全部署默认值，不等同所有 n8n 实例的环境变量配置。
+
+### 2026-08-14 节点级复核（Data Table）
+
+- Data Table 不再是目录缺口：Row 已覆盖 Delete/Get/If Row Exists/If Row Does Not Exist/Insert/Update/Upsert，Table 已覆盖 Clear/Create/Delete/List/Rename。
+- NDV 的 Data table locator 对齐 From List/By Name/ID；Columns 改为动态 resource mapper，可在自动映射和逐列手工映射间切换，并由所选项目表的列 schema 驱动类型化字段。
+- 执行边界不是前端传 projectId：服务端只向节点注入当前项目 Data Table helper，动态选项、动态列 schema 与执行操作均按项目归属过滤。
+- 隔离生产实例完成 Manual Trigger → Data Table Insert，Output 返回 1 item，数据库回读写入值一致，浏览器控制台 0 error。
 
 ---
 
@@ -95,6 +108,12 @@ Nomops 前端是 n8n 的**高完成度 1:1 复刻**：路由 IA、Overview 五 T
 - 🔒 **刻意设计取舍（不动）**：P2-5/6/7（Environments/Log Streaming/External Secrets 自托管简化）、Templates 自托管本地库、Projects 独立管理页。
 
 **结论**：Nomops 与 n8n 基线在信息架构 + 交互行为上已高度对齐；剩余差异要么是自托管刻意取舍，要么是需另立项的企业级 epic（评测子系统）。对齐任务收官。
+
+### 2026-08-13 协同编辑安全地基
+
+- workflow 保存已从末位写覆盖改为内容版本乐观锁：陈旧客户端得到 409，服务端保留胜出版本。
+- 画布保留冲突会话的本地草稿并提供显式确认重载，不自动丢改；重叠 autosave 串行合并。
+- editor 持久修改已收敛到 `_applyPersistentChange` 单入口。presence、CRDT 和命令式 undo 仍是后续协同层能力，不混入本次安全地基。
 
 ## 剩余可选细项（非对齐 gap）
 - **EPIC-EVAL**（评测/测试子系统）：如要做，单独立项——建 dataset/eval-trigger/test-run/metric/annotation/Debug-in-editor 全链。

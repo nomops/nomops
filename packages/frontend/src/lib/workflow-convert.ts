@@ -135,6 +135,55 @@ export function removeNodeFromConnections(connections: IConnections, nodeName: s
   return next;
 }
 
+interface IMainConnectionRef {
+  source: string;
+  sourceIndex: number;
+  target: string;
+  targetIndex: number;
+}
+
+/**
+ * 删除主线中间节点时保持工作流连通：仅当该节点恰好有一条 main 入边和一条
+ * main 出边时，把上游原输出口接到下游原输入口。分支、汇合、自环和 AI 能力边
+ * 均不猜测，仍按普通删除处理。
+ */
+export function removeNodeAndBridgeMain(connections: IConnections, nodeName: string): IConnections {
+  const incoming: IMainConnectionRef[] = [];
+  for (const [source, byType] of Object.entries(connections)) {
+    if (source === nodeName) continue;
+    (byType.main ?? []).forEach((endpoints, sourceIndex) => {
+      for (const endpoint of endpoints ?? []) {
+        if (endpoint.node === nodeName) {
+          incoming.push({ source, sourceIndex, target: nodeName, targetIndex: endpoint.index });
+        }
+      }
+    });
+  }
+
+  const outgoing: IMainConnectionRef[] = [];
+  (connections[nodeName]?.main ?? []).forEach((endpoints, sourceIndex) => {
+    for (const endpoint of endpoints ?? []) {
+      if (endpoint.node !== nodeName) {
+        outgoing.push({ source: nodeName, sourceIndex, target: endpoint.node, targetIndex: endpoint.index });
+      }
+    }
+  });
+
+  let next = removeNodeFromConnections(connections, nodeName);
+  if (incoming.length !== 1 || outgoing.length !== 1) return next;
+  const upstream = incoming[0]!;
+  const downstream = outgoing[0]!;
+  if (upstream.source === downstream.target) return next;
+  next = addConnection(next, {
+    source: upstream.source,
+    sourceIndex: upstream.sourceIndex,
+    target: downstream.target,
+    targetIndex: downstream.targetIndex,
+    type: 'main',
+  });
+  return next;
+}
+
 /** 生成不冲突的节点名："Set" → "Set 2" → "Set 3"…（对齐 defaults.name）。 */
 export function uniqueNodeName(base: string, existing: string[]): string {
   if (!existing.includes(base)) return base;

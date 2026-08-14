@@ -1,3 +1,4 @@
+import type { IExecutionAiToolRequest } from './errors.js';
 import type { INode, INodeExecutionData, JsonObject } from './interfaces.js';
 
 /**
@@ -29,6 +30,8 @@ export interface IExecuteData {
   source: ITaskDataConnectionsSource | null;
   /** true = 本帧是从 waiting 恢复的续跑（节点用 ctx.isResumed() 感知）。 */
   resumed?: boolean;
+  /** Agent V3：由引擎执行的 ai_tool 动作；node 指向真实工具子节点。 */
+  aiToolAction?: IExecutionAiToolRequest;
 }
 
 /** 可序列化的执行错误快照（不是 Error 实例）。 */
@@ -53,6 +56,8 @@ export interface ITaskData {
   pinned?: boolean;
   /** 实际尝试次数（含首次）。>1 表示触发过 retryOnFail 重试。 */
   tryCount?: number;
+  /** 可序列化的调用元数据（Agent 工具 call id/父节点等）。 */
+  metadata?: JsonObject;
 }
 
 /** 每个节点的执行结果列表（循环里同一节点可多次运行）。 */
