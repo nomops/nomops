@@ -17,6 +17,7 @@ import { createOAuth2Router } from './oauth2/router.js';
 import { createScimRouter } from './ee/scim/router.js';
 import { createBillingRouter } from './billing/router.js';
 import { createMcpRouter } from './mcp/router.js';
+import { createSupportRouter } from './support/router.js';
 
 /**
  * 构造 Express 应用但不监听端口——单测直接对 app 发请求。
@@ -46,6 +47,7 @@ export function createApp(services?: AppServices): Express {
     app.use(createInstanceTrustRouter(services)); // /instance-trust/*（公开：JWKS + 令牌交换,#47）
     const apiAuth = createAuthMiddleware(services.auth, services.repos, services.apiKeys);
     const apiRouter = createApiRouter(services);
+    app.use('/api/support', apiAuth, createSupportRouter(services));
     app.use('/api', apiAuth, apiRouter);
     // 版本化公共 API 面（#26）：/api/v1 与 /api 同一套处理器,给外部客户端稳定基址
     app.use('/api/v1', apiAuth, apiRouter);

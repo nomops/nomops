@@ -46,6 +46,7 @@ import type { EncryptionKeyService } from './services/encryption-key-service.js'
 import type { AuthRateLimitService } from './services/auth-rate-limit-service.js';
 import type { PublicationOutboxService } from './services/publication-outbox-service.js';
 import type { WebhookTestListenerService } from './services/webhook-test-listener-service.js';
+import type { SupportService } from './services/support-service.js';
 
 /** 服务容器：构造函数注入（docs/05），app 层只见接口不见组装细节。 */
 export interface AppServices {
@@ -97,4 +98,5 @@ export interface AppServices {
   encryptionKeys: EncryptionKeyService | null;
   authRateLimit: AuthRateLimitService;
   webhookTests: WebhookTestListenerService;
+  support: SupportService;
 }

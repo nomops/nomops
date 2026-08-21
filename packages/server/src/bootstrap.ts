@@ -84,6 +84,7 @@ import {
 } from './services/encryption-key-service.js';
 import { AuthRateLimitService } from './services/auth-rate-limit-service.js';
 import { PublicationOutboxService } from './services/publication-outbox-service.js';
+import { SupportService, type SupportConfiguration } from './services/support-service.js';
 
 /**
  * ★安装版的 IEncryptionKeyProvider（docs/01「第二个必须早做的抽象」）：
@@ -182,6 +183,12 @@ export interface BootstrapOptions {
   webhookTestTtlMs?: number;
   /** 引擎 httpRequest 覆盖（#44 M2；测试注入假 AI provider，避免打真实网络）。 */
   httpRequest?: (options: IHttpRequestOptions) => Promise<unknown>;
+  /** 支持集成配置；仅测试/嵌入式启动显式注入，生产缺省读取 NOMOPS_SUPPORT_*。 */
+  support?: Partial<SupportConfiguration>;
+  /** 支持集成 HTTP transport；只供明确测试注入，本地夹具不得放松生产 SSRF 策略。 */
+  supportHttpRequest?: (options: IHttpRequestOptions) => Promise<unknown>;
+  /** 支持请求超时；只供测试缩短等待。 */
+  supportTimeoutMs?: number;
   /** SSE 连接覆盖（测试注入本地协议夹具；生产缺省走 SSRF 防护实现）。 */
   openEventStream?: (
     options: IEventStreamOptions,
@@ -532,6 +539,18 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
   const mailerConfig = mailerConfigFromEnv(process.env);
   const mailer: IMailer = opts.mailer ?? (mailerConfig ? new SmtpMailer(mailerConfig) : new NullMailer());
   const webhookTests = new WebhookTestListenerService(opts.webhookTestTtlMs);
+  const supportConfig: SupportConfiguration = opts.support ? {
+    url: opts.support.url,
+    token: opts.support.token,
+    productVersion: opts.support.productVersion ?? process.env['NOMOPS_VERSION'] ?? '0.9.0',
+    deploymentMode: opts.support.deploymentMode ?? mode,
+  } : {
+    url: process.env['NOMOPS_SUPPORT_URL'],
+    token: process.env['NOMOPS_SUPPORT_TOKEN'],
+    productVersion: process.env['NOMOPS_VERSION'] ?? '0.9.0',
+    deploymentMode: mode,
+  };
+  const support = new SupportService(supportConfig, opts.supportHttpRequest, opts.supportTimeoutMs);
 
   const services: AppServices = {
     repos,
@@ -582,6 +601,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     encryptionKeys,
     authRateLimit,
     webhookTests,
+    support,
   };
 
   // 重载已安装社区节点（main/worker 都需要，执行时才能解析到）。尽力而为，失败不崩启动。

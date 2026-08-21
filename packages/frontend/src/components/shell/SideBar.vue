@@ -327,6 +327,11 @@ async function openAbout() {
         <span class="lbl">{{ t('Insights') }}</span>
       </RouterLink>
 
+      <RouterLink class="nav-item" :class="{ active: route.name === 'support' }" :aria-current="route.name === 'support' ? 'page' : undefined" :to="{ name: 'support' }" title="获取支持" data-test="nav-support">
+        <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13a8 8 0 0 1 16 0"/><path d="M4 13v4a2 2 0 0 0 2 2h2v-6H4zM20 13v4a2 2 0 0 1-2 2h-2v-6h4z"/><path d="M16 21h-4"/></svg>
+        <span class="lbl">获取支持</span>
+      </RouterLink>
+
       <div class="flyout-anchor" @mouseenter="flyoutEnter('help')" @mouseleave="flyoutLeave">
         <button class="nav-item" data-test="help-menu" :title="t('Help')" aria-controls="help-flyout" :aria-expanded="flyout === 'help'" @click.stop="toggleFlyout('help')">
           <span class="ico-wrap">

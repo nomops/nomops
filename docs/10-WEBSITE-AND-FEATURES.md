@@ -77,6 +77,13 @@ Hero：超大标题（两行）+ 双 CTA（主渐变 + 次级）+ 一句副题 +
 - Settings「🗂️ LDAP」配置表单 + 登录页「使用 LDAP 登录」切换（用户名/密码）
 - 7 个集成测试：门控 / 配置脱敏 / status / bind 登录 + JIT / 错误密码 401 / 未启用 403 / 省略密码保留原值
 
+### Step B6 — 实例内“获取支持”✅ 完成
+- server：`NOMOPS_SUPPORT_URL` 与 `NOMOPS_SUPPORT_TOKEN` 同时配置时启用；浏览器只调用登录态保护的本地 `/api/support`，Token 不出服务端进程、不进数据库、日志、健康检查或状态响应。
+- 出站：固定追加 `/api/instance/v1/tickets`，复用 `safe-http-request.ts` 的 user-controlled URL 策略，对协议、DNS/IP、连接期真实 IP 和每个 redirect hop 复验，阻止回环、私网、link-local 与云元数据目标；仅测试注入允许本地假站点。
+- 数据：只发送用户填写的姓名、邮箱、主题、描述，以及服务端添加的产品版本和 `regular`/`queue` 部署模式；不发送工作流、执行、凭证、日志、主机信息、环境变量、数据库配置或用户 API Key。
+- frontend：侧栏“获取支持”页面覆盖未配置、提交中、成功、失败和防重复提交状态，并明确提示不得发送密码、API Key、Token、凭证明文、敏感工作流或未经脱敏的日志。
+- 边界：这是实例主动发起的可选支持集成，不是 Cloud 登录、注册、实例编排、远程协助或站点控制实例。
+
 ---
 
 ## 三、验收原则

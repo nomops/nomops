@@ -16,6 +16,7 @@
 | `03-MODULES.md` | 六大内核模块 + 表达式引擎的详细开发规范 | 写实现 |
 | `04-ROADMAP.md` | 分阶段里程碑与每阶段验收标准 | 排进度 |
 | `05-CLAUDE-CODE-GUIDE.md` | 目录约定、编码规范、测试要求 | 约束 agent |
+| `15-SUPPORT-INTEGRATION.md` | 可选实例支持配置、API、SSRF 与隐私边界 | 部署和安全运维 |
 
 ---
 

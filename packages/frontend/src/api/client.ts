@@ -512,6 +512,10 @@ export interface ApiKeyRow {
   createdAt: string;
 }
 
+export interface SupportStatus { enabled: boolean; }
+export interface SupportTicketInput { requesterName:string;requesterEmail:string;subject:string;description:string; }
+export interface SupportTicketResult { id:string;status:'open';createdAt:string; }
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -535,7 +539,7 @@ export const projectStorage = {
   clear: (): void => localStorage.removeItem(PROJECT_KEY),
 };
 
-async function http<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function http<T>(method: string, path: string, body?: unknown, extraHeaders:Record<string,string>={}): Promise<T> {
   const token = tokenStorage.get();
   const projectId = projectStorage.get();
   const res = await fetch(path, {
@@ -544,13 +548,16 @@ async function http<T>(method: string, path: string, body?: unknown): Promise<T>
       ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
       ...(token ? { authorization: `Bearer ${token}` } : {}),
       ...(projectId ? { 'x-project-id': projectId } : {}),
+      ...extraHeaders,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (res.status === 204) return undefined as T;
-  const data = (await res.json().catch(() => ({}))) as { error?: string; context?: unknown };
+  const data = (await res.json().catch(() => ({}))) as { error?: string|{code?:string;message?:string}; context?: unknown };
   if (!res.ok) {
-    throw new ApiError(data.error ?? `HTTP ${res.status}`, res.status, data.context);
+    const message=typeof data.error==='string'?data.error:data.error?.message??`HTTP ${res.status}`;
+    const context=typeof data.error==='object'?{code:data.error.code}:data.context;
+    throw new ApiError(message, res.status, context);
   }
   return data as T;
 }
@@ -570,6 +577,12 @@ export const api = {
     http<{ email: string; role: string }>('GET', `/auth/invite/${encodeURIComponent(token)}`),
   acceptInvite: (token: string, password: string, firstName?: string, lastName?: string) =>
     http<AuthResult>('POST', `/auth/invite/${encodeURIComponent(token)}/accept`, { password, firstName, lastName }),
+
+  support: {
+    status: () => http<SupportStatus>('GET','/api/support/status'),
+    submit: (body:SupportTicketInput,idempotencyKey:string) =>
+      http<SupportTicketResult>('POST','/api/support/tickets',body,{'Idempotency-Key':idempotencyKey}),
+  },
 
   nodeTypes: () => http<NodeTypeInfo[]>('GET', '/api/node-types'),
   dynamicNodeParameters: {

@@ -26,6 +26,8 @@ export interface IRequestAuth {
   roleName: string;
   /** Exact effective permissions; custom roles are never widened through their derived tier. */
   scopes: ProjectScope[];
+  /** 用户会话与公共 API key 必须可被敏感人机流程区分。 */
+  authType: 'session' | 'apiKey';
 }
 
 declare module 'express-serve-static-core' {
@@ -42,6 +44,7 @@ function attachAuth(
   next: NextFunction,
   userId: string,
   defaultProjectId: string,
+  authType: IRequestAuth['authType'],
 ): void {
   const headerProject = req.headers['x-project-id'];
   const projectId = typeof headerProject === 'string' && headerProject ? headerProject : defaultProjectId;
@@ -67,7 +70,7 @@ function attachAuth(
           );
         }
       }
-      req.auth = { userId, projectId, role: effective, roleName: role, scopes: effectiveScopes };
+      req.auth = { userId, projectId, role: effective, roleName: role, scopes: effectiveScopes, authType };
       void repos.users.touchLastActive(userId).catch(() => undefined); // D146:活跃打点,失败不阻塞
       next();
     })
@@ -110,7 +113,7 @@ export function createAuthMiddleware(authService: AuthService, repos: Repositori
             res.status(403).json({ error: 'No accessible project for this API key' });
             return;
           }
-          attachAuth(repos, req, res, next, result.userId, personal.id);
+          attachAuth(repos, req, res, next, result.userId, personal.id, 'apiKey');
         })
         .catch(next);
       return;
@@ -143,7 +146,7 @@ export function createAuthMiddleware(authService: AuthService, repos: Repositori
           res.status(401).json({ error: 'Token has been revoked' });
           return;
         }
-        attachAuth(repos, req, res, next, payload.sub, payload.projectId);
+        attachAuth(repos, req, res, next, payload.sub, payload.projectId, 'session');
       })
       .catch(next);
   };

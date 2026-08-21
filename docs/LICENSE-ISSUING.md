@@ -22,27 +22,28 @@ keygen → 自签一张 plan:"Enterprise"、validTo:"2099" 的证书
 
 ## 签发方需要什么
 
-私有签发仓库里保留两个脚本（本仓库历史中曾短暂存在，见 `feat/b-series` 分支
-移除记录），依赖只有 Node 标准库：
+独立私有签发仓库提供三个离线 CLI，依赖只有 Node 标准库：
 
-- `license-keygen.mjs` —— 生成 Ed25519 密钥对
-- `license-sign.mjs` —— 用私钥签发证书
+- `bin/keygen.mjs` —— 把新 Ed25519 密钥对写到仓库外的受限文件
+- `bin/sign-request.mjs` —— 严格校验并签署站点导出的 v1 申请
+- `bin/verify-certificate.mjs` —— 交付前离线复核签名与公开载荷
 
-签发命令形如：
+私钥不通过环境变量或命令参数传递。签发命令形如：
 
 ```bash
-NOMOPS_LICENSE_PRIVATE_KEY=<base64 pkcs8 私钥> \
-node license-sign.mjs \
-  --plan Business \
-  --features rbac,auditLogs,sso,ldap,sourceControl \
-  --quotas teamProjects=6,users=-1 \
-  --days 365 \
-  --to "客户名"
+node bin/sign-request.mjs \
+  --request-file /secure/requests/request.json \
+  --private-key-file /secure/nomops/license-private-key.pem \
+  --certificate-file /secure/output/customer.license \
+  --ledger-file /secure/ledger/issued-certificates.jsonl \
+  --days 365
 ```
+
+私钥、证书和签发台账路径必须位于私有 Git 仓库之外；POSIX 私钥文件不得授予 group/other 权限。签发工具没有网络客户端，不读取 nomops-site 数据库，也不访问客户实例。
 
 ## 轮换公钥
 
-1. `license-keygen.mjs` 生成新密钥对；
+1. `bin/keygen.mjs` 在安全介质生成新密钥对；
 2. 新公钥替换 `LICENSE_PUBLIC_KEY`，发版；
 3. 用新私钥给存量客户重签证书并下发。
 

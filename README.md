@@ -115,6 +115,8 @@ required for a basic SQLite install.
 | `NOMOPS_COMMUNITY_NODE_INTEGRITIES` | `{}` | JSON map of exact `package@version` to npm `sha512-…` integrity. Required for community node installation by default. |
 | `NOMOPS_COMMUNITY_NODE_ALLOWED_IMPORTS` | — | Comma-separated additional imports permitted by the community-node static policy. |
 | `NOMOPS_ALLOW_UNVERIFIED_COMMUNITY_NODES` | `false` | Emergency provenance bypass. Static dangerous-API/import scanning still applies. |
+| `NOMOPS_SUPPORT_URL` | — | Optional nomops-site base URL. The server appends the fixed `/api/instance/v1/tickets` path. Requires `NOMOPS_SUPPORT_TOKEN`. |
+| `NOMOPS_SUPPORT_TOKEN` | — | Per-install `nomops_support_…` credential used only by the server to create support tickets. Never returned to the browser or stored in the database. |
 | `LICENSE_KEY` | — | Unlocks enterprise features (see below). Community edition is free. |
 
 With `NOMOPS_ENCRYPTION_KEY` configured, the database contains only AES-GCM-wrapped DEKs
@@ -122,6 +124,15 @@ and ciphertext carries a `keyId`. An instance admin can rotate the active DEK th
 `POST /api/security/encryption-key/rotate`; retained DEKs continue to decrypt old data.
 Removing or changing the external key makes startup fail closed. `jwtSecret` remains an
 auto-generated instance setting.
+
+When both support variables are set, signed-in users can open **Get support** and send a
+minimal request to the configured nomops-site. Only the form fields, current product
+version, and `regular`/`queue` deployment mode leave the instance. The browser calls the
+local nomops API and never receives the support token. The destination is checked by the
+same DNS/IP, connect-time, and redirect-hop SSRF policy used for user-controlled outbound
+HTTP; private, loopback, link-local, and cloud-metadata destinations are rejected. If
+either variable is absent, the page reports that support is not configured and cannot
+submit. See [docs/15-SUPPORT-INTEGRATION.md](docs/15-SUPPORT-INTEGRATION.md).
 
 ---
 
@@ -135,6 +146,9 @@ auto-generated instance setting.
 - **HTTPS / reverse proxy** — terminate TLS at a proxy (nginx / Traefik / Caddy) in
   front of the app; forward WebSocket upgrades (used for live execution progress).
 - **Migrations** run automatically on startup (SQLite and PostgreSQL).
+- **Optional support integration** is one-way and is not a Cloud control plane. The
+  configured site can receive a support request but cannot access workflows, credentials,
+  executions, logs, environment variables, databases, files, or control this instance.
 
 ---
 

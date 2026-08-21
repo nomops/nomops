@@ -326,6 +326,8 @@
   → 分两步：先补保存乐观锁（workflow 加 version 列、save 带版本、后端 409 冲突提示而非覆盖，立即消除并发丢改）；同时把 editor store 重构为「public 方法 → 私有 applyXxx 唯一写入点」，为日后 CRDT/undo 命令化铺路。
   验收：并发编辑不静默互覆盖（409 提示）；状态写入收敛到单入口。
 
+- [x] **78. 实例内获取支持（nomops-site 第二批对接）** `M` ✅ 2026-08-14（新增服务端专用 `NOMOPS_SUPPORT_URL`/`NOMOPS_SUPPORT_TOKEN`、登录会话保护的 `/api/support/status` 与 `/api/support/tickets`、同一幂等键有限重试和稳定脱敏错误；固定站点路径并复用连接期及重定向逐跳 SSRF 防护；只发送支持表单、产品版本与部署模式。前端新增“获取支持”页面及未配置/提交中/成功/失败/防重复状态。新增 11 项 server 与 4 项 frontend 专项回归；全仓 1265 项测试、10/10 typecheck、6/6 生产构建通过；真实双服务 HTTP 验证工单/幂等/元数据/脱敏错误，桌面与 390px 移动视口验证无页面横向溢出且控制台 0 error/0 warning。明确保持单向支持边界，不引入 Cloud 注册、实例编排、远程控制、日志或诊断包上传。）
+
 > **需单独裁决的决策点（非本批开发项，先记账）**：AI/RAG ~101 节点是否立独立 EPIC 编号（多模型 Chat Model 最高优先）；Code 节点 Python 是否排期；多人协作 presence 是否做（已并入 #76 地基）；`activeWorkflows` 是否作为计费维度（现按执行次数）；`appendAttribution` 病毒署名待自有域名上线再评估；helmet/CSP 安全响应头补法（部署层 nginx vs 应用层）。
 
 ---
