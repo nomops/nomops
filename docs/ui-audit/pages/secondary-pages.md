@@ -40,11 +40,10 @@
 - 二者是 Nomops 面向自托管运维的增强，下一轮可细看字段级。⏳
 
 ## 9. Evaluations（画布 Evaluations Tab）
-- Nomops：`CanvasView.vue:972` 「Register to enable evaluation / Register instance」**Community 锁态占位**，**零后端**（无 dataset/testrun/metric/annotation）。
-- n8n 本地实例：**已解锁**，显完整 setup 向导（1 Wire up test dataset + Add evaluation trigger → 2 Write outputs back → 3 quality score → 4 Run in editor）。
-- **结论**：整套评测/测试子系统在 Nomops 是 greenfield（见 gap-list **EPIC-EVAL**）。Debug in editor（原 P2-2）、执行标注/数据集（原 P2-3）都属这套，一并归入 epic。**非对齐小修**。
+- **历史审计结论（2026-07-21）**：当时 Nomops 只有 Community 锁态占位，因而归入 EPIC-EVAL。
+- **当前状态（2026-07-23 起）**：EPIC-EVAL 已完成，包含 Data Tables 数据集、Evaluation Trigger / Evaluation 节点、test run / test case、指标聚合、评测管理 UI 和 Debug in editor；执行标注由 #35 完成。详见 `feature-backlog.md` #31/#35。
 
 ## 差异小结（进 gap-list）
 - **C-1**（P2）：Chat 输入栏缺 附件 + 语音按钮。
 - 其余：Templates（自托管本地库）、Projects（独立管理页）为**刻意设计分歧/增强**，非 gap。
-- 待细看：认证页 SSO 入口、Admin/Audit 字段级、Data table 详情、Evaluations（社区锁态）。
+- 本页是历史审计快照；当前完成状态以 `feature-backlog.md` 为准，未审字段不自动视为产品缺陷。

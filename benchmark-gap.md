@@ -479,39 +479,39 @@ $ 变量集约 **14/~40**；扩展方法 **0/108**；核心语义正确，但沙
 
 ---
 
-## 给 feature-backlog 的增补建议（🔴🟠 中尚未在 backlog 的可直接追加项）
+## 给 feature-backlog 的增补项（已全部交付）
 
-> 沿用 backlog 体例（S=半天 · M=1-2天 · L=3天+ · XL=独立立项）。编号接续现有 #54。建议按下列批次组织为新的 P12–P15。
+> 沿用 backlog 体例（S=半天 · M=1-2天 · L=3天+ · XL=独立立项）。编号接续现有 #54。以下项目均已在 `feature-backlog.md` 登记并完成；此处保留最初审计描述作为历史证据，完成详情与验证结果以 `feature-backlog.md` 为准。
 
 **P12 · 安全加固（最高优先，多为踩坑）**
-- [ ] **55. 表达式引擎真隔离 + 超时** `L`（🔴R1）— 弃 `new Function`+正则黑名单，改 isolated-vm 或复用 Code 节点子进程 runner；加求值超时与内存限制；补拼接/计算属性/死循环逃逸测试。验收：`[]['con'+'structor']…` PoC 被拦、`{{ while(true){} }}` 超时不挂 worker。
-- [ ] **56. HTTP 出站 SSRF 防护** `M`（🔴R2）— `defaultHttpRequest` 连接期真实 IP 校验（拦 RFC1918/loopback/169.254/IPv6 ULA），每次重定向重校，按"URL 用户可控"opt-in，固定内部目标豁免。验收：节点请求 `http://169.254.169.254` 被拒；重定向到内网被拒。
-- [ ] **57. 社区节点安装加固** `M`（🔴R3）— `npm install --ignore-scripts` + 包名/版本/checksum 预检 + 静态扫描（禁 eval/Function/child_process、import 白名单）+ 未验证包开关。验收：含 postinstall 的恶意包安装不执行脚本。
-- [ ] **58. 加密密钥外置 + 信封轮换** `M`（🔴R4）— `NOMOPS_ENCRYPTION_KEY` env/文件来源（与库内不一致报错），密文加 `keyId:` 前缀 + DEK 信封。验收：密钥不在 DB；轮换后旧密文仍可解。
-- [ ] **59. 恢复 URL GET 预览防误触** `S/M`（🔴R5，#15 加固）— webhook-waiting 只对 POST 执行副作用；GET 返"确认恢复"空 200 页；bot UA 短路。可与 #71 合并交付。验收：预览 bot GET 不触发 resume、不耗令牌。
-- [ ] **67. 账户安全四项** `M`（🟠A7）— 改密/重置经 tokenVersion 吊销存量会话；登录/MFA IP+账号双层限流；MFA secret 加密落库；自定义角色改逐 scope 校验（去 tier 塌缩）。验收：改密后旧 token 401；暴破被限流；DB 里 mfa_secret 密文；勾单 scope 不越权到同档其他动作。
+- [x] **55. 表达式引擎真隔离 + 超时** `L`（🔴R1）— 弃 `new Function`+正则黑名单，改 isolated-vm 或复用 Code 节点子进程 runner；加求值超时与内存限制；补拼接/计算属性/死循环逃逸测试。验收：`[]['con'+'structor']…` PoC 被拦、`{{ while(true){} }}` 超时不挂 worker。
+- [x] **56. HTTP 出站 SSRF 防护** `M`（🔴R2）— `defaultHttpRequest` 连接期真实 IP 校验（拦 RFC1918/loopback/169.254/IPv6 ULA），每次重定向重校，按"URL 用户可控"opt-in，固定内部目标豁免。验收：节点请求 `http://169.254.169.254` 被拒；重定向到内网被拒。
+- [x] **57. 社区节点安装加固** `M`（🔴R3）— `npm install --ignore-scripts --save-exact` + 包名/版本/checksum 预检 + 静态扫描（禁 eval/Function/child_process、import 白名单）+ 未验证包开关。验收：含 postinstall 的恶意包安装不执行脚本。
+- [x] **58. 加密密钥外置 + 信封轮换** `M`（🔴R4）— `NOMOPS_ENCRYPTION_KEY` env/文件来源（与库内不一致报错），密文加 `keyId:` 前缀 + DEK 信封。验收：密钥不在 DB；轮换后旧密文仍可解。
+- [x] **59. 恢复 URL GET 预览防误触** `S/M`（🔴R5，#15 加固）— webhook-waiting 只对 POST 执行副作用；GET 返"确认恢复"空 200 页；bot UA 短路。可与 #71 合并交付。验收：预览 bot GET 不触发 resume、不耗令牌。
+- [x] **67. 账户安全四项** `M`（🟠A7）— 改密/重置经 tokenVersion 吊销存量会话；登录/MFA IP+账号双层限流；MFA secret 加密落库；自定义角色改逐 scope 校验（去 tier 塌缩）。验收：改密后旧 token 401；暴破被限流；DB 里 mfa_secret 密文；勾单 scope 不越权到同档其他动作。
 
 **P13 · 节点平台地基（解锁 P11 与集成规模化）**
-- [ ] **60. 动态节点参数层** `L`（🔴R6，P11 前置）— `dynamic-node-parameters` 端点（以用户凭证代查远端选项）+ 节点 `loadOptions`/`resourceLocator` 契约 + `fixedCollection` 控件；引擎侧声明式。验收：一个节点下拉能按已选凭证动态拉真实资源列表。
-- [ ] **61. 节点面板/控件元数据驱动** `M`（🟠A1，#48 前置）— 节点描述加 `categories/subcategories`，面板分类与 filter/assignment 控件改 type/元数据分发，清掉前端类型名特判。验收：新增节点仅写 description 即自动上架正确分类抽屉。
-- [ ] **62. 声明式 routing DSL 增强** `M/L`（🟠A2）— DSL 扩 `pagination` 描述符 + `postReceive`/`preSend` 变换钩子 + 二进制。验收：一个声明式节点能翻页聚合、能变换响应。
-- [ ] **63. 凭证注入 DSL 完善** `M`（🟠A3）— 注入模板上移凭证类型（一次声明处处复用）+ body/basic 桶 + 可选函数式 authenticate；未实现的 PKCE/clientCredentials/digest/oauth1 选项要么实现要么从 UI 摘除。验收：digest 或 clientCredentials 凭证可真实工作，或 UI 不再暴露不可用选项。
-- [ ] **75. usableAsTool 自动派生工厂** `M`（🟢G1）— `INodeTypeDescription` 加 `usableAsTool`，loader 层 `convertNodeToAiTool` 克隆节点描述为输出 ai_tool 的 `*Tool` 变体。验收：置位的存量节点在 AiAgent Tool 端口可挂载并被调用。
+- [x] **60. 动态节点参数层** `L`（🔴R6，P11 前置）— `dynamic-node-parameters` 端点（以用户凭证代查远端选项）+ 节点 `loadOptions`/`resourceLocator` 契约 + `fixedCollection` 控件；引擎侧声明式。验收：一个节点下拉能按已选凭证动态拉真实资源列表。
+- [x] **61. 节点面板/控件元数据驱动** `M`（🟠A1，#48 前置）— 节点描述加 `categories/subcategories`，面板分类与 filter/assignment 控件改 type/元数据分发，清掉前端类型名特判。验收：新增节点仅写 description 即自动上架正确分类抽屉。
+- [x] **62. 声明式 routing DSL 增强** `M/L`（🟠A2）— DSL 扩 `pagination` 描述符 + `postReceive`/`preSend` 变换钩子 + 二进制。验收：一个声明式节点能翻页聚合、能变换响应。
+- [x] **63. 凭证注入 DSL 完善** `M`（🟠A3）— 注入模板上移凭证类型（一次声明处处复用）+ body/basic 桶 + 可选函数式 authenticate；未实现的 PKCE/clientCredentials/digest/oauth1 选项要么实现要么从 UI 摘除。验收：digest 或 clientCredentials 凭证可真实工作，或 UI 不再暴露不可用选项。
+- [x] **75. usableAsTool 自动派生工厂** `M`（🟢G1）— `INodeTypeDescription` 加 `usableAsTool`，loader 层 `convertNodeToAiTool` 克隆节点描述为输出 ai_tool 的 `*Tool` 变体。验收：置位的存量节点在 AiAgent Tool 端口可挂载并被调用。
 
 **P14 · 引擎/运行时健壮性**
-- [ ] **64. OAuth2 多实例 + 刷新锁** `M`（🟠A4）— pending state 落 Redis/DB（TTL 读即销毁）+ 刷新进程内合并 + Redis/DB 租约锁。验收：queue 模式下 Connect 与刷新不因进程亲和性失败、不双刷作废。
-- [ ] **65. AbortSignal 贯通取消/超时** `M`（🟠A5）— AbortSignal 经 `additionalData.httpRequest` 贯通 fetch，cancel()/超时即 abort 网络 I/O。验收：取消卡在慢 HTTP 的执行时底层请求被中断。
-- [ ] **69. Agent 循环引擎化（V2→V3）** `XL`（🟠A9）— 工具调用打包引擎请求、workflow-execute 调度工具节点、Agent 以 resume 恢复，画布/助手统一一套循环。验收：画布 AiAgent 工具调用可被取消/挂 HITL/在执行详情逐调用观测。
-- [ ] **72. 发布 outbox + waitTill 索引 + WaitTracker 门控** `M`（🟠A12）— 补 publication_outbox 失败重放；加 `(status,wait_till)` 部分索引；WaitTracker 加 leader 门控或 DB compare-and-set 防双唤醒。验收：多实例发布不丢激活；大执行表唤醒不全表顺扫；同一 waiting 不被双恢复。
-- [ ] **73. License 吊销 + 配额原子化** `M`（🟠A13）— cert-id 黑名单经 `/internal` 桥下发、`activeCert()` 增查；执行配额原子自增。验收：吊销的证书立即失效；queue 多 worker 不超发配额。
+- [x] **64. OAuth2 多实例 + 刷新锁** `M`（🟠A4）— pending state 落 Redis/DB（TTL 读即销毁）+ 刷新进程内合并 + Redis/DB 租约锁。验收：queue 模式下 Connect 与刷新不因进程亲和性失败、不双刷作废。
+- [x] **65. AbortSignal 贯通取消/超时** `M`（🟠A5）— AbortSignal 经 `additionalData.httpRequest` 贯通 fetch，cancel()/超时即 abort 网络 I/O。验收：取消卡在慢 HTTP 的执行时底层请求被中断。
+- [x] **69. Agent 循环引擎化（V2→V3）** `XL`（🟠A9）— 工具调用打包引擎请求、workflow-execute 调度工具节点、Agent 以 resume 恢复，画布/助手统一一套循环。验收：画布 AiAgent 工具调用可被取消/挂 HITL/在执行详情逐调用观测。
+- [x] **72. 发布 outbox + waitTill 索引 + WaitTracker 门控** `M`（🟠A12）— 补 publication_outbox 失败重放；加 `(status,wait_till)` 部分索引；WaitTracker 加 leader 门控或 DB compare-and-set 防双唤醒。验收：多实例发布不丢激活；大执行表唤醒不全表顺扫；同一 waiting 不被双恢复。
+- [x] **73. License 吊销 + 配额原子化** `M`（🟠A13）— cert-id 黑名单经 `/internal` 桥下发、`activeCert()` 增查；执行配额原子自增。验收：吊销的证书立即失效；queue 多 worker 不超发配额。
 
 **P15 · 前端/表达式/激活体验**
-- [ ] **66. 执行可视化正确性** `M`（🟠A6）— handleEvent 按 executionId 过滤 + push-hub 按 workflowId 分频道 + WS 指数退避重连+心跳。验收：并发执行/多用户/断网下画布高亮不串台、断线自恢复。
-- [ ] **68. displayOptions 版本门控 + 操作符** `M`（🟠A8）— `IDisplayOptions` 支持 `{_cnd:{gte/regex/exists…}}` + `isPropertyVisible` 加 `@version` 门控 + 受控值为表达式默认显示。验收：节点升版本参数按 typeVersion 正确显隐，存量工作流不破。
-- [ ] **70. Luxon + 扩展方法 + 同构预览** `L`（🟠A10/🟢G2）— 接 Luxon（$now/$today 改 DateTime）+ 首批高频扩展方法（AST 改写路由到 extend）+ `.doc` 元数据；把 `resolveParameterValue` 接进 NDV 做实时预览。验收：`$now.plus({days:1})`/`.isEmail()` 可用；NDV 表达式实时出真值预览。
-- [ ] **71. Webhook 节点安全深化** `M`（🟠A11）— Webhook 鉴权四档（none/basic/header/jwt）+ responseMode=lastNode + ignoreBots；`/webhook-waiting` 只对 POST 执行副作用、GET 返确认页（含 #59 恢复 URL 加固）。验收：无鉴权 webhook 可加 header/basic 保护；预览 bot GET 不触发 resume。
-- [ ] **74. 删除桥接 + 模板凭证向导 + 空态 starter** `M`（🟠A14）— removeNode 单入单出自动接上下游；新增 `/templates/:id/setup` 凭证向导（分组卡+无歧义自动填充+可跳过）；空状态推 `branch-merge-demo` starter 卡。验收：删中间节点自动重连；模板导入需凭证时进向导；空态一键可跑 starter。
-- [ ] **76. 协同编辑地基（EPIC）** `XL`（🟢G3）— 先补保存乐观锁（workflow 加 version 列、save 带版本、409 冲突提示不覆盖）+ editor store 改"public→私有 applyXxx 唯一写入点"，为 CRDT/undo 命令化铺路。验收：并发编辑不静默互覆盖；状态写入收敛到单入口。
+- [x] **66. 执行可视化正确性** `M`（🟠A6）— handleEvent 按 executionId 过滤 + push-hub 按 workflowId 分频道 + WS 指数退避重连+心跳。验收：并发执行/多用户/断网下画布高亮不串台、断线自恢复。
+- [x] **68. displayOptions 版本门控 + 操作符** `M`（🟠A8）— `IDisplayOptions` 支持 `{_cnd:{gte/regex/exists…}}` + `isPropertyVisible` 加 `@version` 门控 + 受控值为表达式默认显示。验收：节点升版本参数按 typeVersion 正确显隐，存量工作流不破。
+- [x] **70. Luxon + 扩展方法 + 同构预览** `L`（🟠A10/🟢G2）— 接 Luxon（$now/$today 改 DateTime）+ 首批高频扩展方法（AST 改写路由到 extend）+ `.doc` 元数据；把 `resolveParameterValue` 接进 NDV 做实时预览。验收：`$now.plus({days:1})`/`.isEmail()` 可用；NDV 表达式实时出真值预览。
+- [x] **71. Webhook 节点安全深化** `M`（🟠A11）— Webhook 鉴权四档（none/basic/header/jwt）+ responseMode=lastNode + ignoreBots；`/webhook-waiting` 只对 POST 执行副作用、GET 返确认页（含 #59 恢复 URL 加固）。验收：无鉴权 webhook 可加 header/basic 保护；预览 bot GET 不触发 resume。
+- [x] **74. 删除桥接 + 模板凭证向导 + 空态 starter** `M`（🟠A14）— removeNode 单入单出自动接上下游；新增 `/templates/:id/setup` 凭证向导（分组卡+无歧义自动填充+可跳过）；空状态推 `branch-merge-demo` starter 卡。验收：删中间节点自动重连；模板导入需凭证时进向导；空态一键可跑 starter。
+- [x] **76. 协同编辑地基（EPIC）** `XL`（🟢G3）— 先补保存乐观锁（workflow 加 version 列、save 带版本、409 冲突提示不覆盖）+ editor store 改"public→私有 applyXxx 唯一写入点"，为 CRDT/undo 命令化铺路。验收：并发编辑不静默互覆盖；状态写入收敛到单入口。
 
 > 另需在 backlog 明确登记的**决策点/待确认**（非新功能）：AI/RAG 101 节点是否立独立 EPIC 编号（多模型 Chat Model 最高优先）；Code 节点 Python 是否排期；多人协作 presence 是否做；activeWorkflows 是否作为计费维度；appendAttribution 署名待自有域名上线再评估；helmet/CSP 安全响应头补法（部署层 vs 应用层）。
 

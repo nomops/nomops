@@ -46,12 +46,12 @@ Nomops 结构（`nomops/credential-edit-modal.png`）：
 | 头部/三 Tab/文案/enterprise 提示 | 有 | 全有 | 一致 |
 | 密码字段 + 保留占位 | 有 | 有 | 一致 |
 | **连接测试** | 打开时**自动测试** + 结果条（红/绿）+ More details/Retry | **手动按钮** `Test connection`，无结果条 | **不一致**（缺自动测试 + 结果状态条） |
-| **字段 Fixed/Expression 切换** | 有（每个可表达式字段） | **未见**（当前字段无切换） | **缺失**（凭证字段表达式支持） |
+| **字段 Fixed/Expression 切换** | 有（每个可表达式字段） | **✅ 后续完成**：凭证专属 ABC/`{{ }}` 切换，仅允许 `$secrets` 并提供密钥补全 | **按 Nomops 凭证安全边界完成** |
 | Sharing Tab（企业共享） | 有 | 存在（Tab 在） | 内容待核对 ⏳ |
 | Details Tab（id/创建人/时间） | 有 | 存在 | 内容待核对 ⏳ |
 | OAuth「Connect my account」流 | OAuth 类型有授权按钮 | 待核对 | ⏳ |
 
 ## D. 差异小结（进 gap-list）
 1. **连接测试自动化 + 结果状态条**：n8n 打开即测并展示红/绿结果 + Retry；Nomops 仅手动 `Test connection` 按钮无结果条 —— 不一致（P1，源：`CredentialEdit` + `/rest/credentials/test`；Nomops `CredentialModal.vue:223 testConnection`/`:396` 手动按钮）。
-2. **凭证字段 Fixed/Expression 切换**（已核实收窄）：Nomops **节点参数已有** Fixed/Expression 分段控件（`ParamInput.vue:245`，覆盖 string/number/options/…）；但**凭证 modal 用自渲染字段**（`CredentialModal.vue:531 .field input`，未接 `ParamInput`），故凭证字段无表达式切换。n8n 凭证字段经 `ParameterInputFull` 支持切换（截图见 DeepSeek「Allowed HTTP Request Domains」的 Fixed/Expression）。→ **仅凭证字段缺表达式切换**（P2，源：让 `CredentialModal` 字段复用 `ParamInput`）。
+2. ~~**凭证字段 Fixed/Expression 切换缺失**~~ **已由 #33 完成**：使用 `CredentialExpressionField.vue` 提供仅 `$secrets` 的专属表达式模式，刻意不复用带 `$json`/item 上下文的节点 `ParamInput`。
 3. Sharing / Details Tab 内容、OAuth「Connect my account」授权流（`CredentialModal.vue:13/351` 已有 OAuth 分支）—— 待下一轮逐项核对。

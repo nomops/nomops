@@ -101,5 +101,5 @@ Fit-to-view / Zoom in / Zoom out / Undo / Tidy-up（⇧⌥T）——Nomops 五�
 1. ~~缺 Open chat / Chat Tab~~ **误报，已存在** ✅
 2. ~~执行按钮缺 from 标签 + 下拉~~ **误报，已存在**（gated on `triggerNodes.length>1`）✅
 3. ~~NDV 缺 Pin data（钉住节点输出）UI~~ **P1-2 已修（2026-07-21）**：NDV OUTPUT「Pin/Pinned」按钮 + 画布节点角标 + editor store pinData + autosave 落库；引擎手动执行用冻结数据。见 `90-gap-list.md`。
-4. **顶栏 `⋯` 菜单项需补齐核对**（Settings、Push to git 等）（P2-8）。
+4. ~~顶栏 `⋯` 菜单项需补齐核对~~ **P2-8 已修**：已包含 Duplicate、Download、Import from URL/file、Push to git、Settings 和 Archive，并接入真实能力状态。
 5. **已核实一致**：Node Creator（9 触发器）、NDV 三栏 + Parameters/Settings + Fixed/Expression + 参数钉 Focus、AI Agent 底部 Chat Model/Memory/Tool 能力入口、Open chat/Chat 面板、多触发器执行下拉。

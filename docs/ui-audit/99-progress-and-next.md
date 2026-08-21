@@ -1,5 +1,7 @@
 # 99 · 进度摘要 & 下一会话续作指令
 
+> **归档状态（2026-08-21）**：本文记录的是 2026-07-21 审计会话的续作指令，不再是当前任务表。后续已经完成 EPIC-EVAL、执行标注、Data Tables、凭证与 OAuth、Settings 全量对齐、画布菜单和全局 UI 基础；正式完成状态统一以仓库根目录 `feature-backlog.md` 为准。以下“剩余/下一会话”内容仅保留为历史取证记录，不能据此重复开发。
+
 ## C 轮补审（会话 2 末，未审整页）
 产出 `pages/secondary-pages.md`。结论：**次级页也基本对齐**。
 - **强复刻**：Chat、Insights、版本历史、认证页、命令面板（Nomops palette 覆盖 Workflows/Credentials/Data tables，实际比 n8n 更"列资源"）。

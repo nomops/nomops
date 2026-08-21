@@ -205,6 +205,6 @@ Home（Overview）主区是 **单页 + 顶部 Tab** 结构：Workflows / Credent
 | `pages/overview-workflows.md`（工作流列表 P1） | ✅ 完成 |
 | `pages/settings-shell.md`（设置壳 + 各子页 P1） | ✅ 完成 |
 | `pages/secondary-pages.md`（Chat/Templates/Projects/Insights/版本历史/认证/命令面板/Admin/Audit） | ✅ 完成（C 轮） |
-| Evaluations（社区锁态）/ Data table 详情 / 认证 SSO 入口 / Admin·Audit 字段级 | ⏳ 剩余细项 |
+| Evaluations / Data Tables / 认证 / Admin·Audit 字段级 | ✅ 后续功能已完成；该轮未逐字段取证的部分不再自动记为 gap，执行状态见 `feature-backlog.md` |
 
 阶段四差异清单：`90-gap-list.md`（已含误报撤销 + 已修记录 + C 轮新增 C-1）。

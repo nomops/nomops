@@ -70,15 +70,15 @@ Nomops 前端是 n8n 的**高完成度 1:1 复刻**：路由 IA、Overview 五 T
 | # | 页面 | 组件 | 差异 | 量 | 源码参考 |
 |---|---|---|---|---|---|
 | ~~P2-1~~ ✅**已修** | 执行 | 详情头 | ~~缺 大小 + 执行 ID 元信息~~ | S | `CanvasView.vue` exec-detail-head |<br>**已修（2026-07-21）**：详情头加「· <大小> · ID <短id>」（大小由运行数据 JSON 的 UTF-8 字节估算、`fmtBytes`；ID 取 UUID 前 8 位）。live 复验：显示「· 530 B · ID 7e927e75」。列表 Exec.ID 仍用短哈希（Nomops 用 UUID 非顺序整数，属主键设计，不改）。 |
-| ~~P2-2 / P2-3~~ → **EPIC-EVAL** | 评测/测试子系统 | Debug in editor + 执行标注 + 评测数据集 + 评测运行 | **重新归类（2026-07-21 复验）**：这不是 P2 小修，而是 **n8n 整套评测/测试子系统**。查实 Nomops **零后端**：无 evaluation/dataset/testrun/metric 服务、无 annotation、无 Debug-in-editor。Nomops Evaluations tab 是「Register to enable」锁态占位（`CanvasView.vue:972`）；n8n 本地实例则显完整 setup 向导（test dataset→eval trigger→quality score→Run in editor）。→ 补齐 = 从零建 dataset/eval-trigger/test-run/metric/annotation/debug 全链（后端+引擎+UI），**epic 级产品倡议，非对齐小修**。**建议单独立项规划**，本对齐任务范围外。 | XL | n8n `features/ai/evaluation.ee/*` + `EnterpriseEdition.DebugInEditor` |
-| ~~P2-4~~ ⊘**不做（复验后收回）** | 凭证 | 字段控件 | ~~凭证字段缺 Fixed/Expression 切换~~ | M | — |<br>**复验（2026-07-21）**：凭证的"表达式"只有 `{{ $secrets.KEY }}`——注入前由 `secrets-service.ts` 物化，**无 `$json`/item 上下文**（凭证在节点执行前解析）。套用节点参数的 `ParamInput`/`ExpressionInput`（面向 `$json` 逐项）会**误导**用户以为支持 item 表达式；且 `$secrets` 现可直接在文本框内联输入、已工作。→ naive 复用不做；真要做需**凭证专属表达式模式**（仅 `$secrets`/env 自动补全），另立独立任务，非小修。 |
+| ~~P2-2 / P2-3~~ ✅**已修（EPIC-EVAL）** | 评测/测试子系统 | Debug in editor + 执行标注 + 评测数据集 + 评测运行 | **已修（2026-07-23）**：复用 Data Tables 作为数据集，新增 test run / test case 双方言模型、Evaluation Trigger / Evaluation 节点、逐用例运行与指标聚合 API、评测管理 UI 和 Debug in editor；执行标注随后由 #35 完成。完整记录见 `feature-backlog.md` #31/#35。 | XL | `evaluation-service.ts` + `CanvasView.vue` + `Evaluation*` nodes |
+| ~~P2-4~~ ✅**已修（专用控件）** | 凭证 | 字段控件 | ~~凭证字段缺 Fixed/Expression 切换~~ | M | `CredentialExpressionField.vue` |<br>**已修（2026-07-23）**：没有复用带 `$json`/item 上下文的节点控件，而是实现仅允许 `$secrets` 的凭证专属表达式模式，提供 ABC/表达式切换、作用域提示和密钥名补全；详见 `feature-backlog.md` #33。 |
 | ~~P2-5~~ ✅**已修（全量对齐）** | Settings/Environments | Git 源码同步 | ~~欠功能~~ | L | `git-service.ts` + `SettingsView.vue` sourcecontrol 段 |<br>**已修（2026-07-21，用户指正后提级重做）**：原判"自托管取舍不动"判轻了。全量对齐 n8n，分 5 增量：**① 应用内 SSH 部署密钥**（ED25519 生成/展示/Copy/Refresh，私钥 Cipher 加密落库）+ Connection Type(SSH/HTTPS)；**② 远端分支下拉 + 切换**；**③ 选择性 Push 弹窗**（勾选工作流 + commit）+ **Pull 预览**（列 new/existing 再确认）；**④ 同步范围**扩到 变量 + 标签；**⑤ Connect 加载动画 + Instance settings**（Branch + **Protected instance 只读实例**（真 enforcement：受保护时工作流 create/update/delete/publish 拦 403）+ **Color 环境色标** + Save settings + "successfully saved" 提示 + Disconnect Git）。验证:20 后端（含 protected 拦编辑）+ 63 前端测试 + live 全 UI。凭证仍不同步（守铁律 3）。 |
-| P2-6 | Settings/Log Streaming | destination | Nomops webhook-only 内联表单（Name/URL/Signing/2 事件）；n8n 多 destination 类型(webhook/syslog/sentinel) + 卡片 + modal + 细粒度事件树 | L | `SettingsView.vue` logstream 段 |
-| P2-7 | Settings/External Secrets | provider | Nomops 仅 env-var provider（`NOMOPS_SECRET_<KEY>`）；n8n 多 vault provider(Vault/AWS/Azure/GCP/Infisical) | L | `SettingsView.vue` secrets 段 |
-| P2-8 | 画布 | 顶栏 `⋯` | 菜单项需补齐核对（Settings / Push to git 等），当前 Download/Duplicate/Import/Delete | S | `features/canvas/.../CanvasHeaderMenu` |
+| ~~P2-6~~ ✅**已修** | Settings/Log Streaming | destination | 已支持 webhook 与 RFC 5424 UDP/TCP syslog、测试投递、卡片式管理和事件选择；Sentinel 可通过 syslog 接入，不新增厂商专用传输。 | L | `log-streaming-service.ts` + `SettingsView.vue` |
+| ~~P2-7~~ ✅**已修** | Settings/External Secrets | provider | 已支持 env 与 HashiCorp Vault KV v2，统一 provider 抽象、内存快照和后台刷新；AWS/Azure/GCP 保留为按需扩展，不伪造未实现选项。 | L | `secrets-service.ts` + `external-secrets.test.ts` |
+| ~~P2-8~~ ✅**已修** | 画布 | 顶栏 `⋯` | 已补齐 Duplicate、Download、Import from URL/file、Push to git、Settings 和 Archive，并接入真实权限/License 状态。 | S | `CanvasView.vue` workflow menu |
 | ~~C-1~~ ⊘**不做（复验后收回）** | Chat | 输入栏 | ~~缺 附件 + 语音按钮~~ | — | — |<br>**复验（2026-07-21）**：附件/语音在 Nomops **无任何后端/基建**——chat 流不支持附件（`attachments` 是 n8n DB 字段非 Nomops）、全库无 transcription/speech。加空按钮=P2-4 式误导；真做要上多模态(附件)+STT(语音)，**远超 P2 小修**，语音还牵扯"自托管是否依赖浏览器云端 STT"的架构取舍。Nomops chat 属**刻意纯文本**设计。→ 收回；多模态/语音如需，另立独立大任务。 |
 
-> **P2-5/6/7 性质**：多为 Nomops 自托管务实取舍（用宿主 git、env-var secrets、webhook 日志），**功能可用**，非必改；若目标是 100% 对齐 n8n 的 IA/能力面才列改造。
+> **P2-5/6/7 状态**：源码同步、Log Streaming 和 External Secrets 已按 Nomops 自托管边界完成可运营实现；厂商专用适配继续按真实需求扩展，不作为当前缺陷。
 
 ---
 
@@ -90,12 +90,10 @@ Nomops 前端是 n8n 的**高完成度 1:1 复刻**：路由 IA、Overview 五 T
 - **凭证 modal**：头/三 Tab(Connection/Sharing/Details)/docs 提示/enterprise 提示/密码占位。
 - **Overview 五 Tab / KPI 卡 / 侧栏 / 标签编辑器**。
 
-## ⏳ 仍待下一会话（未审页面，非已知 gap）
-- **未审页面**：Templates 详情、Projects 详情/设置、Chat(AI 会话)整页、Insights 全维、版本历史整页、Evaluations、认证页(signin/setup/forgot)、Data tables 详情、Nomops 特有 Admin/Audit。
-- **全局组件**：命令面板 ⌘K、通知 toast、用户菜单、What's New/About/版本更新面板。
-- **Settings 剩余子页逐字段**：SSO/LDAP/Security/OpenTelemetry/Roles(锁态)/MCP/Chat（已截图，未逐字段）。
-- **凭证**：Sharing/Details Tab 内容、OAuth「Connect my account」授权流（源码有分支，未跑）。
-- **执行**：批量停止条、错误 toast「Problem in node」并排（本次为 success 执行未触发）。
+## 历史待审清单（已完成或转为非缺陷）
+- 该清单是 2026-07-21 审计快照；其后 Evaluations、Data Tables、凭证、执行、Settings、命令面板和全局反馈均已在 `feature-backlog.md` 对应项目中实现并回归。
+- Templates 的本地目录、Projects/Admin/Audit 独立页面和纯文本 Chat 是 Nomops 面向自托管的产品差异，不再记为 n8n 对齐缺陷。
+- 后续仅按真实客户需求增加厂商适配或新产品能力，不从本历史清单自动派生开发任务。
 
 ---
 
@@ -103,11 +101,12 @@ Nomops 前端是 n8n 的**高完成度 1:1 复刻**：路由 IA、Overview 五 T
 **UI 对齐工作已实质完成。** 全部真 gap 已处置：
 - ✅ **已修 4**：P1-4 变量墙、P1-2 NDV Pin data、P1-3 凭证自动测连接、P2-1 执行头元信息（均已提交 + 推 origin/main）。
 - ❌ **误报撤销 2**：P0-1 Agent Chat 闭环、P1-1 执行按钮多触发器下拉（功能早已存在，审计截错工作流所致）。
-- ⊘ **复验后收回 2**：P2-4 凭证字段表达式（会误导，无 item 上下文）、C-1 Chat 附件/语音（无后端基建）。
-- 🏔 **归入 EPIC-EVAL**：原 P2-2/P2-3 = n8n 整套评测/测试子系统，Nomops 零后端，**epic 级产品倡议，非对齐 gap**。
-- 🔒 **刻意设计取舍（不动）**：P2-5/6/7（Environments/Log Streaming/External Secrets 自托管简化）、Templates 自托管本地库、Projects 独立管理页。
+- ✅ **后续完成**：P2-4 采用凭证专属 `$secrets` 表达式控件完成，没有错误引入 item 上下文。
+- ⊘ **复验后收回 1**：C-1 Chat 附件/语音（无后端基建，纯文本 Chat 属明确产品边界）。
+- ✅ **后续完成**：EPIC-EVAL、P2-5/6/7/8 均已交付；完成证据统一登记在 `feature-backlog.md`。
+- 🔒 **刻意设计取舍（不动）**：Templates 自托管本地库、Projects 独立管理页、纯文本 Chat。
 
-**结论**：Nomops 与 n8n 基线在信息架构 + 交互行为上已高度对齐；剩余差异要么是自托管刻意取舍，要么是需另立项的企业级 epic（评测子系统）。对齐任务收官。
+**结论**：Nomops 与 n8n 基线在信息架构 + 交互行为上已高度对齐；本审计识别的正式 gap 已全部处置，剩余差异均为自托管产品边界。对齐任务收官。
 
 ### 2026-08-13 协同编辑安全地基
 
@@ -115,6 +114,7 @@ Nomops 前端是 n8n 的**高完成度 1:1 复刻**：路由 IA、Overview 五 T
 - 画布保留冲突会话的本地草稿并提供显式确认重载，不自动丢改；重叠 autosave 串行合并。
 - editor 持久修改已收敛到 `_applyPersistentChange` 单入口。presence、CRDT 和命令式 undo 仍是后续协同层能力，不混入本次安全地基。
 
-## 剩余可选细项（非对齐 gap）
-- **EPIC-EVAL**（评测/测试子系统）：如要做，单独立项——建 dataset/eval-trigger/test-run/metric/annotation/Debug-in-editor 全链。
-- 审计边角：凭证 Sharing/Details/OAuth 流、执行批量停止条 + 错误 toast、Data table 详情、认证 SSO 入口、Admin/Audit 字段级——都不影响对齐主结论。
+## 当前任务状态
+
+- 本审计发现的正式 gap 已全部处置；状态以 `feature-backlog.md` 为唯一执行台账。
+- 未审页面和厂商扩展不等于缺陷，不再作为默认开发任务。

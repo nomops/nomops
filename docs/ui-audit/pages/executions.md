@@ -44,11 +44,11 @@ Nomops 现状（已双侧并排，`nomops/exec-detail.png`）：
 | 只读执行画布 | 有 | 有 | 一致 ✅ |
 | Copy/回填编辑器 | 有 | `Copy to editor` | 一致 ✅ |
 | 重试 | 行 `⋮` 两项（saved/original，仅错误可重试） | 行 `⋮` 两项（同措辞，`OverviewView.vue:1199`） | 一致 ✅ |
-| **Debug in editor** | 有（企业 DebugInEditor） | **无**（源码全局无 `debugInEditor`/`/debug/`） | **缺失**（企业特性） |
-| **标注 👍👎 + 评分 tag** | 有（喂评测数据集） | **无**（源码无 annotation/vote/execution tag） | **缺失** |
-| **头部元信息 `21KB \| ID#8`** | 有（大小 + 执行 ID） | **无**（显 `mode · status · duration`，无大小/ID） | **不一致** |
+| **Debug in editor** | 有（企业 DebugInEditor） | **✅ 后续完成**：评测用例输入可钉入 Evaluation Trigger 并回到编辑器 | 一致 ✅ |
+| **标注 👍👎 + 评分 tag** | 有（喂评测数据集） | **✅ 后续完成**：execution annotation、tag 与 API/UI 已接通 | 一致 ✅ |
+| **头部元信息 `21KB \| ID#8`** | 有（大小 + 执行 ID） | **✅ 后续完成**：显示序列化大小和短 UUID | 语义一致 ✅ |
 | 错误 toast「Problem in node」 | 有 | 待并排（本次为 success 执行，未触发） | ⏳ |
-| 底部面板 | `Chat \| Logs` | `Execution data` | 不一致（与画布 Chat 面板缺失同源，见 canvas P0-2） |
+| 底部面板 | `Chat \| Logs` | 有 Chat Trigger 时 `Chat \| Logs`，否则 Logs | 条件渲染一致 ✅ |
 
 ## C. 相关弹窗
 - `STOP_MANY_EXECUTIONS_MODAL_KEY` 批量停止 · `DEBUG_PAYWALL_MODAL_KEY` 调试付费墙 · `ADD_EXECUTION_TO_DATASET_MODAL_KEY` 加入评测数据集 · `ANNOTATION_TAGS_MANAGER_MODAL_KEY` 标注标签管理。—— Nomops 侧对应弹窗多缺失（与标注/评测缺失同源）。
@@ -56,6 +56,6 @@ Nomops 现状（已双侧并排，`nomops/exec-detail.png`）：
 ## D. 差异小结（进 gap-list）
 1. **Exec. ID 展示**：n8n 顺序整数（易读/可追溯），Nomops 短哈希 —— 不一致（P2，仅前端格式化）。
 2. **执行详情头部元信息**：缺 大小(`21KB`) + 执行 ID(`ID#8`)（P2）。
-3. **Debug in editor**：缺失（P2，企业特性——把过往执行载入编辑器调试）。
-4. **执行标注 👍👎 + 评分 tag + 加入评测数据集**：整套缺失（P2，与 Evaluations 锁态成套）。
-5. 批量停止条 / 错误 toast 并排 —— 剩余小项，下一轮补。
+3. ~~**Debug in editor**：缺失~~ **已由 EPIC-EVAL #31 完成**。
+4. ~~**执行标注 👍👎 + 评分 tag + 加入评测数据集**：整套缺失~~ **已由 #31/#35 完成评测与执行标注链路**。
+5. 本段为 2026-07-21 审计快照；后续完成状态以 `feature-backlog.md` 为准。

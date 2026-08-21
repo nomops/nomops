@@ -43,14 +43,14 @@
 | 子页 | n8n | Nomops 现状 | 差异性质 |
 |---|---|---|---|
 | **Environments** | Git 配置：Connection Type + 应用内 SSH Key + 分支下拉 + 选择性 Push/Pull + 同步工作流/变量/标签 | **✅ 已全量对齐（2026-07-21）**：Connection Type(SSH/HTTPS) + 应用内 ED25519 部署密钥(展示/Copy/Refresh) + 远端分支下拉/切换 + 选择性 Push 弹窗 + Pull 预览 + 同步 工作流/变量/标签 | **一致**（原判 P2-5"简化不动"经用户指正后提级重做，见 gap-list P2-5）|
-| **Log Streaming** | 多 destination 类型(webhook/syslog/sentinel) + 卡片 + `EventDestinationSettingsModal` + 细粒度事件树（本实例被 license 锁，显 paywall） | 内联单表单：Name + Webhook URL + Signing secret(HMAC-SHA256) + Events(2 勾:Execution finished/Audit events) + Add destination | **不一致（简化）**——webhook-only，无 syslog/sentinel、无事件树、无 modal |
-| **External Secrets** | 多 provider(Vault/AWS/Azure/GCP/Infisical) + 连接 modal | 单 provider「Environment variables」(`NOMOPS_SECRET_<KEY>` env)，只读展示(Provider/Status/Available secrets 名) | **不一致（简化）**——仅 env-var provider |
+| **Log Streaming** | 多 destination 类型(webhook/syslog/sentinel) + 卡片 + `EventDestinationSettingsModal` + 细粒度事件树（本实例被 license 锁，显 paywall） | **✅ 后续补齐**：webhook + RFC 5424 UDP/TCP syslog、测试投递、卡片管理和事件选择 | **已满足通用 destination 边界**；Sentinel 通过 syslog 接入，不新增厂商专用传输 |
+| **External Secrets** | 多 provider(Vault/AWS/Azure/GCP/Infisical) + 连接 modal | **✅ 后续补齐**：env + HashiCorp Vault KV v2，统一 provider 抽象、快照和刷新 | **自托管主路径已完成**；其他云厂商按真实需求扩展 |
 
-### B3. 待下一轮细看（已截图，未逐字段）
-SSO / LDAP / Security & policies / OpenTelemetry / Roles(锁态) / MCP / Chat —— Nomops 侧截图已在 `screenshots/nomops/settings-*.png`，本轮未逐字段展开。
+### B3. 历史待审范围
+SSO / LDAP / Security & policies / OpenTelemetry / Roles / MCP / Chat 在本轮仅截图，后续功能已由 `feature-backlog.md` 对应项目持续交付；未逐字段取证不再自动记为 gap。
 
 ## C. 差异小结（进 gap-list）
 - **壳层 + Personal/Users/API/Community：完全对齐** ✅。
-- **Environments / Log Streaming / External Secrets：Nomops 自有简化实现** —— 结构性差异（P2，多属自托管设计取舍，非必改；若要 100% 对齐 IA 则列改造项）。
+- **Environments / Log Streaming / External Secrets：后续均已完成自托管可运营实现**；厂商专用适配不作为当前缺陷。
 - **特性门控地图差异**（Variables/Log Streaming 两侧解锁状态相反）：各产品自有 license，预期差异；唯一内部矛盾是 Variables（见 `overview-workflows.md` P1-2）。
-- **修正**：原 gap `P2-2 凭证字段缺 Fixed/Expression` 需收窄——Nomops **节点参数有** Fixed/Expression 分段控件(`ParamInput.vue`)，仅**凭证 modal 自渲染字段**未接该控件（见 `credentials.md` 修正）。
+- **凭证表达式后续状态**：#33 已新增仅 `$secrets` 的凭证专属表达式控件，没有把节点 `$json`/item 上下文错误带入凭证。
