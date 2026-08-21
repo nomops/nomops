@@ -3,6 +3,10 @@ import type { INodeLoader } from '@nomops/core';
 import type { IConnections, INode } from '@nomops/workflow';
 import { OperationalError, Workflow } from '@nomops/workflow';
 import type { CredentialService } from './credential-service.js';
+import {
+  validateAiTransformCode,
+  type AiTransformInputField,
+} from '@nomops/nodes';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -25,6 +29,26 @@ export interface ChatResult {
 }
 
 const DEFAULT_MODEL = 'claude-sonnet-5';
+
+const AI_TRANSFORM_SYSTEM = `You generate deterministic JavaScript data transforms for nomops.
+Return only a JSON object with one string field named "code". The code runs inside a function with
+items and $input available and must return an array of objects or {json: object} items. Use only
+plain JavaScript data operations and JSON/Math/Date/Object/Array/String/Number/Boolean. Do not use
+network, files, imports, require, process, globals, eval, Function constructors, prototypes, WebAssembly,
+or dynamic code. Never invent or embed input values; work only from the supplied field paths and types.`;
+
+function extractTransformCode(reply: string): string {
+  const trimmed = reply.trim();
+  try {
+    const parsed = JSON.parse(trimmed) as { code?: unknown };
+    if (typeof parsed.code === 'string') return parsed.code;
+  } catch {
+    // Providers occasionally wrap otherwise valid code in a Markdown fence.
+  }
+  const fenced = trimmed.match(/```(?:javascript|js)?\s*([\s\S]*?)```/i)?.[1];
+  if (fenced) return fenced;
+  return trimmed;
+}
 
 /** Chat provider 注册表（Chat 页 Select model 的单一事实源；/assistant/providers 暴露给前端）。 */
 export interface ChatProviderInfo {
@@ -288,5 +312,27 @@ export class AssistantService {
             maxTokens: 2048,
           });
     return { reply, workflow: this.extractWorkflow(reply) };
+  }
+
+  async generateTransformCode(
+    projectId: string,
+    instructions: string,
+    inputSchema: AiTransformInputField[],
+    credentialId?: string,
+    model?: string,
+  ): Promise<{ code: string }> {
+    const request = JSON.stringify({ instructions, inputSchema });
+    const result = await this.chat(
+      projectId,
+      [{ role: 'user', content: request }],
+      credentialId,
+      AI_TRANSFORM_SYSTEM,
+      model,
+    );
+    try {
+      return { code: validateAiTransformCode(extractTransformCode(result.reply)) };
+    } catch {
+      throw new OperationalError('AI provider did not return safe transform code', { status: 502 });
+    }
   }
 }

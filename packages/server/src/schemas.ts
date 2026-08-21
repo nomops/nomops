@@ -340,3 +340,16 @@ export const dynamicNodeParametersSchema = z.object({
   filter: z.string().max(500).optional(),
   paginationToken: z.string().max(2000).optional(),
 });
+
+const aiTransformFieldSchema = z.object({
+  path: z.string().min(1).max(160).refine((value) => !/[\r\n\0]/.test(value), 'Invalid field path'),
+  type: z.enum(['string', 'number', 'boolean', 'object', 'array', 'null', 'mixed']),
+}).strict();
+
+/** AI Transform receives schema metadata only. Raw input values are not accepted. */
+export const aiTransformCodeSchema = z.object({
+  instructions: z.string().trim().min(1).max(500),
+  inputSchema: z.array(aiTransformFieldSchema).max(100).default([]),
+  credentialId: z.string().min(1).max(200).optional(),
+  model: z.string().regex(/^[a-zA-Z0-9][\w.-]{1,63}$/).optional(),
+}).strict();

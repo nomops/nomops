@@ -8,6 +8,7 @@ import { t } from '../../lib/i18n.js';
 import { LINKS } from '../../lib/links.js';
 import { api } from '../../api/client.js';
 import { isPropertyVisible } from '../../lib/display-options.js';
+import { describeTransformInputSchema } from '../../lib/ai-transform.js';
 
 /**
  * schema 驱动的单参数控件：按 INodeProperties.type 分发。
@@ -34,7 +35,10 @@ const props = defineProps<{
   nodeTypeVersion?: number;
   credentials?: Record<string, { id: string; name: string }>;
 }>();
-const emit = defineEmits<{ change: [value: unknown] }>();
+const emit = defineEmits<{
+  change: [value: unknown];
+  'parameters-change': [changes: Record<string, unknown>];
+}>();
 
 /* panel-right → Focus Panel 联动（P1-CC 单列待办清偿;Focus 面板上下文不传 nodeName 不显示） */
 const editorStore = useEditorStore();
@@ -43,6 +47,39 @@ const paramPinned = computed(() =>
 );
 
 const current = computed(() => props.value ?? props.prop.default);
+const actionLoading = ref(false);
+const actionError = ref('');
+const inputMaxLength = computed(() => props.prop.typeOptions?.action?.inputFieldMaxLength);
+
+async function runParameterAction() {
+  const action = props.prop.typeOptions?.action;
+  if (!action || action.type !== 'generateAiTransform' || actionLoading.value) return;
+  const instructions = String(current.value ?? '').trim();
+  if (!instructions) {
+    actionError.value = 'Enter transformation instructions first.';
+    return;
+  }
+  if (action.inputFieldMaxLength && instructions.length > action.inputFieldMaxLength) {
+    actionError.value = `Instructions must be ${action.inputFieldMaxLength} characters or fewer.`;
+    return;
+  }
+  actionLoading.value = true;
+  actionError.value = '';
+  try {
+    const result = await api.assistant.generateTransformCode({
+      instructions,
+      inputSchema: describeTransformInputSchema(props.previewItems ?? []),
+    });
+    emit('parameters-change', {
+      [action.target]: result.code,
+      [action.generatedForTarget]: instructions,
+    });
+  } catch (error) {
+    actionError.value = (error as Error).message || 'Code generation failed.';
+  } finally {
+    actionLoading.value = false;
+  }
+}
 
 function valueAtPath(value: unknown, path: string): unknown {
   return path.split('.').reduce<unknown>((part, key) => {
@@ -767,6 +804,8 @@ function convertAssignment(value: unknown, type: string): unknown {
                 :value="String(current ?? '')"
                 :placeholder="prop.placeholder"
                 :rows="textRows"
+                :maxlength="inputMaxLength"
+                :readonly="Boolean(prop.typeOptions?.readOnly)"
                 spellcheck="false"
                 data-test="param-textarea"
                 @input="emit('change', ($event.target as HTMLTextAreaElement).value)"
@@ -778,6 +817,8 @@ function convertAssignment(value: unknown, type: string): unknown {
             :value="String(current ?? '')"
             :placeholder="prop.placeholder"
             :rows="textRows"
+            :maxlength="inputMaxLength"
+            :readonly="Boolean(prop.typeOptions?.readOnly)"
             data-test="param-textarea"
             @input="emit('change', ($event.target as HTMLTextAreaElement).value)"
           />
@@ -785,8 +826,20 @@ function convertAssignment(value: unknown, type: string): unknown {
             v-else
             :value="String(current ?? '')"
             :placeholder="prop.placeholder"
+            :maxlength="inputMaxLength"
+            :readonly="Boolean(prop.typeOptions?.readOnly)"
             @input="emit('change', ($event.target as HTMLInputElement).value)"
           />
+        </div>
+        <div v-if="prop.typeOptions?.action" class="param-action">
+          <button
+            type="button"
+            class="add-btn param-action-button"
+            data-test="parameter-action"
+            :disabled="actionLoading"
+            @click="runParameterAction"
+          >{{ actionLoading ? 'Generating…' : prop.typeOptions.action.label }}</button>
+          <p v-if="actionError" class="error-text action-error" role="alert" data-test="parameter-action-error">{{ actionError }}</p>
         </div>
       </template>
 
@@ -1118,6 +1171,10 @@ function convertAssignment(value: unknown, type: string): unknown {
 .boolean-label { color: var(--color--text--shade-1); font-size: var(--font-size--2xs); }
 .boolean-required { color: var(--color--danger); }
 .param :deep(textarea) { padding: 8px var(--spacing--xs); }
+.param :deep(textarea[readonly]), .param :deep(input[readonly]) { opacity: .82; cursor: default; }
+.param-action { margin-top: 8px; }
+.param-action-button { width: 100%; justify-content: center; }
+.action-error { margin: 6px 0 0; font-size: var(--font-size--2xs); }
 .code-editor { overflow: hidden; border: 1px solid var(--border-color); border-radius: var(--radius); background: #151515; }
 .code-language { padding: 6px 0; background: var(--color--background--light-1); color: var(--color--text--shade-1); font-size: var(--font-size--2xs); }
 .code-surface { display: grid; grid-template-columns: 34px minmax(0, 1fr); }

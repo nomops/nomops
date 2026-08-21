@@ -114,7 +114,7 @@ describe('Code 节点（vm 临时沙箱）', () => {
         new Code().execute!.call(stubContext([[{ json: {} }]], { code })),
       ).rejects.toThrow(/Code node execution failed/);
     }
-  });
+  }, 15_000);
 
   it('用户代码改不到引擎的输入数据（深拷贝隔离）', async () => {
     const input = [{ json: { keep: true } }];

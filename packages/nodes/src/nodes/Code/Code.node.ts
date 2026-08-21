@@ -81,7 +81,7 @@ interface RunnerReply {
 }
 
 /** 在独立进程里跑用户代码。 */
-function runInChildProcess(code: string, items: INodeExecutionData[]): Promise<unknown> {
+export function runJavaScriptInChildProcess(code: string, items: INodeExecutionData[]): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ['-e', RUNNER_SOURCE], {
       stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
@@ -174,7 +174,7 @@ export class Code implements INodeType {
       ? this.getNodeParameter('pythonCode', 0, legacyCode ?? 'return _items')
       : this.getNodeParameter('jsCode', 0, legacyCode ?? 'return $input.all();'));
     if (!['javaScript', 'python'].includes(language)) throw new OperationalError(`Unsupported Code language: ${language}`);
-    const runCode = language === 'python' ? runPythonInChildProcess : runInChildProcess;
+    const runCode = language === 'python' ? runPythonInChildProcess : runJavaScriptInChildProcess;
     const input = this.getInputData();
     if (mode === 'runOnceForEachItem') {
       const output: INodeExecutionData[] = [];

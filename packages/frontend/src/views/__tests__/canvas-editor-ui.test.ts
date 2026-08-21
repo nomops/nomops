@@ -54,6 +54,13 @@ describe('canvas editor UI', () => {
     expect(ndv).toContain('.ndv-col.params { min-width: 360px; }');
   });
 
+  it('keeps AI Transform parameters fully visible without a horizontal swipe on mobile', () => {
+    expect(ndv).toContain(":class=\"{ 'ndv-ai-transform': desc?.name === 'aiTransform' }\"");
+    expect(ndv).toContain('.ndv-ai-transform .ndv-body { overflow-x: hidden; }');
+    expect(ndv).toContain('.ndv-ai-transform .ndv-col.side { display: none; }');
+    expect(ndv).toContain('flex: 1 1 100% !important;');
+  });
+
   it('puts AI capability add controls at the bottom of the node editor', () => {
     expect(ndv).toContain('data-test="ndv-ai-capabilities"');
     expect(ndv).toContain("['ai_languageModel', 'ai_memory', 'ai_tool']");

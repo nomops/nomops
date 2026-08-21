@@ -117,6 +117,47 @@ describe('ParamInput（schema 驱动控件分发）', () => {
     expect(w.findAll('.code-gutter span')).toHaveLength(3);
   });
 
+  it('AI Transform action sends only schema metadata and applies generated parameters', async () => {
+    const generate = vi.spyOn(api.assistant, 'generateTransformCode').mockResolvedValue({
+      code: 'return items.map(item => ({ json: { ok: true } }));',
+    });
+    const w = mount(ParamInput, {
+      props: {
+        prop: {
+          displayName: 'Instructions', name: 'instructions', type: 'string', default: '', noDataExpression: true,
+          typeOptions: {
+            rows: 4,
+            action: {
+              type: 'generateAiTransform', label: 'Generate code', target: 'generatedCode',
+              generatedForTarget: 'generatedForPrompt', inputFieldMaxLength: 500,
+            },
+          },
+        } as INodeProperties,
+        value: 'Add an ok field',
+        previewItems: [{ json: { email: 'TOP_SECRET_VALUE', nested: { count: 3 } } }],
+      },
+    });
+    await w.find('[data-test="parameter-action"]').trigger('click');
+    await flushPromises();
+    expect(generate).toHaveBeenCalledWith({
+      instructions: 'Add an ok field',
+      inputSchema: expect.arrayContaining([
+        { path: 'email', type: 'string' },
+        { path: 'nested.count', type: 'number' },
+      ]),
+    });
+    expect(JSON.stringify(generate.mock.calls)).not.toContain('TOP_SECRET_VALUE');
+    expect(w.emitted('parameters-change')![0]).toEqual([{
+      generatedCode: 'return items.map(item => ({ json: { ok: true } }));',
+      generatedForPrompt: 'Add an ok field',
+    }]);
+  });
+
+  it('read-only generated code cannot be edited in place', () => {
+    const w = make({ type: 'string', noDataExpression: true, typeOptions: { rows: 4, editor: 'code', readOnly: true } }, 'return items;');
+    expect(w.find('textarea').attributes('readonly')).toBeDefined();
+  });
+
   it('number → number 输入，emits 数值', async () => {
     const w = make({ type: 'number', default: 0 }, 5);
     await w.find('input[type="number"]').setValue('42');

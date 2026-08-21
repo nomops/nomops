@@ -139,7 +139,7 @@
 - [ ] **54. 自引用/低价值节点（评估后按需，默认不做）** `S~M`
   - [x] **Data Table 节点** ✅ 2026-08-14（复用现有项目级 Data Tables 后端，新增与本地基线一致的 Row/Table 两资源：Row 支持 Delete/Get/If Row Exists/If Row Does Not Exist/Insert/Update/Upsert，Table 支持 Clear/Create/Delete/List/Rename；Data table 使用 From List/By Name/ID resource locator，列映射使用动态 resource mapper，条件/排序/Dry Run/批量优化均由节点 schema 驱动；执行 helper 只注入当前 project 的表和行操作，节点参数不能指定 projectId；补 `data_tables.updatedAt` 双方言迁移、动态列 API、Data Table NDV 映射控件与节点/前端/服务端/DB 回归。全仓 1250 项测试、生产构建 6/6；隔离浏览器真实执行写入并回读 `buyer@example.com / 42`，Input/Parameters|Settings/Output 三栏及 0 console error 验收通过）
   - [ ] **Nomops 自 API 节点 + 实例事件触发器**：等价于基线的自引用 API/trigger；会允许工作流操作平台自身，价值与权限边界需先由产品裁决，不能默认开放。
-  - [ ] **AI Transform**：自然语言生成转换代码；#45 AI 建流前置已完成，可作为 #54 下一候选单独开发。
+  - [x] **AI Transform** ✅ 2026-08-21（对照本地 n8n 的编辑期生成/执行期沙箱模型实现 `nomops.aiTransform`：前端只向登录保护的本地 API 发送最多 500 字指令与最多 100 个字段路径/类型摘要，不发送输入值、binary 内容、凭证或环境变量；服务端复用项目已配置的 AI provider，严格校验请求和模型返回代码并仅记录字段数量审计；生成代码只读保存并绑定生成时指令，指令变化后拒绝执行；运行时不调用模型，复用 Code 节点空环境、无 `require/process`、有限超时的子进程沙箱。）
   - [x] **Track Time Saved** ⊘ 2026-08-14 裁决不做（云运营指标，自托管部署无可靠统一口径，伪造该指标没有产品价值）。
 
 ## P12 · 安全加固（来源：2026-07-25 benchmark-gap 对标审查 n8n 2.31.0，详见 `benchmark-gap.md`）

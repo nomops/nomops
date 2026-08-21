@@ -334,6 +334,12 @@ function openHistory() {
 
 const isEmpty = computed(() => editor.nodes.length === 0);
 
+function applyNodeParameterChanges(nodeName: string, changes: Record<string, unknown>) {
+  const target = editor.nodes.find((candidate) => candidate.name === nodeName);
+  if (!target) return;
+  editor.replaceNodeParameters(nodeName, { ...target.parameters, ...changes });
+}
+
 
 /* C9 右侧浮动工具条：打开节点面板 / 命令面板 / 加便签 / Focus panel（对标基线 canvas buttons） */
 function addStickyNote() {
@@ -1551,6 +1557,7 @@ async function loadSavePolicy() {
               :node-type-version="entry.node.typeVersion"
               :credentials="entry.node.credentials"
               @change="editor.setParam(entry.nodeName, entry.paramName, $event)"
+              @parameters-change="applyNodeParameterChanges(entry.nodeName, $event)"
             />
             <!-- D120 对标基线 nodeView.focusPanel.noExecutionData -->
             <p v-if="!execution.lastExecutionId" class="focus-hint dim" data-test="focus-no-exec-data">

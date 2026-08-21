@@ -33,6 +33,11 @@ const tab = ref<'parameters' | 'settings'>('parameters');
 const ndvRoot = ref<HTMLElement | null>(null);
 let previouslyFocused: HTMLElement | null = null;
 
+function applyParameterChanges(changes: Record<string, unknown>) {
+  if (!node.value) return;
+  editor.replaceNodeParameters(node.value.name, { ...node.value.parameters, ...changes });
+}
+
 function focusableElements() {
   return Array.from(ndvRoot.value?.querySelectorAll<HTMLElement>(
     'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
@@ -348,6 +353,7 @@ async function executeNodeAction() {
     <div
       ref="ndvRoot"
       class="ndv"
+      :class="{ 'ndv-ai-transform': desc?.name === 'aiTransform' }"
       role="dialog"
       aria-modal="true"
       :aria-label="`Edit ${node.name}`"
@@ -493,6 +499,7 @@ async function executeNodeAction() {
                 :node-type-version="node.typeVersion"
                 :credentials="node.credentials"
                 @change="editor.setParam(node.name, prop.name, $event)"
+                @parameters-change="applyParameterChanges"
               />
             </div>
 
@@ -872,5 +879,16 @@ async function executeNodeAction() {
   .ndv-col.side { flex: 0 0 320px; }
   .ndv-col.params { min-width: 360px; }
   .floating-nodes { display: none; }
+
+  /* AI Transform is instruction-first on small screens. Keep its editable
+     surface fully visible instead of requiring a hidden horizontal swipe. */
+  .ndv-ai-transform .ndv-body { overflow-x: hidden; }
+  .ndv-ai-transform .ndv-col.side { display: none; }
+  .ndv-ai-transform .ndv-col.params {
+    flex: 1 1 100% !important;
+    min-width: 0;
+    border-inline: 0;
+  }
+  .ndv-ai-transform .col-drag { display: none; }
 }
 </style>

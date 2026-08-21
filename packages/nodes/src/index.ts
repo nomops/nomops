@@ -17,3 +17,5 @@ export { sendSmtpMail } from './lib/smtp-client.js';
 export type { ISmtpConnectionOptions, ISmtpMessage, ISmtpSendResult } from './lib/smtp-client.js';
 export { generateTotp, verifyTotpCode } from './lib/totp.js';
 export type { ITotpOptions, TotpAlgorithm } from './lib/totp.js';
+export { validateAiTransformCode } from './lib/ai-transform-code.js';
+export type { AiTransformFieldType, AiTransformInputField } from './lib/ai-transform-code.js';

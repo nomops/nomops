@@ -16,6 +16,7 @@ see the input and output of every step.
 
 - **Visual canvas** — drag nodes, connect them, run, and inspect every node's data.
 - **Code when you need it** — Code node + expressions (`{{ }}`) alongside no-code.
+- **AI-assisted transforms** — describe a data transformation in plain language, review the generated read-only JavaScript, then run it deterministically in the existing isolated Code subprocess. Only instructions and field/type metadata are sent to the configured AI provider; input values are not sent.
 - **Triggers** — Webhook and Cron/Schedule for real automation (no manual "run").
 - **Credentials** — encrypted at rest, never returned by the API or written to logs.
 - **Runs your way** — SQLite by default, or PostgreSQL; single process or **queue

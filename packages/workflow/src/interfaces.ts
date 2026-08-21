@@ -161,6 +161,16 @@ export interface INodePropertyTypeOptions {
   rows?: number;
   /** Rich editor chrome for multiline text fields. */
   editor?: 'code' | 'sql';
+  /** Generated or otherwise derived text shown for inspection but not edited in place. */
+  readOnly?: boolean;
+  /** Metadata-driven editor action rendered next to a string parameter. */
+  action?: {
+    type: 'generateAiTransform';
+    label: string;
+    target: string;
+    generatedForTarget: string;
+    inputFieldMaxLength?: number;
+  };
   /** Notice color treatment used by n8n-like inline alerts. */
   noticeStyle?: 'info' | 'warning' | 'neutral';
   /** 动态下拉：调用节点 methods.loadOptions 中的同名方法。 */

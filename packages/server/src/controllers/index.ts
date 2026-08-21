@@ -41,6 +41,7 @@ import {
   credentialBodySchema,
   credentialPatchSchema,
   dynamicNodeParametersSchema,
+  aiTransformCodeSchema,
   dataTableBodySchema,
   dataTableColumnSchema,
   dataTableRenameSchema,
@@ -2193,6 +2194,31 @@ export function createApiRouter(services: AppServices): Router {
       const model =
         typeof body.model === 'string' && /^[a-zA-Z0-9][\w.-]{1,63}$/.test(body.model) ? body.model : undefined;
       const result = await services.assistant.chat(auth(req).projectId, body.messages, body.credentialId, system, model);
+      res.json(result);
+    }),
+  );
+
+  router.post(
+    '/assistant/transform-code',
+    h(async (req, res) => {
+      if ((await services.repos.settings.get('chat.enabled')) === 'false') {
+        throw new OperationalError('Chat is disabled on this instance', { status: 403 });
+      }
+      const body = parseBody(aiTransformCodeSchema, req);
+      const result = await services.assistant.generateTransformCode(
+        auth(req).projectId,
+        body.instructions,
+        body.inputSchema,
+        body.credentialId,
+        body.model,
+      );
+      recordAudit(
+        services,
+        req,
+        'ai.transform-code.generate',
+        { type: 'node-type', id: 'nomops.aiTransform' },
+        { fieldCount: body.inputSchema.length },
+      );
       res.json(result);
     }),
   );

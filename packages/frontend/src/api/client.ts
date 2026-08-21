@@ -31,6 +31,11 @@ export interface ChatProviderRow {
   lastEditedAt: string | null;
 }
 
+export interface TransformInputField {
+  path: string;
+  type: 'string' | 'number' | 'boolean' | 'object' | 'array' | 'null' | 'mixed';
+}
+
 export interface WorkflowDependency {
   type: 'credential' | 'subWorkflow' | 'parentWorkflow' | 'errorWorkflow' | 'errorWorkflowParent';
   id: string;
@@ -1309,6 +1314,12 @@ export const api = {
         ...(opts.system ? { system: opts.system } : {}),
         ...(opts.model ? { model: opts.model } : {}),
       }),
+    generateTransformCode: (body: {
+      instructions: string;
+      inputSchema: TransformInputField[];
+      credentialId?: string;
+      model?: string;
+    }) => http<{ code: string }>('POST', '/api/assistant/transform-code', body),
   },
 
   templates: {

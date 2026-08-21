@@ -23,7 +23,7 @@ nomops 现有 **30 个节点**(26 核心 + Slack/GitHub/SendGrid/Stripe 4 个声
 | n8n 节点 | 显示名 | nomops | 触发器 |
 |---|---|---|:--:|
 | `aggregate` | Aggregate | ✅ Aggregate |  |
-| `aiTransform` | AI Transform | ❌ 缺 |  |
+| `aiTransform` | AI Transform | ✅ 已实现 | 编辑期仅发送指令与字段/类型摘要生成只读代码；执行期复用 Code 子进程沙箱，不向模型发送输入值 |
 | `code` | Code | ✅ Code |  |
 | `compareDatasets` | Compare Datasets | ❌ 缺 |  |
 | `compression` | Compression | ❌ 缺 |  |
@@ -83,7 +83,7 @@ nomops 现有 **30 个节点**(26 核心 + Slack/GitHub/SendGrid/Stripe 4 个声
 - **P1 格式解析**:`html`、`xml`、`markdown`、`rssFeedRead`、`rssFeedReadTrigger`
 - **P1 触发器补全**:`formTrigger`、`form`、`sseTrigger`、`n8nTrigger`
 - **P2 流程/工具**:`stopAndError`、`compression`、`editImage`、`executionData`、`git`、`totp`、`n8n`
-- **可不做(n8n 云/自家专属)**:`aiTransform`、`timeSaved`
+- **已完成但保持自托管边界**:`aiTransform` 复用实例已配置的 AI provider，不依赖 n8n Cloud；`timeSaved` 仍不做。
 
 ## 二、无分类内置节点:8 个
 

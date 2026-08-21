@@ -30,6 +30,7 @@ import { emailTriggerDescription } from './nodes/EmailTrigger/EmailTrigger.descr
 import { loopDescription } from './nodes/Loop/Loop.description.js';
 import { mergeDescription } from './nodes/Merge/Merge.description.js';
 import { codeDescription } from './nodes/Code/Code.description.js';
+import { aiTransformDescription } from './nodes/AiTransform/AiTransform.description.js';
 import { httpRequestDescription } from './nodes/HttpRequest/HttpRequest.description.js';
 import { webhookDescription } from './nodes/Webhook/Webhook.description.js';
 import { scheduleDescription } from './nodes/Schedule/Schedule.description.js';
@@ -281,6 +282,11 @@ export const builtinNodeManifest: ILoadableNodeType[] = [
     type: `nomops.${codeDescription.name}`,
     description: codeDescription,
     load: () => import('./nodes/Code/Code.node.js').then((m) => m.Code),
+  },
+  {
+    type: `nomops.${aiTransformDescription.name}`,
+    description: aiTransformDescription,
+    load: () => import('./nodes/AiTransform/AiTransform.node.js').then((m) => m.AiTransform),
   },
   {
     type: `nomops.${httpRequestDescription.name}`,
