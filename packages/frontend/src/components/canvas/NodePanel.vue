@@ -7,6 +7,7 @@ import { useEditorStore } from '../../stores/editor.js';
 import { nodeIcon } from '../../lib/icons.js';
 import IconSvg from '../IconSvg.vue';
 import UiState from '../ui/UiState.vue';
+import { t } from '../../lib/i18n.js';
 
 /**
  * 节点创建面板(对标基线):
@@ -54,7 +55,7 @@ const CATEGORIES: Array<{ key: string; category: NodeCategory; title: string; de
   { key: 'trigger', category: 'trigger', title: 'Add another trigger', desc: 'Triggers start your workflow. Workflows can have multiple triggers.', icon: 'nomops.manualTrigger' },
 ];
 
-const allNodes = computed(() => nodeTypes.descriptions.filter((description) => !description.hidden));
+const allNodes = computed(() => nodeTypes.localizedDescriptions.filter((description) => !description.hidden));
 const eligibleNodes = computed(() => {
   if (pendingAi.value) {
     return allNodes.value.filter((description) => description.outputs.includes(pendingAi.value!.type));
@@ -68,10 +69,16 @@ const eligibleNodes = computed(() => {
 /** 搜索结果(平铺,跨所有节点)。 */
 const searchResults = computed(() => {
   const q = search.value.trim().toLowerCase();
-  return eligibleNodes.value.filter((description) =>
-    [description.displayName, description.name, ...(description.aliases ?? [])]
-      .some((value) => value.toLowerCase().includes(q)),
-  );
+  return eligibleNodes.value.filter((description) => {
+    const raw = nodeTypes.descriptions.find((candidate) => candidate.type === description.type);
+    return [
+      description.displayName,
+      description.name,
+      ...(description.aliases ?? []),
+      raw?.displayName ?? '',
+      ...(raw?.aliases ?? []),
+    ].some((value) => value.toLowerCase().includes(q));
+  });
 });
 
 /** 下钻列表:分类 → match 命中的节点;触发器 "other" → 全部触发器。 */
@@ -180,10 +187,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
         <button v-if="drill" class="picker-back" type="button" aria-label="Back to node categories" data-test="picker-back" @click="drill = null">‹</button>
         <div>
           <div id="node-picker-title" class="picker-title">
-            {{ pendingAi ? aiPickerTitle : drill ? drillTitle : isTriggerRoot ? 'What triggers this workflow?' : 'What happens next?' }}
+            {{ t(pendingAi ? aiPickerTitle : drill ? drillTitle : isTriggerRoot ? 'What triggers this workflow?' : 'What happens next?') }}
           </div>
           <div class="picker-sub">
-            {{ pendingAi ? 'Select a node to connect to the AI Agent' : drill ? 'Select a node to add' : isTriggerRoot ? 'A trigger is a step that starts your workflow' : 'Add a node to transform data or call a service' }}
+            {{ t(pendingAi ? 'Select a node to connect to the AI Agent' : drill ? 'Select a node to add' : isTriggerRoot ? 'A trigger is a step that starts your workflow' : 'Add a node to transform data or call a service') }}
           </div>
         </div>
         <button class="picker-close" type="button" aria-label="Close node panel" data-test="picker-close" @click="close">
@@ -249,18 +256,18 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
         <!-- 根:尚无触发器 → 9 触发器卡 -->
         <template v-else-if="isTriggerRoot">
           <button
-            v-for="t in CURATED_TRIGGERS"
-            :key="t.key"
+            v-for="trigger in CURATED_TRIGGERS"
+            :key="trigger.key"
             class="cat-item"
-            :data-test-trigger="t.key"
-            @click="pickCurated(t)"
+            :data-test-trigger="trigger.key"
+            @click="pickCurated(trigger)"
           >
-            <span class="cat-icon"><IconSvg v-bind="nodeIcon(t.icon)" :size="22" /></span>
+            <span class="cat-icon"><IconSvg v-bind="nodeIcon(trigger.icon)" :size="22" /></span>
             <span class="cat-body">
-              <span class="cat-name">{{ t.title }}</span>
-              <span class="cat-desc">{{ t.desc }}</span>
+              <span class="cat-name">{{ t(trigger.title) }}</span>
+              <span class="cat-desc">{{ t(trigger.desc) }}</span>
             </span>
-            <span v-if="!t.addType" class="cat-arrow">›</span>
+            <span v-if="!trigger.addType" class="cat-arrow">›</span>
           </button>
         </template>
 
@@ -275,8 +282,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
           >
             <span class="cat-icon"><IconSvg v-bind="nodeIcon(c.icon)" :size="22" /></span>
             <span class="cat-body">
-              <span class="cat-name">{{ c.title }}</span>
-              <span class="cat-desc">{{ c.desc }}</span>
+              <span class="cat-name">{{ t(c.title) }}</span>
+              <span class="cat-desc">{{ t(c.desc) }}</span>
             </span>
             <span class="cat-arrow">›</span>
           </button>

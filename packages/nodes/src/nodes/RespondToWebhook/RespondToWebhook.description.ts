@@ -46,7 +46,7 @@ export const respondToWebhookDescription: INodeTypeDescription = {
       displayName: 'Payload', name: 'payload', type: 'json', default: '{\n  "myField": "value"\n}',
       typeOptions: { rows: 5, editor: 'code' }, displayOptions: { show: { respondWith: ['jwt'] } },
     },
-    { displayName: 'Redirect URL', name: 'redirectURL', type: 'string', default: '', placeholder: 'e.g. http://www.n8n.io', displayOptions: { show: { respondWith: ['redirect'] } } },
+    { displayName: 'Redirect URL', name: 'redirectURL', type: 'string', default: '', placeholder: 'e.g. https://example.com/complete', displayOptions: { show: { respondWith: ['redirect'] } } },
     { displayName: 'Response Body', name: 'responseBody', type: 'string', default: '', placeholder: 'e.g. Workflow completed', typeOptions: { rows: 4 }, displayOptions: { show: { respondWith: ['text'] } } },
     {
       displayName: 'Options', name: 'options', type: 'collection', default: {}, options: [

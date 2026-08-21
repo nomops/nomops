@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia';
 import { api } from '../api/client.js';
+import { locale, setLocale, type Locale } from '../lib/i18n.js';
+import { savedTheme, setTheme, type ThemePref } from '../lib/theme.js';
 
 /** 视图注入命令面板的上下文命令（如画布的 Workflow 动作组）。 */
 export interface PaletteCommand {
@@ -61,6 +63,8 @@ export const useUiStore = defineStore('ui', {
     inputDialog: null as (InputDialogOptions & { open: true }) | null,
     /** Settings → Chat 开关的共享状态：侧栏 Chat 入口实时显隐（切换即生效，无需刷新）。 */
     chatEnabled: true,
+    locale: locale.value as Locale,
+    theme: savedTheme() as ThemePref,
   }),
   actions: {
     /** #43：从服务端 users.settings 水合偏好（登录后调用；DB 为准,localStorage 只当快取）。 */
@@ -75,10 +79,23 @@ export const useUiStore = defineStore('ui', {
         this.sidebarWidth = w;
         localStorage.setItem('nomops.sidebarWidth', String(w));
       }
+      if (settings['locale'] === 'en' || settings['locale'] === 'zh-CN') {
+        this.locale = settings['locale'];
+        setLocale(settings['locale']);
+      }
+      if (settings['theme'] === 'system' || settings['theme'] === 'light' || settings['theme'] === 'dark') {
+        this.theme = settings['theme'];
+        setTheme(settings['theme']);
+      }
     },
     /** 落库当前偏好（#43，fire-and-forget）。 */
     persistToServer() {
-      void api.saveSettings({ sidebarCollapsed: this.sidebarCollapsed, sidebarWidth: this.sidebarWidth }).catch(() => undefined);
+      void api.saveSettings({
+        sidebarCollapsed: this.sidebarCollapsed,
+        sidebarWidth: this.sidebarWidth,
+        locale: this.locale,
+        theme: this.theme,
+      }).catch(() => undefined);
     },
     toggleSidebar() {
       this.sidebarCollapsed = !this.sidebarCollapsed;
@@ -108,6 +125,16 @@ export const useUiStore = defineStore('ui', {
     },
     setChatEnabled(enabled: boolean) {
       this.chatEnabled = enabled;
+    },
+    setLocale(next: Locale) {
+      this.locale = next;
+      setLocale(next);
+      this.persistToServer();
+    },
+    setTheme(next: ThemePref) {
+      this.theme = next;
+      setTheme(next);
+      this.persistToServer();
     },
     notify(input: Omit<UiToast, 'id'>, duration = 4000) {
       const id = ++toastId;

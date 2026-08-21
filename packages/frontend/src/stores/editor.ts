@@ -8,6 +8,7 @@ import {
   removeNodeFromConnections,
   uniqueNodeName,
 } from '../lib/workflow-convert.js';
+import { t } from '../lib/i18n.js';
 
 /** undo/redo 快照（图定义 = 节点+连接；选中态/开关不入栈）。 */
 interface IEditorSnapshot {
@@ -34,7 +35,7 @@ export const useEditorStore = defineStore('editor', {
     id: null as string | null,
     /** 服务端草稿内容版本；PATCH 成功后使用响应里的递增值。 */
     version: 0,
-    name: 'My workflow',
+    name: t('My workflow'),
     description: null as string | null,
     settings: null as IWorkflowSettings | null,
     nodes: [] as INode[],

@@ -1,5 +1,7 @@
+import { watch } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from './stores/auth.js';
+import { locale, t } from './lib/i18n.js';
 
 /** meta.public: 未登录可访问。自托管实例无营销站，根路由即 app 首页（自托管）。 */
 export const router = createRouter({
@@ -88,7 +90,9 @@ export function titleFor(to: { name?: unknown; query?: Record<string, unknown> }
   if (name === 'workflowHistory') return 'Version history';
   return ROUTE_TITLE[name] ?? '';
 }
-router.afterEach((to) => {
-  const t = titleFor(to);
-  document.title = t ? `${t} - nomops` : 'nomops';
-});
+function updateDocumentTitle(to: { name?: unknown; query?: Record<string, unknown> }): void {
+  const title = titleFor(to);
+  document.title = title ? `${t(title)} - nomops` : 'nomops';
+}
+router.afterEach(updateDocumentTitle);
+watch(locale, () => updateDocumentTitle(router.currentRoute.value));

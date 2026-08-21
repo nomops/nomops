@@ -110,7 +110,7 @@ function switchProject(projectId: string) {
 /* 快速新建 */
 async function quickNewWorkflow() {
   closeAll();
-  const wf = await api.workflows.create({ name: 'My workflow', nodes: [], connections: {} });
+  const wf = await api.workflows.create({ name: t('My workflow'), nodes: [], connections: {} });
   void router.push(`/workflow/${wf.id}`);
 }
 function quickNewCredential() {

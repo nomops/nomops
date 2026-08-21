@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { api, type NodeTypeInfo } from '../api/client.js';
+import { localizeNodeType } from '../lib/i18n-node.js';
 
 export const useNodeTypesStore = defineStore('nodeTypes', {
   state: () => ({
@@ -9,14 +10,17 @@ export const useNodeTypesStore = defineStore('nodeTypes', {
     error: '',
   }),
   getters: {
+    localizedDescriptions(): NodeTypeInfo[] {
+      return this.descriptions.map(localizeNodeType);
+    },
     /** 全名 type（nomops.* 或 <pkg>.*）→ 节点信息。 */
     byType(): Map<string, NodeTypeInfo> {
-      return new Map(this.descriptions.map((d) => [d.type, d]));
+      return new Map(this.localizedDescriptions.map((d) => [d.type, d]));
     },
     /** 按 group 分组（trigger / transform / output…），供节点面板分类。 */
     grouped(): Array<{ group: string; items: NodeTypeInfo[] }> {
       const map = new Map<string, NodeTypeInfo[]>();
-      for (const d of this.descriptions) {
+      for (const d of this.localizedDescriptions) {
         const g = d.group[0] ?? 'other';
         if (!map.has(g)) map.set(g, []);
         map.get(g)!.push(d);

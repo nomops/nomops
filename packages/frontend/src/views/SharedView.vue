@@ -6,6 +6,7 @@ import { credentialIcon } from '../lib/icons.js';
 import IconSvg from '../components/IconSvg.vue';
 import UiState from '../components/ui/UiState.vue';
 import { useUiStore } from '../stores/ui.js';
+import { t } from '../lib/i18n.js';
 
 /**
  * Shared with you — 对标基线 /shared/workflows | /shared/credentials。
@@ -49,7 +50,7 @@ const fmtWhen = (iso: string | null | undefined): string => (iso ? new Date(iso)
 
 async function createWorkflow() {
   try {
-    const workflow = await api.workflows.create({ name: 'My workflow', nodes: [], connections: {} });
+    const workflow = await api.workflows.create({ name: t('My workflow'), nodes: [], connections: {} });
     await router.push({ name: 'canvas', params: { id: workflow.id } });
   } catch (e) {
     ui.notify({ kind: 'error', title: 'Could not create workflow', message: (e as Error).message });

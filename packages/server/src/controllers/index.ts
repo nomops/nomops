@@ -2839,7 +2839,9 @@ export function createApiRouter(services: AppServices): Router {
   router.put(
     '/me/settings',
     h(async (req, res) => {
-      const settings = (req.body ?? {}) as Record<string, unknown>;
+      const patch = (req.body ?? {}) as Record<string, unknown>;
+      const user = await services.repos.users.findById(auth(req).userId);
+      const settings = { ...((user?.settings ?? {}) as Record<string, unknown>), ...patch };
       await services.repos.users.updateSettings(auth(req).userId, settings);
       res.json({ settings });
     }),

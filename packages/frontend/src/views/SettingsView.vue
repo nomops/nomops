@@ -8,9 +8,9 @@ import { SETTINGS_SECTIONS, SETTINGS_ICONS } from '../lib/settings-nav.js';
 import CredentialModal from '../components/credentials/CredentialModal.vue';
 import { credentialTypeMeta } from '../lib/credential-types.js';
 import LicenseModal from '../components/LicenseModal.vue';
-import { LOCALES, locale, setLocale, t, type Locale } from '../lib/i18n.js';
+import { LOCALES, locale, t, type Locale } from '../lib/i18n.js';
 import { LINKS } from '../lib/links.js';
-import { savedTheme, setTheme, type ThemePref } from '../lib/theme.js';
+import type { ThemePref } from '../lib/theme.js';
 import UiDialog from '../components/ui/UiDialog.vue';
 
 /** Settings：左二级导航（← Settings + 图标项 + 版本号）+ 右内容。结构对标基线 Settings。 */
@@ -39,7 +39,8 @@ const router = useRouter();
 const projects = useProjectsStore();
 const ui = useUiStore();
 
-const section = ref<Section>((route.query['s'] as Section) ?? 'billing'); // 对标基线：默认落在 Usage and plan
+const requestedSection = (route.query['s'] as Section) ?? 'billing';
+const section = ref<Section>(requestedSection === 'languages' ? 'personal' : requestedSection); // 旧 Languages 深链归并到 Personal
 const about = ref<Awaited<ReturnType<typeof api.about>> | null>(null);
 
 /* 个人 */
@@ -773,9 +774,13 @@ const publishedWfCount = ref(0); // D138:已发布工作流数
 
 /* D133 Personalisation → Theme 偏好(lib/theme:属性写在 body 才能命中令牌作用域;
    system=摘属性跟随系统;启动引导在 main.ts)。 */
-const themePref = ref<ThemePref>(savedTheme());
+const themePref = ref<ThemePref>(ui.theme);
+watch(() => ui.theme, (next) => (themePref.value = next));
 function applyTheme() {
-  setTheme(themePref.value);
+  ui.setTheme(themePref.value);
+}
+function applyLocale(event: Event) {
+  ui.setLocale((event.target as HTMLSelectElement).value as Locale);
 }
 const months = ref(1);
 const billingError = ref('');
@@ -2054,6 +2059,15 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
               <option value="dark">{{ t('Dark theme') }}</option>
             </select>
           </div>
+          <div class="setting-row" data-test="settings-language">
+            <div class="setting-text">
+              <b>{{ t('Language') }}</b>
+              <span class="dim">{{ t('Choose the language of the nomops interface.') }}</span>
+            </div>
+            <select class="sec-select" :value="locale" data-test="language-select" @change="applyLocale">
+              <option v-for="language in LOCALES" :key="language.value" :value="language.value">{{ language.label }}</option>
+            </select>
+          </div>
         </div>
 
         <div style="margin-top: 30px; display: flex; align-items: center; gap: 12px">
@@ -2062,27 +2076,6 @@ const sections = SETTINGS_SECTIONS as Array<{ key: Section; label: string; badge
           </button>
           <span v-if="profileSaved" class="saved-hint" style="margin: 0">{{ t('Saved ✓') }}</span>
           <span v-if="profileError" class="error-text" style="margin: 0">{{ profileError }}</span>
-        </div>
-      </section>
-
-      <!-- 语言设置（全局，存 localStorage，切换即时生效） -->
-      <section v-else-if="section === 'languages'" data-test="settings-languages">
-        <h1 class="page-title">{{ t('Languages') }}</h1>
-        <p class="sub">
-          {{ t('Choose the language of the nomops interface.') }}
-          {{ t('The setting is saved in this browser and applies to the whole app immediately.') }}
-        </p>
-        <div class="card" style="max-width: 480px">
-          <label>{{ t('Language') }}</label>
-          <select
-            :value="locale"
-            data-test="language-select"
-            style="width: 100%"
-            @change="setLocale(($event.target as HTMLSelectElement).value as Locale)"
-          >
-            <option v-for="l in LOCALES" :key="l.value" :value="l.value">{{ l.label }}</option>
-          </select>
-          <p class="dim" style="font-size: 12.5px; margin: 10px 0 0">{{ t('Untranslated text falls back to English.') }}</p>
         </div>
       </section>
 

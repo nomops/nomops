@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import { api, type CredentialView, type DataTableView, type WorkflowRow } from '../../api/client.js';
 import { useUiStore } from '../../stores/ui.js';
 import UiState from '../ui/UiState.vue';
+import { t } from '../../lib/i18n.js';
 
 /** 命令面板：全局搜索工作流 + 凭证 + 快捷动作。⌘K / 点搜索打开。 */
 const ui = useUiStore();
@@ -166,7 +167,7 @@ function go(path: string) {
 async function createWorkflow() {
   ui.closePalette();
   try {
-    const wf = await api.workflows.create({ name: 'My workflow', nodes: [], connections: {} });
+    const wf = await api.workflows.create({ name: t('My workflow'), nodes: [], connections: {} });
     ui.notify({ kind: 'success', title: 'Workflow created', message: wf.name });
     void router.push(`/workflow/${wf.id}`);
   } catch (error) {

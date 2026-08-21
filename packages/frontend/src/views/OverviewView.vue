@@ -601,7 +601,7 @@ watch([filteredCredentials, credPageSize], () => {
 
 async function createWorkflow() {
   closeMenus();
-  const wf = await api.workflows.create({ name: 'My workflow', nodes: [], connections: {}, folderId: currentFolderId.value });
+  const wf = await api.workflows.create({ name: t('My workflow'), nodes: [], connections: {}, folderId: currentFolderId.value });
   void router.push({ name: 'canvas', params: { id: wf.id } });
 }
 

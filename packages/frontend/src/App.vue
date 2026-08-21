@@ -11,6 +11,7 @@ import UiConfirmHost from './components/ui/UiConfirmHost.vue';
 import UiToastHost from './components/ui/UiToastHost.vue';
 import UiInputHost from './components/ui/UiInputHost.vue';
 import { titleFor } from './router.js';
+import { t } from './lib/i18n.js';
 
 const auth = useAuthStore();
 const projects = useProjectsStore();
@@ -27,7 +28,7 @@ async function hydratePrefs() {
 const showShell = computed(() => Boolean(auth.token));
 // 整页接管路由（对标基线）：Chat 与 Settings 用专属侧栏替换主侧栏
 const chatHubTakeover = computed(() => route.name === 'chat' || route.name === 'settings');
-const currentPageTitle = computed(() => titleFor(route) || 'nomops');
+const currentPageTitle = computed(() => t(titleFor(route)) || 'nomops');
 
 onMounted(() => {
   if (auth.token) {

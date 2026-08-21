@@ -40,8 +40,9 @@ describe('平台零散补差（backlog #43）', () => {
 
   it('每用户偏好：PUT /me/settings 落库,/me 回显', async () => {
     await request(app).put('/api/me/settings').set(authed()).send({ sidebarCollapsed: true, theme: 'dark' }).expect(200);
+    await request(app).put('/api/me/settings').set(authed()).send({ locale: 'zh-CN' }).expect(200);
     const me = (await request(app).get('/api/me').set(authed()).expect(200)).body;
-    expect(me.settings).toEqual({ sidebarCollapsed: true, theme: 'dark' });
+    expect(me.settings).toEqual({ sidebarCollapsed: true, theme: 'dark', locale: 'zh-CN' });
   });
 
   it('文件夹打标：设标签,回读', async () => {

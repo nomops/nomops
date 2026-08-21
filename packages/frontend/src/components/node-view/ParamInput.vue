@@ -9,6 +9,7 @@ import { LINKS } from '../../lib/links.js';
 import { api } from '../../api/client.js';
 import { isPropertyVisible } from '../../lib/display-options.js';
 import { describeTransformInputSchema } from '../../lib/ai-transform.js';
+import { localizeNodeOption } from '../../lib/i18n-node.js';
 
 /**
  * schema 驱动的单参数控件：按 INodeProperties.type 分发。
@@ -91,7 +92,7 @@ function valueAtPath(value: unknown, path: string): unknown {
 const dynamicOptions = ref<INodePropertyOption[] | null>(null);
 const dynamicLoading = ref(false);
 const dynamicError = ref('');
-const effectiveOptions = computed(() => dynamicOptions.value ?? props.prop.options ?? []);
+const effectiveOptions = computed(() => (dynamicOptions.value ?? props.prop.options ?? []).map(localizeNodeOption));
 let dynamicSequence = 0;
 async function loadDynamicOptions() {
   if (!props.nodeType || (!props.prop.typeOptions?.loadOptionsMethod && !props.prop.typeOptions?.loadOptions)) return;
@@ -932,7 +933,7 @@ function convertAssignment(value: unknown, type: string): unknown {
           <strong v-if="prop.typeOptions?.filter?.itemTitle" class="cond-title">{{ prop.typeOptions.filter.itemTitle }} {{ i + 1 }}</strong>
           <input class="cond-left" :value="String(c.left ?? '')" placeholder="value1" @input="updateCondition(i, 'left', ($event.target as HTMLInputElement).value)" />
           <select class="cond-op" :value="c.op" @change="updateCondition(i, 'op', ($event.target as HTMLSelectElement).value)">
-            <option v-for="o in OPERATORS" :key="o.value" :value="o.value">{{ o.label }}</option>
+            <option v-for="o in OPERATORS" :key="o.value" :value="o.value">{{ t(o.label) }}</option>
           </select>
           <input v-if="!UNARY_OPS.includes(c.op)" class="cond-right" :value="String(c.right ?? '')" placeholder="value2" @input="updateCondition(i, 'right', ($event.target as HTMLInputElement).value)" />
           <span v-else class="cond-right-fill" />
@@ -1010,9 +1011,9 @@ function convertAssignment(value: unknown, type: string): unknown {
             <div v-if="prop.typeOptions?.multipleValues" class="fixed-row-head">
               <strong>{{ prop.typeOptions.fixedCollection?.itemTitle ?? group.name }} {{ rowIndex + 1 }}</strong>
               <span class="fixed-row-actions">
-                <button v-if="prop.typeOptions.sortable" type="button" :aria-label="`Move ${group.name} item ${rowIndex + 1} up`" :disabled="rowIndex === 0" @click="moveFixedRow(group, rowIndex, -1)">↑</button>
-                <button v-if="prop.typeOptions.sortable" type="button" :aria-label="`Move ${group.name} item ${rowIndex + 1} down`" :disabled="rowIndex === fixedRows(group).length - 1" @click="moveFixedRow(group, rowIndex, 1)">↓</button>
-                <button type="button" :aria-label="`Remove ${group.name} item ${rowIndex + 1}`" @click="removeFixedRow(group, rowIndex)">
+                <button v-if="prop.typeOptions.sortable" type="button" :aria-label="t('Move item {n} up', { n: rowIndex + 1 })" :disabled="rowIndex === 0" @click="moveFixedRow(group, rowIndex, -1)">↑</button>
+                <button v-if="prop.typeOptions.sortable" type="button" :aria-label="t('Move item {n} down', { n: rowIndex + 1 })" :disabled="rowIndex === fixedRows(group).length - 1" @click="moveFixedRow(group, rowIndex, 1)">↓</button>
+                <button type="button" :aria-label="t('Remove item {n}', { n: rowIndex + 1 })" @click="removeFixedRow(group, rowIndex)">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
                 </button>
               </span>

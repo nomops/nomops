@@ -6,7 +6,7 @@ export const manualTriggerDescription: INodeTypeDescription = {
   group: ['trigger'],
   categories: ['trigger'],
   version: 1,
-  description: 'Runs the flow on clicking a button in n8n. Good for getting started quickly',
+  description: 'Runs the flow on clicking a button in nomops. Good for getting started quickly',
   defaults: { name: 'When clicking ‘Execute workflow’' },
   inputs: [],
   outputs: ['main'],

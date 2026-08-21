@@ -28,7 +28,7 @@ export const formDescription: INodeTypeDescription = {
       typeOptions: { rows: 8, editor: 'code' }, displayOptions: { show: { operation: ['nextPage'], defineForm: ['json'] } },
     },
     {
-      displayName: 'On n8n Form Submission', name: 'respondWith', type: 'options', default: 'text',
+      displayName: 'On nomops Form Submission', name: 'respondWith', type: 'options', default: 'text',
       displayOptions: { show: { operation: ['completion'] } },
       options: [
         { name: 'Show Completion Screen', value: 'text' },
