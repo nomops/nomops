@@ -2,6 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { CREDENTIAL_TYPES } from '../credential-types.js';
 
 describe('工具节点凭证元数据', () => {
+  it('Nomops 自 API 只收取隐藏的 API Key，不暴露可配置目标 URL', () => {
+    const credential = CREDENTIAL_TYPES.find((item) => item.type === 'nomopsApi');
+    expect(credential?.fields).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'apiKey', type: 'password', required: true }),
+    ]));
+    expect(credential?.fields.some((field) => /url/i.test(field.name))).toBe(false);
+  });
+
   it('TOTP 与 Git 密钥字段都用 password 控件', () => {
     for (const type of ['totp', 'gitToken', 'gitSsh']) {
       const credential = CREDENTIAL_TYPES.find((item) => item.type === type);

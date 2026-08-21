@@ -7,7 +7,13 @@ import { Agent, fetch as undiciFetch } from 'undici';
 
 const MAX_REDIRECTS = 10;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
-const SENSITIVE_REDIRECT_HEADERS = new Set(['authorization', 'cookie', 'proxy-authorization']);
+const SENSITIVE_REDIRECT_HEADERS = new Set([
+  'authorization',
+  'cookie',
+  'proxy-authorization',
+  'x-nomops-api-key',
+  'x-project-id',
+]);
 
 export interface IDnsAddress {
   address: string;

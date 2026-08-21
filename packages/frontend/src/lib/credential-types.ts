@@ -34,6 +34,22 @@ export interface CredentialTypeMeta {
 
 export const CREDENTIAL_TYPES: CredentialTypeMeta[] = [
   {
+    type: 'nomopsApi',
+    displayName: 'Nomops API',
+    icon: '◆',
+    description: 'Authenticate the Nomops node to this instance with explicit API key scopes',
+    fields: [
+      {
+        name: 'apiKey',
+        label: 'API Key',
+        type: 'password',
+        placeholder: 'nmp_…',
+        hint: 'Create a least-privilege key in Settings → API Keys. The node is always restricted to its current project.',
+        required: true,
+      },
+    ],
+  },
+  {
     type: 'totp',
     displayName: 'TOTP Secret',
     icon: '⏱️',

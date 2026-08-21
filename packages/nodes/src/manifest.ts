@@ -57,6 +57,8 @@ import { sseTriggerDescription } from './nodes/SseTrigger/SseTrigger.description
 import { stopAndErrorDescription } from './nodes/StopAndError/StopAndError.description.js';
 import { executionDataDescription } from './nodes/ExecutionData/ExecutionData.description.js';
 import { dataTableDescription } from './nodes/DataTable/DataTable.description.js';
+import { nomopsDescription } from './nodes/Nomops/Nomops.description.js';
+import { nomopsTriggerDescription } from './nodes/NomopsTrigger/NomopsTrigger.description.js';
 import { totpDescription } from './nodes/Totp/Totp.description.js';
 import { gitDescription } from './nodes/Git/Git.description.js';
 import { declarative } from './nodes/integrations/declarative.js';
@@ -111,6 +113,16 @@ export const builtinNodeManifest: ILoadableNodeType[] = [
     type: `nomops.${dataTableDescription.name}`,
     description: dataTableDescription,
     load: () => import('./nodes/DataTable/DataTable.node.js').then((m) => m.DataTable),
+  },
+  {
+    type: `nomops.${nomopsDescription.name}`,
+    description: nomopsDescription,
+    load: () => import('./nodes/Nomops/Nomops.node.js').then((m) => m.Nomops),
+  },
+  {
+    type: `nomops.${nomopsTriggerDescription.name}`,
+    description: nomopsTriggerDescription,
+    load: () => import('./nodes/NomopsTrigger/NomopsTrigger.node.js').then((m) => m.NomopsTrigger),
   },
   {
     type: `nomops.${stopAndErrorDescription.name}`,

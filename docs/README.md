@@ -17,6 +17,7 @@
 | `04-ROADMAP.md` | 分阶段里程碑与每阶段验收标准 | 排进度 |
 | `05-CLAUDE-CODE-GUIDE.md` | 目录约定、编码规范、测试要求 | 约束 agent |
 | `15-SUPPORT-INTEGRATION.md` | 可选实例支持配置、API、SSRF 与隐私边界 | 部署和安全运维 |
+| `16-NOMOPS-SELF-API.md` | Nomops 自 API 节点、生命周期触发器、API Key/RBAC 与固定出站边界 | 节点开发和安全审查 |
 
 ---
 

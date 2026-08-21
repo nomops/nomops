@@ -148,6 +148,8 @@ interface IExecuteContext {
 
 **项目级 Data Table 边界**：Data Table 节点只通过 `helpers.dataTables` 使用服务端注入的当前项目操作集；节点参数和表达式不得传入或覆盖 `projectId`。动态 Data table locator 与 resource mapper schema 也必须由认证端点按当前项目查询，并在执行时再次校验表归属，不能信任前端返回的表 ID。列映射 schema 由表定义动态生成，NDV 和执行器共享字段名与类型约束。
 
+**Nomops 自 API 边界**：Nomops 节点只通过 `helpers.nomopsApiRequest` 使用服务端枚举的本实例操作，节点不得提供 URL、路径或 `projectId`。目标固定为管理员配置的 `NOMOPS_BASE_URL` 下 `/api/v1`；服务端强制附加当前执行项目，并以节点显式选择的 `nomopsApi` 凭证调用正常 API 鉴权链。API Key scopes、项目成员关系和 RBAC 同时生效，不存在隐式管理员身份。跨域重定向必须剥离 `X-Nomops-Api-Key` 与 `X-Project-Id`。
+
 **验收**：
 - 无 HTTP/DB 环境下，单测能跑通线性、分支（IF）、合并（Merge）、循环、错误续跑五种拓扑。
 - 一个执行到一半的 `RunExecutionData` 能 `JSON.stringify` 后反序列化、`processRunExecutionData` 继续跑完，结果与不中断一致。
@@ -174,6 +176,7 @@ class ActiveWorkflowManager {
   - **定时/轮询型**（有状态）：激活时起 cron 定时器 / poll 循环。**队列模式下只有 leader 进程能起**，否则一个 cron 触发 N 次。
 - 激活失败要记录 `activationError` 并在 UI 显示（如 webhook path 冲突）。
 - 触发 → 构造起始数据 → 单进程直接调引擎 / 队列模式入队。
+- Nomops Trigger 只接收管理器注入的 `init` / `activate` / `update` 生命周期，不订阅跨项目全局事件；输出仅含事件名、时间与当前 workflow id/name。
 
 **验收**：激活一个 Webhook 工作流后，外部 POST 能触发执行；激活一个 Cron 工作流后按时触发；停用后不再触发；模拟双进程，同一 cron 只触发一次。
 

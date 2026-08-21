@@ -67,7 +67,7 @@ export class ActiveWorkflowManager {
   async init(): Promise<void> {
     for (const row of await this.repos.workflows.findAllActive()) {
       try {
-        await this.add(row);
+        await this.add(row, 'init');
       } catch (error) {
         console.error(`[nomops] 恢复工作流 ${row.id} 触发器失败:`, (error as Error).message);
       }
@@ -83,7 +83,7 @@ export class ActiveWorkflowManager {
   }
 
   /** 激活：注册该工作流全部触发节点（按已发布定义）。失败抛 OperationalError（activationError）。 */
-  async add(input: WorkflowRow): Promise<void> {
+  async add(input: WorkflowRow, activationMode: 'init' | 'activate' | 'update' = 'update'): Promise<void> {
     const row = await this.productionRow(input);
     await this.remove(row.id); // 幂等：先清旧注册（update/republish 场景）
     await this.repos.publishPipeline.clearTriggerStatus(row.id); // #40：重记逐触发器状态
@@ -129,8 +129,8 @@ export class ActiveWorkflowManager {
           throw e;
         }
       } else if (nodeType.trigger && this.isLeader()) {
-        // 其它 trigger() 型仍走进程内 leader 定时器（当前无此类节点,保留兜底）
-        const context = this.buildTriggerContext(row, node);
+        // 生命周期/流式等 trigger() 型走进程内 leader（队列模式避免重复注册与派发）
+        const context = this.buildTriggerContext(row, node, activationMode);
         const response = await nodeType.trigger.call(context);
         if (response.closeFunction) closer.push(response.closeFunction);
       }
@@ -255,7 +255,11 @@ export class ActiveWorkflowManager {
       });
   }
 
-  private buildTriggerContext(row: WorkflowRow, node: INode): ITriggerContext {
+  private buildTriggerContext(
+    row: WorkflowRow,
+    node: INode,
+    activationMode: 'init' | 'activate' | 'update',
+  ): ITriggerContext {
     const staticData: JsonObject = (row.staticData as JsonObject | null) ?? {};
     return {
       emit: (data: INodeExecutionData[][]) => {
@@ -266,6 +270,8 @@ export class ActiveWorkflowManager {
         // 未填参数回落到节点描述里的 default
         return undefined;
       },
+      getActivationMode: () => activationMode,
+      getWorkflow: () => ({ id: row.id, name: row.name }),
       getWorkflowStaticData: (type: string) => {
         const key = type === 'global' ? 'global' : `node:${node.name}`;
         let data = staticData[key];

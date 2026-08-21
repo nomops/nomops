@@ -51,8 +51,8 @@ nomops 现有 **30 个节点**(26 核心 + Slack/GitHub/SendGrid/Stripe 4 个声
 | `manualTrigger` | Manual Trigger | ✅ ManualTrigger | ⚡ |
 | `markdown` | Markdown | ❌ 缺 |  |
 | `merge` | Merge | ✅ Merge |  |
-| `n8n` | n8n | ❌ 缺 |  |
-| `n8nTrigger` | n8n Trigger | ❌ 缺 | ⚡ |
+| `n8n` | n8n | ✅ Nomops（固定本实例 + API Key scopes/RBAC + 操作白名单） |  |
+| `n8nTrigger` | n8n Trigger | ✅ Nomops Trigger（仅本实例/当前工作流生命周期） | ⚡ |
 | `noOp` | No Operation, do nothing | ✅ NoOp |  |
 | `readWriteFile` | Read/Write Files from Disk | ❌ 缺 |  |
 | `removeDuplicates` | Remove Duplicates | ❌ 缺 |  |
@@ -81,8 +81,8 @@ nomops 现有 **30 个节点**(26 核心 + Slack/GitHub/SendGrid/Stripe 4 个声
 - **P0 数据处理高频刚需**:`sort`、`limit`、`removeDuplicates`、`summarize`、`renameKeys`、`compareDatasets`、`dateTime`、`crypto`
 - **P0 文件/IO(工作流常用)**:`readWriteFile`、`extractFromFile`、`convertToFile`、`ftp`、`ssh`、`emailSend`、`emailReadImap`
 - **P1 格式解析**:`html`、`xml`、`markdown`、`rssFeedRead`、`rssFeedReadTrigger`
-- **P1 触发器补全**:`formTrigger`、`form`、`sseTrigger`、`n8nTrigger`
-- **P2 流程/工具**:`stopAndError`、`compression`、`editImage`、`executionData`、`git`、`totp`、`n8n`
+- **P1 触发器补全**:`formTrigger`、`form`、`sseTrigger`（`n8nTrigger` 已以 Nomops Trigger 安全实现）
+- **P2 流程/工具**:`stopAndError`、`compression`、`editImage`、`executionData`、`git`、`totp`（`n8n` 已以 Nomops 固定自 API 实现）
 - **已完成但保持自托管边界**:`aiTransform` 复用实例已配置的 AI provider，不依赖 n8n Cloud；`timeSaved` 仍不做。
 
 ## 二、无分类内置节点:8 个

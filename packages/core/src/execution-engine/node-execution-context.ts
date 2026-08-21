@@ -196,6 +196,8 @@ export interface IWorkflowExecuteAdditionalData {
   variables?: Record<string, string>;
   /** HTTP 工具实现（默认用全局 fetch）。 */
   httpRequest?: (options: IHttpRequestOptions) => Promise<unknown>;
+  /** 固定本实例、固定项目且仅支持白名单操作的 Nomops API 调用。 */
+  nomopsApiRequest?: (options: import('@nomops/workflow').INomopsApiRequestOptions) => Promise<unknown>;
   /** 子工作流执行回调（服务层实现：归属校验 + 深度限制）。 */
   executeSubWorkflow?: (
     workflow: string | IInlineWorkflowDefinition,
@@ -423,6 +425,7 @@ export function createExecuteContext(args: {
 
     helpers: {
       httpRequest: additionalData.httpRequest ?? defaultHttpRequest,
+      ...(additionalData.nomopsApiRequest ? { nomopsApiRequest: additionalData.nomopsApiRequest } : {}),
       ...(additionalData.executeSubWorkflow
         ? { executeSubWorkflow: additionalData.executeSubWorkflow }
         : {}),

@@ -17,6 +17,7 @@ see the input and output of every step.
 - **Visual canvas** — drag nodes, connect them, run, and inspect every node's data.
 - **Code when you need it** — Code node + expressions (`{{ }}`) alongside no-code.
 - **AI-assisted transforms** — describe a data transformation in plain language, review the generated read-only JavaScript, then run it deterministically in the existing isolated Code subprocess. Only instructions and field/type metadata are sent to the configured AI provider; input values are not sent.
+- **Safe self-automation** — the Nomops node uses an explicit least-privilege API key to call a fixed allowlist on this instance; the Nomops Trigger emits only local workflow lifecycle events.
 - **Triggers** — Webhook and Cron/Schedule for real automation (no manual "run").
 - **Credentials** — encrypted at rest, never returned by the API or written to logs.
 - **Runs your way** — SQLite by default, or PostgreSQL; single process or **queue
@@ -104,7 +105,7 @@ required for a basic SQLite install.
 | `DB_POSTGRES_URL` | — | PostgreSQL connection string (when `DB_TYPE=postgres`). |
 | `EXECUTIONS_MODE` | `regular` | `regular` (single process) or `queue` (BullMQ workers). |
 | `REDIS_HOST` / `REDIS_PORT` | `localhost` / `6379` | Redis, required for `queue` mode. |
-| `NOMOPS_BASE_URL` | `http://localhost:5678` | Public base URL (used in e.g. password-reset links). |
+| `NOMOPS_BASE_URL` | `http://localhost:5678` | Administrator-controlled base URL used for public links and the fixed Nomops self-API target. It must not contain credentials. |
 | `NOMOPS_SMTP_HOST` / `NOMOPS_SMTP_PORT` | — / `587` | SMTP server used for password-reset and invitation emails. |
 | `NOMOPS_SMTP_SECURE` | `false` | Use implicit TLS; port `465` enables it automatically. |
 | `NOMOPS_SMTP_USER` / `NOMOPS_SMTP_PASS` | — | SMTP authentication credentials. |
@@ -199,6 +200,9 @@ Monorepo layout (pnpm + Turborepo):
 
 Design and data-model docs live in [`docs/`](docs/) — architecture, the workflow-JSON /
 node-schema contracts, module conventions, and the roadmap.
+
+The Nomops self-API node and lifecycle trigger security model is documented in
+[`docs/16-NOMOPS-SELF-API.md`](docs/16-NOMOPS-SELF-API.md).
 
 ---
 

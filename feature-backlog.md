@@ -136,9 +136,9 @@
 
 - [x] **53. 流程/工具杂项四件套：Stop and Error / Execution Data / TOTP / Git** `S/M` ✅ 2026-08-01（新增四个声明式节点：Stop and Error 主动抛出受控错误并进入 Error Trigger 工作流，Execution Data 读写当前执行可搜索 KV 元数据，TOTP 与 MFA 服务共享 RFC 6238 SHA1/SHA256/SHA512 实现，Git 在 `NOMOPS_GIT_ROOT` 沙箱内支持 clone/status/commit/pull/push、HTTPS token/SSH 密钥临时注入且禁用 hooks/file 协议；新增 7 节点单测 + 1 前端凭证类型测试，并扩展错误流/执行元数据/API 凭证明文不泄漏覆盖，workflow 29/core 101/nodes 127/db 26/frontend 94/server 614、全量 991 测通过；`pnpm build` 6/6、`pnpm dev` 前后端启动通过，真实 HTTP 完成错误流→handler、元数据详情、标准 TOTP 往返，临时 SSH Git 服务完成 clone→commit→push 且裸库内容一致；生产 UI 验证四节点元数据自动上架，与同镜像基线 2.31.5 在 1280×720 同视口并排比对，干净标签控制台零报错；commit `da59d5f`）
 
-- [ ] **54. 自引用/低价值节点（评估后按需，默认不做）** `S~M`
+- [x] **54. 自引用/低价值节点（评估后按需，默认不做）** `S~M` ✅ 2026-08-21 完成评估与收口
   - [x] **Data Table 节点** ✅ 2026-08-14（复用现有项目级 Data Tables 后端，新增与本地基线一致的 Row/Table 两资源：Row 支持 Delete/Get/If Row Exists/If Row Does Not Exist/Insert/Update/Upsert，Table 支持 Clear/Create/Delete/List/Rename；Data table 使用 From List/By Name/ID resource locator，列映射使用动态 resource mapper，条件/排序/Dry Run/批量优化均由节点 schema 驱动；执行 helper 只注入当前 project 的表和行操作，节点参数不能指定 projectId；补 `data_tables.updatedAt` 双方言迁移、动态列 API、Data Table NDV 映射控件与节点/前端/服务端/DB 回归。全仓 1250 项测试、生产构建 6/6；隔离浏览器真实执行写入并回读 `buyer@example.com / 42`，Input/Parameters|Settings/Output 三栏及 0 console error 验收通过）
-  - [ ] **Nomops 自 API 节点 + 实例事件触发器**：等价于基线的自引用 API/trigger；会允许工作流操作平台自身，价值与权限边界需先由产品裁决，不能默认开放。
+  - [x] **Nomops 自 API 节点 + 实例事件触发器** ✅ 2026-08-21（对照本地 n8n 源码后采用最小权限实现：`nomops.nomops` 必须显式选择一次性明文创建、数据库加密保存的 `nomopsApi` 凭证，服务端目标固定为管理员控制的 `NOMOPS_BASE_URL/api/v1`，节点不能传 URL/path/projectId；仅开放 workflow list/get/activate/deactivate 与 execution list/get/retry/stop 八项枚举操作，强制当前执行 project，沿用 API Key scopes、项目成员关系、RBAC 和现有审计；30 秒网络超时，跨域重定向剥离 Nomops Key/项目头，节点输出、执行错误与日志不含 Key。`nomops.nomopsTrigger` 只处理 init/activate/update 三种本实例当前工作流生命周期，不接入跨项目全局事件总线，生产输出仅事件、时间与当前 workflow id/name；手动运行提供无实例元数据的样例。详见 `docs/16-NOMOPS-SELF-API.md`。）
   - [x] **AI Transform** ✅ 2026-08-21（对照本地 n8n 的编辑期生成/执行期沙箱模型实现 `nomops.aiTransform`：前端只向登录保护的本地 API 发送最多 500 字指令与最多 100 个字段路径/类型摘要，不发送输入值、binary 内容、凭证或环境变量；服务端复用项目已配置的 AI provider，严格校验请求和模型返回代码并仅记录字段数量审计；生成代码只读保存并绑定生成时指令，指令变化后拒绝执行；运行时不调用模型，复用 Code 节点空环境、无 `require/process`、有限超时的子进程沙箱。）
   - [x] **Track Time Saved** ⊘ 2026-08-14 裁决不做（云运营指标，自托管部署无可靠统一口径，伪造该指标没有产品价值）。
 

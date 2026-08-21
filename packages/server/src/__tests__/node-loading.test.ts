@@ -65,6 +65,8 @@ describe('内置节点通过加载器可用', () => {
       'markdown',
       'merge',
       'noOp',
+      'nomops',
+      'nomopsTrigger',
       'notion',
       'notionTool',
       'pollingTrigger',

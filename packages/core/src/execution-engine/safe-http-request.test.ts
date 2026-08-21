@@ -77,7 +77,12 @@ describe('SSRF 出站防护', () => {
     const request = createDefaultHttpRequest({ lookup, fetch: fetch as never });
     await expect(request({
       url: 'https://public.test/start',
-      headers: { Authorization: 'Bearer secret', 'x-request-id': 'r1' },
+      headers: {
+        Authorization: 'Bearer secret',
+        'X-Nomops-Api-Key': 'nmp_secret',
+        'X-Project-Id': 'project-secret',
+        'x-request-id': 'r1',
+      },
       urlTrust: 'user-controlled',
     })).resolves.toEqual({ ok: true });
     const secondInit = fetch.mock.calls[1]![1] as { headers: Record<string, string> };

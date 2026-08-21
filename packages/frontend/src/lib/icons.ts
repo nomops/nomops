@@ -204,12 +204,14 @@ const NODE: Record<string, IconVisual> = {
   webhook: { svg: GLYPH.webhook, color: '#8b5cf6' },
   schedule: { svg: GLYPH.clock, color: '#f5a623' },
   pollingTrigger: { svg: GLYPH.broadcast, color: '#f5a623' },
+  nomopsTrigger: { svg: GLYPH.broadcast, color: '#ff6900' },
   set: { svg: GLYPH.pen, color: '#4c9df0' },
   noOp: { svg: GLYPH.arrowRight, color: '#9a9aa6' },
   if: { svg: GLYPH.branch, color: '#4cc38a' },
   merge: { svg: GLYPH.merge, color: '#4cc38a' },
   code: { svg: GLYPH.code, color: '#e4e4ea' },
   httpRequest: { svg: GLYPH.globe, color: '#4c9df0' },
+  nomops: { svg: GLYPH.sprocket, color: '#ff6900' },
   executeWorkflow: { svg: GLYPH.subflow, color: '#8b5cf6' },
   wait: { svg: GLYPH.pause, color: '#f5a623' },
   aiAgent: { svg: GLYPH.robot, color: '#ff6900' },
@@ -239,6 +241,7 @@ const NODE: Record<string, IconVisual> = {
 // ── 凭证类型 → 图标 ──────────────────────────────────────────────────────
 const CRED: Record<string, IconVisual> = {
   // 通用鉴权
+  nomopsApi: { svg: GLYPH.key, color: '#ff6900' },
   httpHeaderAuth: { svg: GLYPH.key, color: '#b0b0bb' },
   httpBasicAuth: { svg: GLYPH.user, color: '#b0b0bb' },
   httpDigestAuth: { svg: GLYPH.lock, color: '#b0b0bb' },

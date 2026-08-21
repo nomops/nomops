@@ -44,7 +44,7 @@ export class PublicationOutboxService {
       for (const entry of entries) {
         try {
           const row = await this.repos.workflows.findByIdUnscoped(entry.workflowId);
-          if (row?.active) await this.activeWorkflows.add(row);
+          if (row?.active) await this.activeWorkflows.add(row, 'update');
           await this.repos.publishPipeline.completePublication(entry.id, this.owner);
           delivered++;
         } catch (error) {

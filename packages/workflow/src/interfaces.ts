@@ -463,6 +463,11 @@ export interface IHttpRequestOptions {
 export interface INodeExecutionHelpers {
   httpRequest(options: IHttpRequestOptions): Promise<unknown>;
   /**
+   * 调用当前 Nomops 实例的版本化 API。服务端把目标固定到本实例、把 projectId
+   * 固定到当前执行项目，并只接受枚举操作；节点不能提供 URL、路径或项目 ID。
+   */
+  nomopsApiRequest?(options: INomopsApiRequestOptions): Promise<unknown>;
+  /**
    * 执行子工作流（ExecuteWorkflow 节点用）：入参 items 作为子流种子，
    * 返回子流末节点输出。由服务层注入（归属校验 + 递归深度限制），
    * 纯引擎环境（无 DB）下不可用。
@@ -482,6 +487,25 @@ export interface INodeExecutionHelpers {
   bufferToBinary(buffer: Uint8Array, meta: { mimeType: string; fileName?: string }): Promise<IBinaryData>;
   /** 当前项目的数据表能力；项目归属由 server 注入的闭包固定，节点不能指定 projectId。 */
   dataTables?: IDataTableOperations;
+}
+
+export type NomopsApiOperation =
+  | 'workflow.list'
+  | 'workflow.get'
+  | 'workflow.activate'
+  | 'workflow.deactivate'
+  | 'execution.list'
+  | 'execution.get'
+  | 'execution.retry'
+  | 'execution.stop';
+
+export interface INomopsApiRequestOptions {
+  operation: NomopsApiOperation;
+  apiKey: string;
+  resourceId?: string;
+  limit?: number;
+  useOriginal?: boolean;
+  signal?: AbortSignal;
 }
 
 export type DataTableColumnType = 'string' | 'number' | 'boolean' | 'date';
@@ -570,6 +594,9 @@ export interface IEventStreamOptions {
 export interface ITriggerContext {
   emit(data: INodeExecutionData[][]): void;
   getNodeParameter(name: string): unknown;
+  /** 当前注册发生的生命周期；仅由触发器管理器提供，节点不能自行伪造。 */
+  getActivationMode(): 'init' | 'activate' | 'update';
+  getWorkflow(): { id: string; name: string };
   getWorkflowStaticData(type: string): JsonObject;
   helpers: {
     openEventStream(

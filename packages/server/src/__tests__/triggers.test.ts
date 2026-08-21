@@ -19,6 +19,18 @@ async function createWorkflow(body: Record<string, unknown>): Promise<string> {
   return res.body.id as string;
 }
 
+async function waitForTriggered(id: string, count: number): Promise<Array<{ id: string; workflowId: string; mode: string }>> {
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const rows = (await request(app).get('/api/executions').set(authed()).expect(200)).body as Array<{
+      id: string; workflowId: string; mode: string;
+    }>;
+    const matching = rows.filter((entry) => entry.workflowId === id && entry.mode === 'trigger');
+    if (matching.length >= count) return matching;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`Timed out waiting for ${count} trigger executions`);
+}
+
 const webhookWorkflow = (path: string) => ({
   name: `wh-${path}`,
   nodes: [
@@ -136,6 +148,46 @@ describe('Cron/Schedule 触发（验收项，#38 迁到 DB 调度器）', () => 
       .send({ active: true })
       .expect(400);
     expect(res.body.error).toMatch(/Invalid cron expression/);
+  });
+});
+
+describe('Nomops 实例生命周期触发器', () => {
+  it('区分激活、已发布更新与实例恢复，且只输出当前工作流的最小元数据', async () => {
+    const id = await createWorkflow({
+      name: 'instance-lifecycle',
+      nodes: [
+        {
+          id: 'a', name: 'Instance Event', type: 'nomops.nomopsTrigger', typeVersion: 1, position: [0, 0],
+          parameters: { events: ['activate', 'update', 'init'] },
+        },
+        { id: 'b', name: 'Pass', type: 'nomops.noOp', typeVersion: 1, position: [200, 0], parameters: {} },
+      ],
+      connections: { 'Instance Event': { main: [[{ node: 'Pass', type: 'main', index: 0 }]] } },
+    });
+
+    await request(app).post(`/api/workflows/${id}/activate`).set(authed()).send({ active: true }).expect(200);
+    let runs = await waitForTriggered(id, 1);
+    let detail = await request(app).get(`/api/executions/${runs[0]!.id}`).set(authed()).expect(200);
+    let payload = detail.body.data.resultData.runData['Instance Event'][0].data.main[0][0].json;
+    expect(payload).toMatchObject({ eventType: 'activate', workflowId: id, workflowName: 'instance-lifecycle' });
+    expect(payload).not.toHaveProperty('projectId');
+
+    await request(app).patch(`/api/workflows/${id}`).set(authed()).send({ description: 'published update' }).expect(200);
+    await request(app).post(`/api/workflows/${id}/publish`).set(authed()).send({}).expect(200);
+    runs = await waitForTriggered(id, 2);
+    const eventTypes = async (entries: typeof runs) => Promise.all(entries.map(async (entry) => {
+      const response = await request(app).get(`/api/executions/${entry.id}`).set(authed()).expect(200);
+      return response.body.data.resultData.runData['Instance Event'][0].data.main[0][0].json.eventType as string;
+    }));
+    expect(await eventTypes(runs)).toEqual(expect.arrayContaining(['activate', 'update']));
+
+    const row = await boot.services.repos.workflows.findByIdUnscoped(id);
+    expect(row).toBeTruthy();
+    await boot.services.activeWorkflows.add(row!, 'init');
+    runs = await waitForTriggered(id, 3);
+    expect(await eventTypes(runs)).toEqual(expect.arrayContaining(['activate', 'update', 'init']));
+
+    await request(app).post(`/api/workflows/${id}/activate`).set(authed()).send({ active: false }).expect(200);
   });
 });
 

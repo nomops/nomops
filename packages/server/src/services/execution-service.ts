@@ -8,6 +8,7 @@ import {
   computeDirtyNodes,
   incomingSignatureOf,
   seedTriggerOutput,
+  defaultHttpRequest,
 } from '@nomops/core';
 import type {
   IBinaryData,
@@ -16,6 +17,7 @@ import type {
   IInlineWorkflowDefinition,
   INode,
   INodeExecutionData,
+  INomopsApiRequestOptions,
   IRun,
   IRunExecutionData,
   IWorkflowSettings,
@@ -93,6 +95,8 @@ export class ExecutionService {
     private readonly httpRequestImpl?: (options: IHttpRequestOptions) => Promise<unknown>,
     /** 项目级数据表服务；以 buildAdditionalData 的 projectId 固定归属后再注入节点。 */
     private readonly dataTableService?: DataTableService,
+    /** 固定本实例 API transport；仅测试可注入，本地/生产默认走安全 HTTP 实现。 */
+    private readonly nomopsApiHttpRequest: (options: IHttpRequestOptions) => Promise<unknown> = defaultHttpRequest,
   ) {}
 
   /** 本进程在跑的引擎实例（executionId → engine）；stop 经此直达 cancel。 */
@@ -723,6 +727,7 @@ export class ExecutionService {
       },
       executeSubWorkflow: (workflow: string | IInlineWorkflowDefinition, items: INodeExecutionData[]) =>
         this.runSubWorkflow(workflow, projectId, items, depth, production, runContext),
+      nomopsApiRequest: (options: INomopsApiRequestOptions) => this.requestNomopsApi(projectId, options),
       ...(this.dataTableService
         ? {
             dataTables: {
@@ -743,6 +748,72 @@ export class ExecutionService {
       ...(this.binaryStore ? { binaryStore: this.binaryStore } : {}),
       ...(this.httpRequestImpl ? { httpRequest: this.httpRequestImpl } : {}), // 测试注入假 provider（#44 M2）
     };
+  }
+
+  /**
+   * Nomops 自 API 的唯一网络出口。节点只传枚举操作和资源 ID；目标、版本前缀、
+   * 当前项目与认证头全部由服务端固定，避免形成任意 URL 代理或跨项目能力。
+   */
+  private requestNomopsApi(projectId: string, options: INomopsApiRequestOptions): Promise<unknown> {
+    if (!options.apiKey || !options.apiKey.startsWith('nmp_')) {
+      throw new OperationalError('Nomops API credential is invalid', { status: 401 });
+    }
+    const id = options.resourceId ? encodeURIComponent(options.resourceId) : '';
+    let path: string;
+    let method: NonNullable<IHttpRequestOptions['method']> = 'GET';
+    let body: unknown;
+    switch (options.operation) {
+      case 'workflow.list': path = '/workflows'; break;
+      case 'workflow.get':
+        if (!id) throw new OperationalError('Workflow ID is required', { status: 400 });
+        path = `/workflows/${id}`;
+        break;
+      case 'workflow.activate':
+      case 'workflow.deactivate':
+        if (!id) throw new OperationalError('Workflow ID is required', { status: 400 });
+        path = `/workflows/${id}/activate`;
+        method = 'POST';
+        body = { active: options.operation === 'workflow.activate' };
+        break;
+      case 'execution.list': path = '/executions'; break;
+      case 'execution.get':
+        if (!id) throw new OperationalError('Execution ID is required', { status: 400 });
+        path = `/executions/${id}`;
+        break;
+      case 'execution.retry':
+        if (!id) throw new OperationalError('Execution ID is required', { status: 400 });
+        path = `/executions/${id}/retry`;
+        method = 'POST';
+        body = { useOriginal: options.useOriginal === true };
+        break;
+      case 'execution.stop':
+        if (!id) throw new OperationalError('Execution ID is required', { status: 400 });
+        path = `/executions/${id}/stop`;
+        method = 'POST';
+        body = {};
+        break;
+      default:
+        throw new OperationalError('Nomops API operation is not allowed', { status: 400 });
+    }
+    const base = new URL(this.baseUrl);
+    if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password) {
+      throw new OperationalError('NOMOPS_BASE_URL must be an HTTP(S) URL without credentials', { status: 500 });
+    }
+    const target = new URL(`/api/v1${path}`, base);
+    const timeout = AbortSignal.timeout(30_000);
+    const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
+    return this.nomopsApiHttpRequest({
+      url: target.toString(),
+      method,
+      headers: {
+        accept: 'application/json',
+        'x-nomops-api-key': options.apiKey,
+        'x-project-id': projectId,
+      },
+      ...(body === undefined ? {} : { body }),
+      urlTrust: 'trusted',
+      signal,
+    });
   }
 
   /**

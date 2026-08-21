@@ -688,6 +688,7 @@ export class WorkflowExecute {
   private additionalDataWithSignal(): IWorkflowExecuteAdditionalData {
     const additionalData = this.options.additionalData ?? {};
     const request = additionalData.httpRequest ?? defaultHttpRequest;
+    const nomopsApiRequest = additionalData.nomopsApiRequest;
     return {
       ...additionalData,
       httpRequest: (options) => {
@@ -696,6 +697,16 @@ export class WorkflowExecute {
           : this.abortController.signal;
         return request({ ...options, signal });
       },
+      ...(nomopsApiRequest
+        ? {
+            nomopsApiRequest: (options) => {
+              const signal = options.signal
+                ? AbortSignal.any([options.signal, this.abortController.signal])
+                : this.abortController.signal;
+              return nomopsApiRequest({ ...options, signal });
+            },
+          }
+        : {}),
     };
   }
 

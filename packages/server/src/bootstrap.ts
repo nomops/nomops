@@ -183,6 +183,8 @@ export interface BootstrapOptions {
   webhookTestTtlMs?: number;
   /** 引擎 httpRequest 覆盖（#44 M2；测试注入假 AI provider，避免打真实网络）。 */
   httpRequest?: (options: IHttpRequestOptions) => Promise<unknown>;
+  /** Nomops 自 API transport；只供明确测试注入，生产目标固定为 NOMOPS_BASE_URL。 */
+  nomopsApiHttpRequest?: (options: IHttpRequestOptions) => Promise<unknown>;
   /** 支持集成配置；仅测试/嵌入式启动显式注入，生产缺省读取 NOMOPS_SUPPORT_*。 */
   support?: Partial<SupportConfiguration>;
   /** 支持集成 HTTP transport；只供明确测试注入，本地夹具不得放松生产 SSRF 策略。 */
@@ -392,6 +394,7 @@ export async function bootstrap(options: BootstrapOptions | DatabaseConfig = {})
     (trace) => otel.exportExecution(trace),
     opts.httpRequest, // #44 M2：测试注入假 provider
     dataTables,
+    opts.nomopsApiHttpRequest,
   );
 
   // binary GC（#22）：删执行记录（单删/批删/pruner/save-policy）前先清其 binary 引用

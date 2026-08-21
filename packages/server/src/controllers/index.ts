@@ -814,8 +814,11 @@ export function createApiRouter(services: AppServices): Router {
         // 从未发布 → 激活即发布当前定义（对标基线：激活总是让「此刻的定义」上生产）
         if (!row.publishedVersionId) {
           row = await services.workflows.publish(row.id, auth(req).projectId, auth(req).userId);
+          // 首次发布属于本次 activate，而不是“已激活工作流更新”。在 active=true 前
+          // 投递并完成 outbox，避免稍后的 outbox 重放再产生一次 update 生命周期事件。
+          await services.publicationOutbox.publish(row);
         }
-        await services.activeWorkflows.add(row); // 失败抛 OperationalError → 400（activationError）
+        await services.activeWorkflows.add(row, 'activate'); // 失败抛 OperationalError → 400（activationError）
         await services.repos.workflows.setActive(row.id, true);
       } else {
         await services.activeWorkflows.remove(row.id);

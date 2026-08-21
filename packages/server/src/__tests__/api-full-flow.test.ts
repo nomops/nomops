@@ -341,6 +341,8 @@ describe('node-types', () => {
       'markdown',
       'merge',
       'noOp',
+      'nomops',
+      'nomopsTrigger',
       'notion',
       'notionTool',
       'pollingTrigger',
