@@ -116,6 +116,16 @@ describe('Code 节点（vm 临时沙箱）', () => {
     }
   }, 15_000);
 
+  it('经宿主构造器逃逸也读不到文件系统或网络', async () => {
+    const code = `
+      const fs = Object.constructor("return process.getBuiltinModule('node:fs')")();
+      return [{ json: { host: String(fs.readFileSync('/etc/hostname')) } }];
+    `;
+    await expect(
+      new Code().execute!.call(stubContext([[{ json: {} }]], { code })),
+    ).rejects.toThrow(/Code node execution failed/);
+  }, 15_000);
+
   it('用户代码改不到引擎的输入数据（深拷贝隔离）', async () => {
     const input = [{ json: { keep: true } }];
     await new Code().execute!.call(

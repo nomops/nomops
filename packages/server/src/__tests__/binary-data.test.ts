@@ -61,6 +61,40 @@ describe('二进制数据', () => {
 
     // store 里存在但不属于该执行的 id → 404（包含校验挡住任意拉取）
     await request(app).get(`/api/executions/${execution.id}/binary/${orphan.id}`).set(authed()).expect(404);
+
+    // id 只是执行 JSON 里的普通字符串，不是 binary 引用 → 仍然 404
+    const mentioned = await boot.services.repos.executions.create(
+      { workflowId: wf.id, status: 'success', mode: 'manual', startedAt: new Date() },
+      {
+        workflowData: { name: wf.name, nodes: wf.nodes, connections: wf.connections },
+        data: {
+          resultData: {
+            runData: {
+              S: [{ startTime: 0, executionTime: 1, source: [], data: { main: [[{ json: { note: orphan.id } }]] } }],
+            },
+          },
+        },
+      },
+    );
+    await request(app).get(`/api/executions/${mentioned.id}/binary/${orphan.id}`).set(authed()).expect(404);
+
+    const weirdName = await store.put(Buffer.from('NAME'), { mimeType: 'application/pdf', fileName: 'a\r\nX-Injected: 1".pdf' });
+    const named = await boot.services.repos.executions.create(
+      { workflowId: wf.id, status: 'success', mode: 'manual', startedAt: new Date() },
+      {
+        workflowData: { name: wf.name, nodes: wf.nodes, connections: wf.connections },
+        data: {
+          resultData: {
+            runData: {
+              S: [{ startTime: 0, executionTime: 1, source: [], data: { main: [[{ json: {}, binary: { file: weirdName } }]] } }],
+            },
+          },
+        },
+      },
+    );
+    const header = await request(app).get(`/api/executions/${named.id}/binary/${weirdName.id}`).set(authed()).expect(200);
+    expect(header.headers['content-disposition']).toBe('attachment; filename="aX-Injected: 1.pdf"');
+    expect(header.headers['x-injected']).toBeUndefined();
   });
 });
 

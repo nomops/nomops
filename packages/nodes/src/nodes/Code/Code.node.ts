@@ -7,17 +7,38 @@ const TIMEOUT_MS = 5_000;
 
 /**
  * 子进程 runner（内联脚本，经 `node -e` 启动，IPC 通信）。
- * 在子进程内仍用 vm 收紧全局，但真正的隔离边界是进程：
- * 崩溃/死循环只影响子进程，超时由父进程 SIGKILL 强杀。
- * 子进程以空 env 启动，用户代码作用域内无 require/process。
+ * 进程隔离挡住崩溃；`--permission` 禁止文件系统、子进程、native addon，
+ * `--disallow-code-generation-from-strings` 挡住 vm 经 Function 构造器逃逸。
+ * 网络模块在跑用户代码前被替换，空 env 不带入父进程环境变量。
  */
 const RUNNER_SOURCE = `
 const vm = require('node:vm');
+function __nomopsDenyNetwork() {
+  const deny = () => { throw new Error('Network access is disabled in the Code node'); };
+  const patch = (mod) => {
+    if (!mod || (typeof mod !== 'object' && typeof mod !== 'function')) return;
+    for (const key of Object.getOwnPropertyNames(mod)) {
+      try {
+        if (typeof mod[key] === 'function') mod[key] = deny;
+      } catch {}
+    }
+  };
+  for (const name of ['node:net', 'node:dns', 'node:dns/promises', 'node:http', 'node:https', 'node:tls', 'node:dgram']) {
+    try { patch(process.getBuiltinModule(name)); } catch {}
+  }
+  try { globalThis.fetch = deny; } catch {}
+  try { Object.defineProperty(globalThis, 'WebSocket', { value: deny, configurable: true }); } catch {}
+}
+__nomopsDenyNetwork();
 process.on('message', ({ code, items }) => {
   try {
     const $input = { all: () => items, first: () => items[0], item: items[0] };
     const console = Object.freeze({ log() {}, info() {}, warn() {}, error() {} });
-    const sandbox = vm.createContext({ items, item: items[0], $json: items[0]?.json, $input, console, JSON, Math, Date, Object, Array, String, Number, Boolean });
+    const sandbox = vm.createContext({
+      items, item: items[0], $json: items[0]?.json, $input, console,
+      JSON, Math, Date, Object, Array, String, Number, Boolean,
+      WebAssembly: undefined, fetch: undefined, process: undefined, require: undefined,
+    });
     const result = vm.runInContext('(function(){ "use strict";\\n' + code + '\\n})()', sandbox, { timeout: 4000 });
     process.send({ ok: true, result });
   } catch (error) {
@@ -83,7 +104,12 @@ interface RunnerReply {
 /** 在独立进程里跑用户代码。 */
 export function runJavaScriptInChildProcess(code: string, items: INodeExecutionData[]): Promise<unknown> {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ['-e', RUNNER_SOURCE], {
+    const child = spawn(process.execPath, [
+      '--permission',
+      '--disallow-code-generation-from-strings',
+      '-e',
+      RUNNER_SOURCE,
+    ], {
       stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
       env: {}, // 不泄漏父进程环境变量（凭证等可能在 env 里）
     });

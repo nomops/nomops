@@ -41,14 +41,21 @@ export function setPath(target: JsonObject, path: string, value: unknown): void 
 export function deletePath(target: JsonObject, path: string): boolean {
   const segments = path.split('.').map((segment) => segment.trim()).filter(Boolean);
   if (segments.length === 0) return false;
+  if (segments.some((segment) => segment === '__proto__' || segment === 'prototype' || segment === 'constructor')) {
+    throw new OperationalError('Output path contains a forbidden segment', {});
+  }
 
   let current: JsonObject = target;
   for (const segment of segments.slice(0, -1)) {
+    if (!Object.hasOwn(current, segment)) return false;
     const next = current[segment];
-    if (!isPlainObject(next)) return false;
+    if (!isPlainObject(next) || next === Object.prototype) return false;
     current = next;
   }
-  return delete current[segments.at(-1)!];
+  const last = segments.at(-1)!;
+  if (!Object.hasOwn(current, last)) return false;
+  delete current[last];
+  return true;
 }
 
 function canonicalize(value: unknown, seen: Set<object>): unknown {
