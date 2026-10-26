@@ -84,6 +84,9 @@ export class MfaService {
   async setup(userId: string): Promise<MfaSetupResult> {
     const user = await this.repos.users.findById(userId);
     if (!user) throw new OperationalError('User not found', { status: 404 });
+    if (user.mfaEnabled) {
+      throw new OperationalError('Two-factor is already enabled. Disable it with a current code before setting it up again.', { status: 400 });
+    }
     const secret = base32Encode(randomBytes(20));
     const backupCodes = generateBackupCodes();
     await this.repos.users.setMfaState(userId, {

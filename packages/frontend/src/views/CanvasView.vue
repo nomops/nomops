@@ -492,6 +492,7 @@ watch(
   async (id) => {
     if (route.name === 'canvas' && id) {
       execution.reset();
+      execution.connectWs(String(id));
       await editor.load(String(id));
     }
   },

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { IExecuteContext, INodeExecutionData } from '@nomops/workflow';
+import { deletePath } from '../../lib/data-transform.js';
 import { Sort } from '../Sort/Sort.node.js';
 import { Limit } from '../Limit/Limit.node.js';
 import { RemoveDuplicates } from '../RemoveDuplicates/RemoveDuplicates.node.js';
@@ -125,6 +126,16 @@ describe('Rename Keys 节点', () => {
       regexReplacements: { replacements: [{ pattern: '_id$', replacement: 'Id', maxDepth: -1 }] },
     }));
     expect(output[0]![0]!.json).toEqual({ userId: 1, nested: { orderId: 2 } });
+  });
+
+  it('改名路径不能删掉 Object.prototype 上的方法', async () => {
+    expect(typeof Object.prototype.toString).toBe('function');
+    await expect(new RenameKeys().execute!.call(stubContext([[{ json: { keep: true } }]], {
+      keys: { renames: [{ currentKey: '__proto__.toString', newKey: 'stolen' }] },
+    }))).resolves.toBeDefined();
+    expect(typeof Object.prototype.toString).toBe('function');
+    expect(() => deletePath({ keep: true }, '__proto__.toString')).toThrow(/forbidden segment/);
+    expect(typeof Object.prototype.toString).toBe('function');
   });
 
   it('潜在灾难回溯正则被拒绝', async () => {

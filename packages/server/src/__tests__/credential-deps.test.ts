@@ -4,6 +4,7 @@ import type { Express } from 'express';
 import type { BootstrapResult } from '../bootstrap.js';
 import { bootstrap } from '../bootstrap.js';
 import { createApp } from '../app.js';
+import { inviteUser } from './helpers.js';
 
 /**
  * backlog #40b：凭证引用索引 —— 删被引用凭证前可见引用方。
@@ -72,5 +73,10 @@ describe('凭证引用索引（backlog #40b）', () => {
     await request(app).delete(`/api/workflows/${wf.id}`).set(authed()).expect(204);
     const afterCount = (await request(app).get(`/api/credentials/${credId}/usage`).set(authed()).expect(200)).body.workflows.length;
     expect(afterCount).toBe(beforeCount - 1);
+  });
+
+  it('其他项目不能凭凭证 id 读到引用方名称', async () => {
+    const other = await inviteUser(app, token, 'other-dep@test.dev');
+    await request(app).get(`/api/credentials/${credId}/usage`).set({ Authorization: `Bearer ${other.token}` }).expect(404);
   });
 });

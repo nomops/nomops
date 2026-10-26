@@ -483,11 +483,15 @@ export class WorkflowExecute {
     exec: IExecuteData,
     deadline: IDeadline,
   ): Promise<INodeExecutionData[][]> {
+    if (deadline.at !== Infinity && Date.now() >= deadline.at) {
+      throw new ExecutionTimeout(deadline.timeoutMs);
+    }
     const pending = this.runNode(workflow, state, exec);
     if (deadline.at === Infinity) return pending;
 
     const remaining = deadline.at - Date.now();
     if (remaining <= 0) {
+      this.abortController.abort(new ExecutionTimeout(deadline.timeoutMs));
       pending.catch(() => {});
       throw new ExecutionTimeout(deadline.timeoutMs);
     }

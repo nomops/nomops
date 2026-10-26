@@ -157,6 +157,7 @@ export const useExecutionStore = defineStore('execution', {
       if (event.type !== 'executionStarted' && event.executionId !== this.currentExecutionId) return;
       switch (event.type) {
         case 'executionStarted':
+          if (this.lastExecutionId === event.executionId && !this.running) break;
           this.statusByNode = {};
           this.running = true;
           this.currentExecutionId = event.executionId;
@@ -189,12 +190,27 @@ export const useExecutionStore = defineStore('execution', {
       this.statusByNode = {};
       this.lastRunData = null;
       this.running = true;
+      this.currentExecutionId = null;
       try {
         const summary = await api.workflows.run(workflowId, opts);
         if (summary.error) this.runError = summary.error;
+        const terminal = summary.status === 'success' || summary.status === 'error' || summary.status === 'canceled';
+        if (terminal) {
+          if (!this.currentExecutionId || this.currentExecutionId === summary.executionId) {
+            this.running = false;
+            this.currentExecutionId = null;
+          }
+          if (summary.executionId) {
+            this.lastExecutionId = summary.executionId;
+            await this.fetchRunData(summary.executionId).catch(() => undefined);
+          }
+        } else if (summary.executionId && !this.currentExecutionId) {
+          this.currentExecutionId = summary.executionId;
+        }
       } catch (error) {
         this.runError = (error as Error).message;
         this.running = false;
+        this.currentExecutionId = null;
       }
     },
 

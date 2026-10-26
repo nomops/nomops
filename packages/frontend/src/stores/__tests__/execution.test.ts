@@ -148,6 +148,67 @@ describe('execution WebSocket isolation and recovery', () => {
     expect(FakeWebSocket.instances).toHaveLength(2);
   });
 
+  it('clears running when the run API returns a finished execution without a socket event', async () => {
+    vi.spyOn(api.workflows, 'run').mockResolvedValue({
+      executionId: 'execution-done',
+      status: 'success',
+    });
+    const getExecution = vi.spyOn(api.executions, 'get').mockResolvedValue({
+      execution: {
+        id: 'execution-done',
+        workflowId: 'workflow-a',
+        status: 'success',
+        mode: 'manual',
+        startedAt: null,
+        stoppedAt: null,
+        createdAt: new Date(0).toISOString(),
+      },
+      data: null,
+      metadata: [],
+    });
+    await execution.run('workflow-a');
+    expect(execution.running).toBe(false);
+    expect(execution.currentExecutionId).toBeNull();
+    expect(execution.lastExecutionId).toBe('execution-done');
+    expect(getExecution).toHaveBeenCalledWith('execution-done');
+  });
+
+  it('keeps a waiting run stoppable when executionStarted never arrived', async () => {
+    vi.spyOn(api.workflows, 'run').mockResolvedValue({
+      executionId: 'execution-wait',
+      status: 'waiting',
+    });
+    await execution.run('workflow-a');
+    expect(execution.running).toBe(true);
+    expect(execution.currentExecutionId).toBe('execution-wait');
+  });
+
+  it('ignores a late executionStarted for a run the HTTP response already finished', async () => {
+    vi.spyOn(api.workflows, 'run').mockResolvedValue({
+      executionId: 'execution-done',
+      status: 'success',
+    });
+    vi.spyOn(api.executions, 'get').mockResolvedValue({
+      execution: {
+        id: 'execution-done',
+        workflowId: 'workflow-a',
+        status: 'success',
+        mode: 'manual',
+        startedAt: null,
+        stoppedAt: null,
+        createdAt: new Date(0).toISOString(),
+      },
+      data: null,
+      metadata: [],
+    });
+    await execution.run('workflow-a');
+    execution.handleEvent({
+      type: 'executionStarted', executionId: 'execution-done', workflowId: 'workflow-a',
+    });
+    expect(execution.running).toBe(false);
+    expect(execution.currentExecutionId).toBeNull();
+  });
+
   it('does not reconnect after an intentional disconnect', () => {
     execution.connectWs('workflow-a');
     FakeWebSocket.instances[0]!.open();

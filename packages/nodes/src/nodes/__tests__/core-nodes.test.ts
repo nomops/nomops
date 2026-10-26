@@ -72,6 +72,27 @@ describe('Merge 节点', () => {
     expect(output[0]!.map((it) => it.json)).toEqual([{ a: 1 }, { b: 2 }]);
   });
 
+  it('append 保留 numberInputs 声明的每一路，而不是只拼前两路', async () => {
+    const output = await new Merge().execute!.call(
+      stubContext(
+        [[{ json: { n: 1 } }], [{ json: { n: 2 } }], [{ json: { n: 3 } }]],
+        { mode: 'append', numberInputs: 3 },
+      ),
+    );
+    expect(output[0]!.map((it) => it.json)).toEqual([{ n: 1 }, { n: 2 }, { n: 3 }]);
+  });
+
+  it('chooseBranch 可以选出第 3 路输入', async () => {
+    const third = [{ json: { n: 3 } }];
+    const output = await new Merge().execute!.call(
+      stubContext(
+        [[{ json: { n: 1 } }], [{ json: { n: 2 } }], third],
+        { mode: 'chooseBranch', output: 'specifiedInput', useDataOfInput: 3, numberInputs: 3 },
+      ),
+    );
+    expect(output[0]).toEqual(third);
+  });
+
   it('combineByPosition 按位置合并 json', async () => {
     const output = await new Merge().execute!.call(
       stubContext([[{ json: { a: 1 } }, { json: { a: 2 } }], [{ json: { b: 10 } }]], {
@@ -114,6 +135,16 @@ describe('Code 节点（vm 临时沙箱）', () => {
         new Code().execute!.call(stubContext([[{ json: {} }]], { code })),
       ).rejects.toThrow(/Code node execution failed/);
     }
+  }, 15_000);
+
+  it('经宿主构造器逃逸也读不到文件系统或网络', async () => {
+    const code = `
+      const fs = Object.constructor("return process.getBuiltinModule('node:fs')")();
+      return [{ json: { host: String(fs.readFileSync('/etc/hostname')) } }];
+    `;
+    await expect(
+      new Code().execute!.call(stubContext([[{ json: {} }]], { code })),
+    ).rejects.toThrow(/Code node execution failed/);
   }, 15_000);
 
   it('用户代码改不到引擎的输入数据（深拷贝隔离）', async () => {

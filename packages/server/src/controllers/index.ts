@@ -12,6 +12,7 @@ import type {
   JsonObject,
 } from '@nomops/workflow';
 import { OperationalError } from '@nomops/workflow';
+import { collectBinaryIds } from '@nomops/core';
 import type { AppServices } from '../app-services.js';
 import {
   assertInstanceAdmin as assertInstanceAdminOf,
@@ -76,6 +77,33 @@ import {
   sourceControlPushSchema,
   licenseActivateSchema,
 } from '../schemas.js';
+
+function binaryDownloadMeta(value: unknown, binaryId: string): { mimeType: string; fileName?: string } | null {
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const found = binaryDownloadMeta(entry, binaryId);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (value === null || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  if (record['id'] === binaryId && typeof record['mimeType'] === 'string') {
+    return {
+      mimeType: record['mimeType'],
+      ...(typeof record['fileName'] === 'string' ? { fileName: record['fileName'] } : {}),
+    };
+  }
+  for (const entry of Object.values(record)) {
+    const found = binaryDownloadMeta(entry, binaryId);
+    if (found) return found;
+  }
+  return null;
+}
+
+function headerValue(value: string): string {
+  return value.replace(/[\u0000-\u001f\u007f"]/g, '').trim();
+}
 
 /**
  * 免密登录落地页（docs/11 Phase 2.5）：成功则把会话令牌写进 localStorage（与前端 client.ts 同 key）
@@ -344,7 +372,18 @@ export function createAuthRouter(services: AppServices): Router {
     '/ldap/login',
     h(async (req, res) => {
       const body = (req.body ?? {}) as { username?: string; password?: string };
-      const { result } = await services.ldap.login(body.username ?? '', body.password ?? '');
+      const username = body.username ?? '';
+      const ip = req.ip ?? 'unknown';
+      await services.authRateLimit.assertAllowed(username, ip);
+      let result;
+      try {
+        result = (await services.ldap.login(username, body.password ?? '')).result;
+      } catch (error) {
+        const status = error instanceof OperationalError ? error.context['status'] : undefined;
+        if (status === 401) await services.authRateLimit.recordFailure(username, ip);
+        throw error;
+      }
+      await services.authRateLimit.clear(username, ip);
       services.audit.log({
         userId: result.user.id,
         action: 'auth.ldap.login',
@@ -929,28 +968,17 @@ export function createApiRouter(services: AppServices): Router {
     h(async (req, res) => {
       const { data } = await services.executions.getById(param(req, 'id'), auth(req).projectId);
       const binaryId = param(req, 'binaryId');
-      const serialized = JSON.stringify(data ?? {});
-      if (!serialized.includes(`"${binaryId}"`)) {
+      if (!collectBinaryIds(data ?? {}).has(binaryId)) {
         throw new OperationalError('Binary data not found in this execution', { status: 404 });
       }
       const store = services.executions.getBinaryStore();
       if (!store) throw new OperationalError('Binary storage is not configured', { status: 404 });
       const buffer = await store.get(binaryId);
-      // 从执行数据里找该引用的元数据（mimeType/fileName）
-      const match = serialized.match(new RegExp(`\\{[^{}]*"id":"${binaryId}"[^{}]*\\}`));
-      let mimeType = 'application/octet-stream';
-      let fileName: string | undefined;
-      if (match) {
-        try {
-          const meta = JSON.parse(match[0]) as { mimeType?: string; fileName?: string };
-          if (meta.mimeType) mimeType = meta.mimeType;
-          fileName = meta.fileName;
-        } catch {
-          /* 元数据解析失败用默认 */
-        }
-      }
+      const meta = binaryDownloadMeta(data ?? {}, binaryId);
+      const mimeType = headerValue(meta?.mimeType ?? '') || 'application/octet-stream';
+      const fileName = meta?.fileName ? headerValue(meta.fileName) : '';
       res.setHeader('content-type', mimeType);
-      if (fileName) res.setHeader('content-disposition', `attachment; filename="${fileName.replace(/"/g, '')}"`);
+      if (fileName) res.setHeader('content-disposition', `attachment; filename="${fileName}"`);
       res.end(buffer);
     }),
   );
@@ -1111,10 +1139,13 @@ export function createApiRouter(services: AppServices): Router {
   router.get(
     '/credentials/:id/usage',
     h(async (req, res) => {
+      const projectId = auth(req).projectId;
+      const credential = await services.repos.credentials.findById(param(req, 'id'), projectId);
+      if (!credential) throw new OperationalError('Credential not found', { status: 404 });
       const ids = await services.repos.publishPipeline.workflowsUsingCredential(param(req, 'id'));
       const workflows = [];
       for (const id of ids) {
-        const wf = await services.repos.workflows.findByIdUnscoped(id).catch(() => null);
+        const wf = await services.repos.workflows.findById(id, projectId);
         if (wf) workflows.push({ id: wf.id, name: wf.name });
       }
       res.json({ workflows });
