@@ -106,4 +106,17 @@ describe('OAuth2 自动续期', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     fetchSpy.mockRestore();
   });
+
+  it('用户填写的内网 token URL 在刷新前被拒绝', async () => {
+    const cred = await request(app).post('/api/credentials').set(authed()).send({
+      name: 'internal-oauth',
+      type: 'oauth2Api',
+      data: { accessTokenUrl: 'http://127.0.0.1:9/token', clientId: 'c', clientSecret: 's' },
+    }).expect(201);
+    await boot.services.credentials.updateData(cred.body.id as string, projectId, {
+      oauthTokenData: { access_token: 'stale', refresh_token: 'refresh', expires_at: Date.now() - 1 },
+    });
+    const svc = new OAuth2Service(boot.services.credentials, 'http://127.0.0.1:9', boot.services.repos);
+    await expect(svc.refreshIfNeeded(cred.body.id as string, projectId)).rejects.toThrow(/blocked by network policy/);
+  });
 });

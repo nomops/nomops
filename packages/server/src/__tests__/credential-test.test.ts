@@ -206,6 +206,16 @@ describe('Basic-auth 拼接型：Jira / Zendesk / Freshdesk / Twilio / Mailchimp
     expect(tester.lastReq).toBeUndefined();
   });
 
+  it('jira 域名是数字主机或 localhost → 缺字段不发请求', async () => {
+    for (const domain of ['127.0.0.1', 'http://10.1.2.3/rest', 'localhost:8080']) {
+      const jira = await createCred(owner, 'jiraApi', { domain, email: 'a@b.c', apiToken: 't' });
+      tester.lastReq = undefined;
+      const res = await testCred(owner, jira.body.id).expect(200);
+      expect(res.body).toMatchObject({ ok: false, tested: false });
+      expect(tester.lastReq).toBeUndefined();
+    }
+  });
+
   it('jira 域名含非法字符 → 缺字段不发请求（不拼进 URL）', async () => {
     const jira = await createCred(owner, 'jiraApi', { domain: 'acme..net/../x y', email: 'a@b.c', apiToken: 't' });
     tester.lastReq = undefined;

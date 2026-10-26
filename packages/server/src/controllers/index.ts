@@ -372,7 +372,18 @@ export function createAuthRouter(services: AppServices): Router {
     '/ldap/login',
     h(async (req, res) => {
       const body = (req.body ?? {}) as { username?: string; password?: string };
-      const { result } = await services.ldap.login(body.username ?? '', body.password ?? '');
+      const username = body.username ?? '';
+      const ip = req.ip ?? 'unknown';
+      await services.authRateLimit.assertAllowed(username, ip);
+      let result;
+      try {
+        result = (await services.ldap.login(username, body.password ?? '')).result;
+      } catch (error) {
+        const status = error instanceof OperationalError ? error.context['status'] : undefined;
+        if (status === 401) await services.authRateLimit.recordFailure(username, ip);
+        throw error;
+      }
+      await services.authRateLimit.clear(username, ip);
       services.audit.log({
         userId: result.user.id,
         action: 'auth.ldap.login',
@@ -1128,10 +1139,13 @@ export function createApiRouter(services: AppServices): Router {
   router.get(
     '/credentials/:id/usage',
     h(async (req, res) => {
+      const projectId = auth(req).projectId;
+      const credential = await services.repos.credentials.findById(param(req, 'id'), projectId);
+      if (!credential) throw new OperationalError('Credential not found', { status: 404 });
       const ids = await services.repos.publishPipeline.workflowsUsingCredential(param(req, 'id'));
       const workflows = [];
       for (const id of ids) {
-        const wf = await services.repos.workflows.findByIdUnscoped(id).catch(() => null);
+        const wf = await services.repos.workflows.findById(id, projectId);
         if (wf) workflows.push({ id: wf.id, name: wf.name });
       }
       res.json({ workflows });

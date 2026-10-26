@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { Repositories } from '@nomops/db';
+import { safeFetchWithRedirects } from '@nomops/core';
 import { OperationalError } from '@nomops/workflow';
 import type { JsonObject } from '@nomops/workflow';
 import type { CredentialService } from './credential-service.js';
@@ -111,18 +112,7 @@ export class OAuth2Service {
       redirect_uri: this.redirectUri(),
     });
     const headers = this.applyClientAuthentication(data, body);
-
-    const res = await fetch(tokenUrl, {
-      method: 'POST',
-      headers,
-      body,
-    }).catch((error: Error) => {
-      throw new OperationalError(`OAuth2 token exchange request failed: ${error.message}`, { status: 400 });
-    });
-    if (!res.ok) {
-      throw new OperationalError(`OAuth2 token exchange failed: HTTP ${res.status}`, { status: 400 });
-    }
-    const tokens = (await res.json().catch(() => ({}))) as JsonObject;
+    const tokens = await this.postToken(tokenUrl, headers, body, data['provider'] === 'demo' ? 'trusted' : 'user-controlled', 'OAuth2 token exchange');
     if (!tokens['access_token']) {
       throw new OperationalError('OAuth2 token exchange returned no access_token', { status: 400 });
     }
@@ -196,17 +186,7 @@ export class OAuth2Service {
         refresh_token: String(refreshToken),
       });
       const headers = this.applyClientAuthentication(data, body);
-      const res = await fetch(tokenUrl, {
-        method: 'POST',
-        headers,
-        body,
-      }).catch((error: Error) => {
-        throw new OperationalError(`OAuth2 token refresh request failed: ${error.message}`, { status: 400 });
-      });
-      if (!res.ok) {
-        throw new OperationalError(`OAuth2 token refresh failed: HTTP ${res.status}`, { status: 400 });
-      }
-      const tokens = (await res.json().catch(() => ({}))) as JsonObject;
+      const tokens = await this.postToken(tokenUrl, headers, body, data['provider'] === 'demo' ? 'trusted' : 'user-controlled', 'OAuth2 token refresh');
       if (!tokens['access_token']) {
         throw new OperationalError('OAuth2 token refresh returned no access_token', { status: 400 });
       }
@@ -223,6 +203,44 @@ export class OAuth2Service {
       });
     } finally {
       await this.repos.oauthRuntime.releaseRefreshLock(credentialId, this.instanceId);
+    }
+  }
+
+  /**
+   * 用户填写的 token URL 走公网校验；demo 提供方是本实例地址，保持可信以便本地回调。
+   */
+  private async postToken(
+    tokenUrl: string,
+    headers: Record<string, string>,
+    body: URLSearchParams,
+    trust: 'trusted' | 'user-controlled',
+    failureLabel: string,
+  ): Promise<JsonObject> {
+    try {
+      if (trust === 'trusted') {
+        const res = await fetch(tokenUrl, { method: 'POST', headers, body });
+        if (!res.ok) throw new OperationalError(`${failureLabel} failed: HTTP ${res.status}`, { status: 400 });
+        return (await res.json().catch(() => ({}))) as JsonObject;
+      }
+      const result = await safeFetchWithRedirects({
+        url: new URL(tokenUrl),
+        method: 'POST',
+        headers,
+        body: body.toString(),
+        urlTrust: 'user-controlled',
+      });
+      try {
+        if (!result.response.ok) {
+          throw new OperationalError(`${failureLabel} failed: HTTP ${result.response.status}`, { status: 400 });
+        }
+        return (await result.response.json().catch(() => ({}))) as JsonObject;
+      } finally {
+        await result.close();
+      }
+    } catch (error) {
+      if (error instanceof OperationalError) throw error;
+      const message = error instanceof Error ? error.message : String(error);
+      throw new OperationalError(`${failureLabel} request failed: ${message}`, { status: 400 });
     }
   }
 

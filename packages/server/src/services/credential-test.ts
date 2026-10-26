@@ -1,3 +1,4 @@
+import { safeFetchWithRedirects } from '@nomops/core';
 import type { JsonObject } from '@nomops/workflow';
 
 /**
@@ -34,18 +35,22 @@ export class FetchCredentialTester implements ICredentialTester {
   async request(req: CredentialTestRequest): Promise<CredentialTestResponse> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 15_000);
+    let result: Awaited<ReturnType<typeof safeFetchWithRedirects>> | undefined;
     try {
-      const res = await fetch(req.url, {
+      result = await safeFetchWithRedirects({
+        url: new URL(req.url),
         method: req.method,
-        headers: req.headers,
-        body: req.body,
+        headers: req.headers ?? {},
+        ...(req.body === undefined ? {} : { body: req.body }),
+        urlTrust: 'user-controlled',
         signal: controller.signal,
       });
       // 只在需要 body 级判定时才读响应体
-      const json = req.bodyCheck ? await res.json().catch(() => undefined) : undefined;
-      return { status: res.status, ok: res.ok, json };
+      const json = req.bodyCheck ? await result.response.json().catch(() => undefined) : undefined;
+      return { status: result.response.status, ok: result.response.ok, json };
     } finally {
       clearTimeout(timer);
+      await result?.close();
     }
   }
 }
@@ -109,7 +114,11 @@ function httpsOrigin(input: string): string {
   const host = input.trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
   // 标准 hostname：点分标签，每段字母数字开头结尾（拒绝连点/空格/@ 等）；可带端口
   const label = '[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?';
-  return new RegExp(`^${label}(\\.${label})*(:\\d+)?$`).test(host) ? `https://${host}` : '';
+  if (!new RegExp(`^${label}(\\.${label})*(:\\d+)?$`).test(host)) return '';
+  const hostname = host.replace(/:\d+$/, '');
+  // 数字主机和 localhost 会指向环回/内网地址，连接测试不能据此发请求。
+  if (hostname.toLowerCase() === 'localhost' || hostname.split('.').every((part) => /^\d+$/.test(part))) return '';
+  return `https://${host}`;
 }
 
 /**

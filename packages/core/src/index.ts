@@ -27,6 +27,7 @@ export {
   defaultHttpRequest,
   defaultOpenEventStream,
 } from './execution-engine/node-execution-context.js';
+export { safeFetchWithRedirects } from './execution-engine/safe-http-request.js';
 export type { INodeTypeResolver, IWorkflowExecuteAdditionalData } from './execution-engine/node-execution-context.js';
 
 export { FileSystemBinaryStore, InMemoryBinaryStore, assertValidBinaryId, collectBinaryIds } from './binary-data/binary-store.js';

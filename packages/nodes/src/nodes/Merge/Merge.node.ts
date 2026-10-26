@@ -70,13 +70,14 @@ export class Merge implements INodeType {
       ? 'position'
       : String(this.getNodeParameter('combineBy', 0, 'matchingFields') ?? 'matchingFields');
 
-    if (mode === 'append') return [[...input0, ...input1]];
+    if (mode === 'append') return [inputs.flat()];
 
     if (mode === 'chooseBranch') {
       const output = String(this.getNodeParameter('output', 0, 'specifiedInput'));
       if (output === 'empty') return [[{ json: {} }]];
-      const useInput = Math.max(1, Math.min(2, Number(this.getNodeParameter('useDataOfInput', 0, 1)) || 1));
-      return [useInput === 1 ? input0 : input1];
+      const requested = Number(this.getNodeParameter('useDataOfInput', 0, 1));
+      const useInput = Math.max(1, Math.min(inputCount, Number.isFinite(requested) ? Math.trunc(requested) || 1 : 1));
+      return [inputs[useInput - 1] ?? []];
     }
 
     if (mode === 'combineBySql') {

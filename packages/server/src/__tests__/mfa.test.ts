@@ -67,6 +67,16 @@ describe('设置 → 启用', () => {
     const me = await request(app).get('/api/me').set(bearer()).expect(200);
     expect(me.body.mfaEnabled).toBe(true);
   });
+
+  it('已启用后再 setup 不能清掉第二因素', async () => {
+    const res = await request(app).post('/api/mfa/setup').set(bearer()).expect(400);
+    expect(res.body.error).toMatch(/already enabled/i);
+    const login = await request(app)
+      .post('/auth/login')
+      .send({ email: EMAIL, password: PASSWORD, mfaCode: totp(secret) })
+      .expect(200);
+    expect(login.body.token).toBeTruthy();
+  });
 });
 
 describe('登录需第二因素', () => {

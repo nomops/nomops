@@ -110,7 +110,8 @@ export class DynamicNodeParametersService {
         return this.credentials.getDecryptedData(reference.id, projectId, undefined, userId);
       },
       helpers: {
-        httpRequest: this.httpRequest,
+        httpRequest: (options: IHttpRequestOptions) =>
+          this.httpRequest({ ...options, urlTrust: options.urlTrust ?? 'user-controlled' }),
         ...(this.dataTables
           ? {
               dataTables: {
@@ -155,6 +156,7 @@ export class DynamicNodeParametersService {
       const response = await this.httpRequest({
         method: declaration.request.method ?? 'GET',
         url,
+        urlTrust: 'user-controlled',
         headers: {
           ...(defaults?.headers ?? {}),
           ...(render(declaration.request.headers ?? {}, request.currentNodeParameters) as Record<string, string>),
